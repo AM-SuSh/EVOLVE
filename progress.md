@@ -1,3 +1,22 @@
+## 2026-06-20 - Task: 将仓库同步至个人 GitHub
+### What was done
+- 新增 `.gitignore`，排除整个 `reference/`（第三方参考教程仓库及其 Rust `target/` 编译产物，合计约 1.46GB），避免超大文件触发 GitHub 100MB 单文件限制。
+- 完成仓库首次提交，纳入实际需要版本管理的 8 个文件（项目规范、计划文档、环境脚本、进度日志等）。
+- 新增 `github` 远程（`git@github.com:AM-SuSh/Or2-1-OS.git`，SSH 协议），保留原 `origin`（竞赛 GitLab `gitlab.eduxiji.net`）不动。
+- 将 `main` 分支推送至个人 GitHub 仓库并设置上游跟踪。
+
+### Testing
+- 执行 `git ls-files -z | xargs -0 du -b`，确认暂存区仅 8 个文件、总计约 0.03MB，`reference/` 及 `target/` 已被正确忽略。
+- 执行 `ssh -T git@github.com`，返回 `Hi AM-SuSh! You've successfully authenticated`，确认 SSH 认证可用。
+- 执行 `git push -u github main`，输出 `* [new branch] main -> main` 并完成上游跟踪设置，推送成功。
+
+### Notes
+- `.gitignore`：新增，排除 `reference/`、`target/`、`**/target/`。
+- `progress.md`：追加本轮 GitHub 同步记录。
+- `github` 远程采用 SSH（`git@github.com:AM-SuSh/Or2-1-OS.git`），因当前环境 HTTPS 方式无法完成交互式 GitHub 登录；`origin`（竞赛 GitLab）未做任何改动，竞赛提交通道不受影响。
+- 推送内容不含 `reference/` 参考资料；如后续需要把参考教程源码也放上去，需在 `.gitignore` 中放开并确认不含 100MB 以上文件。
+- 回滚方式：在 GitHub 仓库 Settings → Danger Zone 删除仓库或删除 main 分支；本地执行 `git remote remove github` 移除远程；删除 `.gitignore` 并执行 `git reset --soft HEAD~1` 可撤销首次提交（保留工作区文件）。
+
 ## 2026-06-19 - Task: 拉取参考仓库 test 分支并运行基础测试
 ### What was done
 - 拉取参考实验环境 `tg-rcore-tutorial` 的 `test` 分支到 `reference/tg-rcore-tutorial`，当前提交为 `d6330a6db1f81c8c1cfba5ec3db9923199398f24`。
