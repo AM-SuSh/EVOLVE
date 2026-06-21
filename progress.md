@@ -1,3 +1,22 @@
+## 2026-06-21 - Task: 修正 lab1-bare-metal.md 教学定位（去掉直给代码，改为面向学生的任务）
+### What was done
+- 复核团队教学定位：依据 `os-lab/docs/architecture.md`（"Lab1 启动流程（当前已实现）"及"组件 crate 待 Day2-5 填充"）与代码事实（lab1 五文件完整无 TODO、lab2-5 六文件为 4 行空骨架），确认 lab1 定位为"读+跑+小修改"的入门起跑线，lab2-5 才是学生动手实现的部分。
+- 重写 `labs/lab1-bare-metal.md` 第三节"实验任务"：删除"代码已由成员 A 实现，你的任务是读懂它"这种把实验变阅读理解的错误写法，以及正文里 5 个文件的完整代码直给；改为面向学生的三档任务——任务一跑通内核（必做）、任务二阅读理解 4 问（必做）、任务三 3 个动手小修改（选做），每项给出明确通过标准与提交清单。
+- 新增 `labs/answers/lab1-answers.md`：把原正文里的完整代码逐行解读、阅读理解题答案、任务三现象参考集中收纳到 answers 目录，做到"实验正文不直给、答案归位分离"，符合 plan 第 106/108 行规划的 answers 目录设计。
+- 保持 lab1 文档其余部分（问题场景、背景知识含 3 张 mermaid、AI 提问模板、思考题）不变，只重写定位错误的一节。
+
+### Testing
+- 执行 `cargo run -p kernel --features lab1`（os-lab 目录），确认输出 `Hello, OS!` 与 `os-lab kernel lab1 is running on QEMU virt.`，exit code 0，OpenSBI 日志中 `Domain0 Next Address : 0x0000000080200000` 印证文档关于链接地址的讲解——证明文档"任务一"命令与预期输出准确可信。
+- 核查重写后的实验任务表格、阅读理解题、动手修改三档任务所引用的代码位置（entry.asm/main.rs/sbi.rs/console.rs/linker.ld）与现象判断均与实际代码一致。
+
+### Notes
+- `os-lab/labs/lab1-bare-metal.md`：重写第三节"实验任务"（约 90 行），删除直给代码，改为面向学生的三档任务 + 提交清单；第四节"验证"同步精简为指向任务一的验证标准。
+- `os-lab/labs/answers/lab1-answers.md`：新增，承载完整代码逐行解读与阅读理解题答案，供学生做完实验后对照。
+- `progress.md`：追加本轮 lab1 文档修正记录。
+- 本轮严格遵守成员 C 文件边界（仅改 `os-lab/labs/` 与 `progress.md`），未触碰成员 A 的 `kernel/src/` 与成员 B 的 `os-*/`、`user/`、`tests/`。
+- 修正后 lab1 文档与团队既定教学定位（lab1 为起跑线、lab2-5 为学生动手实现）完全一致，且符合 plan 对每个实验"问题场景/背景知识/实验任务/验证/AI 模板/习题答案"的结构要求。
+- 回滚方式：执行 `git checkout -- os-lab/labs/lab1-bare-metal.md progress.md` 并 `rm os-lab/labs/answers/lab1-answers.md` 可还原至修正前状态（实验任务回到"读懂它"的占位写法）。
+
 ## 2026-06-21 - Task: 成员 C Day1 实验文档充实（overview + lab1）
 ### What was done
 - 将 `os-lab/labs/overview.md` 从 13 行占位扩充为完整实验总览，新增环境定位说明、前置准备、知识点地图 mermaid 图、5 个实验与 feature gate 的对应表、6 个组件 crate 的依赖关系 mermaid 图、快速开始命令、学习路径建议。

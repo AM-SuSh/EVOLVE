@@ -85,113 +85,27 @@ sequenceDiagram
 
 ## 三、实验任务
 
-本实验的代码已由成员 A 实现并验证通过，你的任务是**读懂它**，理解每一部分解决的是什么问题。代码分布在以下文件（路径相对 `os-lab/`）：
+> **本实验的定位**：lab1 是整个 os-lab 的**起跑线**——它是一份已经能跑通的最小内核，你不需要从零实现它。本实验的任务是：**跑通内核、读懂启动流程、做几个小修改建立裸机开发的直觉**。从 Lab2 开始，你才会在 feature gate 的指引下亲手"长出"新功能。
 
-### 3.1 汇编入口 `kernel/src/entry.asm`
+lab1 涉及的代码分布在以下文件（路径相对 `os-lab/`），请先逐个打开浏览一遍，建立整体印象：
 
-内核真正的第一条指令不是 Rust，而是汇编。它只做两件事：设置好栈、跳转到 Rust 函数。
+| 文件 | 角色 | 你要重点理解的点 |
+|------|------|------------------|
+| `kernel/src/entry.asm` | 汇编入口 | 第一条指令做了什么、为什么是汇编而不是 Rust |
+| `kernel/src/main.rs` | Rust 入口 | `#![no_std]`/`#![no_main]` 的含义、`clear_bss` 的作用、panic 处理 |
+| `kernel/src/sbi.rs` | SBI 调用 | 内核没有驱动时如何"委托"OpenSBI 输出字符和关机 |
+| `kernel/src/console.rs` | 控制台 | 如何把逐字节输出包装成 `println!` 宏 |
+| `kernel/linker.ld` | 链接脚本 | 为什么内核要链接到固定地址 `0x80200000` |
 
-```asm
-    .section .text.entry
-    .globl _start
-_start:
-    la sp, boot_stack_top      # 设置栈指针到栈顶
-    call rust_main             # 进入 Rust 世界
+> 提示：本实验不给完整代码讲解（那样就变成抄答案了）。每个文件的"为什么这么写"，请你结合上面的【背景知识】自己读代码、想明白；想不通的地方正是【五、AI 提问模板】的用武之地。完整代码的逐行解读见 `labs/answers/lab1-answers.md`，**建议先自己读完再对照答案**。
 
-    .section .bss.stack
-    .globl boot_stack
-boot_stack:
-    .space 4096 * 16           # 预留 64KB 启动栈
-boot_stack_top:
-```
+本实验分为三档任务，按顺序完成：
 
-> 思考点：为什么需要先设置栈？因为 Rust（以及任何 C-like 语言）的函数调用约定要用栈来保存返回地址和局部变量。在 `sp` 指向有效内存之前，不能调用任何 Rust 函数。
+### 任务一：跑通内核（必做）
 
-### 3.2 Rust 入口 `kernel/src/main.rs`
-
-```rust
-#![no_std]
-#![no_main]
-
-mod console;
-mod sbi;
-
-use core::arch::global_asm;
-global_asm!(include_str!("entry.asm"));   // 把汇编嵌入进来
-
-#[no_mangle]
-pub extern "C" fn rust_main() -> ! {
-    clear_bss();          // 1. 清零未初始化全局变量段
-    console::init();      // 2. 控制台初始化（当前为空占位）
-    println!("Hello, OS!");                 // 3. 输出
-    println!("os-lab kernel lab1 is running on QEMU virt.");
-    sbi::shutdown();      // 4. 关机
-}
-```
-
-逐项解释：
-
-- `#[no_mangle]`：禁止 Rust 改名，保证汇编里 `call rust_main` 能找到这个符号。
-- `extern "C"`：用 C 的调用约定，这样汇编能正确传参/返回。
-- `-> !`：返回类型表示"永不返回"——内核主循环不该返回，返回了就是错误。
-- `clear_bss()`：BSS 段是"未初始化的全局变量"，Rust 假设它初值为 0，但在裸机上没人保证这点，必须手动清零，否则可能读到垃圾值。
-- 末尾的 `#[panic_handler]` 是 Rust 强制要求的：`no_std` 程序必须自己定义发生 panic 时怎么办（本内核选择打印后关机）。
-
-### 3.3 SBI 调用 `kernel/src/sbi.rs`
-
-内核没有驱动，怎么在屏幕上画字？答案是请 OpenSBI 代劳，通过 `ecall` 指令陷入 M-mode。
-
-```rust
-pub fn console_putchar(ch: u8) {
-    unsafe {
-        core::arch::asm!(
-            "ecall",
-            in("a7") 1usize,          // SBI Legacy: console putchar
-            in("a0") ch as usize,     // 要输出的字符
-            in("a6") 0usize,
-            lateout("a0") _,
-        );
-    }
-}
-
-pub fn shutdown() -> ! {
-    unsafe {
-        core::arch::asm!("ecall",
-            in("a7") 8usize,          // SBI Legacy: shutdown
-            in("a6") 0usize,
-            options(noreturn));
-    }
-}
-```
-
-- `a7` 寄存器放"功能编号"（1 = 输出字符，8 = 关机），`a0` 放参数。
-- `ecall` 是 RISC-V 的"环境调用"指令，执行后 CPU 陷入更高特权级，由 OpenSBI 处理。
-
-### 3.4 控制台输出 `kernel/src/console.rs`
-
-它把"逐字节输出"包装成 Rust 标准的 `core::fmt::Write` trait，再定义 `println!` 宏，这样就能用熟悉的语法输出格式化文本。
-
-```rust
-impl Write for Stdout {
-    fn write_str(&mut self, s: &str) -> fmt::Result {
-        for byte in s.bytes() {
-            crate::sbi::console_putchar(byte);   // 每个字节走一次 SBI
-        }
-        Ok(())
-    }
-}
-```
-
-### 3.5 链接脚本 `kernel/linker.ld`
-
-告诉链接器：内核必须放在 `0x80200000`（和 OpenSBI 的加载地址一致），并且把 `.text.entry` 段放在最前面——因为入口 `_start` 必须是内核镜像的第一个字节。
-
-## 四、验证
-
-确认环境已激活（`rustc --version`、`qemu-system-riscv64 --version` 能输出版本），然后：
+确认环境已激活（`rustc --version`、`qemu-system-riscv64 --version` 能输出版本），在 `os-lab` 目录执行：
 
 ```powershell
-cd os-lab
 cargo run -p kernel --features lab1
 # 或用 Makefile 封装
 make run
@@ -206,9 +120,60 @@ Hello, OS!
 os-lab kernel lab1 is running on QEMU virt.
 ```
 
-看到 `Hello, OS!` 且 QEMU 自动退出（进程返回，没有卡住），即本实验通过。
+**通过标准**：看到 `Hello, OS!` 且 QEMU 自动退出（终端命令返回，没有卡住或报错）。
 
-> 本文档中的命令已在本机实测：lab1 内核能在 QEMU 11.0.50 中正确输出 `Hello, OS!` 并正常关机（exit code 0）。
+> 如果卡住不退出：检查是不是没装 QEMU、或 `.cargo/config.toml` 里的 runner 路径不对。本命令已在本机实测通过（QEMU 11.0.50，exit code 0）。
+
+### 任务二：阅读理解（必做）
+
+带着下面的问题去读代码，每个问题请在脑中或笔记里给出答案（答案见习题部分与 `labs/answers/`）：
+
+1. 在 `entry.asm` 里，`_start` 为什么要先 `la sp, boot_stack_top` 再 `call rust_main`？如果直接 `call rust_main` 会发生什么？
+2. 在 `main.rs` 里，`rust_main` 为什么返回类型是 `-> !`（never）？`clear_bss()` 为什么必须在 `println!` 之前调用？
+3. 在 `sbi.rs` 里，输出一个字符时 `a7` 和 `a0` 寄存器分别放了什么？关机和输出字符用的是同一个指令吗？
+4. 在 `linker.ld` 里，`BASE_ADDRESS = 0x80200000` 这个数字从哪里来？把它改成别的值会发生什么（见任务三第 2 项）？
+
+> 阅读提示：对照【2.3 执行流程时序图】，把"一段字符从你的代码走到屏幕"的完整链路在脑中走一遍。能讲清楚这张图，lab1 就过关了。
+
+### 任务三：动手小修改（选做，建议完成）
+
+在能跑通的基础上，做几个小改动，亲手感受"改内核会发生什么"。每项改完后 `cargo run` 验证，验证通过再改回原样（保持仓库干净）。
+
+**修改 1：换一句欢迎语**
+
+在 `main.rs` 的 `rust_main` 里，把 `println!("Hello, OS!");` 改成输出你自己的学号或名字，例如：
+
+```rust
+println!("Hello, OS! 我学号是 xxx");
+```
+
+- 通过标准：`cargo run` 后屏幕显示出你改的文字，且内核仍正常退出。
+
+**修改 2：观察链接地址错误的后果（理解性实验）**
+
+在 `linker.ld` 里把 `BASE_ADDRESS = 0x80200000;` 改成 `BASE_ADDRESS = 0x80100000;`，然后 `cargo clean && cargo run`。
+
+- 通过标准：观察并记录发生了什么（大概率是崩溃或乱码/无输出），能用自己的话解释**为什么**。做完改回 `0x80200000`。
+- 这个练习不求"跑通"，恰恰是要体会"地址对不上"的后果。
+
+**修改 3：调整启动栈大小**
+
+在 `entry.asm` 里把 `.space 4096 * 16` 改成 `.space 4096 * 4`（16KB），`cargo run` 观察是否仍正常。
+
+- 通过标准：lab1 这种简单内核 16KB 栈够用，应仍能正常输出和退出。能解释"为什么改小也能跑"（lab1 没有深层函数调用/大局部变量）。
+
+### 提交清单（自查）
+
+完成本实验后，你应该能做到：
+
+- [ ] 能在 QEMU 中跑通 lab1，输出 `Hello, OS!` 并正常退出
+- [ ] 能口述"从上电到 Hello 输出"的完整流程（对照时序图）
+- [ ] 能回答任务二的 4 个阅读理解问题
+- [ ]（选做）完成至少 1 个任务三的修改并理解现象
+
+## 四、验证
+
+本实验以【任务一】的 `cargo run -p kernel --features lab1` 能输出 `Hello, OS!` 并正常退出为主要验证标准。其余任务的验证标准见各任务说明。
 
 ## 五、AI 提问模板
 
