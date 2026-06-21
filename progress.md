@@ -1,3 +1,24 @@
+## 2026-06-21 - Task: 成员 C Day1 实验文档充实（overview + lab1）
+### What was done
+- 将 `os-lab/labs/overview.md` 从 13 行占位扩充为完整实验总览，新增环境定位说明、前置准备、知识点地图 mermaid 图、5 个实验与 feature gate 的对应表、6 个组件 crate 的依赖关系 mermaid 图、快速开始命令、学习路径建议。
+- 将 `os-lab/labs/lab1-bare-metal.md` 从 27 行占位扩充为完整实验指导，新增问题场景、RISC-V 启动层级/no_std/no_main 背景知识（含 3 张 mermaid 图）、逐文件代码导读（entry.asm/main.rs/sbi.rs/console.rs/linker.ld）、已实测的验证步骤、5 条 AI 提问模板、3 道思考题及参考答案。
+- 文档内容全部基于已核实的成员 A/B 代码事实（feature 层级、链接地址 0x80200000、SBI legacy 功能号、entry.asm 栈大小等），无臆造。
+- 同步收尾上轮参考测试遗留：更新 `docs/reference_test_report.md`，补充环境重建后 5 章 base 测试重跑结果记录。
+
+### Testing
+- 执行 `cargo run -p kernel --features lab1`（os-lab 目录），确认 QEMU 输出 `Hello, OS!` 与 `os-lab kernel lab1 is running on QEMU virt.`，exit code 0，证明 lab1 文档引用的验证命令真实可跑。
+- 核查文档中所有代码片段（entry.asm 设栈与 call rust_main、main.rs 的 clear_bss/shutdown、sbi.rs 的 ecall 功能号、console.rs 的 Stdout/println 宏、linker.ld 的 BASE_ADDRESS=0x80200000）均与 `os-lab/kernel/` 实际源码一致。
+- 核查 `kernel/Cargo.toml` 与 `Makefile`，确认文档引用的 feature 层级定义、`make run`/`make check`/`test-lab1` 命令与实际配置一致。
+
+### Notes
+- `os-lab/labs/overview.md`：重写，从占位扩充为含两张 mermaid 图（知识点地图、crate 依赖关系）的完整实验总览。
+- `os-lab/labs/lab1-bare-metal.md`：重写，从占位扩充为含三张 mermaid 图（启动层级、no_std 对比、执行流程时序图）与完整答案的实验指导。
+- `docs/reference_test_report.md`：在开头新增「环境重建后重跑记录」段落，不改写原有内容。
+- `progress.md`：追加本轮成员 C 文档充实记录。
+- 本轮严格遵守成员 C 文件边界（仅改 `os-lab/labs/` 与仓库 `docs/`、`progress.md`），未触碰成员 A 的 `kernel/src/` 与成员 B 的 `os-*/`、`user/`、`tests/`。
+- 成员 C Day1 的 lab 文档初稿任务现已从「占位」升级为「实质完成」，lab1 已满足 plan 要求的每个实验必含项（问题场景、背景知识含 mermaid、实验任务、验证方法、AI 提问模板、习题与答案）。
+- 回滚方式：执行 `git checkout -- os-lab/labs/overview.md os-lab/labs/lab1-bare-metal.md docs/reference_test_report.md progress.md` 可还原至本轮之前的状态（lab 文档回到占位初稿）。
+
 ## 2026-06-21 - Task: Day1 架构设计 + 基础骨架搭建（成员 A）
 
 ### What was done

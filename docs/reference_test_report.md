@@ -1,5 +1,25 @@
 # 参考实验环境拉取与基础测试报告
 
+## 0. 环境重建后重跑记录（2026-06-20）
+
+机器环境丢失重建后，重新拉取参考仓库并复跑全部 5 章 base 测试，结果与首次一致，进一步验证本机环境可用。
+
+```text
+repo:   https://github.com/rcore-os/tg-rcore-tutorial.git (branch: test)
+commit: d6330a6db1f81c8c1cfba5ec3db9923199398f24
+rustc:  1.96.0   QEMU: 11.0.50   checker: 0.4.8
+```
+
+| 章节 | 结果 | 通过数 |
+| --- | --- | --- |
+| ch3 | 通过 | Test PASSED: 4/4（write A/B/C OK，无 FAIL） |
+| ch4 | 通过 | Test PASSED: 6/6（write C OK、sbrk almost OK） |
+| ch5 | 通过 | Test PASSED: 14/14（forktest pass、exit pass、child process 匹配） |
+| ch6 | 通过 | Test PASSED: 15/15（file_test passed、forktest pass） |
+| ch8 | 通过 | Test PASSED: 22/22（pipetest、mutex/condvar/thread 全通过） |
+
+> ch5/ch6/ch8 均按报告要求设置 `CHAPTER=-5/-6/-8` 后通过；首轮 ch5 曾因 `cargo run` 在 `CHAPTER` 未生效时进入交互路径而超时，显式设置环境变量后即 14/14 通过。
+
 ## 1. 参考仓库
 
 本轮拉取的参考实验环境：
