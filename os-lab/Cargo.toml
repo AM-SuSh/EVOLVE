@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = [
+    "kernel",
+    "os-alloc",
+    "os-vm",
+    "os-fs",
+    "os-syscall",
+    "os-context",
+    "user",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["OS Lab Team"]
+repository = "https://github.com/AM-SuSh/Or2-1-OS"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = true

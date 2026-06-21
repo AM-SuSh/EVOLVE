@@ -1,0 +1,13 @@
+[package]
+name = "os-vm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Page tables and virtual address spaces for the OS teaching lab"
+
+[lib]
+
+[dependencies]
+os-alloc = { path = "../os-alloc" }

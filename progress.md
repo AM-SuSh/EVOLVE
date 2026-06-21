@@ -1,3 +1,30 @@
+## 2026-06-21 - Task: Day1 架构设计 + 基础骨架搭建（成员 A）
+
+### What was done
+- 在 `os-lab/` 创建 Cargo workspace，配置 `rust-toolchain.toml`、`.cargo/config.toml`（`build-std` + QEMU runner）。
+- 实现 Lab1 裸机内核：`_start` 汇编入口、`rust_main`、`sbi` 封装、`println!` 宏、panic handler、`linker.ld` 与 `build.rs`。
+- 搭建 `kernel` feature gate 骨架（`lab1`–`lab5`）及后续模块占位（`trap`/`task`/`mm`/`process`/`fs`/`sync`）。
+- 创建 5 个组件 crate（`os-alloc`、`os-vm`、`os-fs`、`os-syscall`、`os-context`）与 `user` 占位库。
+- 编写 `Makefile`（`run`/`test`/`check`/`test-labN`）、`README.md`、`docs/architecture.md`、实验文档占位。
+- 在 QEMU 上跑通 Lab1，输出 `Hello, OS!` 并正常关机。
+
+### Testing
+- `cargo build -p kernel --features lab1`：编译通过。
+- `cargo run -p kernel --features lab1`：QEMU 输出 `Hello, OS!` 与 `os-lab kernel lab1 is running on QEMU virt.`，随后正常退出。
+- `cargo check -p kernel --features lab2/lab3/lab4/lab5`：各级 feature 均可编译。
+- `cargo check --workspace`：workspace 全部 crate 检查通过。
+
+### Notes
+- `os-lab/`：新增自研教学实验环境 workspace 根目录及全部 Day1 骨架。
+- `os-lab/kernel/`：Lab1 可运行内核与 feature gate 主体。
+- `os-lab/os-*/`、`os-lab/user/`：组件与用户态占位 crate（待成员 B Day2+ 填充）。
+- `os-lab/Makefile`、`os-lab/README.md`：构建入口与快速开始说明。
+- `os-lab/docs/architecture.md`：架构说明与 mermaid 图。
+- `os-lab/labs/`：实验总览与 Lab1 文档占位（成员 C 后续完善）。
+- `docs/os-lab.md`：仓库级 os-lab 入口说明。
+- `progress.md`：追加本轮 Day1 记录（用户所称 `process.md` 即本文件）。
+- 回滚方式：删除整个 `os-lab/` 目录与 `docs/os-lab.md`，并从 `progress.md` 删除本轮记录。
+
 ## 2026-06-20 - Task: 将仓库同步至个人 GitHub
 ### What was done
 - 新增 `.gitignore`，排除整个 `reference/`（第三方参考教程仓库及其 Rust `target/` 编译产物，合计约 1.46GB），避免超大文件触发 GitHub 100MB 单文件限制。
