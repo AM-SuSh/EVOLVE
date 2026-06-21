@@ -2,7 +2,6 @@
 #![no_main]
 
 mod console;
-mod sbi;
 
 #[cfg(any(feature = "lab2", feature = "lab3", feature = "lab4", feature = "lab5"))]
 mod trap;
@@ -35,7 +34,7 @@ pub extern "C" fn rust_main() -> ! {
     println!("Hello, OS!");
     println!("os-lab kernel lab1 is running on QEMU virt.");
 
-    sbi::shutdown();
+    os_sbi::shutdown();
 }
 
 fn clear_bss() {
@@ -53,5 +52,5 @@ fn clear_bss() {
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     println!("{}", info);
-    sbi::shutdown();
+    os_sbi::shutdown();
 }

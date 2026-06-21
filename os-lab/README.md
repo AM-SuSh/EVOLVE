@@ -9,7 +9,7 @@
 - QEMU：`qemu-system-riscv64`（建议 ≥ 7.0）
 - 组件：`rust-src`、`llvm-tools-preview`
 
-本仓库根目录已提供环境激活脚本：
+本仓库根目录已提供环境激活脚本；验证步骤见 [docs/os-lab_verify.md](../../docs/os-lab_verify.md)。
 
 ```powershell
 . ..\scripts\activate-os-env.ps1

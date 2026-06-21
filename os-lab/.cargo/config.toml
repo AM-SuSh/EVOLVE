@@ -1,6 +1,9 @@
 [build]
 target = "riscv64gc-unknown-none-elf"
 
+[alias]
+run-lab1 = "run -p kernel --features lab1"
+
 [target.riscv64gc-unknown-none-elf]
 runner = "qemu-system-riscv64 -machine virt -nographic -bios default -kernel"
 

@@ -1,3 +1,49 @@
+## 2026-06-21 - Task: 新增 os-lab 伙伴验证指令文档
+
+### What was done
+- 新增 `docs/os-lab_verify.md`：环境激活、路径检查、workspace/lab1~lab5 编译检查、Lab1 QEMU 运行、成功标准、一键复制命令块与常见问题。
+- 在 `docs/os-lab.md`、`os-lab/README.md`、`os-lab/tests/README.md` 增加指向该文档的链接。
+
+### Testing
+- 文档中的命令与已通过的成员 B Day1 本机验证流程一致；路径说明与 `activate-os-env.ps1` / `environment_setup.md` 一致。
+
+### Notes
+- `docs/os-lab_verify.md`：新增伙伴执行指令文档。
+- `docs/os-lab.md`、`os-lab/README.md`、`os-lab/tests/README.md`：补充链接。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout` 上述文件并删除 `docs/os-lab_verify.md`。
+
+## 2026-06-21 - Task: 成员 B Day1（os-sbi + 构建复核 + 组件脚手架）
+
+### What was done
+- 复核 `rust-toolchain.toml` 与 `.cargo/config.toml`（build-std、QEMU runner），在 `.cargo/config.toml` 增加 `run-lab1` alias。
+- 校验 `kernel/linker.ld` 与 `build.rs`：五项检查均通过，结论写入 `tests/README.md`。
+- 新建 `os-sbi` crate：迁移 `console_putchar`/`shutdown`（Legacy SBI 功能号 1/8），编译期常量断言校验功能号。
+- 与成员 A 协调完成 kernel 集成：`lab1` 依赖 `os-sbi`，删除 `kernel/src/sbi.rs`，`console.rs`/`main.rs` 改用 `os_sbi`。
+- 补强 `os-context`/`os-syscall`/`os-alloc`/`os-vm`/`os-fs` 占位（TrapContext、syscall 编号、FrameAllocator/PageTable/FileSystem trait）。
+- 更新 `os-lab/docs/architecture.md`：lab1 依赖 `os-sbi`，workspace 图补充 os-sbi 节点。
+
+### Testing
+- `cargo check --workspace`：全部 crate 通过。
+- `cargo check -p kernel --features lab1/lab2/lab3/lab4/lab5`：各级 feature 均可编译（等价 `make check`；本机 Git Bash 无 `make` 命令）。
+- `cargo check -p os-sbi`：编译期常量断言通过。
+- `cargo run -p kernel --features lab1`：QEMU 输出 `Hello, OS!` 与 `os-lab kernel lab1 is running on QEMU virt.`，OpenSBI `Domain0 Next Address : 0x0000000080200000`，exit code 0。
+- 本机全量复验（`activate-os-env.local.ps1`，`os-lab` 目录）：路径 `rustc`/`cargo` → `D:\AppGallery\Rust\cargo\bin`，`qemu-system-riscv64` → `D:\AppGallery\QEMU`，`bash` → `E:\Git\bin`；`rustc`/`cargo` 1.96.0，QEMU 11.0.50；上述 check/run 均通过。
+
+### Notes
+- `os-lab/os-sbi/`：新增 SBI 组件 crate（成员 B 核心交付）。
+- `os-lab/Cargo.toml`：注册 `os-sbi` workspace member。
+- `os-lab/.cargo/config.toml`：新增 `run-lab1` alias。
+- `os-lab/kernel/Cargo.toml`：`lab1` 增加 `dep:os-sbi`。
+- `os-lab/kernel/src/main.rs`、`os-lab/kernel/src/console.rs`：改用 `os_sbi`，删除 `mod sbi`。
+- `os-lab/kernel/src/sbi.rs`：删除（逻辑迁至 os-sbi）。
+- `os-lab/os-context/src/lib.rs` 等 5 个组件 crate：增加 Day2+ 占位类型/trait/常量。
+- `os-lab/tests/README.md`：Day1 验证命令与链接脚本校验表。
+- `os-lab/docs/architecture.md`：更新 lab1 依赖与 workspace 图。
+- `progress.md`：追加本轮成员 B Day1 记录。
+- 本机验证使用 `scripts/activate-os-env.local.ps1`，工作目录 `os-lab`。
+- 回滚方式：删除 `os-lab/os-sbi/`，恢复 `kernel/src/sbi.rs`，还原 kernel/Cargo.toml、main.rs、console.rs，并从 workspace members 移除 os-sbi；`git checkout` 其余改动文件。
+
 ## 2026-06-21 - Task: 修正 lab1-bare-metal.md 教学定位（去掉直给代码，改为面向学生的任务）
 ### What was done
 - 复核团队教学定位：依据 `os-lab/docs/architecture.md`（"Lab1 启动流程（当前已实现）"及"组件 crate 待 Day2-5 填充"）与代码事实（lab1 五文件完整无 TODO、lab2-5 六文件为 4 行空骨架），确认 lab1 定位为"读+跑+小修改"的入门起跑线，lab2-5 才是学生动手实现的部分。

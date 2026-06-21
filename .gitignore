@@ -1,3 +1,8 @@
+# 本机专用配置与记录（勿提交远端）
+**/*.local.ps1
+**/*.local.md
+*.plan.md
+
 # 参考资料（第三方教程仓库，不纳入版本库；GitHub 上有对应原版）
 reference/
 

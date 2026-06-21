@@ -5,7 +5,7 @@
 与参考环境 `tg-rcore-tutorial`（8 个独立内核 + 23 个 crate）不同，本环境采用：
 
 1. **单内核渐进式架构**：一个 `kernel` 二进制，通过 Cargo feature 逐级启用功能。
-2. **精简组件化**：6 个独立库 crate，两层依赖，降低初学者认知负担。
+2. **精简组件化**：7 个独立库 crate，两层依赖，降低初学者认知负担。
 3. **内嵌验证**：后续在内核与组件中通过 `#[cfg(test)]` 与集成测试自证正确性。
 
 ## Workspace 结构
@@ -14,6 +14,7 @@
 graph TD
     subgraph workspace [os-lab workspace]
         kernel[kernel bin]
+        osSbi[os-sbi]
         osContext[os-context]
         osSyscall[os-syscall]
         osAlloc[os-alloc]
@@ -22,6 +23,7 @@ graph TD
         user[user lib]
     end
 
+    kernel -->|lab1+| osSbi
     kernel -->|lab2+| osContext
     kernel -->|lab2+| osSyscall
     kernel -->|lab3+| osAlloc
@@ -43,7 +45,7 @@ flowchart LR
 
 | Feature | 内核模块 | 依赖 crate |
 |---------|----------|------------|
-| lab1 | `main`, `console`, `sbi` | 无 |
+| lab1 | `main`, `console` | os-sbi |
 | lab2 | + `trap`, `task` | os-context, os-syscall |
 | lab3 | + `mm` | os-alloc, os-vm |
 | lab4 | + `process` | （沿用 lab3） |
@@ -73,7 +75,7 @@ sequenceDiagram
 - 内核加载地址：`0x80200000`（`kernel/linker.ld`）
 - 入口汇编：`kernel/src/entry.asm` → `_start`
 - Rust 入口：`kernel/src/main.rs` → `rust_main`
-- SBI 封装：`kernel/src/sbi.rs`（legacy console / shutdown）
+- SBI 封装：`os-sbi` crate（legacy console / shutdown）
 - 构建：`kernel/build.rs` 注入链接脚本；`.cargo/config.toml` 配置 `build-std` 与 QEMU runner
 
 ## 协作边界（三人分工）
@@ -84,7 +86,7 @@ sequenceDiagram
 | `os-*/`, `user/`, `tests/` | 成员 B | 组件 crate 与测试 |
 | `labs/`, `docs/`（实验文档） | 成员 C | 实验指导与评估文档 |
 
-Day 1 由成员 A 搭建骨架；组件 crate 当前为占位，待 Day 2–5 填充实现。
+Day 1 由成员 A 搭建内核骨架；成员 B 完成 `os-sbi` 与组件 crate 占位，待 Day 2–5 填充实现。
 
 ## 验证入口
 

@@ -4,6 +4,8 @@
 
 ## 快速验证（Lab1）
 
+完整验证步骤（编译检查 + QEMU）见 **[os-lab_verify.md](os-lab_verify.md)**。
+
 在仓库根目录激活环境后：
 
 ```powershell

@@ -5,7 +5,7 @@ struct Stdout;
 impl Write for Stdout {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for byte in s.bytes() {
-            crate::sbi::console_putchar(byte);
+            os_sbi::console_putchar(byte);
         }
         Ok(())
     }

@@ -9,13 +9,14 @@ description = "Single progressive OS kernel for the teaching lab environment"
 
 [features]
 default = ["lab1"]
-lab1 = []
+lab1 = ["dep:os-sbi"]
 lab2 = ["lab1", "dep:os-context", "dep:os-syscall"]
 lab3 = ["lab2", "dep:os-alloc", "dep:os-vm"]
 lab4 = ["lab3"]
 lab5 = ["lab4", "dep:os-fs"]
 
 [dependencies]
+os-sbi = { path = "../os-sbi", optional = true }
 os-context = { path = "../os-context", optional = true }
 os-syscall = { path = "../os-syscall", optional = true }
 os-alloc = { path = "../os-alloc", optional = true }

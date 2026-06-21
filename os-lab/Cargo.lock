@@ -9,6 +9,7 @@ dependencies = [
  "os-alloc",
  "os-context",
  "os-fs",
+ "os-sbi",
  "os-syscall",
  "os-vm",
 ]
@@ -27,6 +28,10 @@ version = "0.1.0"
 dependencies = [
  "os-alloc",
 ]
+
+[[package]]
+name = "os-sbi"
+version = "0.1.0"
 
 [[package]]
 name = "os-syscall"

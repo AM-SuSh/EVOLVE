@@ -1,5 +1,12 @@
-const SBI_LEGACY_CONSOLE_PUTCHAR: usize = 1;
-const SBI_LEGACY_SHUTDOWN: usize = 8;
+//! SBI (Supervisor Binary Interface) ecall wrappers for the OS teaching lab.
+
+#![no_std]
+
+pub const SBI_LEGACY_CONSOLE_PUTCHAR: usize = 1;
+pub const SBI_LEGACY_SHUTDOWN: usize = 8;
+
+const _: () = assert!(SBI_LEGACY_CONSOLE_PUTCHAR == 1);
+const _: () = assert!(SBI_LEGACY_SHUTDOWN == 8);
 
 pub fn console_putchar(ch: u8) {
     unsafe {
