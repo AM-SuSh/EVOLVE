@@ -2,7 +2,7 @@
 **/*.local.ps1
 **/*.local.md
 *.plan.md
-
+.idea
 # 参考资料（第三方教程仓库，不纳入版本库；GitHub 上有对应原版）
 reference/
 

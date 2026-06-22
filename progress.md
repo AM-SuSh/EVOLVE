@@ -1,3 +1,48 @@
+## 2026-06-22 - Task: DAY1 三人完成情况核查 + 成员 A DAY2（Lab2 trap/调度/加载）
+
+### What was done
+
+**DAY1 完成情况核查（对照计划第四节分工与第三节 Day1 目标）**
+
+| 成员 | 计划任务 | 状态 | 说明 |
+|------|----------|------|------|
+| **A** | workspace 骨架、Lab1 裸机内核、Makefile/构建系统 | ✅ 已完成 | `os-lab/` workspace、`kernel` Lab1 可运行、feature gate lab1–lab5、Makefile；SBI 已迁至 `os-sbi`（与 B 协作） |
+| **B** | `rust-toolchain.toml`、`.cargo/config.toml`、链接脚本、SBI 基础 | ✅ 已完成（超额） | 复核 linker/build.rs；新增 `os-sbi` crate；Day2+ 组件占位 |
+| **C** | `labs/overview.md`、`labs/lab1-bare-metal.md` | ✅ 已完成 | 两文档已充实；另增 `labs/answers/lab1-answers.md` |
+
+**Day1 总体验收**：`cargo run -p kernel --features lab1` 输出 `Hello, OS!` 并正常退出 —— **通过**。
+
+**成员 A DAY2 实施**
+
+- 实现 `kernel/src/trap.asm` + `trap.rs`：Trap 入口、`__alltraps`/`__restore`、系统调用分发（write/exit/yield）。
+- 实现 `kernel/src/task.rs`：任务控制块、批处理顺序调度、`sys_write`/`sys_exit`。
+- 实现 `kernel/src/loader.rs` + 扩展 `kernel/build.rs`：构建用户态程序、`objcopy` 转纯二进制、`include_bytes!` 嵌入、按 app 加载至 `0x80400000`。
+- 新增 `kernel/src/riscv.rs`、`config.rs`；`main.rs` 增加 lab2 启动路径。
+- 协调修正 `os-context::TrapContext` 字段顺序（与 trap 汇编布局一致）。
+- 为打通 lab2 端到端验证，临时补充 `user/` 下 hello/power/yield 测试程序（属成员 B Day2 范围，待 B 正式接手完善）。
+
+### Testing
+
+- `cargo run -p kernel --features lab1`：输出 `Hello, OS!` 与 `os-lab kernel lab1 is running on QEMU virt.`，exit code 0。
+- `cargo run -p kernel --features lab2`：依次加载并运行 3 个用户程序，关键输出：
+  - `Hello from user app!` → `App 0 exited with code 0`
+  - `Power test start` / `2^1000000002 % 998244353 = 960319429` → `App 1 exited with code 0`
+  - `Yield test start` + 5 行 `Yield round` → `App 2 exited with code 0` → `All user apps exited.`
+- `cargo build -p kernel --features lab2`：编译通过（有 dead_code/static_mut_refs 等 warning，未阻断）。
+
+### Notes
+
+- `kernel/src/trap.asm`、`trap.rs`、`task.rs`、`loader.rs`、`riscv.rs`、`config.rs`、`main.rs`：Lab2 内核主体（成员 A）。
+- `kernel/build.rs`：用户程序构建与嵌入逻辑。
+- `os-context/src/lib.rs`：TrapContext 字段顺序与汇编对齐（与 B 协调）。
+- `user/` 下 hello/power/yield 及 `user/Cargo.toml` 等：为 lab2 验证临时补充（B 正式交付后需对齐接口）。
+- `os-lab/Cargo.toml`：workspace release profile 统一。
+- `progress.md`：追加本轮记录。
+- **待成员 B**：`os-context` 完整 API、`os-syscall` 文档化、用户程序正式版、集成测试。
+- **待成员 C**：`labs/lab2-trap-and-task.md` 初稿。
+- **已知缺口**：`sys_yield` 轮转调度与定时器抢占尚未完整演示（yield 测试程序当前为顺序打印）；`TASK_MANAGER.num_app` 存在栈污染风险，已用 `NUM_APP` 常量规避。
+- 回滚方式：`git checkout` 上述改动文件；删除 `kernel/src/trap.asm`、`riscv.rs`、`config.rs`、`loader.rs`；恢复 `trap.rs`/`task.rs`/`main.rs`/`build.rs` 占位版本；移除 `user/src/bin/` 与相关 `user/` 改动。
+
 ## 2026-06-21 - Task: 新增 os-lab 伙伴验证指令文档
 
 ### What was done

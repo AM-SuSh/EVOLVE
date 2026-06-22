@@ -8,3 +8,20 @@ repository.workspace = true
 description = "User-space test programs for the OS teaching lab"
 
 [lib]
+name = "user_lib"
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+os-syscall = { path = "../os-syscall" }
+
+[[bin]]
+name = "hello"
+path = "src/bin/hello.rs"
+
+[[bin]]
+name = "power"
+path = "src/bin/power.rs"
+
+[[bin]]
+name = "yield"
+path = "src/bin/yield.rs"

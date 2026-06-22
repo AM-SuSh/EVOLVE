@@ -4,7 +4,16 @@
 mod console;
 
 #[cfg(any(feature = "lab2", feature = "lab3", feature = "lab4", feature = "lab5"))]
+mod config;
+
+#[cfg(any(feature = "lab2", feature = "lab3", feature = "lab4", feature = "lab5"))]
+mod riscv;
+
+#[cfg(any(feature = "lab2", feature = "lab3", feature = "lab4", feature = "lab5"))]
 mod trap;
+
+#[cfg(any(feature = "lab2", feature = "lab3", feature = "lab4", feature = "lab5"))]
+mod loader;
 
 #[cfg(any(feature = "lab2", feature = "lab3", feature = "lab4", feature = "lab5"))]
 mod task;
@@ -31,10 +40,21 @@ pub extern "C" fn rust_main() -> ! {
     clear_bss();
     console::init();
 
-    println!("Hello, OS!");
-    println!("os-lab kernel lab1 is running on QEMU virt.");
+    #[cfg(not(any(feature = "lab2", feature = "lab3", feature = "lab4", feature = "lab5")))]
+    {
+        println!("Hello, OS!");
+        println!("os-lab kernel lab1 is running on QEMU virt.");
+        os_sbi::shutdown();
+    }
 
-    os_sbi::shutdown();
+    #[cfg(any(feature = "lab2", feature = "lab3", feature = "lab4", feature = "lab5"))]
+    {
+        println!("os-lab kernel lab2: trap and multitask.");
+        trap::init();
+        loader::load_apps();
+        task::init();
+        task::run_first_task();
+    }
 }
 
 fn clear_bss() {

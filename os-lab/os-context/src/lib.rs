@@ -2,11 +2,11 @@
 
 #![no_std]
 
-/// Trap context placeholder for lab2+ implementation.
+/// Trap context for lab2+ (field order matches trap.asm save layout).
 #[derive(Clone, Copy)]
 pub struct TrapContext {
     pub x: [usize; 32],
-    pub sepc: usize,
     pub sstatus: usize,
+    pub sepc: usize,
     pub kernel_sp: usize,
 }
