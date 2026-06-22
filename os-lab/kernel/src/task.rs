@@ -4,7 +4,7 @@ use os_context::TrapContext;
 
 use crate::{print, println};
 
-use crate::config::{APP_BASE_ADDRESS, KERNEL_STACK_SIZE, MAX_APP_NUM, USER_STACK_SIZE};
+use crate::config::{KERNEL_STACK_SIZE, MAX_APP_NUM, USER_STACK_SIZE};
 use crate::loader::{get_app_entry, load_app, NUM_APP};
 use crate::trap::{run_user_task, trap_cx_init};
 
@@ -42,7 +42,7 @@ impl TaskManager {
         self.num_app = NUM_APP;
         for i in 0..self.num_app {
             let entry = get_app_entry(i);
-            let user_sp = APP_BASE_ADDRESS + crate::config::APP_REGION_SIZE - 16;
+            let user_sp = crate::config::APP_BASE_ADDRESS + crate::config::APP_REGION_SIZE - 16;
             let mut task = TaskControlBlock {
                 task_status: TaskStatus::Ready,
                 trap_cx: TrapContext {
@@ -149,7 +149,9 @@ pub fn sys_exit(exit_code: i32) -> ! {
             load_app(next);
             let next_task = TASK_MANAGER.tasks[next].as_mut().unwrap();
             next_task.trap_cx.sepc = get_app_entry(next);
-            next_task.trap_cx.x[2] = APP_BASE_ADDRESS + crate::config::APP_REGION_SIZE - 16;
+            next_task.trap_cx.set_user_sp(
+                crate::config::APP_BASE_ADDRESS + crate::config::APP_REGION_SIZE - 16,
+            );
             next_task.task_status = TaskStatus::Running;
             run_user_task(&mut next_task.trap_cx);
         } else {

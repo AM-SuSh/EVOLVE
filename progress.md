@@ -1,3 +1,43 @@
+## 2026-06-22 - Task: 完善 docs/os-lab_verify.md 完整验证指令
+
+### What was done
+- 扩充 `docs/os-lab_verify.md`：覆盖 Day1 + Day2 全流程（环境激活、编译检查、host 单元测试、Lab1/Lab2 QEMU 运行、成功标准、一键复制命令块、常见问题）。
+
+### Testing
+- 文档命令与成员 B Day2 本机已通过验证流程一致（`cargo test` host triple、`cargo check/run lab2`）。
+
+### Notes
+- `docs/os-lab_verify.md`：补全 Lab2 正式验证步骤，移除「可选」表述；新增 Linux/macOS host triple 与 Day2 一键复制块。
+- 回滚方式：`git checkout docs/os-lab_verify.md`。
+
+## 2026-06-22 - Task: 成员 B Day2（os-context + os-syscall + user 测试程序）
+
+### What was done
+
+- 交付 `os-context`：`trap.asm` 从 kernel 迁入、`TrapContext` API（`init_user`/`advance_sepc`/`set_return_value` 等）、`restore_to_user`、布局常量与 host 单元测试。
+- 交付 `os-syscall`：Lab2 syscall 常量 + Lab4/5 前瞻编号、编译期断言、`syscall_name` 与单元测试。
+- 与成员 A 协调：`kernel/trap.rs` 改用 `os_context` 符号与 API，删除 `kernel/src/trap.asm`；`task.rs` 使用 `set_user_sp`。
+- 正式化 `user/`：`hello`/`power`（`const fn` 幂模，正确结果 `409684505`）/`yield`（循环调用 `yield_()`）。
+- 更新 `os-lab/tests/README.md` Day2 验证小节；`docs/os-lab_verify.md` 补充 Lab2 可选步骤。
+
+### Testing
+
+- `cargo test -p os-context -p os-syscall --target x86_64-pc-windows-msvc`：7 项测试全部通过。
+- `cargo check -p kernel --features lab2`：通过。
+- `cargo run -p kernel --features lab2`：3 个用户程序依次运行并退出，关键输出含 `409684505`、`Power check ok`、`Yield round`、`All user apps exited.`，exit code 0。
+
+### Notes
+
+- `os-lab/os-context/src/lib.rs`、`trap.asm`：TrapContext + trap 汇编 + restore API（成员 B）。
+- `os-lab/os-syscall/src/lib.rs`：syscall 编号体系与测试（成员 B）。
+- `os-lab/kernel/src/trap.rs`：集成 os-context，删除本地 trap.asm（与 A 协调）。
+- `os-lab/kernel/src/task.rs`：`set_user_sp` 调用（与 A 协调）。
+- `os-lab/user/src/bin/power.rs`、`yield.rs`：正式测试程序（成员 B）。
+- `os-lab/tests/README.md`、`docs/os-lab_verify.md`：Lab2 验证文档。
+- `progress.md`：追加本轮记录。
+- **已知缺口**：yield 在批处理调度下可能只触发一次即关机（A 侧调度器限制，与 progress 既有记录一致）。
+- 回滚方式：`git checkout` 上述文件；恢复 `kernel/src/trap.asm` 与旧版 `trap.rs`/`task.rs`；还原 `os-context`/`os-syscall` 占位版本。
+
 ## 2026-06-22 - Task: DAY1 三人完成情况核查 + 成员 A DAY2（Lab2 trap/调度/加载）
 
 ### What was done

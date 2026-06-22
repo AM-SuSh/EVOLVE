@@ -30,3 +30,46 @@ cargo run -p kernel --features lab1
 | `.text.entry` 段优先于普通 `.text` | 通过 |
 | `.bss.stack` 位于 bss 段内 | 通过 |
 | `build.rs` 通过 `-T` 注入链接脚本 | 通过 |
+
+## Day 2 / Lab2 验证（成员 B Day2）
+
+### 组件单元测试（host 目标）
+
+`os-context` 含 RISC-V 汇编，须在 **host triple** 上跑纯 Rust 单元测试：
+
+```powershell
+cd os-lab
+cargo test -p os-context -p os-syscall --target x86_64-pc-windows-msvc
+```
+
+Linux/macOS 将 triple 换为对应 host（如 `x86_64-unknown-linux-gnu`）。
+
+预期：`os-context` 3 项、`os-syscall` 4 项测试全部 `ok`。
+
+### Lab2 编译与 QEMU 运行
+
+```powershell
+cargo check -p kernel --features lab2
+cargo run -p kernel --features lab2
+```
+
+### 成功标准
+
+QEMU 输出中应依次出现：
+
+```text
+os-lab kernel lab2: trap and multitask.
+Loading 3 user apps ...
+Hello from user app!
+App 0 exited with code 0
+Power test start
+2^1000000002 % 998244353 = 409684505
+Power check ok
+App 1 exited with code 0
+Yield test start
+Yield round
+App 2 exited with code 0
+All user apps exited.
+```
+
+说明：当前批处理调度器在单 app 调用 `yield` 且无其他 Ready 任务时会提前关机，故 yield 测试可能只打印一行 `Yield round`；`SYS_YIELD` 路径已被触发。完整协作式轮转属成员 A 后续优化。
