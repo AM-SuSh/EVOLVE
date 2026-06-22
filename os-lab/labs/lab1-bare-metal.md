@@ -2,6 +2,28 @@
 
 > 对应 feature：`lab1`（默认启用）。这是整个 os-lab 学习路径的起点：先让一段 Rust 代码脱离操作系统、直接在裸机（QEMU 模拟的 RISC-V 硬件）上跑起来。
 
+## 零、开始之前
+
+在动手前，请确认已完成以下准备：
+
+1. **本机环境已就绪**：按仓库根目录 `docs/environment_setup.md` 装好 Rust（含 `riscv64gc-unknown-none-elf` target）、QEMU、（Windows 还需 MSVC Build Tools）。
+2. **进入工作目录**：在本仓库根目录下，进入自研实验环境目录：
+   ```powershell
+   cd os-lab
+   ```
+3. **（可选）激活当前终端环境**：如果你新开了一个终端，在仓库**根目录**（不是 os-lab 目录）执行以下命令，让本会话能找到 Rust 和 QEMU：
+   ```powershell
+   . .\scripts\activate-os-env.ps1
+   cd os-lab
+   ```
+4. **快速自检**：以下两条命令都能输出版本号，说明环境就绪：
+   ```powershell
+   rustc --version          # 预期：rustc 1.96.0 ...
+   qemu-system-riscv64 --version   # 预期：QEMU emulator version 11.0.50 ...
+   ```
+
+> 如果上面任何一步报"找不到命令"，回到 `docs/environment_setup.md` 检查安装。
+
 ## 一、问题场景
 
 写一个普通程序，我们习惯 `cargo new` 然后 `cargo run`，背后其实依赖了操作系统提供的大量基础设施：加载器把程序放进内存、标准库初始化运行时、`println!` 最终通过系统调用写到终端。
@@ -83,6 +105,18 @@ sequenceDiagram
     SBI->>HW: 触发 poweroff，QEMU 退出
 ```
 
+### 2.4 BSS 段与 `clear_bss`
+
+时序图里有一行 `clear_bss() 清零 BSS 段`，它在 `println!` 之前执行。为什么？
+
+**BSS 段是什么**：程序里"未初始化或初值为 0 的全局变量/静态变量"会被链接器放进一个叫 `.bss` 的内存区域。在有操作系统的环境里，加载器会在程序运行前把 BSS 段自动清零；但**裸机上没有加载器**，BSS 段里开机时是随机的垃圾值。
+
+**为什么必须手动清零**：Rust 语言假设所有静态变量初值是合法的（比如 `static mut` 的初值、`Option` 的 `None`）。如果 BSS 没清零，这些变量开机后读到的是垃圾值，程序行为不可预测——可能打印乱码、可能死循环、可能崩溃。
+
+**为什么必须在 `println!` 之前**：`println!` 宏的实现链路里（`console.rs` → `Stdout` → `Write` trait）可能间接引用位于 BSS 段的静态状态（例如格式化用的缓冲、锁标志等）。如果 BSS 还没清零就先 `println!`，这些状态是垃圾值，输出可能错乱甚至卡死。所以 `rust_main` 的第一件事必须是 `clear_bss()`，把 BSS 段逐字节写成 0（`main.rs` 里的 `write_bytes` 调用就是干这个的），之后才能安全地做任何事。
+
+> 一句话：`clear_bss()` 是裸机程序"初始化运行时"的第一步，对应有 OS 环境里加载器自动做的事。它必须赶在所有可能用到静态变量的代码之前。
+
 ## 三、实验任务
 
 > **本实验的定位**：lab1 是整个 os-lab 的**起跑线**——它是一份已经能跑通的最小内核，你不需要从零实现它。本实验的任务是：**跑通内核、读懂启动流程、做几个小修改建立裸机开发的直觉**。从 Lab2 开始，你才会在 feature gate 的指引下亲手"长出"新功能。
@@ -111,14 +145,18 @@ cargo run -p kernel --features lab1
 make run
 ```
 
-**预期输出**（截取关键部分，前面会有一大段 OpenSBI 的启动 banner）：
+**预期输出**：屏幕会先刷出约 **40 行 OpenSBI 启动日志**（平台信息、HART 信息等，**这些是固件的输出，不是你的内核，无需关心**），最后两行才是你的内核输出：
 
 ```text
 OpenSBI v1.7
-   ...（OpenSBI banner）...
-Hello, OS!
+   ____                    _____ ____ _____
+  ...（约 40 行 OpenSBI 平台/HART 日志，可忽略）...
+Boot HART MEDELEG           : 0x0000000000f4b509
+Hello, OS!                              ← 你的内核从这里开始输出
 os-lab kernel lab1 is running on QEMU virt.
 ```
+
+> 新手提示：看到前面一大段 OpenSBI 日志别慌，那是固件的正常输出。**只要最后出现 `Hello, OS!` 就对了**。如果连 OpenSBI 的 banner 都没出现，说明 QEMU 没启动成功，检查 QEMU 安装。
 
 **通过标准**：看到 `Hello, OS!` 且 QEMU 自动退出（终端命令返回，没有卡住或报错）。
 
@@ -141,7 +179,7 @@ os-lab kernel lab1 is running on QEMU virt.
 
 **修改 1：换一句欢迎语**
 
-在 `main.rs` 的 `rust_main` 里，把 `println!("Hello, OS!");` 改成输出你自己的学号或名字，例如：
+在 `main.rs` 的 `rust_main` 函数里（约第 35 行），把 `println!("Hello, OS!");` 改成输出你自己的学号或名字，例如：
 
 ```rust
 println!("Hello, OS! 我学号是 xxx");
@@ -151,10 +189,14 @@ println!("Hello, OS! 我学号是 xxx");
 
 **修改 2：观察链接地址错误的后果（理解性实验）**
 
-在 `linker.ld` 里把 `BASE_ADDRESS = 0x80200000;` 改成 `BASE_ADDRESS = 0x80100000;`，然后 `cargo clean && cargo run`。
+在 `linker.ld` 里把 `BASE_ADDRESS = 0x80200000;` 改成 `BASE_ADDRESS = 0x88000000;`（注意是 `0x8800`，不是 `0x8020`），然后 `cargo clean && cargo run`。
 
-- 通过标准：观察并记录发生了什么（大概率是崩溃或乱码/无输出），能用自己的话解释**为什么**。做完改回 `0x80200000`。
+- 预期现象：QEMU 启动后立即报错退出，例如 `qemu-system-riscv64: No enough memory to place DTB after kernel/initrd`，进程 exit code 非 0，**看不到 `Hello, OS!`**。
+- 通过标准：观察到上述崩溃现象，能用自己的话解释**为什么**（提示：OpenSBI 固定跳转到 `0x80200000`，而内核被链接到了 `0x88000000`，两者对不上，CPU 取不到正确的指令）。
+- 做完务必改回 `0x80200000` 并 `cargo clean && cargo run` 确认恢复正常。
 - 这个练习不求"跑通"，恰恰是要体会"地址对不上"的后果。
+
+> ⚠️ 不要改成 `0x80100000` 这种离 `0x80200000` 太近的值——因为 lab1 内核镜像很小（几十 KB），`0x80100000` 与 `0x80200000` 相差仅 1MB，OpenSBI 跳转后仍可能落在内核镜像范围内，加上 RISC-V 的 PC 相对寻址，内核**可能照常运行**，你就观察不到崩溃了。要用 `0x88000000` 这种远离的值才能稳定复现。
 
 **修改 3：调整启动栈大小**
 

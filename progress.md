@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ## 2026-06-22 - Task: 完善 docs/os-lab_verify.md 完整验证指令
 
 ### What was done
@@ -37,6 +38,30 @@
 - `progress.md`：追加本轮记录。
 - **已知缺口**：yield 在批处理调度下可能只触发一次即关机（A 侧调度器限制，与 progress 既有记录一致）。
 - 回滚方式：`git checkout` 上述文件；恢复 `kernel/src/trap.asm` 与旧版 `trap.rs`/`task.rs`；还原 `os-context`/`os-syscall` 占位版本。
+=======
+## 2026-06-22 - Task: 成员 C 按学生视角走查 lab1 并修复全部完成度问题（P0/P1/P2）
+### What was done
+- 以"第一次接触 os-lab 的学生"视角严格走查 lab1-bare-metal.md 全流程（前置→任务一跑通→任务二阅读→任务三三个修改），实测每一步，发现 1 个严重问题 + 1 个答案缺口 + 3 个体验瑕疵。
+- P0（严重）：任务三修改 2 原写"把链接地址改成 0x80100000 会崩溃"，实测不崩（内核镜像小+PC 相对寻址导致地址偏移 1MB 内仍能跑）。改为用 0x88000000（实测稳定复现崩溃，QEMU 报 No enough memory to place DTB after kernel/initrd），并补充"为什么不能用 0x80100000"的解释。
+- P1：背景知识补"2.4 BSS 段与 clear_bss"一节（BSS 是什么、为什么裸机要手动清零、为什么必须在 println 之前）；answers/lab1-answers.md 第 2 题答案同步补全（三层解释），第 4 题答案修正与新文档一致（0x88000000）。
+- P2-1：文档开头补"零、开始之前"一节，说明 cd os-lab、激活环境、环境自检命令。
+- P2-2：任务一预期输出补"前面约 40 行是 OpenSBI 固件日志，无需关心，只要最后出现 Hello 就对了"。
+- P2-3：任务三修改 1 补"约第 35 行"行号定位提示。
+- 答案文件"任务三现象参考"里修改 2 的描述同步精确化（明确 0x88000000 的具体报错信息）。
+
+### Testing
+- 执行验证脚本覆盖文档全部 4 项断言：任务一 cargo run --features lab1 输出 Hello, OS!；修改 1 换欢迎语输出"我学号是 xxx"；修改 2 改 0x88000000 后 QEMU 报 No enough memory（exit 非 0）；修改 3 改栈 16KB 仍正常输出——4 项全部 [OK] matched。
+- 验证后三处代码（linker.ld 的 BASE_ADDRESS、entry.asm 的 .space、main.rs 的 println）已全部还原为原值，git status 确认 os-lab/kernel/ 无残留改动。
+- 临时验证脚本 scripts/verify_lab1_fixed.ps1 用后已删除。
+
+### Notes
+- `os-lab/labs/lab1-bare-metal.md`：新增"零、开始之前"和"2.4 BSS 段"两节；任务一预期输出补 OpenSBI 日志说明；任务三修改 1 补行号、修改 2 改地址值为 0x88000000 并补解释。
+- `os-lab/labs/answers/lab1-answers.md`：第 2 题答案三层扩充、第 4 题与现象参考同步改为 0x88000000 的精确描述。
+- `progress.md`：追加本轮走查与修复记录。
+- 本轮严格遵守成员 C 文件边界（仅改 os-lab/labs/ 与 progress.md），未触碰成员 A 的 kernel/src/、成员 B 的 os-*/等。
+- 走查方法可复用：后续每个 lab 文档完成后，都建议按"学生视角严格走查 + 实测每条断言"的方式验证，避免文档与实际行为脱节。
+- 回滚方式：`git checkout -- os-lab/labs/lab1-bare-metal.md os-lab/labs/answers/lab1-answers.md progress.md` 可还原至修复前（lab1 回到 P0 矛盾、P1 答案缺口的状态）。
+>>>>>>> e613ed4 (lab1 文档完成度问题修复（学生视角走查）+ 环境文档与激活脚本修正)
 
 ## 2026-06-22 - Task: DAY1 三人完成情况核查 + 成员 A DAY2（Lab2 trap/调度/加载）
 
