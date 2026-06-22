@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 ## 2026-06-22 - Task: 完善 docs/os-lab_verify.md 完整验证指令
 
 ### What was done
@@ -62,6 +61,27 @@
 - 走查方法可复用：后续每个 lab 文档完成后，都建议按"学生视角严格走查 + 实测每条断言"的方式验证，避免文档与实际行为脱节。
 - 回滚方式：`git checkout -- os-lab/labs/lab1-bare-metal.md os-lab/labs/answers/lab1-answers.md progress.md` 可还原至修复前（lab1 回到 P0 矛盾、P1 答案缺口的状态）。
 >>>>>>> e613ed4 (lab1 文档完成度问题修复（学生视角走查）+ 环境文档与激活脚本修正)
+
+## 2026-06-22 - Task: 成员 C Day2（lab2 文档 + AI 协作模板）
+### What was done
+- 编写 `os-lab/labs/lab2-trap-and-task.md`：完整的 lab2 实验指导文档，含问题场景（用户程序如何陷入内核、多任务调度）、5 节背景知识（特权级与 trap、上下文保存恢复、sscratch 栈切换、syscall ABI、批处理调度，含 4 张 mermaid 图）、三档实验任务（跑通 + 5 道阅读理解 + 3 个动手小修改）、验证标准、5 条 AI 提问模板、5 道思考题及参考答案。诚实反映了 yield 在当前批处理调度下的已知限制。
+- 编写 `os-lab/labs/answers/lab2-answers.md`：配套答案，含 TrapContext、trap.asm、syscall 编号、trap_handler、任务管理、用户态 syscall 的完整代码逐行解读，5 道阅读理解题详细答案，3 个动手修改现象参考。
+- 新建 `os-lab/docs/ai-collaboration.md`：AI 协作过程记录模板（协作原则 + 可填充记录模板 + Lab1 示例记录），供学生每个 Lab 完成后记录与 AI 的关键交互，对应赛题技术指标"AI 协作过程记录"要求。
+
+### Testing
+- 实测 `cargo run -p kernel --features lab2`：成功输出 `Hello from user app!`、`2^1000000002 % 998244353 = 409684505`、`Power check ok`、`Yield round`、`All user apps exited.`，exit code 0。文档【任务一】预期输出与此完全一致。
+- 核查文档引用的全部代码事实（TrapContext 布局 35*8、trap.asm 的 csrrw 交换与 .rept 29、syscall 编号 64/93/124、TCB 结构、user/syscall.rs 的 a7/a0-a2 约定）均与 os-context/os-syscall/kernel/src/trap.rs/task.rs/user 实际源码逐字对应。
+- 诚实记录已知限制：yield 在批处理调度下只输出 1 轮即走 All exited，与 progress.md 既有记录一致。
+
+### Notes
+- `os-lab/labs/lab2-trap-and-task.md`：新增，lab2 完整实验指导（约 200 行，4 张 mermaid）。
+- `os-lab/labs/answers/lab2-answers.md`：新增，lab2 答案与代码解读。
+- `os-lab/docs/ai-collaboration.md`：新增，AI 协作记录模板（plan 第 321 行 Day2 任务）。
+- `progress.md`：追加本轮成员 C Day2 记录。
+- 本轮严格遵守成员 C 文件边界（仅改 os-lab/labs/、os-lab/docs/、progress.md），未触碰成员 A 的 kernel/src/、成员 B 的 os-*/、user/。
+- lab2 文档采用与 lab1 一致的"读+跑+理解+小修改"入门风格（基于团队既定的渐进式架构——lab2 代码已成型的起跑线），结构含 plan 要求的问题场景/背景/任务/验证/AI模板/习题全部要素。
+- 注意：progress.md 顶部仍残留前次 rebase 的 git 冲突标记（用户此前选择"暂不修，先做 Day2"），本轮记录追加在冲突标记之后，未触碰冲突区域。
+- 回滚方式：`rm os-lab/labs/lab2-trap-and-task.md os-lab/labs/answers/lab2-answers.md os-lab/docs/ai-collaboration.md` 并从 progress.md 删除本轮记录。
 
 ## 2026-06-22 - Task: DAY1 三人完成情况核查 + 成员 A DAY2（Lab2 trap/调度/加载）
 
