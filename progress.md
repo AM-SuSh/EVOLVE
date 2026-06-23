@@ -1,3 +1,26 @@
+## 2026-06-23 - Task: 成员 B Day3（os-alloc/os-vm 正式接手 + 堆分配器 + 单元测试 + 验证文档）
+
+### What was done
+- 正式接手 `os-alloc`：补充 crate 模块文档；新增 `HeapAllocator` trait + `BumpAllocator`（32 KiB 静态堆，`init_heap`/`heap_alloc`，供 lab5+ 内核接入）；扩充页帧/堆单元测试至 6 项。
+- 正式接手 `os-vm`：补充 Sv39 模块文档；扩充 host 单元测试至 5 项（地址拆分、map/translate、恒等映射、ELF PT_LOAD 解析）；修复 `parse_elf` 在 64 位 host 上 `e_phnum`/`e_phentsize` 字段解析错误；`activate()` 对非 riscv64 目标编译为 no-op 以支持 host 测试。
+- 更新 `os-lab/tests/README.md` 与 `docs/os-lab_verify.md`：新增 Day3 组件测试命令（含 `--test-threads=1`）、Lab3 QEMU 成功标准（5 轮 yield）、Day3 一键复制验证块。
+
+### Testing
+- `cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1`：11 项全部 `ok`（os-alloc 6 + os-vm 5）。
+- `cargo test -p os-context -p os-syscall --target x86_64-pc-windows-msvc`：7 项全部 `ok`（Day2 回归）。
+- `cargo check -p kernel --features lab2/lab3`：编译通过。
+- `cargo run -p kernel --features lab2`：exit 0；含 `409684505`、`Power check ok`、5 次 `Yield round`、`All user apps exited.`。
+- `cargo run -p kernel --features lab3`：exit 0；含 `409684505`、`Power check ok`、5 次 `Yield round`、`All user apps exited.`。
+
+### Notes
+- `os-lab/os-alloc/src/lib.rs`：堆分配器 + 模块文档 + 6 项单元测试。
+- `os-lab/os-vm/src/lib.rs`：模块文档 + 5 项单元测试 + `parse_elf`/`activate` host 兼容修复。
+- `os-lab/tests/README.md`：新增 Day3/Lab3 验证小节。
+- `docs/os-lab_verify.md`：扩展第 4 节 Day3 测试、新增第 7 节 Lab3 QEMU、第 10 节 Day3 一键验证。
+- `progress.md`：追加本轮成员 B Day3 记录。
+- 本轮严格遵守成员 B 文件边界（仅改 `os-*/`、`tests/`、`docs/os-lab_verify.md`、`progress.md`），未触碰 `kernel/src/`、`labs/`、`os-lab/docs/`。
+- 回滚方式：`git checkout os-lab/os-alloc/src/lib.rs os-lab/os-vm/src/lib.rs os-lab/tests/README.md docs/os-lab_verify.md` 并从 progress.md 删除本段。
+
 ## 2026-06-23 - Task: 成员 C Day3（lab3 文档 + 三方对比数据采集）
 ### What was done
 - 编写 `os-lab/labs/lab3-memory.md`：完整的 lab3 实验指导文档，面向学生设计者视角。含问题场景（从"物理地址的三个致命问题"切入引出虚存动机）、5 节背景知识（分页抽象、Sv39 三级页表、PTE 权限位、页帧分配器、地址空间 MemorySet，含 5 张 mermaid 图）、三档实验任务（跑通 + 5 道阅读理解 + 3 个动手小修改）、验证标准、5 条 AI 提问模板、5 道思考题及参考答案。每节背景知识用"🤔 先想"引导框让学生先猜测再对照实现。

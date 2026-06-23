@@ -73,3 +73,48 @@ All user apps exited.
 ```
 
 说明：当前批处理调度器在单 app 调用 `yield` 且无其他 Ready 任务时会提前关机，故 yield 测试可能只打印一行 `Yield round`；`SYS_YIELD` 路径已被触发。完整协作式轮转属成员 A 后续优化。
+
+## Day 3 / Lab3 验证（成员 B Day3）
+
+### 组件单元测试（host 目标）
+
+`os-alloc` / `os-vm` 须在 **host triple** 上跑单元测试（`os-vm` 测试使用进程内 `FAKE_MEM` 后备，须单线程）：
+
+```powershell
+cd os-lab
+cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1
+```
+
+Linux/macOS 将 triple 换为对应 host。
+
+预期：`os-alloc` 6 项、`os-vm` 5 项测试全部 `ok`。
+
+### Lab3 编译与 QEMU 运行
+
+```powershell
+cargo check -p kernel --features lab3
+cargo run -p kernel --features lab3
+```
+
+### 成功标准
+
+QEMU 输出中应依次出现：
+
+```text
+Hello from user app!
+App 0 exited with code 0
+Power test start
+2^1000000002 % 998244353 = 409684505
+Power check ok
+App 1 exited with code 0
+Yield test start
+Yield round
+Yield round
+Yield round
+Yield round
+Yield round
+App 2 exited with code 0
+All user apps exited.
+```
+
+说明：lab3 启用分页后 yield 应完整输出 **5 轮** `Yield round`（lab2 通常只有 1 轮），这是虚存与任务切换改进的可观察差异。

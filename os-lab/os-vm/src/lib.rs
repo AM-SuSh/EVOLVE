@@ -1,7 +1,22 @@
 //! Sv39 page tables and address spaces for the OS teaching lab (lab3+).
+//!
+//! Sv39 splits a 39-bit virtual address into three 9-bit page-table indexes plus a
+//! 12-bit page offset. PTE layout: bits `[53:10]` = PPN, `[4:1]` = R/W/X/U, bit 0 = V.
+//! `satp` token format: `(8 << 60) | root_ppn` (8 = Sv39 mode).
+//!
+//! | Type | Role |
+//! |------|------|
+//! | `VirtAddr` / `VirtPageNum` | Address arithmetic and index extraction |
+//! | `PageTable` | Three-level Sv39 walk, map/translate/unmap |
+//! | `MemorySet` | Address space = page table + mapped `MapArea` list |
+//! | `elf_map_areas` | Build map areas from ELF64 PT_LOAD segments |
 
 #![no_std]
 
+#[cfg(test)]
+extern crate std;
+
+#[cfg(target_arch = "riscv64")]
 use core::arch::asm;
 
 use os_alloc::{frame_alloc, frame_dealloc, PhysPageNum, PAGE_SIZE, PAGE_SIZE_BITS};
@@ -210,10 +225,13 @@ impl PageTable {
 }
 
 pub fn activate(token: usize) {
+    #[cfg(target_arch = "riscv64")]
     unsafe {
         asm!("csrw satp, {}", in(reg) token);
         asm!("sfence.vma");
     }
+    #[cfg(not(target_arch = "riscv64"))]
+    let _ = token;
 }
 
 /// A mapped virtual memory region.
@@ -394,8 +412,8 @@ mod alloc_buf {
 
         assert!(elf.len() >= 64, "ELF too small");
         let e_phoff = usize::from_le_bytes(elf[32..40].try_into().unwrap());
-        let e_phentsize = usize::from_le_bytes(elf[54..56].try_into().unwrap());
-        let e_phnum = usize::from_le_bytes(elf[56..58].try_into().unwrap());
+        let e_phentsize = u16::from_le_bytes(elf[54..56].try_into().unwrap()) as usize;
+        let e_phnum = u16::from_le_bytes(elf[56..58].try_into().unwrap()) as usize;
 
         for i in 0..e_phnum {
             let off = e_phoff + i * e_phentsize;
@@ -438,10 +456,83 @@ mod alloc_buf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use os_alloc::{init_frame_allocator, PhysPageNum, PAGE_SIZE};
+    use std::boxed::Box;
+
+    static mut FAKE_MEM: [u8; 512 * PAGE_SIZE] = [0; 512 * PAGE_SIZE];
+
+    fn setup_fake_frames() -> usize {
+        let raw = unsafe { FAKE_MEM.as_ptr() as usize };
+        let start = (raw + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
+        let end = raw + unsafe { FAKE_MEM.len() };
+        init_frame_allocator(start, end);
+        start
+    }
 
     #[test]
     fn virt_page_indexes() {
         let vpn = VirtPageNum(0x80400);
-        assert_eq!(vpn.indexes().len(), 3);
+        let idx = vpn.indexes();
+        assert_eq!(idx.len(), 3);
+        assert_eq!(idx[0], (0x80400 >> 18) & 0x1ff);
+        assert_eq!(idx[1], (0x80400 >> 9) & 0x1ff);
+        assert_eq!(idx[2], 0x80400 & 0x1ff);
+    }
+
+    #[test]
+    fn virt_addr_floor_ceil_offset() {
+        let va = VirtAddr(0x8040_0123);
+        assert_eq!(va.page_offset(), 0x123);
+        assert_eq!(va.floor().0, 0x80400);
+        assert_eq!(va.ceil().0, 0x80401);
+        assert_eq!(VirtAddr(0x8040_0000).ceil().0, 0x80400);
+    }
+
+    #[test]
+    fn page_table_map_translate() {
+        setup_fake_frames();
+        let mut pt = PageTable::new();
+        let vpn = VirtPageNum(0x100);
+        let ppn = PhysPageNum(0x200);
+        let perm = MapPermission::R.union(MapPermission::W);
+        pt.map(vpn, ppn, perm);
+        let pte = pt.translate(vpn).expect("mapped pte");
+        assert_eq!(pte.ppn().0, 0x200);
+        assert!(pte.is_valid());
+        core::mem::forget(pt);
+    }
+
+    #[test]
+    fn memory_set_identity_translate() {
+        let start = setup_fake_frames();
+        let mut ms = MemorySet::new_bare();
+        let end = start + PAGE_SIZE * 4;
+        ms.map_identical_region(start, end, MapPermission::R.union(MapPermission::W));
+        let va = VirtAddr(start + 0x800);
+        let ppn = ms.translate(va).expect("identity mapped");
+        assert_eq!(ppn.addr() + va.page_offset(), start + 0x800);
+        core::mem::forget(ms);
+    }
+
+    #[test]
+    fn elf_map_areas_minimal() {
+        let mut elf_box = [0u8; 128];
+        elf_box[0..4].copy_from_slice(b"\x7fELF");
+        elf_box[4] = 2;
+        elf_box[5] = 1;
+        elf_box[18..20].copy_from_slice(&(64u16).to_le_bytes());
+        elf_box[32..40].copy_from_slice(&(64usize).to_le_bytes());
+        elf_box[54..56].copy_from_slice(&(56u16).to_le_bytes());
+        elf_box[56..58].copy_from_slice(&(1u16).to_le_bytes());
+        elf_box[64..68].copy_from_slice(&(1u32).to_le_bytes());
+        elf_box[68..72].copy_from_slice(&(5u32).to_le_bytes());
+        elf_box[72..80].copy_from_slice(&(0usize).to_le_bytes());
+        elf_box[80..88].copy_from_slice(&(0usize).to_le_bytes());
+        elf_box[88..96].copy_from_slice(&(16usize).to_le_bytes());
+        elf_box[96..104].copy_from_slice(&(16usize).to_le_bytes());
+
+        let elf: &'static [u8] = Box::leak(Box::new(elf_box));
+        let areas = elf_map_areas(elf, 0x8040_0000);
+        assert_eq!(areas.count, 1);
     }
 }
