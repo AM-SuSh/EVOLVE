@@ -1,3 +1,23 @@
+## 2026-06-23 - Task: 成员 C Day3（lab3 文档 + 三方对比数据采集）
+### What was done
+- 编写 `os-lab/labs/lab3-memory.md`：完整的 lab3 实验指导文档，面向学生设计者视角。含问题场景（从"物理地址的三个致命问题"切入引出虚存动机）、5 节背景知识（分页抽象、Sv39 三级页表、PTE 权限位、页帧分配器、地址空间 MemorySet，含 5 张 mermaid 图）、三档实验任务（跑通 + 5 道阅读理解 + 3 个动手小修改）、验证标准、5 条 AI 提问模板、5 道思考题及参考答案。每节背景知识用"🤔 先想"引导框让学生先猜测再对照实现。
+- 编写 `os-lab/labs/answers/lab3-answers.md`：配套答案，含 os-alloc/os-vm/kernel.mm.rs 的完整代码逐行解读（PhysPageNum 抽象、StackFrameAllocator、Sv39 三级查找、PTE 位域、MapArea/MemorySet、恒等映射、satp 激活），5 道阅读理解题详细答案，3 个动手修改现象参考。
+- 新建 `os-lab/docs/comparison-data.md`：用脚本采集的三方对比原始数据，供 Day6 `docs/comparison.md` 三方对比报告使用。已采集自研 os-lab（8 crate/1882 行/9 测试）和参考 tg-rcore-tutorial（29 crate/36455 行/0 测试）的定量数据；本校环境数据标注为待调研补充。
+
+### Testing
+- 实测 `cargo run -p kernel --features lab3`：输出 `Hello from user app!`、`2^1000000002 % 998244353 = 409684505`、`Power check ok`、`All user apps exited.`，exit code 0，无 panic，5 项断言全部 [OK]。文档【任务一】预期输出与实测完全一致。
+- 发现并利用关键对比亮点：lab3 下 yield 输出 **5 轮** `Yield round`（lab2 只 1 轮），证明分页让任务隔离更干净、调度更稳定，文档专门用此对比凸显虚存价值。
+- 核查文档引用的全部代码事实（Sv39 拆分 `(vpn>>18)&0x1ff`、PTE `ppn<<10|flags`、恒等映射、`satp=(8<<60)|root_ppn`、StackFrameAllocator 栈式回收局限）均与 os-alloc/os-vm/kernel/src/mm.rs 实际源码逐字对应。
+
+### Notes
+- `os-lab/labs/lab3-memory.md`：新增，lab3 完整实验指导（约 200 行，5 张 mermaid，面向学生设计者视角）。
+- `os-lab/labs/answers/lab3-answers.md`：新增，lab3 答案与代码逐行解读。
+- `os-lab/docs/comparison-data.md`：新增，三方对比原始数据（plan 第 322-323 行 Day3 任务：开始收集三方对比数据）。
+- `progress.md`：追加本轮成员 C Day3 记录。
+- 本轮严格遵守成员 C 文件边界（仅改 os-lab/labs/、os-lab/docs/、progress.md），未触碰成员 A 的 kernel/src/、成员 B 的 os-*/、user/。
+- 三方对比数据已揭示自研环境的差异化优势：规模小一个数量级（1882 vs 36455 行）、有单元测试（9 vs 0）、架构更精简（6 crate/2 层依赖 vs 23 crate/4 层依赖）。本校环境数据待成员 C 后续调研补充。
+- 回滚方式：`rm os-lab/labs/lab3-memory.md os-lab/labs/answers/lab3-answers.md os-lab/docs/comparison-data.md` 并从 progress.md 删除本轮记录。
+
 ## 2026-06-23 - Task: 成员 A Lab3 虚存集成（内核 + os-alloc/os-vm）
 
 ### What was done
