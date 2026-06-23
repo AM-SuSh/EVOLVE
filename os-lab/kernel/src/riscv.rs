@@ -94,3 +94,11 @@ pub fn set_next_timer(deadline: usize) {
         );
     }
 }
+
+#[inline]
+pub fn write_satp(satp: usize) {
+    unsafe {
+        asm!("csrw satp, {}", in(reg) satp);
+        asm!("sfence.vma");
+    }
+}

@@ -10,14 +10,28 @@ use crate::riscv::{
     read_scause, read_sstatus, set_next_timer, write_sepc, write_sscratch, write_stvec,
     SCAUSE_SUPERVISOR_ECALL, SCAUSE_SUPERVISOR_TIMER, SCAUSE_USER_ECALL,
 };
-use crate::task::{mark_current_suspended, run_next_task, sys_exit, sys_write};
+use crate::task::{mark_current_suspended, run_next_task, sync_current_trap_cx, sys_exit, sys_write};
+
+#[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
+use crate::mm::activate_kernel;
 
 pub fn init() {
+    #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
+    {
+        let sp: usize;
+        unsafe {
+            core::arch::asm!("mv {}, sp", out(reg) sp);
+        }
+        write_sscratch(sp);
+    }
     write_stvec(__alltraps as *const () as usize);
 }
 
 #[no_mangle]
 pub fn trap_handler(cx: &mut TrapContext) {
+    #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
+    activate_kernel();
+
     let scause = read_scause();
     match scause {
         SCAUSE_USER_ECALL | SCAUSE_SUPERVISOR_ECALL => {
@@ -35,6 +49,7 @@ pub fn trap_handler(cx: &mut TrapContext) {
                     sys_exit(cx.syscall_arg(0) as i32);
                 }
                 SYS_YIELD => {
+                    sync_current_trap_cx(cx);
                     mark_current_suspended();
                     run_next_task();
                 }
@@ -46,6 +61,7 @@ pub fn trap_handler(cx: &mut TrapContext) {
         }
         SCAUSE_SUPERVISOR_TIMER => {
             set_next_timer(super::riscv::read_time() + super::config::CLOCK_FREQ / TICKS_PER_SEC);
+            sync_current_trap_cx(cx);
             mark_current_suspended();
             run_next_task();
         }

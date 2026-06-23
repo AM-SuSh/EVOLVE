@@ -49,7 +49,16 @@ pub extern "C" fn rust_main() -> ! {
 
     #[cfg(any(feature = "lab2", feature = "lab3", feature = "lab4", feature = "lab5"))]
     {
-        println!("os-lab kernel lab2: trap and multitask.");
+        #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
+        {
+            println!("os-lab kernel lab3: enabling virtual memory...");
+            mm::init();
+            println!("os-lab kernel lab3: virtual memory ready.");
+        }
+        #[cfg(all(feature = "lab2", not(any(feature = "lab3", feature = "lab4", feature = "lab5"))))]
+        {
+            println!("os-lab kernel lab2: trap and multitask.");
+        }
         trap::init();
         loader::load_apps();
         task::init();

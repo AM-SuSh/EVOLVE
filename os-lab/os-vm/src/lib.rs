@@ -1,9 +1,447 @@
-//! Page tables and virtual memory management (lab3+).
+//! Sv39 page tables and address spaces for the OS teaching lab (lab3+).
 
 #![no_std]
 
-/// Page table trait placeholder for lab3+.
-pub trait PageTable {
-    fn map(&mut self, vpn: usize, ppn: usize);
-    fn unmap(&mut self, vpn: usize);
+use core::arch::asm;
+
+use os_alloc::{frame_alloc, frame_dealloc, PhysPageNum, PAGE_SIZE, PAGE_SIZE_BITS};
+
+/// Virtual address.
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct VirtAddr(pub usize);
+
+impl VirtAddr {
+    pub fn page_offset(&self) -> usize {
+        self.0 & (PAGE_SIZE - 1)
+    }
+
+    pub fn floor(&self) -> VirtPageNum {
+        VirtPageNum(self.0 >> PAGE_SIZE_BITS)
+    }
+
+    pub fn ceil(&self) -> VirtPageNum {
+        VirtPageNum((self.0 + PAGE_SIZE - 1) >> PAGE_SIZE_BITS)
+    }
+}
+
+/// Virtual page number.
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub struct VirtPageNum(pub usize);
+
+impl VirtPageNum {
+    pub fn addr(&self) -> usize {
+        self.0 << PAGE_SIZE_BITS
+    }
+
+    pub fn indexes(&self) -> [usize; 3] {
+        let vpn = self.0;
+        [
+            (vpn >> 18) & 0x1ff,
+            (vpn >> 9) & 0x1ff,
+            vpn & 0x1ff,
+        ]
+    }
+}
+
+/// Sv39 PTE permission flags (V is added automatically).
+#[derive(Copy, Clone)]
+pub struct MapPermission(u8);
+
+impl MapPermission {
+    pub const R: Self = Self(1 << 1);
+    pub const W: Self = Self(1 << 2);
+    pub const X: Self = Self(1 << 3);
+    pub const U: Self = Self(1 << 4);
+
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    pub fn contains(self, flag: Self) -> bool {
+        self.0 & flag.0 != 0
+    }
+}
+
+const PTE_V: usize = 1;
+
+#[derive(Copy, Clone)]
+#[repr(C)]
+struct PageTableEntry(pub usize);
+
+impl PageTableEntry {
+    fn empty() -> Self {
+        Self(0)
+    }
+
+    fn new_ppn(ppn: PhysPageNum, perm: MapPermission) -> Self {
+        let mut flags = PTE_V;
+        if perm.contains(MapPermission::R) {
+            flags |= 1 << 1;
+        }
+        if perm.contains(MapPermission::W) {
+            flags |= 1 << 2;
+        }
+        if perm.contains(MapPermission::X) {
+            flags |= 1 << 3;
+        }
+        if perm.contains(MapPermission::U) {
+            flags |= 1 << 4;
+        }
+        Self(ppn.0 << 10 | flags)
+    }
+
+    fn new_pointer(ppn: PhysPageNum) -> Self {
+        Self(ppn.0 << 10 | PTE_V)
+    }
+
+    fn ppn(&self) -> PhysPageNum {
+        PhysPageNum((self.0 >> 10) & ((1usize << 44) - 1))
+    }
+
+    fn is_valid(&self) -> bool {
+        self.0 & PTE_V != 0
+    }
+}
+
+/// Three-level Sv39 page table rooted at one physical frame.
+pub struct PageTable {
+    root_ppn: PhysPageNum,
+}
+
+impl PageTable {
+    pub fn new() -> Self {
+        let root = frame_alloc().expect("out of frames for page table root");
+        let table = root.addr() as *mut PageTableEntry;
+        unsafe {
+            core::ptr::write_bytes(table, 0, 512);
+        }
+        Self { root_ppn: root }
+    }
+
+    fn find_pte(&self, vpn: VirtPageNum, alloc: bool) -> Option<*mut PageTableEntry> {
+        let indexes = vpn.indexes();
+        let mut ppn = self.root_ppn;
+        for (i, idx) in indexes.iter().enumerate() {
+            let table = ppn.addr() as *mut PageTableEntry;
+            let pte = unsafe { table.add(*idx) };
+            if i == 2 {
+                return Some(pte);
+            }
+            if unsafe { !(*pte).is_valid() } {
+                if !alloc {
+                    return None;
+                }
+                let next = frame_alloc().expect("out of frames for page table");
+                unsafe {
+                    core::ptr::write_bytes(next.addr() as *mut u8, 0, PAGE_SIZE);
+                    *pte = PageTableEntry::new_pointer(next);
+                }
+            }
+            ppn = unsafe { (*pte).ppn() };
+        }
+        None
+    }
+
+    pub fn map(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, perm: MapPermission) {
+        let pte = self.find_pte(vpn, true).expect("map failed");
+        assert!(
+            !unsafe { (*pte).is_valid() },
+            "vpn {:#x} already mapped",
+            vpn.addr()
+        );
+        unsafe {
+            *pte = PageTableEntry::new_ppn(ppn, perm);
+        }
+    }
+
+    pub fn unmap(&mut self, vpn: VirtPageNum) {
+        let pte = self.find_pte(vpn, false).expect("unmap failed");
+        assert!(unsafe { (*pte).is_valid() });
+        unsafe {
+            *pte = PageTableEntry::empty();
+        }
+    }
+
+    pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
+        self.find_pte(vpn, false)
+            .map(|pte| unsafe { *pte })
+            .filter(|e| e.is_valid())
+    }
+
+    pub fn token(&self) -> usize {
+        8usize << 60 | self.root_ppn.0
+    }
+
+    pub fn from_token(token: usize) -> Self {
+        Self {
+            root_ppn: PhysPageNum(token & ((1usize << 44) - 1)),
+        }
+    }
+
+    pub fn map_frame(&mut self, vpn: VirtPageNum, perm: MapPermission) -> PhysPageNum {
+        let ppn = frame_alloc().expect("out of frames");
+        self.map(vpn, ppn, perm);
+        ppn
+    }
+}
+
+impl Drop for PageTable {
+    fn drop(&mut self) {
+        self.clear_recursive(self.root_ppn, 0);
+        frame_dealloc(self.root_ppn);
+    }
+}
+
+impl PageTable {
+    fn clear_recursive(&self, ppn: PhysPageNum, level: usize) {
+        let table = ppn.addr() as *mut PageTableEntry;
+        for i in 0..512 {
+            let pte = unsafe { *table.add(i) };
+            if pte.is_valid() {
+                if level < 2 {
+                    self.clear_recursive(pte.ppn(), level + 1);
+                }
+            }
+        }
+        if level < 2 {
+            frame_dealloc(ppn);
+        }
+    }
+}
+
+pub fn activate(token: usize) {
+    unsafe {
+        asm!("csrw satp, {}", in(reg) token);
+        asm!("sfence.vma");
+    }
+}
+
+/// A mapped virtual memory region.
+#[derive(Clone)]
+pub struct MapArea {
+    vpn_start: VirtPageNum,
+    vpn_end: VirtPageNum,
+    perm: MapPermission,
+    data: &'static [u8],
+    data_offset: usize,
+}
+
+impl MapArea {
+    pub fn new(vpn_start: VirtPageNum, vpn_end: VirtPageNum, perm: MapPermission) -> Self {
+        Self {
+            vpn_start,
+            vpn_end,
+            perm,
+            data: &[],
+            data_offset: 0,
+        }
+    }
+
+    pub fn with_data(mut self, data: &'static [u8], offset: usize) -> Self {
+        self.data = data;
+        self.data_offset = offset;
+        self
+    }
+
+    pub fn map(&self, page_table: &mut PageTable) {
+        let mut data_ptr = 0usize;
+        for vpn in self.vpn_start.0..self.vpn_end.0 {
+            let vpn = VirtPageNum(vpn);
+            let ppn = frame_alloc().expect("out of frames");
+            let dst = ppn.addr() as *mut u8;
+            unsafe {
+                core::ptr::write_bytes(dst, 0, PAGE_SIZE);
+            }
+            let src_start = data_ptr.saturating_sub(self.data_offset);
+            if src_start < self.data.len() {
+                let copy_len = (self.data.len() - src_start).min(PAGE_SIZE);
+                unsafe {
+                    core::ptr::copy_nonoverlapping(
+                        self.data.as_ptr().add(src_start),
+                        dst,
+                        copy_len,
+                    );
+                }
+            }
+            data_ptr += PAGE_SIZE;
+            page_table.map(vpn, ppn, self.perm);
+        }
+    }
+
+    pub fn unmap(&self, page_table: &mut PageTable) {
+        for vpn in self.vpn_start.0..self.vpn_end.0 {
+            let vpn = VirtPageNum(vpn);
+            if let Some(pte) = page_table.translate(vpn) {
+                frame_dealloc(pte.ppn());
+            }
+            page_table.unmap(vpn);
+        }
+    }
+}
+
+const MAX_AREAS: usize = 16;
+
+/// A collection of mapped regions backed by one page table.
+pub struct MemorySet {
+    page_table: PageTable,
+    areas: [Option<MapArea>; MAX_AREAS],
+    area_count: usize,
+}
+
+impl MemorySet {
+    pub fn new_bare() -> Self {
+        Self {
+            page_table: PageTable::new(),
+            areas: [const { None }; MAX_AREAS],
+            area_count: 0,
+        }
+    }
+
+    fn push_area(&mut self, area: MapArea) {
+        assert!(self.area_count < MAX_AREAS, "too many map areas");
+        self.areas[self.area_count] = Some(area);
+        self.area_count += 1;
+    }
+
+    pub fn map_area(&mut self, area: MapArea) {
+        area.map(&mut self.page_table);
+        self.push_area(area);
+    }
+
+    pub fn token(&self) -> usize {
+        self.page_table.token()
+    }
+
+    pub fn activate(&self) {
+        activate(self.token());
+    }
+
+    pub fn translate(&self, va: VirtAddr) -> Option<PhysPageNum> {
+        self.page_table
+            .translate(va.floor())
+            .map(|pte| pte.ppn())
+    }
+
+    pub fn translate_va(&self, va: usize) -> Option<usize> {
+        let vaddr = VirtAddr(va);
+        self.translate(vaddr)
+            .map(|ppn| ppn.addr() + vaddr.page_offset())
+    }
+
+    pub fn page_table_mut(&mut self) -> &mut PageTable {
+        &mut self.page_table
+    }
+
+    pub fn page_table(&self) -> &PageTable {
+        &self.page_table
+    }
+
+    /// Map VPN to the same-numbered PPN (identity map) without copying data.
+    pub fn map_identical_region(&mut self, start: usize, end: usize, perm: MapPermission) {
+        let vpn_start = VirtAddr(start).floor();
+        let vpn_end = VirtAddr(end).ceil();
+        for vpn in vpn_start.0..vpn_end.0 {
+            let vpn = VirtPageNum(vpn);
+            if self.page_table.translate(vpn).is_some() {
+                continue;
+            }
+            let ppn = PhysPageNum(vpn.0);
+            self.page_table.map(vpn, ppn, perm);
+        }
+    }
+
+    /// Map trampoline code at a fixed high virtual address.
+    pub fn map_trampoline(&mut self, trampoline_vpn: VirtPageNum, trampoline_phys: usize) {
+        let ppn = PhysPageNum::from_addr(trampoline_phys);
+        self.page_table.map(
+            trampoline_vpn,
+            ppn,
+            MapPermission::R.union(MapPermission::X),
+        );
+    }
+}
+
+impl Drop for MemorySet {
+    fn drop(&mut self) {
+        for area in self.areas.iter().rev().take(self.area_count) {
+            if let Some(area) = area {
+                area.unmap(&mut self.page_table);
+            }
+        }
+    }
+}
+
+/// Build map areas from ELF64 PT_LOAD segments (call once per ELF before mapping).
+pub fn elf_map_areas(elf: &'static [u8], user_base: usize) -> alloc_buf::ElfAreas {
+    alloc_buf::parse_elf(elf, user_base)
+}
+
+mod alloc_buf {
+    use super::*;
+
+    pub struct ElfAreas {
+        pub areas: [MapArea; 8],
+        pub count: usize,
+    }
+
+    pub fn parse_elf(elf: &'static [u8], user_base: usize) -> ElfAreas {
+        let mut out = ElfAreas {
+            areas: core::array::from_fn(|_| {
+                MapArea::new(VirtPageNum(0), VirtPageNum(0), MapPermission::R)
+            }),
+            count: 0,
+        };
+
+        assert!(elf.len() >= 64, "ELF too small");
+        let e_phoff = usize::from_le_bytes(elf[32..40].try_into().unwrap());
+        let e_phentsize = usize::from_le_bytes(elf[54..56].try_into().unwrap());
+        let e_phnum = usize::from_le_bytes(elf[56..58].try_into().unwrap());
+
+        for i in 0..e_phnum {
+            let off = e_phoff + i * e_phentsize;
+            let ph = &elf[off..off + e_phentsize];
+            let p_type = u32::from_le_bytes(ph[0..4].try_into().unwrap());
+            if p_type != 1 {
+                continue;
+            }
+            let p_flags = u32::from_le_bytes(ph[4..8].try_into().unwrap());
+            let p_offset = usize::from_le_bytes(ph[8..16].try_into().unwrap());
+            let p_vaddr = usize::from_le_bytes(ph[16..24].try_into().unwrap());
+            let p_filesz = usize::from_le_bytes(ph[24..32].try_into().unwrap());
+            let p_memsz = usize::from_le_bytes(ph[32..40].try_into().unwrap());
+
+            let mut perm = MapPermission::U;
+            if p_flags & 4 != 0 {
+                perm = perm.union(MapPermission::R);
+            }
+            if p_flags & 2 != 0 {
+                perm = perm.union(MapPermission::W);
+            }
+            if p_flags & 1 != 0 {
+                perm = perm.union(MapPermission::X);
+            }
+
+            let start = user_base + p_vaddr;
+            let end = start + p_memsz;
+            let vpn_start = VirtAddr(start).floor();
+            let vpn_end = VirtAddr(end).ceil();
+            let data = &elf[p_offset..p_offset + p_filesz];
+            let area = MapArea::new(vpn_start, vpn_end, perm).with_data(data, start - vpn_start.addr());
+
+            out.areas[out.count] = area;
+            out.count += 1;
+        }
+        out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn virt_page_indexes() {
+        let vpn = VirtPageNum(0x80400);
+        assert_eq!(vpn.indexes().len(), 3);
+    }
 }

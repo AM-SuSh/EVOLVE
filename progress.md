@@ -1,3 +1,63 @@
+## 2026-06-23 - Task: 成员 A Lab3 虚存集成（内核 + os-alloc/os-vm）
+
+### What was done
+
+- 实现 `os-alloc` 页帧分配器、`os-vm` Sv39 页表与 `MemorySet`（含恒等映射、用户区 `map_area`）。
+- 实现 `kernel/mm.rs`：内核地址空间（`stext`–`ekernel` + boot stack + 物理帧恒等窗口）、`map_user_app`、`ensure_paging`。
+- 改造 lab3 路径：`trap` 启用分页前设置 `sscratch`、trap 入口 `activate_kernel`；`task` 先映射用户程序再开分页；`os-context` 增加 `SSTATUS_SUM`。
+- 修复 Sv39 中间级 PTE 须为纯指针（仅 V 位），避免 QEMU 将页表项误判为超级页导致取指异常死循环。
+- 修复任务切换时 trap 上下文未写回 TCB，导致 yield 从入口反复执行的问题（`sync_current_trap_cx`）。
+
+**已知简化（相对计划）**：当前为共享内核页表 + 复用 `0x80400000` 用户槽位按序加载 `.bin`（非每任务独立 satp、非 ELF PT_LOAD）；后续 Day4 前可再演进。
+
+### Testing
+
+- `cargo run -p kernel --features lab3`：exit code 0；输出含 `409684505`、`Power check ok`、5 次 `Yield round`、`All user apps exited.`。
+- `cargo run -p kernel --features lab2`：exit code 0；回归通过，yield 现可完整 5 轮后退出。
+
+### Notes
+
+- `os-lab/os-alloc/src/lib.rs`：页帧分配器实现。
+- `os-lab/os-vm/src/lib.rs`：Sv39 页表、`MemorySet`、`PageTableEntry::new_pointer`。
+- `os-lab/kernel/src/mm.rs`、`config.rs`、`task.rs`、`trap.rs`、`main.rs`、`entry.asm`：Lab3 虚存集成与任务切换修复。
+- `os-lab/os-context/src/lib.rs`：`SSTATUS_SUM` 支持内核访问用户页。
+- 回滚：还原上述文件至本轮前版本；`progress.md` 删除本段。
+
+## 2026-06-23 - Task: DAY2 三人完成情况核查 + 成员 A DAY3 任务编排
+
+### What was done
+
+**DAY2 完成情况核查（对照计划第三节 Day2 目标与第四节三人分工）**
+
+| 成员 | 计划任务 | 状态 | 说明 |
+|------|----------|------|------|
+| **A** | Lab2 trap 集成、任务调度器、用户程序加载 | ✅ 已完成 | `trap.rs` _syscall/定时器分发、`task.rs` TCB+批处理调度、`loader.rs`+`build.rs` 嵌入加载；`trap.asm` 已迁至 `os-context` 并完成 API 对接 |
+| **B** | `os-context/`、`os-syscall/`、用户测试程序 | ✅ 已完成 | TrapContext+汇编+单元测试；syscall 编号体系+测试；`hello`/`power`/`yield` 正式交付；与 A 协调完成 kernel 集成 |
+| **C** | `lab2-trap-and-task.md`、AI 协作模板 | ✅ 已完成 | 实验指导+答案+`ai-collaboration.md` 模板；文档与源码事实已对齐 |
+
+**Day2 第三节总体验收**：`cargo run -p kernel --features lab2` 加载 3 个用户程序，syscall 正常，关键输出含 `409684505`、`Power check ok`、`Yield round`、`All user apps exited.` —— **通过**。
+
+**遗留缺口（不阻断 Day2 验收，Day3+ 可顺带消化）**
+
+- yield 在批处理调度下仅输出 1 轮 `Yield round` 即进入下一 app（文档已诚实标注）。
+- `task.rs` 仍使用单一物理槽 `0x80400000` 直拷二进制，无独立用户页表（属 Day3 范围）。
+- kernel 编译有 dead_code/static_mut_refs 等 warning，未阻断运行。
+
+**成员 A DAY3 任务已写入计划**（`.cursor/plans/自研os教学实验环境.plan.md`「成员 A Day3 详细任务」）：`mm.rs` 虚存集成、每任务独立地址空间、ELF 加载、satp 切换；前置依赖成员 B 交付 `os-alloc`/`os-vm`。
+
+### Testing
+
+- `cargo test -p os-context -p os-syscall --target x86_64-pc-windows-msvc`：7 项全部通过（本轮复验）。
+- `cargo run -p kernel --features lab2`：exit code 0，输出与 `labs/lab2-trap-and-task.md` 任务一预期一致。
+- `cargo check -p kernel --features lab3`：可编译（`mm.rs` 仍为占位 `init()`，符合 Day3 未开工状态）。
+
+### Notes
+
+- `progress.md`：追加 DAY2 核查结论；修复顶部 rebase 冲突标记。
+- `.cursor/plans/自研os教学实验环境.plan.md`：Day1/Day2 todo 标为 completed；新增成员 A Day3 详细任务清单。
+- `os-lab/docs/architecture.md`：补充 Lab2 已实现状态与 Day3 待集成说明。
+- 回滚方式：`git checkout progress.md .cursor/plans/自研os教学实验环境.plan.md os-lab/docs/architecture.md`。
+
 ## 2026-06-22 - Task: 完善 docs/os-lab_verify.md 完整验证指令
 
 ### What was done
@@ -37,7 +97,7 @@
 - `progress.md`：追加本轮记录。
 - **已知缺口**：yield 在批处理调度下可能只触发一次即关机（A 侧调度器限制，与 progress 既有记录一致）。
 - 回滚方式：`git checkout` 上述文件；恢复 `kernel/src/trap.asm` 与旧版 `trap.rs`/`task.rs`；还原 `os-context`/`os-syscall` 占位版本。
-=======
+
 ## 2026-06-22 - Task: 成员 C 按学生视角走查 lab1 并修复全部完成度问题（P0/P1/P2）
 ### What was done
 - 以"第一次接触 os-lab 的学生"视角严格走查 lab1-bare-metal.md 全流程（前置→任务一跑通→任务二阅读→任务三三个修改），实测每一步，发现 1 个严重问题 + 1 个答案缺口 + 3 个体验瑕疵。
@@ -60,7 +120,6 @@
 - 本轮严格遵守成员 C 文件边界（仅改 os-lab/labs/ 与 progress.md），未触碰成员 A 的 kernel/src/、成员 B 的 os-*/等。
 - 走查方法可复用：后续每个 lab 文档完成后，都建议按"学生视角严格走查 + 实测每条断言"的方式验证，避免文档与实际行为脱节。
 - 回滚方式：`git checkout -- os-lab/labs/lab1-bare-metal.md os-lab/labs/answers/lab1-answers.md progress.md` 可还原至修复前（lab1 回到 P0 矛盾、P1 答案缺口的状态）。
->>>>>>> e613ed4 (lab1 文档完成度问题修复（学生视角走查）+ 环境文档与激活脚本修正)
 
 ## 2026-06-22 - Task: 成员 C Day2（lab2 文档 + AI 协作模板）
 ### What was done
@@ -80,7 +139,6 @@
 - `progress.md`：追加本轮成员 C Day2 记录。
 - 本轮严格遵守成员 C 文件边界（仅改 os-lab/labs/、os-lab/docs/、progress.md），未触碰成员 A 的 kernel/src/、成员 B 的 os-*/、user/。
 - lab2 文档采用与 lab1 一致的"读+跑+理解+小修改"入门风格（基于团队既定的渐进式架构——lab2 代码已成型的起跑线），结构含 plan 要求的问题场景/背景/任务/验证/AI模板/习题全部要素。
-- 注意：progress.md 顶部仍残留前次 rebase 的 git 冲突标记（用户此前选择"暂不修，先做 Day2"），本轮记录追加在冲突标记之后，未触碰冲突区域。
 - 回滚方式：`rm os-lab/labs/lab2-trap-and-task.md os-lab/labs/answers/lab2-answers.md os-lab/docs/ai-collaboration.md` 并从 progress.md 删除本轮记录。
 
 ## 2026-06-22 - Task: DAY1 三人完成情况核查 + 成员 A DAY2（Lab2 trap/调度/加载）

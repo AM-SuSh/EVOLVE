@@ -16,6 +16,7 @@ pub const REG_A7: usize = 17;
 /// `sstatus` bits for returning to user mode.
 pub const SSTATUS_SPP: usize = 1 << 8;
 pub const SSTATUS_SPIE: usize = 1 << 5;
+pub const SSTATUS_SUM: usize = 1 << 18;
 
 const _: () = assert!(core::mem::size_of::<TrapContext>() == TRAP_CONTEXT_SIZE);
 
@@ -32,7 +33,7 @@ impl TrapContext {
     /// Prepare `sstatus` for first entry to user mode.
     pub fn user_sstatus(mut sstatus: usize) -> usize {
         sstatus &= !SSTATUS_SPP;
-        sstatus |= SSTATUS_SPIE;
+        sstatus |= SSTATUS_SPIE | SSTATUS_SUM;
         sstatus
     }
 

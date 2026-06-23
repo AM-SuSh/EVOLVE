@@ -5,8 +5,17 @@ use os_context::TrapContext;
 use crate::{print, println};
 
 use crate::config::{KERNEL_STACK_SIZE, MAX_APP_NUM, USER_STACK_SIZE};
-use crate::loader::{get_app_entry, load_app, NUM_APP};
+use crate::loader::{get_app_entry, NUM_APP};
+#[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
+use crate::loader::get_app_bin;
+#[cfg(not(any(feature = "lab3", feature = "lab4", feature = "lab5")))]
+use crate::loader::load_app;
 use crate::trap::{run_user_task, trap_cx_init};
+
+#[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
+use crate::config::APP_BASE_ADDRESS;
+#[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
+use crate::mm;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum TaskStatus {
@@ -43,7 +52,7 @@ impl TaskManager {
         for i in 0..self.num_app {
             let entry = get_app_entry(i);
             let user_sp = crate::config::APP_BASE_ADDRESS + crate::config::APP_REGION_SIZE - 16;
-            let mut task = TaskControlBlock {
+            self.tasks[i] = Some(TaskControlBlock {
                 task_status: TaskStatus::Ready,
                 trap_cx: TrapContext {
                     x: [0; 32],
@@ -53,10 +62,10 @@ impl TaskManager {
                 },
                 user_stack: [0; USER_STACK_SIZE],
                 kernel_stack: [0; KERNEL_STACK_SIZE],
-            };
+            });
+            let task = self.tasks[i].as_mut().unwrap();
             let kstack_top = task.kernel_stack.as_ptr() as usize + KERNEL_STACK_SIZE;
             task.trap_cx = trap_cx_init(entry, user_sp, kstack_top);
-            self.tasks[i] = Some(task);
         }
     }
 
@@ -90,6 +99,7 @@ pub fn init() {
     }
 }
 
+#[cfg(not(any(feature = "lab3", feature = "lab4", feature = "lab5")))]
 pub fn run_first_task() -> ! {
     unsafe {
         load_app(0);
@@ -99,10 +109,32 @@ pub fn run_first_task() -> ! {
     }
 }
 
+#[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
+pub fn run_first_task() -> ! {
+    unsafe {
+        mm::map_user_app(get_app_bin(0));
+        mm::ensure_paging();
+        TASK_MANAGER.tasks[0].as_mut().unwrap().task_status = TaskStatus::Running;
+        TASK_MANAGER.current = 0;
+        let trap_cx = &mut TASK_MANAGER.tasks[0].as_mut().unwrap().trap_cx;
+        run_user_task(trap_cx);
+    }
+}
+
 pub fn mark_current_suspended() {
     unsafe {
         let task = TASK_MANAGER.tasks[TASK_MANAGER.current].as_mut().unwrap();
         task.task_status = TaskStatus::Ready;
+    }
+}
+
+/// Copy trap context saved on the kernel stack into the current task TCB.
+pub fn sync_current_trap_cx(cx: &TrapContext) {
+    unsafe {
+        let current = TASK_MANAGER.current;
+        if let Some(task) = TASK_MANAGER.tasks[current].as_mut() {
+            task.trap_cx = *cx;
+        }
     }
 }
 
@@ -137,6 +169,7 @@ pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
     }
 }
 
+#[cfg(not(any(feature = "lab3", feature = "lab4", feature = "lab5")))]
 pub fn sys_exit(exit_code: i32) -> ! {
     unsafe {
         let current = TASK_MANAGER.current;
@@ -151,6 +184,31 @@ pub fn sys_exit(exit_code: i32) -> ! {
             next_task.trap_cx.sepc = get_app_entry(next);
             next_task.trap_cx.set_user_sp(
                 crate::config::APP_BASE_ADDRESS + crate::config::APP_REGION_SIZE - 16,
+            );
+            next_task.task_status = TaskStatus::Running;
+            run_user_task(&mut next_task.trap_cx);
+        } else {
+            println!("All user apps exited.");
+            os_sbi::shutdown();
+        }
+    }
+}
+
+#[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
+pub fn sys_exit(exit_code: i32) -> ! {
+    unsafe {
+        let current = TASK_MANAGER.current;
+        let task = TASK_MANAGER.tasks[current].as_mut().unwrap();
+        task.task_status = TaskStatus::Exited;
+        println!("App {} exited with code {}", current, exit_code);
+        let next = current + 1;
+        if next < NUM_APP {
+            TASK_MANAGER.current = next;
+            mm::map_user_app(get_app_bin(next));
+            let next_task = TASK_MANAGER.tasks[next].as_mut().unwrap();
+            next_task.trap_cx.sepc = get_app_entry(next);
+            next_task.trap_cx.set_user_sp(
+                APP_BASE_ADDRESS + crate::config::APP_REGION_SIZE - 16,
             );
             next_task.task_status = TaskStatus::Running;
             run_user_task(&mut next_task.trap_cx);

@@ -38,8 +38,11 @@ fn main() {
                 .join(app);
             let bin = apps_dir.join(format!("{app}.bin"));
             elf_to_bin(&elf, &bin);
+            let elf_copy = apps_dir.join(app);
+            fs::copy(&elf, &elf_copy).expect("copy user elf");
         }
         println!("cargo:rustc-env=KERNEL_APP_DIR={}", apps_dir.display());
+        println!("cargo:rustc-env=KERNEL_APP_ELF_DIR={}", apps_dir.display());
     }
 }
 
