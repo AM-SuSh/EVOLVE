@@ -1,4 +1,20 @@
-//! User-space syscall wrappers.
+//! User-space syscall wrappers (lab2+).
+//!
+//! Registers follow the RISC-V Linux ABI: `a7` = syscall number, `a0`–`a2` = arguments,
+//! return value in `a0`.
+//!
+//! ## Lab4 teaching ABI (differs from full Linux)
+//!
+//! | Wrapper   | Syscall      | Arguments |
+//! |-----------|--------------|-----------|
+//! | `fork()`  | `SYS_CLONE`  | none (simplified fork, no flags) |
+//! | `exec(s)` | `SYS_EXECVE` | `a0` = path pointer, `a1` = path **byte length**, `a2` = 0 |
+//! | `waitpid` | `SYS_WAIT4`  | `a0` = pid, `a1` = exit-code pointer |
+//! | `getpid`  | `SYS_GETPID` | none |
+//!
+//! `exec` passes path length in `a1` instead of an argv vector so the kernel can read
+//! exactly `len` bytes and avoid mistaking adjacent rodata strings (e.g. `"hello"` vs
+//! `"helloworld"`) when only a name is embedded.
 
 use core::arch::asm;
 

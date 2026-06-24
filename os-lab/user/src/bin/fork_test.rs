@@ -1,3 +1,8 @@
+//! Lab4 integration test: fork, getpid, waitpid.
+//!
+//! Pass criteria: parent prints child PID, child prints its PID, parent wait succeeds
+//! with exit code 0 and prints `fork_test pass`. Used as default initproc for lab4.
+
 #![no_std]
 #![no_main]
 

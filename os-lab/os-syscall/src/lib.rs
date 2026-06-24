@@ -12,6 +12,11 @@
 //! | 220    | clone   | 4   |
 //! | 221    | execve  | 4   |
 //! | 260    | wait4   | 4   |
+//!
+//! ## Lab4 user-space argument convention
+//!
+//! Wrappers in `user/src/syscall.rs` use a simplified ABI for teaching:
+//! `SYS_CLONE` as fork (no flags), `SYS_EXECVE` with path length in `a1` (not argv).
 
 #![no_std]
 

@@ -118,3 +118,41 @@ All user apps exited.
 ```
 
 说明：lab3 启用分页后 yield 应完整输出 **5 轮** `Yield round`（lab2 通常只有 1 轮），这是虚存与任务切换改进的可观察差异。
+
+## Day 4 / Lab4 验证（成员 B Day4）
+
+### 组件单元测试（host 目标，Day2/3 回归）
+
+lab4 不新增 host 单元测试；验收前建议回归 Day2/3 组件测试：
+
+```powershell
+cd os-lab
+cargo test -p os-context -p os-syscall --target x86_64-pc-windows-msvc
+cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1
+```
+
+### Lab4 编译与 QEMU 运行
+
+```powershell
+cargo check -p kernel --features lab4
+cargo run -p kernel --features lab4
+```
+
+### 成功标准
+
+QEMU 输出中应出现（OpenSBI 启动日志可忽略）：
+
+```text
+I am parent, child_pid=2
+I am child, pid=2
+Process 2 exited with code 0
+fork_test pass
+Process 1 exited with code 0
+All processes exited.
+```
+
+说明：
+
+- lab4 下 `kernel/build.rs` 嵌入的用户程序为 `fork_test`、`exec_test`、`hello`（与 lab2/3 的 `hello`/`power`/`yield` 不同）；回归 lab2/lab3 须分别使用 `--features lab2` / `lab3`。
+- 默认 initproc 运行 `fork_test`（`kernel/src/config.rs` 中 `INITPROC_APP_ID = 0`）。
+- `exec_test` 不在默认路径自动运行。可选 spot-check：将 `INITPROC_APP_ID` 改为 `1` 后重编（属成员 A 内核配置），预期 `Before exec` → `Hello from user app!`，且无 `After exec`。

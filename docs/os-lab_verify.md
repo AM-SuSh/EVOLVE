@@ -417,7 +417,83 @@ Linux/macOS：
 
 ---
 
-## 11. 常见问题
+## 11. 运行 Lab4（QEMU）
+
+在 Day3 基础上，使用 lab4 feature 运行进程管理测试（默认 initproc 为 `fork_test`）：
+
+```powershell
+cd <仓库根目录>
+. .\scripts\activate-os-env.ps1
+
+cd os-lab
+cargo check -p kernel --features lab4
+cargo run -p kernel --features lab4
+```
+
+### 成功标准
+
+QEMU 输出中应出现（OpenSBI 启动日志可忽略）：
+
+```text
+I am parent, child_pid=2
+I am child, pid=2
+Process 2 exited with code 0
+fork_test pass
+Process 1 exited with code 0
+All processes exited.
+```
+
+说明：
+
+- lab4 嵌入的用户程序为 `fork_test`、`exec_test`、`hello`；与 lab2/3 的 `hello`/`power`/`yield` 构建集不同，**不能**用 lab4 的 QEMU 输出判断 lab2/3 回归。
+- `exec_test` 验证 exec 语义：成功 exec 后原程序后续代码不执行。默认不自动运行；可选将 `kernel/src/config.rs` 的 `INITPROC_APP_ID` 改为 `1` 后重编，预期 `Before exec` → `Hello from user app!`，无 `After exec`。
+
+---
+
+## 12. 一键复制：Day4 全量验证
+
+在 Day3 块基础上，增加 Lab4 QEMU 运行（**推荐：成员 B Day4 最终验收用此块**）：
+
+```powershell
+cd <仓库根目录>
+. .\scripts\activate-os-env.ps1
+
+cd os-lab
+cargo check --workspace
+cargo check -p os-sbi
+cargo check -p kernel --features lab1
+cargo check -p kernel --features lab2
+cargo check -p kernel --features lab3
+cargo check -p kernel --features lab4
+cargo check -p kernel --features lab5
+
+cargo test -p os-context -p os-syscall --target x86_64-pc-windows-msvc
+cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1
+
+cargo run -p kernel --features lab1
+cargo run -p kernel --features lab2
+cargo run -p kernel --features lab3
+cargo run -p kernel --features lab4
+```
+
+Linux/macOS：
+
+- 将两条 `cargo test` 的 `--target` 换成对应 host triple。
+- `os-vm` 测试**必须保留** `-- --test-threads=1`。
+
+### Day4 验收勾选清单
+
+- [ ] `cargo check --workspace` 无 error
+- [ ] `os-context` 3 项 + `os-syscall` 4 项测试通过
+- [ ] `os-alloc` 6 项 + `os-vm` 5 项测试通过（单线程）
+- [ ] Lab1 QEMU：`Hello, OS!` 并正常关机
+- [ ] Lab2 QEMU：`409684505`、`Power check ok`、`All user apps exited.`
+- [ ] Lab3 QEMU：5 轮 `Yield round`、`All user apps exited.`
+- [ ] Lab4 QEMU：`fork_test pass`、`I am parent`、`I am child`、`All processes exited.`
+
+---
+
+## 13. 常见问题
 
 | 现象 | 处理 |
 | --- | --- |
@@ -432,6 +508,9 @@ Linux/macOS：
 | Lab3 无虚存启用日志 | 确认使用 `--features lab3`，而非 `lab2` |
 | Lab3 yield 不足 5 轮 | 检查是否使用 `--features lab3`；分页未启用时行为同 lab2 |
 | `os-vm` 单元测试崩溃或 access violation | 加 `--test-threads=1`（见第 4.2 节） |
+| Lab4 无 `fork_test pass` | 确认 `--features lab4`；检查 fork 返回值与 waitpid 是否匹配子 PID |
+| Lab4 仍看到 `After exec` | exec 未成功替换程序；检查 `exec` ABI（`a1` 为路径长度）或内核 `sys_execve` |
+| 用 lab4 跑 lab2/3 测试失败 | lab4 构建集不同，须分别 `cargo run --features lab2` / `lab3` |
 
 ---
 
@@ -440,7 +519,8 @@ Linux/macOS：
 - [os-lab.md](os-lab.md)：自研环境入口
 - [environment_setup.md](environment_setup.md)：Rust / QEMU / Git 安装路径
 - [os-lab/README.md](../os-lab/README.md)：快速开始与 feature 说明
-- [os-lab/tests/README.md](../os-lab/tests/README.md)：集成测试与 Day1/Day2/Day3 细则
+- [os-lab/tests/README.md](../os-lab/tests/README.md)：集成测试与 Day1–Day4 细则
 - [os-lab/labs/lab1-bare-metal.md](../os-lab/labs/lab1-bare-metal.md)：Lab1 实验指导
 - [os-lab/labs/lab2-trap-and-task.md](../os-lab/labs/lab2-trap-and-task.md)：Lab2 实验指导
 - [os-lab/labs/lab3-memory.md](../os-lab/labs/lab3-memory.md)：Lab3 实验指导
+- [os-lab/labs/lab4-process.md](../os-lab/labs/lab4-process.md)：Lab4 实验指导

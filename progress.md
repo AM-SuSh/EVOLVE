@@ -1,3 +1,32 @@
+## 2026-06-24 - Task: 成员 B Day4（user 进程测试程序 + lab4 验证文档）
+
+### What was done
+
+- 正式接手 `user/`：自成员 A 临时验收代码接管 `fork_test`、`exec_test` 及 lab4 syscall 封装；补充文件头注释与 [`syscall.rs`](os-lab/user/src/syscall.rs) 教学 ABI 文档（`exec` 经 `a1` 传路径长度）。
+- 核对 `os-syscall`：crate 文档补充 Lab4 用户态参数约定说明，编号与内核 trap 分发一致。
+- 更新 [`os-lab/tests/README.md`](os-lab/tests/README.md) 与 [`docs/os-lab_verify.md`](docs/os-lab_verify.md)：新增 Day4/Lab4 验证节、第 12 节一键复制块、Day4 验收勾选清单及常见问题。
+
+### Testing
+
+- `cargo test -p os-context -p os-syscall --target x86_64-pc-windows-msvc`：7 项全部 `ok`。
+- `cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1`：11 项全部 `ok`。
+- `cargo check -p kernel --features lab2/lab3/lab4`：编译通过。
+- `cargo run -p kernel --features lab4`：exit 0；含 `fork_test pass`、`I am parent`、`I am child`、`All processes exited.`。
+- `cargo run -p kernel --features lab3`：exit 0；含 `409684505`、`Power check ok`、5 轮 `Yield round`。
+- `cargo run -p kernel --features lab2`：exit 0；含 `409684505`、`Power check ok`、`All user apps exited.`。
+
+### Notes
+
+- `os-lab/user/src/syscall.rs`：Lab4 教学 ABI 模块文档。
+- `os-lab/user/src/bin/fork_test.rs`、`exec_test.rs`：正式交付注释与通过条件说明。
+- `os-lab/os-syscall/src/lib.rs`：Lab4 用户态参数约定文档段。
+- `os-lab/tests/README.md`：新增 Day4/Lab4 验证小节。
+- `docs/os-lab_verify.md`：新增第 11–12 节 Lab4 运行与 Day4 全量验证；常见问题扩展；相关文档链至 `lab4-process.md`。
+- `progress.md`：追加本轮成员 B Day4 记录。
+- 本轮严格遵守成员 B 文件边界（仅改 `user/`、`os-syscall/` 文档、`tests/`、`docs/os-lab_verify.md`、`progress.md`），未触碰 `kernel/src/`、`labs/`、`os-lab/docs/`。
+- ownership 转移：lab4 用户态代码由成员 A 临时补齐，本轮由成员 B 正式接手并文档化；`pipe` 测试程序留 Day5。
+- 回滚方式：`git checkout os-lab/user/ os-lab/os-syscall/src/lib.rs os-lab/tests/README.md docs/os-lab_verify.md progress.md`。
+
 ## 2026-06-24 - Task: 补全本校环境数据（确认为 xv6-riscv / MIT 6.S081）
 ### What was done
 - 成员 C 确认本校 OS 课程使用 xv6-riscv（MIT 6.S081 课程配套教学内核）。

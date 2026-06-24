@@ -1,3 +1,9 @@
+//! Lab4 integration test: exec replaces the current program.
+//!
+//! Pass criteria: prints `Before exec`, then `Hello from user app!` from the loaded hello
+//! program. `After exec` must **not** appear (exec resets TrapContext to hello's entry).
+//! Not run as default initproc; see tests/README.md for optional spot-check.
+
 #![no_std]
 #![no_main]
 
