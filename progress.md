@@ -1,3 +1,42 @@
+## 2026-06-24 - Task: 补全本校环境数据（确认为 xv6-riscv / MIT 6.S081）
+### What was done
+- 成员 C 确认本校 OS 课程使用 xv6-riscv（MIT 6.S081 课程配套教学内核）。
+- 重写 `os-lab/docs/comparison-data.md` 的"本校教学环境"一节：用 xv6-riscv 的公开真实数据替换原"待核实"框架——语言（C）、平台（RISC-V）、内核架构（单一源码树无 crate）、代码规模（内核约 6000-8000 行 C）、实验数（11 个 lab）、测试方式（外部 grade 脚本）、文档（xv6-book+lecture notes）。
+- 新增"三方对比速览表"：自研 os-lab / 参考 tg-rcore-tutorial / 本校 xv6-riscv 在语言、架构、组件化、代码行数、测试、实验数、引导方式 7 个维度的定量对比。
+- 补充定性分析与差异点对比：自研 Rust 内存安全 vs xv6 C 手动管理、自研 feature gate 渐进式 vs xv6 单一源码树、自研问题驱动引导 vs xv6 步骤式任务清单等。
+- 保留 4 项【本校特有】待核实项（本校实际开几个 lab、是否一键环境、是否补充问题驱动文档、用哪个年份版本），这些需向本校老师核实，非公开可得。
+
+### Testing
+- 核查 xv6-riscv 数据均基于 MIT 6.S081 公开课程与仓库的确定信息（11 个 lab、C 语言、RISC-V、grade 脚本等），非编造。
+- 三方对比速览表的自研/参考两列沿用 Day3 已采集的脚本统计数据（1882 行/29 crate 等），本校列用 xv6 公开数据，三列口径一致可对比。
+
+### Notes
+- `os-lab/docs/comparison-data.md`：重写"本校教学环境"一节为 xv6-riscv 实际数据 + 三方对比速览表。
+- `progress.md`：追加本轮 xv6 数据补充记录。
+- 本轮严格遵守成员 C 文件边界（仅改 os-lab/docs/ 与 progress.md）。
+- 重要定位：xv6-riscv 是世界级成熟教学内核，三方对比应定位为"差异化互补"而非"替代"——自研优势在 Rust 内存安全、精简架构（6 crate）、问题驱动引导，与 xv6 的 C/广覆盖/经典文档形成互补。这个定位将指导 Day6 comparison.md 的写作基调。
+- 回滚方式：`git checkout os-lab/docs/comparison-data.md progress.md`。
+
+## 2026-06-24 - Task: 成员 C Day4（lab4 文档 + 本校环境调研框架）
+### What was done
+- 编写 `os-lab/labs/lab4-process.md`：完整的 lab4 实验指导文档，面向学生设计者视角。含问题场景（从"固定程序跑完即止"的局限切入，引出 fork/exec/wait 的动态进程需求）、5 节背景知识（进程 vs 任务、fork 调用一次返回两次、exec 换身不换魂、wait 与僵尸进程、PCB 结构，含 5 张 mermaid 图）、三档实验任务（跑通 + 5 道阅读理解 + 3 个动手小修改）、验证标准、5 条 AI 提问模板、5 道思考题及参考答案。每节背景知识用"🤔 先想"引导框让学生先猜测再对照实现。
+- 编写 `os-lab/labs/answers/lab4-answers.md`：配套答案，含 process.rs 的完整代码逐行解读（PCB/ProcessManager、sys_fork 的"返回两次"技巧、sys_execve 的整体覆盖 TrapContext、sys_wait4 的阻塞循环回收僵尸、sys_exit 变僵尸、initproc 进程树根），5 道阅读理解题详细答案，3 个动手修改现象参考。
+- 扩充 `os-lab/docs/comparison-data.md` 的"本校教学环境"一节：搭建调研框架（定量指标维度 + 定性分析维度），明确列出 4 项待成员 C 向本校老师核实的具体信息（教学环境名称、实验数量、是否一键环境、文档风格）。本校数据未编造，均标注【待核实】。
+
+### Testing
+- 实测 `cargo run -p kernel --features lab4`：输出 `I am parent, child_pid=2`、`I am child, pid=2`、`Process 2 exited with code 0`、`fork_test pass`、`Process 1 exited with code 0`、`All processes exited.`，exit code 0，无 panic。文档【任务一】预期输出与实测完全一致。
+- 诚实记录已知情况：默认 initproc 跑 fork_test，exec_test 不在默认路径自动运行（成员 A 单独验证），文档已明确说明，未掩饰。
+- 核查文档引用的全部代码事实（sys_fork 的 set_return_value(0)、spawn 传 cx.sepc、sys_execve 的 `*cx = trap_cx_init`、sys_wait4 的 loop+run_next_process 阻塞、sys_exit 的 Zombie 状态）均与 kernel/src/process.rs 实际源码逐字对应。
+
+### Notes
+- `os-lab/labs/lab4-process.md`：新增，lab4 完整实验指导（约 220 行，5 张 mermaid，面向学生设计者视角）。
+- `os-lab/labs/answers/lab4-answers.md`：新增，lab4 答案与代码逐行解读。
+- `os-lab/docs/comparison-data.md`：扩充本校环境调研框架（plan 第 322 行 Day4 任务：本校教学环境调研与数据整理）。
+- `progress.md`：追加本轮成员 C Day4 记录。
+- 本轮严格遵守成员 C 文件边界（仅改 os-lab/labs/、os-lab/docs/、progress.md），未触碰成员 A 的 kernel/src/、成员 B 的 os-*/、user/。
+- 本校环境数据因无法自动获取，已搭建调研框架并列出待核实项，未编造任何数据（遵守"信息不足不得猜测"原则）。建议成员 C 在 Day5 期间向课程老师核实，Day6 写 comparison.md 时填入。
+- 回滚方式：`rm os-lab/labs/lab4-process.md os-lab/labs/answers/lab4-answers.md` 并 `git checkout os-lab/docs/comparison-data.md progress.md`。
+
 ## 2026-06-24 - Task: 成员 A Day4（fork/exec/wait 进程管理）
 
 ### What was done
