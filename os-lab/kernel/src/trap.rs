@@ -6,8 +6,16 @@ use os_context::{restore_to_user_paged, TrapContext, __alltraps};
 #[cfg(not(any(feature = "lab3", feature = "lab4", feature = "lab5")))]
 use os_context::restore_to_user;
 use os_syscall::{
-    SYS_CLONE, SYS_EXIT, SYS_EXECVE, SYS_GETPID, SYS_WAIT4, SYS_WRITE, SYS_YIELD,
+    SYS_CLONE, SYS_CLOSE, SYS_EXIT, SYS_EXECVE, SYS_GETPID, SYS_OPENAT, SYS_READ, SYS_WAIT4,
+    SYS_WRITE, SYS_YIELD,
 };
+
+#[cfg(feature = "lab5")]
+use crate::config::SYS_PIPE;
+#[cfg(feature = "lab5")]
+use crate::fs;
+#[cfg(feature = "lab5")]
+use crate::sync;
 
 use crate::config::TICKS_PER_SEC;
 use crate::riscv::{
@@ -96,6 +104,34 @@ pub fn trap_handler(cx: &mut TrapContext) {
                         cx.syscall_arg(0) as isize,
                         cx.syscall_arg(1) as *mut i32,
                     );
+                    cx.set_return_value(ret);
+                }
+                #[cfg(feature = "lab5")]
+                SYS_OPENAT => {
+                    let ret = fs::sys_openat(
+                        cx.syscall_arg(0) as *const u8,
+                        cx.syscall_arg(1),
+                        cx.syscall_arg(2),
+                    );
+                    cx.set_return_value(ret);
+                }
+                #[cfg(feature = "lab5")]
+                SYS_READ => {
+                    let ret = fs::sys_read(
+                        cx.syscall_arg(0),
+                        cx.syscall_arg(1) as *mut u8,
+                        cx.syscall_arg(2),
+                    );
+                    cx.set_return_value(ret);
+                }
+                #[cfg(feature = "lab5")]
+                SYS_CLOSE => {
+                    let ret = fs::sys_close(cx.syscall_arg(0));
+                    cx.set_return_value(ret);
+                }
+                #[cfg(feature = "lab5")]
+                id if id == SYS_PIPE => {
+                    let ret = sync::sys_pipe(cx.syscall_arg(0) as *mut i32);
                     cx.set_return_value(ret);
                 }
                 id => {

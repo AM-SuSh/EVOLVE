@@ -33,3 +33,11 @@ path = "src/bin/fork_test.rs"
 [[bin]]
 name = "exec_test"
 path = "src/bin/exec_test.rs"
+
+[[bin]]
+name = "fs_test"
+path = "src/bin/fs_test.rs"
+
+[[bin]]
+name = "pipe_test"
+path = "src/bin/pipe_test.rs"

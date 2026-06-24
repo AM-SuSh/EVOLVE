@@ -59,9 +59,16 @@ pub extern "C" fn rust_main() -> ! {
         {
             println!("os-lab kernel lab2: trap and multitask.");
         }
-        #[cfg(feature = "lab4")]
+        #[cfg(all(feature = "lab4", not(feature = "lab5")))]
         {
             println!("os-lab kernel lab4: process management.");
+        }
+        #[cfg(feature = "lab5")]
+        {
+            os_alloc::init_heap();
+            println!("os-lab kernel lab5: filesystem and sync.");
+            sync::init();
+            fs::init();
         }
         trap::init();
         loader::load_apps();

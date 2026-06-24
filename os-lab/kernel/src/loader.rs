@@ -20,11 +20,26 @@ static APP_ELF: [&[u8]; NUM_APP] = [
 ];
 
 #[cfg(any(feature = "lab4", feature = "lab5"))]
-static APP_ELF: [&[u8]; NUM_APP] = [
-    include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/fork_test")),
-    include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/exec_test")),
-    include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/hello")),
-];
+static APP_ELF: [&[u8]; NUM_APP] = {
+    #[cfg(feature = "lab5")]
+    {
+        [
+            include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/fs_test")),
+            include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/pipe_test")),
+            include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/fork_test")),
+            include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/exec_test")),
+            include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/hello")),
+        ]
+    }
+    #[cfg(all(feature = "lab4", not(feature = "lab5")))]
+    {
+        [
+            include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/fork_test")),
+            include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/exec_test")),
+            include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/hello")),
+        ]
+    }
+};
 
 #[cfg(not(any(feature = "lab3", feature = "lab4", feature = "lab5")))]
 pub fn load_app(app_id: usize) {
@@ -47,9 +62,40 @@ pub fn get_app_elf(app_id: usize) -> &'static [u8] {
 #[cfg(any(feature = "lab4", feature = "lab5"))]
 pub fn get_app_elf_by_name(name: &str) -> Option<&'static [u8]> {
     match name {
-        "fork_test" => Some(get_app_elf(0)),
-        "exec_test" => Some(get_app_elf(1)),
-        "hello" => Some(get_app_elf(2)),
+        #[cfg(feature = "lab5")]
+        "pipe_test" => Some(get_app_elf(1)),
+        #[cfg(feature = "lab5")]
+        "fs_test" => Some(get_app_elf(0)),
+        "fork_test" => Some(get_app_elf({
+            #[cfg(feature = "lab5")]
+            {
+                2
+            }
+            #[cfg(all(feature = "lab4", not(feature = "lab5")))]
+            {
+                0
+            }
+        })),
+        "exec_test" => Some(get_app_elf({
+            #[cfg(feature = "lab5")]
+            {
+                3
+            }
+            #[cfg(all(feature = "lab4", not(feature = "lab5")))]
+            {
+                1
+            }
+        })),
+        "hello" => Some(get_app_elf({
+            #[cfg(feature = "lab5")]
+            {
+                4
+            }
+            #[cfg(all(feature = "lab4", not(feature = "lab5")))]
+            {
+                2
+            }
+        })),
         _ => None,
     }
 }
@@ -97,4 +143,13 @@ pub fn get_app_entry(app_id: usize) -> usize {
 pub const NUM_APP: usize = 3;
 
 #[cfg(any(feature = "lab4", feature = "lab5"))]
-pub const NUM_APP: usize = 3;
+pub const NUM_APP: usize = {
+    #[cfg(feature = "lab5")]
+    {
+        5
+    }
+    #[cfg(all(feature = "lab4", not(feature = "lab5")))]
+    {
+        3
+    }
+};

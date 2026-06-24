@@ -1,3 +1,30 @@
+## 2026-06-24 - Task: 成员 A Day5（Lab5 文件系统 + 管道同步）
+
+### What was done
+
+- 实现 [`kernel/src/fs.rs`](os-lab/kernel/src/fs.rs)：每进程 fd 表、内嵌只读文件 `testfile`、`sys_openat`/`sys_read`/`sys_close`、pipe fd 与 `sys_write` 写管道。
+- 实现 [`kernel/src/sync.rs`](os-lab/kernel/src/sync.rs)：`SpinMutex`、环形缓冲 `Pipe`、`sys_pipe`（`SYS_PIPE=59`）。
+- 接入 [`trap.rs`](os-lab/kernel/src/trap.rs)、[`main.rs`](os-lab/kernel/src/main.rs)、[`process.rs`](os-lab/kernel/src/process.rs)：lab5 启动（`init_heap`/`fs::init`/`sync::init`）、syscall 分发、fork fd 表继承、进程退出时 `close_all_fds`。
+- 更新 [`config.rs`](os-lab/kernel/src/config.rs)、[`build.rs`](os-lab/kernel/build.rs)、[`loader.rs`](os-lab/kernel/src/loader.rs)：lab5 嵌入 `fs_test`/`pipe_test` 等 5 个 ELF；`build.rs` 在 ELF 已存在时跳过子 cargo 以避免死锁。
+- 成员 B 未交付 lab5 用户态/`os-fs` 实现，按 Day4 惯例临时补齐验收用 `fs_test`/`pipe_test` 及 `user/syscall.rs` lab5 包装、`os-syscall` 的 `SYS_PIPE`（待 B 正式接手）。
+
+### Testing
+
+- `cargo check -p kernel --features lab5`：通过。
+- `cargo run -p kernel --features lab5 --release`：exit 0；输出 `Hello from testfile!`、`fs_test pass`、`pipe says hi`、`pipe_test pass`、`All processes exited.`。
+- `cargo run -p kernel --features lab4 --release`：exit 0；`All processes exited.`（fork 路径不退化）。
+- `cargo run -p kernel --features lab3 --release`：exit 0；`409684505`、5 次 `Yield round`、`All user apps exited.`。
+
+### Notes
+
+- `os-lab/kernel/src/fs.rs`、`sync.rs`、`trap.rs`、`main.rs`、`process.rs`、`config.rs`、`build.rs`、`loader.rs`：Lab5 内核主体与集成。
+- `os-lab/user/src/bin/fs_test.rs`、`pipe_test.rs`、`syscall.rs`、`Cargo.toml`：验收用测试程序（跨 B 边界，已注明）。
+- `os-lab/os-syscall/src/lib.rs`：新增 `SYS_PIPE` 常量（跨 B 边界）。
+- `progress.md`：追加本轮记录。
+- 文件系统采用内核内嵌静态文件表（非 `os-fs` crate 完整实现），`os-fs` 仍仅占位；成员 B 可后续替换为 crate 级实现。
+- 已知简化：pipe 读空时返回 -1（用户态 yield 重试）；`wait4` 阻塞语义与 lab4 相同（yield 轮询）。
+- 回滚方式：`git checkout os-lab/kernel/ os-lab/user/ os-lab/os-syscall/src/lib.rs progress.md`。
+
 ## 2026-06-24 - Task: 成员 B Day4（user 进程测试程序 + lab4 验证文档）
 
 ### What was done

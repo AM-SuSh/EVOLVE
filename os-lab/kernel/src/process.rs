@@ -9,6 +9,8 @@ use crate::config::{
 use crate::loader::{get_app_elf, get_app_elf_by_name, get_app_entry};
 use crate::mm::{self, elf_entry_point};
 use crate::trap::{run_user_task, trap_cx_init};
+#[cfg(feature = "lab5")]
+use crate::fs;
 use crate::{print, println};
 
 #[derive(Copy, Clone, PartialEq)]
@@ -122,6 +124,13 @@ impl ProcessManager {
 
         if let Some(parent) = parent_slot {
             self.add_child(parent, slot);
+        }
+
+        #[cfg(feature = "lab5")]
+        if let Some(parent) = parent_slot {
+            fs::clone_fd_table(parent, slot);
+        } else {
+            fs::init_process_fds(slot);
         }
 
         self.process_count += 1;
@@ -323,6 +332,8 @@ fn reap_zombie_child(parent_slot: usize, want_pid: isize) -> Option<(usize, i32)
         let pid = pcb.pid;
         let code = pcb.exit_code;
         let space_id = pcb.space_id;
+        #[cfg(feature = "lab5")]
+        fs::close_all_fds(i);
         PROCESS_MANAGER.slots[i] = None;
         PROCESS_MANAGER.process_count -= 1;
         mm::free_user_space(space_id);
@@ -373,20 +384,29 @@ pub fn sys_exit(exit_code: i32) -> ! {
 }
 
 pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
-    if fd != 1 {
-        return -1;
-    }
-    mm::activate_current_user();
-    let user_slice = unsafe { core::slice::from_raw_parts(buf, len) };
-    let mut kbuf = [0u8; 256];
-    let n = len.min(kbuf.len());
-    kbuf[..n].copy_from_slice(&user_slice[..n]);
-    mm::activate_kernel();
-    match core::str::from_utf8(&kbuf[..n]) {
-        Ok(s) => {
-            print!("{}", s);
-            n as isize
+    if fd == 1 {
+        mm::activate_current_user();
+        let user_slice = unsafe { core::slice::from_raw_parts(buf, len) };
+        let mut kbuf = [0u8; 256];
+        let n = len.min(kbuf.len());
+        kbuf[..n].copy_from_slice(&user_slice[..n]);
+        mm::activate_kernel();
+        match core::str::from_utf8(&kbuf[..n]) {
+            Ok(s) => {
+                print!("{}", s);
+                n as isize
+            }
+            Err(_) => -1,
         }
-        Err(_) => -1,
+    } else {
+        #[cfg(feature = "lab5")]
+        {
+            fs::sys_write(fd, buf, len)
+        }
+        #[cfg(not(feature = "lab5"))]
+        {
+            let _ = (buf, len);
+            -1
+        }
     }
 }

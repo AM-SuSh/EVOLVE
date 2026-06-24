@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn app_names() -> &'static [&'static str] {
-    if env::var("CARGO_FEATURE_LAB4").is_ok() || env::var("CARGO_FEATURE_LAB5").is_ok() {
+    if env::var("CARGO_FEATURE_LAB5").is_ok() {
+        &["fs_test", "pipe_test", "fork_test", "exec_test", "hello"]
+    } else if env::var("CARGO_FEATURE_LAB4").is_ok() {
         &["fork_test", "exec_test", "hello"]
     } else {
         &["hello", "power", "yield"]
@@ -55,6 +57,14 @@ fn main() {
 
 fn build_user_apps(workspace_root: &Path, target: &str, apps: &[&str]) {
     for app in apps {
+        let elf = workspace_root
+            .join("target")
+            .join(target)
+            .join("release")
+            .join(app);
+        if elf.exists() {
+            continue;
+        }
         let status = Command::new("cargo")
             .current_dir(workspace_root)
             .args([

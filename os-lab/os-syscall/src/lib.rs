@@ -35,6 +35,7 @@ pub const SYS_WAIT4: usize = 260;
 pub const SYS_OPENAT: usize = 56;
 pub const SYS_CLOSE: usize = 57;
 pub const SYS_READ: usize = 63;
+pub const SYS_PIPE: usize = 59;
 
 const _: () = assert!(SYS_WRITE == 64);
 const _: () = assert!(SYS_EXIT == 93);
@@ -46,6 +47,7 @@ const _: () = assert!(SYS_WAIT4 == 260);
 const _: () = assert!(SYS_OPENAT == 56);
 const _: () = assert!(SYS_CLOSE == 57);
 const _: () = assert!(SYS_READ == 63);
+const _: () = assert!(SYS_PIPE == 59);
 
 /// Human-readable syscall name for logging and tests.
 pub const fn syscall_name(id: usize) -> &'static str {
@@ -53,6 +55,7 @@ pub const fn syscall_name(id: usize) -> &'static str {
         SYS_OPENAT => "openat",
         SYS_CLOSE => "close",
         SYS_READ => "read",
+        SYS_PIPE => "pipe",
         SYS_WRITE => "write",
         SYS_EXIT => "exit",
         SYS_YIELD => "yield",

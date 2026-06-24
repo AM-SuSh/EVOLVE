@@ -4,7 +4,7 @@
 
 mod syscall;
 
-pub use syscall::{exec, exit, fork, getpid, waitpid, write, yield_};
+pub use syscall::{close, exec, exit, fork, getpid, open, pipe, read, waitpid, write, yield_};
 
 pub fn print(s: &str) {
     let _ = write(1, s.as_bytes());

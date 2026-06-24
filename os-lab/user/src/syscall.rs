@@ -18,7 +18,10 @@
 
 use core::arch::asm;
 
-use os_syscall::{SYS_CLONE, SYS_EXIT, SYS_EXECVE, SYS_GETPID, SYS_WAIT4, SYS_WRITE, SYS_YIELD};
+use os_syscall::{
+    SYS_CLONE, SYS_CLOSE, SYS_EXIT, SYS_EXECVE, SYS_GETPID, SYS_OPENAT, SYS_PIPE, SYS_READ,
+    SYS_WAIT4, SYS_WRITE, SYS_YIELD,
+};
 
 pub fn write(fd: usize, buf: &[u8]) -> isize {
     let ret;
@@ -105,6 +108,62 @@ pub fn waitpid(pid: isize, exit_code: &mut i32) -> isize {
             in("a7") SYS_WAIT4,
             in("a0") pid as usize,
             in("a1") exit_code as *mut i32,
+            lateout("a0") ret,
+        );
+    }
+    ret
+}
+
+pub fn open(path: &str) -> isize {
+    let ret;
+    unsafe {
+        asm!(
+            "ecall",
+            in("a7") SYS_OPENAT,
+            in("a0") path.as_ptr(),
+            in("a1") path.len(),
+            in("a2") 0usize,
+            lateout("a0") ret,
+        );
+    }
+    ret
+}
+
+pub fn read(fd: usize, buf: &mut [u8]) -> isize {
+    let ret;
+    unsafe {
+        asm!(
+            "ecall",
+            in("a7") SYS_READ,
+            in("a0") fd,
+            in("a1") buf.as_mut_ptr(),
+            in("a2") buf.len(),
+            lateout("a0") ret,
+        );
+    }
+    ret
+}
+
+pub fn close(fd: usize) -> isize {
+    let ret;
+    unsafe {
+        asm!(
+            "ecall",
+            in("a7") SYS_CLOSE,
+            in("a0") fd,
+            lateout("a0") ret,
+        );
+    }
+    ret
+}
+
+pub fn pipe(fds: &mut [i32; 2]) -> isize {
+    let ret;
+    unsafe {
+        asm!(
+            "ecall",
+            in("a7") SYS_PIPE,
+            in("a0") fds.as_mut_ptr(),
             lateout("a0") ret,
         );
     }
