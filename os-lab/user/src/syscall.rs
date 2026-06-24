@@ -15,6 +15,17 @@
 //! `exec` passes path length in `a1` instead of an argv vector so the kernel can read
 //! exactly `len` bytes and avoid mistaking adjacent rodata strings (e.g. `"hello"` vs
 //! `"helloworld"`) when only a name is embedded.
+//!
+//! ## Lab5 teaching ABI
+//!
+//! | Wrapper   | Syscall      | Arguments |
+//! |-----------|--------------|-----------|
+//! | `open(s)` | `SYS_OPENAT` | `a0` = path pointer, `a1` = path **byte length**, `a2` = 0 |
+//! | `read`    | `SYS_READ`   | `a0` = fd, `a1` = buffer pointer, `a2` = length |
+//! | `close`   | `SYS_CLOSE`  | `a0` = fd |
+//! | `pipe`    | `SYS_PIPE`   | `a0` = pointer to `[i32; 2]` (read fd, write fd) |
+//!
+//! Pipe read returns -1 when empty (non-blocking); user programs should `yield_()` and retry.
 
 use core::arch::asm;
 

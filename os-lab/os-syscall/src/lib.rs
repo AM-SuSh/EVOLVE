@@ -4,6 +4,7 @@
 //! |--------|---------|-----|
 //! | 56     | openat  | 5   |
 //! | 57     | close   | 5   |
+//! | 59     | pipe    | 5   |
 //! | 63     | read    | 5   |
 //! | 64     | write   | 2   |
 //! | 93     | exit    | 2   |
@@ -17,6 +18,15 @@
 //!
 //! Wrappers in `user/src/syscall.rs` use a simplified ABI for teaching:
 //! `SYS_CLONE` as fork (no flags), `SYS_EXECVE` with path length in `a1` (not argv).
+//!
+//! ## Lab5 user-space argument convention
+//!
+//! | Wrapper   | Syscall      | Arguments |
+//! |-----------|--------------|-----------|
+//! | `open(s)` | `SYS_OPENAT` | `a0` = path pointer, `a1` = path **byte length**, `a2` = 0 |
+//! | `read`    | `SYS_READ`   | `a0` = fd, `a1` = buffer pointer, `a2` = length |
+//! | `close`   | `SYS_CLOSE`  | `a0` = fd |
+//! | `pipe`    | `SYS_PIPE`   | `a0` = pointer to `[i32; 2]` for read/write fds |
 
 #![no_std]
 
@@ -91,6 +101,7 @@ mod tests {
         assert_eq!(syscall_name(SYS_OPENAT), "openat");
         assert_eq!(syscall_name(SYS_CLOSE), "close");
         assert_eq!(syscall_name(SYS_READ), "read");
+        assert_eq!(syscall_name(SYS_PIPE), "pipe");
     }
 
     #[test]

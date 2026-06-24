@@ -25,9 +25,6 @@ version = "0.1.0"
 [[package]]
 name = "os-fs"
 version = "0.1.0"
-dependencies = [
- "os-alloc",
-]
 
 [[package]]
 name = "os-sbi"

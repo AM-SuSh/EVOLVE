@@ -8,6 +8,3 @@ repository.workspace = true
 description = "Simple file system for the OS teaching lab"
 
 [lib]
-
-[dependencies]
-os-alloc = { path = "../os-alloc" }

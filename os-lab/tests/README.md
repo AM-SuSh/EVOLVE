@@ -156,3 +156,89 @@ All processes exited.
 - lab4 下 `kernel/build.rs` 嵌入的用户程序为 `fork_test`、`exec_test`、`hello`（与 lab2/3 的 `hello`/`power`/`yield` 不同）；回归 lab2/lab3 须分别使用 `--features lab2` / `lab3`。
 - 默认 initproc 运行 `fork_test`（`kernel/src/config.rs` 中 `INITPROC_APP_ID = 0`）。
 - `exec_test` 不在默认路径自动运行。可选 spot-check：将 `INITPROC_APP_ID` 改为 `1` 后重编（属成员 A 内核配置），预期 `Before exec` → `Hello from user app!`，且无 `After exec`。
+
+## Day 5 / Lab5 验证（成员 B Day5）
+
+### 组件单元测试（host 目标）
+
+lab5 新增 `os-fs`、`os-sbi` host 测试；验收前建议全量回归：
+
+```powershell
+cd os-lab
+cargo test -p os-context -p os-syscall -p os-sbi -p os-fs --target x86_64-pc-windows-msvc
+cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1
+```
+
+预期：`os-context` 3 项、`os-syscall` 4 项、`os-sbi` 2 项、`os-fs` 4 项、`os-alloc` 6 项、`os-vm` 5 项，共 **24 项**全部 `ok`。
+
+### Lab5 编译与 QEMU 运行
+
+若 `cargo run` 构建卡住，先单独构建用户程序：
+
+```powershell
+cargo build -p user --bin fs_test --bin pipe_test --target riscv64gc-unknown-none-elf --release
+cargo check -p kernel --features lab5
+cargo run -p kernel --features lab5 --release
+```
+
+### 成功标准
+
+QEMU 输出中应出现（OpenSBI 启动日志可忽略）：
+
+```text
+os-lab kernel lab5: filesystem and sync.
+Hello from testfile!
+fs_test pass
+pipe says hi
+pipe_test pass
+All processes exited.
+```
+
+说明：
+
+- lab5 嵌入 `fs_test`、`pipe_test`、`fork_test`、`exec_test`、`hello`；默认 initproc 为 `fs_test`（索引 0）。
+- `pipe_test pass` 由子进程打印（读端成功读取后）。
+- `os-fs` crate 的 `DEFAULT_FILES` 与内核 `testfile` 内容一致，可 `cargo test -p os-fs` 在 host 上独立验证。
+
+## Day 5 / Lab5 验证（成员 B Day5）
+
+### 组件单元测试（host 目标）
+
+lab5 新增 `os-fs`、`os-sbi` host 测试；验收前建议全量回归：
+
+```powershell
+cd os-lab
+cargo test -p os-context -p os-syscall -p os-sbi -p os-fs --target x86_64-pc-windows-msvc
+cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1
+```
+
+预期：`os-context` 3 项、`os-syscall` 4 项、`os-sbi` 2 项、`os-fs` 4 项、`os-alloc` 6 项、`os-vm` 5 项，共 **24 项**全部 `ok`。
+
+### Lab5 编译与 QEMU 运行
+
+若 `cargo run` 构建卡住，先单独构建用户程序：
+
+```powershell
+cargo build -p user --bin fs_test --bin pipe_test --target riscv64gc-unknown-none-elf --release
+cargo check -p kernel --features lab5
+cargo run -p kernel --features lab5 --release
+```
+
+### 成功标准
+
+QEMU 输出中应出现（OpenSBI 启动日志可忽略）：
+
+```text
+os-lab kernel lab5: filesystem and sync.
+Hello from testfile!
+fs_test pass
+pipe says hi
+pipe_test pass
+All processes exited.
+```
+
+说明：
+
+- lab5 嵌入 `fs_test`、`pipe_test`、`fork_test`、`exec_test`、`hello`；默认 initproc 为 `fs_test`（索引 0）。
+- `pipe_test pass` 由子进程打印（读端成功读取后）。
+- `os-fs` crate 的 `DEFAULT_FILES` 与内核 `testfile` 内容一致，可 `cargo test -p os-fs` 在 host 上独立验证。

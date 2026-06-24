@@ -493,7 +493,81 @@ Linux/macOS：
 
 ---
 
-## 13. 常见问题
+## 13. 运行 Lab5（QEMU）
+
+在 Day4 基础上，使用 lab5 feature 运行文件系统与管道测试（默认 initproc 为 `fs_test`，链式 `exec` 进入 `pipe_test`）：
+
+```powershell
+cd <仓库根目录>
+. .\scripts\activate-os-env.ps1
+
+cd os-lab
+# 若 kernel 构建卡住，先单独构建用户程序（见常见问题）
+cargo build -p user --bin fs_test --bin pipe_test --bin fork_test --bin exec_test --bin hello --target riscv64gc-unknown-none-elf --release
+
+cargo check -p kernel --features lab5
+cargo run -p kernel --features lab5 --release
+```
+
+### 成功标准
+
+QEMU 输出中应出现（OpenSBI 启动日志可忽略）：
+
+```text
+os-lab kernel lab5: filesystem and sync.
+Hello from testfile!
+fs_test pass
+pipe says hi
+pipe_test pass
+All processes exited.
+```
+
+说明：
+
+- lab5 嵌入 5 个用户程序：`fs_test`、`pipe_test`、`fork_test`、`exec_test`、`hello`。
+- `pipe_test pass` 由**子进程**在成功读取管道数据后打印（与内核 `wait4` yield 语义一致）。
+- 内核 fd 层在 `kernel/src/fs.rs`；`os-fs` crate 提供可 host 测试的同名静态文件表（`testfile` 内容一致）。
+
+---
+
+## 14. 一键复制：Day5 全量验证
+
+在 Day4 块基础上，扩展组件测试与 Lab5 QEMU（**推荐：成员 B Day5 最终验收用此块**）：
+
+```powershell
+cd <仓库根目录>
+. .\scripts\activate-os-env.ps1
+
+cd os-lab
+cargo check --workspace
+cargo check -p kernel --features lab5
+
+cargo test -p os-context -p os-syscall -p os-sbi -p os-fs --target x86_64-pc-windows-msvc
+cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1
+
+cargo build -p user --bin fs_test --bin pipe_test --target riscv64gc-unknown-none-elf --release
+cargo run -p kernel --features lab5 --release
+cargo run -p kernel --features lab4 --release
+cargo run -p kernel --features lab3 --release
+```
+
+Linux/macOS：
+
+- 将 `cargo test` 的 `--target` 换成对应 host triple。
+- `os-vm` 测试**必须保留** `-- --test-threads=1`。
+
+### Day5 验收勾选清单
+
+- [ ] `cargo check --workspace` 无 error
+- [ ] `os-context` 3 项 + `os-syscall` 4 项 + `os-sbi` 2 项 + `os-fs` 4 项测试通过
+- [ ] `os-alloc` 6 项 + `os-vm` 5 项测试通过（单线程）
+- [ ] Lab5 QEMU：`fs_test pass`、`pipe_test pass`、`Hello from testfile!`、`All processes exited.`
+- [ ] Lab4 QEMU 回归：`fork_test pass`、`All processes exited.`
+- [ ] Lab3 QEMU 回归：5 轮 `Yield round`、`All user apps exited.`
+
+---
+
+## 15. 常见问题
 
 | 现象 | 处理 |
 | --- | --- |
@@ -511,6 +585,9 @@ Linux/macOS：
 | Lab4 无 `fork_test pass` | 确认 `--features lab4`；检查 fork 返回值与 waitpid 是否匹配子 PID |
 | Lab4 仍看到 `After exec` | exec 未成功替换程序；检查 `exec` ABI（`a1` 为路径长度）或内核 `sys_execve` |
 | 用 lab4 跑 lab2/3 测试失败 | lab4 构建集不同，须分别 `cargo run --features lab2` / `lab3` |
+| `cargo run --features lab5` 长时间无输出 / 卡住 | `kernel/build.rs` 嵌套 cargo 可能死锁；先单独 `cargo build -p user --bin fs_test --bin pipe_test ... --release`，再 `cargo run`（A 已在 build.rs 对已有 ELF 跳过子构建） |
+| Lab5 无 `fs_test pass` | 确认 `--features lab5`；检查 `open`/`read` syscall 与内嵌 `testfile` |
+| Lab5 无 `pipe_test pass` | 检查 `SYS_PIPE`（59）与 fork 后 pipe fd 继承；子进程读空时应 `yield_()` 重试；若 `pipe` 写端为 fd 1，本内核会把 `write(1,…)` 当控制台而非管道——`pipe_test` 在 `pipe()` 前用两次 `open` 占位避开 0/1 |
 
 ---
 
@@ -519,7 +596,7 @@ Linux/macOS：
 - [os-lab.md](os-lab.md)：自研环境入口
 - [environment_setup.md](environment_setup.md)：Rust / QEMU / Git 安装路径
 - [os-lab/README.md](../os-lab/README.md)：快速开始与 feature 说明
-- [os-lab/tests/README.md](../os-lab/tests/README.md)：集成测试与 Day1–Day4 细则
+- [os-lab/tests/README.md](../os-lab/tests/README.md)：集成测试与 Day1–Day5 细则
 - [os-lab/labs/lab1-bare-metal.md](../os-lab/labs/lab1-bare-metal.md)：Lab1 实验指导
 - [os-lab/labs/lab2-trap-and-task.md](../os-lab/labs/lab2-trap-and-task.md)：Lab2 实验指导
 - [os-lab/labs/lab3-memory.md](../os-lab/labs/lab3-memory.md)：Lab3 实验指导

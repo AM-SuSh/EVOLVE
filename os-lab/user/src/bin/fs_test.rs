@@ -1,7 +1,10 @@
 //! Lab5 integration test: open/read embedded file via syscall.
 //!
-//! Pass criteria: read `testfile` and print its contents, then `fs_test pass`
-//! and exec `pipe_test` for the pipe IPC test.
+//! Pass criteria:
+//! - `open("testfile")` succeeds
+//! - `read` prints `Hello from testfile!`
+//! - prints `fs_test pass`
+//! - `exec("pipe_test")` chains into the pipe IPC test
 
 #![no_std]
 #![no_main]
@@ -9,7 +12,7 @@
 extern crate user_lib;
 
 use core::arch::global_asm;
-use user_lib::{exec, exit, open, println, read};
+use user_lib::{close, exec, exit, open, println, read};
 
 global_asm!(include_str!("../entry.asm"));
 
@@ -29,6 +32,7 @@ pub fn main() -> ! {
     if let Ok(s) = core::str::from_utf8(&buf[..n as usize]) {
         user_lib::print(s);
     }
+    let _ = close(fd as usize);
     println("fs_test pass");
     let _ = exec("pipe_test");
     println("exec pipe_test failed");

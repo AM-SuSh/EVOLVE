@@ -1,3 +1,32 @@
+## 2026-06-24 - Task: 成员 B Day5（os-fs crate + 组件测试 + lab5 用户态/验证）
+
+### What was done
+
+- 实现 `os-fs` crate：`EmbeddedFs` 静态只读文件表、`DEFAULT_FILES`（与内核 `testfile` 对齐）、`open`/`read_at`/`size` 及 4 项 host 单元测试；移除未使用的 `os-alloc` 依赖。
+- 补全 `os-sbi` 单元测试（`SBI_LEGACY_CONSOLE_PUTCHAR`/`SHUTDOWN`）；`os-syscall` 补充 Lab5 ABI 文档与 `SYS_PIPE` 测试。
+- 正式接手 `user/`：`syscall.rs` Lab5 文档、`fs_test`（补 `close(fd)`）、`pipe_test`（fd 占位规避内核 `write(1,…)` 控制台语义）；更新 `tests/README.md` 与 `docs/os-lab_verify.md` Day5 节。
+
+### Testing
+
+- `cargo test -p os-context -p os-syscall -p os-sbi -p os-fs --target x86_64-pc-windows-msvc`：13 项全部 `ok`。
+- `cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1`：11 项全部 `ok`（合计 24 项）。
+- `cargo check --workspace`、`cargo check -p kernel --features lab5`：通过。
+- `cargo run -p kernel --features lab5 --release`：exit 0；`Hello from testfile!`、`fs_test pass`、`pipe says hi`、`pipe_test pass`、`All processes exited.`。
+- `cargo run -p kernel --features lab4 --release`：exit 0；`I am parent`/`I am child`、`All processes exited.`。
+- `cargo run -p kernel --features lab3 --release`：exit 0；`409684505`、5 轮 `Yield round`、`All user apps exited.`。
+- `cargo package -p os-fs --list --allow-dirty`：可列出 `src/lib.rs` 等发布文件。
+
+### Notes
+
+- `os-lab/os-fs/src/lib.rs`、`Cargo.toml`：`EmbeddedFs` 实现与依赖精简。
+- `os-lab/os-sbi/src/lib.rs`：host 桩函数 + 单元测试。
+- `os-lab/os-syscall/src/lib.rs`：Lab5 ABI 文档与 `pipe` syscall 测试。
+- `os-lab/user/src/syscall.rs`、`bin/fs_test.rs`、`bin/pipe_test.rs`：正式交付与 fd 占位 workaround（`pipe()` 前两次 `open` 避开 fd 0/1）。
+- `os-lab/tests/README.md`、`docs/os-lab_verify.md`：Day5/Lab5 验证节与常见问题。
+- `progress.md`：追加本轮记录。
+- ownership：自成员 A 临时 lab5 用户态代码正式接手；内核 `fs.rs` 仍用内嵌表未调用 `os-fs`（A 域，后续可迁移 `DEFAULT_FILES`）。
+- 回滚方式：`git checkout os-lab/os-fs/ os-lab/os-sbi/ os-lab/os-syscall/ os-lab/user/ os-lab/tests/README.md docs/os-lab_verify.md progress.md`。
+
 ## 2026-06-24 - Task: 成员 A Day5（Lab5 文件系统 + 管道同步）
 
 ### What was done
