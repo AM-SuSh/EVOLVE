@@ -6,10 +6,10 @@ use crate::{print, println};
 
 use crate::config::{KERNEL_STACK_SIZE, MAX_APP_NUM, USER_STACK_SIZE};
 use crate::loader::{get_app_entry, NUM_APP};
-#[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
-use crate::loader::get_app_bin;
 #[cfg(not(any(feature = "lab3", feature = "lab4", feature = "lab5")))]
 use crate::loader::load_app;
+#[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
+use crate::loader::get_app_elf;
 use crate::trap::{run_user_task, trap_cx_init};
 
 #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
@@ -28,6 +28,7 @@ pub enum TaskStatus {
 pub struct TaskControlBlock {
     pub task_status: TaskStatus,
     pub trap_cx: TrapContext,
+    pub user_token: usize,
     pub user_stack: [u8; USER_STACK_SIZE],
     pub kernel_stack: [u8; KERNEL_STACK_SIZE],
 }
@@ -50,8 +51,20 @@ impl TaskManager {
     fn init_tasks(&mut self) {
         self.num_app = NUM_APP;
         for i in 0..self.num_app {
+            #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
+            mm::create_user_space(i, get_app_elf(i));
+
             let entry = get_app_entry(i);
+            #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
+            let user_sp = APP_BASE_ADDRESS + crate::config::APP_REGION_SIZE - 16;
+            #[cfg(not(any(feature = "lab3", feature = "lab4", feature = "lab5")))]
             let user_sp = crate::config::APP_BASE_ADDRESS + crate::config::APP_REGION_SIZE - 16;
+
+            #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
+            let user_token = mm::user_token(i);
+            #[cfg(not(any(feature = "lab3", feature = "lab4", feature = "lab5")))]
+            let user_token = 0;
+
             self.tasks[i] = Some(TaskControlBlock {
                 task_status: TaskStatus::Ready,
                 trap_cx: TrapContext {
@@ -60,6 +73,7 @@ impl TaskManager {
                     sepc: 0,
                     kernel_sp: 0,
                 },
+                user_token,
                 user_stack: [0; USER_STACK_SIZE],
                 kernel_stack: [0; KERNEL_STACK_SIZE],
             });
@@ -93,6 +107,10 @@ impl TaskManager {
 
 pub static mut TASK_MANAGER: TaskManager = TaskManager::new();
 
+pub fn current_app_id() -> usize {
+    unsafe { TASK_MANAGER.current }
+}
+
 pub fn init() {
     unsafe {
         TASK_MANAGER.init_tasks();
@@ -112,8 +130,6 @@ pub fn run_first_task() -> ! {
 #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
 pub fn run_first_task() -> ! {
     unsafe {
-        mm::map_user_app(get_app_bin(0));
-        mm::ensure_paging();
         TASK_MANAGER.tasks[0].as_mut().unwrap().task_status = TaskStatus::Running;
         TASK_MANAGER.current = 0;
         let trap_cx = &mut TASK_MANAGER.tasks[0].as_mut().unwrap().trap_cx;
@@ -159,13 +175,32 @@ pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
     if fd != 1 {
         return -1;
     }
-    let slice = unsafe { core::slice::from_raw_parts(buf, len) };
-    match core::str::from_utf8(slice) {
-        Ok(s) => {
-            print!("{}", s);
-            len as isize
+    #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
+    {
+        crate::mm::activate_current_user();
+        let user_slice = unsafe { core::slice::from_raw_parts(buf, len) };
+        let mut kbuf = [0u8; 256];
+        let n = len.min(kbuf.len());
+        kbuf[..n].copy_from_slice(&user_slice[..n]);
+        crate::mm::activate_kernel();
+        return match core::str::from_utf8(&kbuf[..n]) {
+            Ok(s) => {
+                print!("{}", s);
+                n as isize
+            }
+            Err(_) => -1,
+        };
+    }
+    #[cfg(not(any(feature = "lab3", feature = "lab4", feature = "lab5")))]
+    {
+        let slice = unsafe { core::slice::from_raw_parts(buf, len) };
+        match core::str::from_utf8(slice) {
+            Ok(s) => {
+                print!("{}", s);
+                len as isize
+            }
+            Err(_) => -1,
         }
-        Err(_) => -1,
     }
 }
 
@@ -204,7 +239,6 @@ pub fn sys_exit(exit_code: i32) -> ! {
         let next = current + 1;
         if next < NUM_APP {
             TASK_MANAGER.current = next;
-            mm::map_user_app(get_app_bin(next));
             let next_task = TASK_MANAGER.tasks[next].as_mut().unwrap();
             next_task.trap_cx.sepc = get_app_entry(next);
             next_task.trap_cx.set_user_sp(

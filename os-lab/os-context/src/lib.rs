@@ -31,10 +31,8 @@ pub struct TrapContext {
 
 impl TrapContext {
     /// Prepare `sstatus` for first entry to user mode.
-    pub fn user_sstatus(mut sstatus: usize) -> usize {
-        sstatus &= !SSTATUS_SPP;
-        sstatus |= SSTATUS_SPIE | SSTATUS_SUM;
-        sstatus
+    pub fn user_sstatus(_sstatus: usize) -> usize {
+        SSTATUS_SPIE | SSTATUS_SUM
     }
 
     /// Build an initial trap context for a user task.
@@ -87,21 +85,39 @@ mod riscv {
         pub fn __restore();
     }
 
-    /// Restore user registers and `sret` into user mode.
-    pub unsafe fn restore_to_user(cx: *mut TrapContext) -> ! {
+    /// Restore user registers and `sret` into user mode (lab2, no satp switch).
+    pub unsafe fn restore_to_user(cx: *mut TrapContext, kernel_sp: usize, _user_sp: usize) -> ! {
+        restore_to_user_impl(cx, kernel_sp, 0);
+    }
+
+    static mut RESTORE_SCRATCH: [usize; 2] = [0, 0];
+
+    /// Like [`restore_to_user`], but switches to `user_satp` immediately before `sret` (lab3+).
+    pub unsafe fn restore_to_user_paged(
+        cx: *mut TrapContext,
+        kernel_sp: usize,
+        user_satp: usize,
+    ) -> ! {
+        RESTORE_SCRATCH[0] = kernel_sp;
+        RESTORE_SCRATCH[1] = user_satp;
+        restore_to_user_paged_body(cx);
+    }
+
+    /// `t6` = trap context pointer; user `sp` is loaded from `x[2]` before `sret`.
+    unsafe fn restore_to_user_paged_body(cx: *mut TrapContext) -> ! {
         let trap_cx_ptr = cx as usize;
-        let user_sp = (*cx).user_sp();
         asm!(
             "fence.i",
-            "mv sp, {trap_cx_ptr}",
+            "la t2, {scratch}",
+            "ld t1, 0(t2)",
+            "csrw sscratch, t1",
+            "mv t6, {trap_cx_ptr}",
+            "mv sp, t6",
             "ld t0, 32*8(sp)",
             "ld t1, 33*8(sp)",
-            "ld t2, 34*8(sp)",
             "csrw sstatus, t0",
             "csrw sepc, t1",
-            "csrw sscratch, t2",
             "ld x1, 1*8(sp)",
-            "ld x2, 2*8(sp)",
             "ld x3, 3*8(sp)",
             "ld x4, 4*8(sp)",
             "ld x5, 5*8(sp)",
@@ -130,18 +146,72 @@ mod riscv {
             "ld x28, 28*8(sp)",
             "ld x29, 29*8(sp)",
             "ld x30, 30*8(sp)",
-            "ld x31, 31*8(sp)",
-            "mv sp, {user_sp}",
+            "ld t4, 2*8(t6)",
+            "la t2, {scratch}",
+            "ld t0, 8(t2)",
+            "csrw satp, t0",
+            "sfence.vma",
+            "fence.i",
+            "mv sp, t4",
             "sret",
             trap_cx_ptr = in(reg) trap_cx_ptr,
-            user_sp = in(reg) user_sp,
+            scratch = sym RESTORE_SCRATCH,
+            options(noreturn)
+        );
+    }
+
+    /// `t6` holds `trap_cx_ptr`; user `sp` comes from `x[2]` at the end.
+    unsafe fn restore_to_user_impl(cx: *mut TrapContext, kernel_sp: usize, _user_satp: usize) -> ! {
+        let trap_cx_ptr = cx as usize;
+        asm!(
+            "fence.i",
+            "mv t6, {trap_cx_ptr}",
+            "csrw sscratch, {kernel_sp}",
+            "mv sp, t6",
+            "ld t0, 32*8(sp)",
+            "ld t1, 33*8(sp)",
+            "csrw sstatus, t0",
+            "csrw sepc, t1",
+            "ld x1, 1*8(sp)",
+            "ld x3, 3*8(sp)",
+            "ld x4, 4*8(sp)",
+            "ld x5, 5*8(sp)",
+            "ld x6, 6*8(sp)",
+            "ld x7, 7*8(sp)",
+            "ld x8, 8*8(sp)",
+            "ld x9, 9*8(sp)",
+            "ld x10, 10*8(sp)",
+            "ld x11, 11*8(sp)",
+            "ld x12, 12*8(sp)",
+            "ld x13, 13*8(sp)",
+            "ld x14, 14*8(sp)",
+            "ld x15, 15*8(sp)",
+            "ld x16, 16*8(sp)",
+            "ld x17, 17*8(sp)",
+            "ld x18, 18*8(sp)",
+            "ld x19, 19*8(sp)",
+            "ld x20, 20*8(sp)",
+            "ld x21, 21*8(sp)",
+            "ld x22, 22*8(sp)",
+            "ld x23, 23*8(sp)",
+            "ld x24, 24*8(sp)",
+            "ld x25, 25*8(sp)",
+            "ld x26, 26*8(sp)",
+            "ld x27, 27*8(sp)",
+            "ld x28, 28*8(sp)",
+            "ld x29, 29*8(sp)",
+            "ld x30, 30*8(sp)",
+            "ld sp, 2*8(t6)",
+            "sret",
+            trap_cx_ptr = in(reg) trap_cx_ptr,
+            kernel_sp = in(reg) kernel_sp,
             options(noreturn)
         );
     }
 }
 
 #[cfg(target_arch = "riscv64")]
-pub use riscv::{__alltraps, restore_to_user};
+pub use riscv::{__alltraps, restore_to_user, restore_to_user_paged};
 
 #[cfg(test)]
 mod tests {

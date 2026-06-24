@@ -59,10 +59,22 @@ pub extern "C" fn rust_main() -> ! {
         {
             println!("os-lab kernel lab2: trap and multitask.");
         }
+        #[cfg(feature = "lab4")]
+        {
+            println!("os-lab kernel lab4: process management.");
+        }
         trap::init();
         loader::load_apps();
-        task::init();
-        task::run_first_task();
+        #[cfg(feature = "lab4")]
+        {
+            process::init();
+            process::run_initproc();
+        }
+        #[cfg(all(not(feature = "lab4"), any(feature = "lab2", feature = "lab3", feature = "lab5")))]
+        {
+            task::init();
+            task::run_first_task();
+        }
     }
 }
 

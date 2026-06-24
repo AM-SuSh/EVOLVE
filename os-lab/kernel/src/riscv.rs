@@ -96,6 +96,13 @@ pub fn set_next_timer(deadline: usize) {
 }
 
 #[inline]
+pub fn read_stval() -> usize {
+    let stval: usize;
+    unsafe { asm!("csrr {}, stval", out(reg) stval) };
+    stval
+}
+
+#[inline]
 pub fn write_satp(satp: usize) {
     unsafe {
         asm!("csrw satp, {}", in(reg) satp);

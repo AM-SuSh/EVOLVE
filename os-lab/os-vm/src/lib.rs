@@ -116,6 +116,23 @@ impl PageTableEntry {
     fn is_valid(&self) -> bool {
         self.0 & PTE_V != 0
     }
+
+    fn permission(&self) -> MapPermission {
+        let mut perm = MapPermission(0);
+        if self.0 & (1 << 1) != 0 {
+            perm = perm.union(MapPermission::R);
+        }
+        if self.0 & (1 << 2) != 0 {
+            perm = perm.union(MapPermission::W);
+        }
+        if self.0 & (1 << 3) != 0 {
+            perm = perm.union(MapPermission::X);
+        }
+        if self.0 & (1 << 4) != 0 {
+            perm = perm.union(MapPermission::U);
+        }
+        perm
+    }
 }
 
 /// Three-level Sv39 page table rooted at one physical frame.
@@ -164,6 +181,14 @@ impl PageTable {
             "vpn {:#x} already mapped",
             vpn.addr()
         );
+        unsafe {
+            *pte = PageTableEntry::new_ppn(ppn, perm);
+        }
+    }
+
+    /// Update an existing leaf mapping to the same frame with merged permissions.
+    pub fn remap(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, perm: MapPermission) {
+        let pte = self.find_pte(vpn, true).expect("remap failed");
         unsafe {
             *pte = PageTableEntry::new_ppn(ppn, perm);
         }
@@ -262,27 +287,54 @@ impl MapArea {
     }
 
     pub fn map(&self, page_table: &mut PageTable) {
-        let mut data_ptr = 0usize;
+        let seg_start = self.vpn_start.addr() + self.data_offset;
         for vpn in self.vpn_start.0..self.vpn_end.0 {
             let vpn = VirtPageNum(vpn);
-            let ppn = frame_alloc().expect("out of frames");
-            let dst = ppn.addr() as *mut u8;
-            unsafe {
-                core::ptr::write_bytes(dst, 0, PAGE_SIZE);
+            let page_vaddr = vpn.addr();
+
+            let ppn = if let Some(pte) = page_table.translate(vpn) {
+                if pte.is_valid() {
+                    let merged = pte.permission().union(self.perm);
+                    let ppn = pte.ppn();
+                    page_table.remap(vpn, ppn, merged);
+                    ppn
+                } else {
+                    let ppn = frame_alloc().expect("out of frames");
+                    let dst = ppn.addr() as *mut u8;
+                    unsafe {
+                        core::ptr::write_bytes(dst, 0, PAGE_SIZE);
+                    }
+                    page_table.map(vpn, ppn, self.perm);
+                    ppn
+                }
+            } else {
+                let ppn = frame_alloc().expect("out of frames");
+                let dst = ppn.addr() as *mut u8;
+                unsafe {
+                    core::ptr::write_bytes(dst, 0, PAGE_SIZE);
+                }
+                page_table.map(vpn, ppn, self.perm);
+                ppn
+            };
+
+            if self.data.is_empty() || page_vaddr + PAGE_SIZE <= seg_start {
+                continue;
             }
-            let src_start = data_ptr.saturating_sub(self.data_offset);
+            let (copy_start_in_page, src_start) = if page_vaddr < seg_start {
+                (seg_start - page_vaddr, 0)
+            } else {
+                (0, page_vaddr - seg_start)
+            };
             if src_start < self.data.len() {
-                let copy_len = (self.data.len() - src_start).min(PAGE_SIZE);
+                let copy_len = (self.data.len() - src_start).min(PAGE_SIZE - copy_start_in_page);
                 unsafe {
                     core::ptr::copy_nonoverlapping(
                         self.data.as_ptr().add(src_start),
-                        dst,
+                        (ppn.addr() as *mut u8).add(copy_start_in_page),
                         copy_len,
                     );
                 }
             }
-            data_ptr += PAGE_SIZE;
-            page_table.map(vpn, ppn, self.perm);
         }
     }
 
@@ -344,6 +396,12 @@ impl MemorySet {
         let vaddr = VirtAddr(va);
         self.translate(vaddr)
             .map(|ppn| ppn.addr() + vaddr.page_offset())
+    }
+
+    pub fn leaf_perm(&self, va: usize) -> Option<MapPermission> {
+        self.page_table
+            .translate(VirtAddr(va).floor())
+            .map(|pte| pte.permission())
     }
 
     pub fn page_table_mut(&mut self) -> &mut PageTable {
@@ -417,6 +475,7 @@ mod alloc_buf {
 
         for i in 0..e_phnum {
             let off = e_phoff + i * e_phentsize;
+            assert!(off + 48 <= elf.len(), "program header out of range");
             let ph = &elf[off..off + e_phentsize];
             let p_type = u32::from_le_bytes(ph[0..4].try_into().unwrap());
             if p_type != 1 {
@@ -425,8 +484,8 @@ mod alloc_buf {
             let p_flags = u32::from_le_bytes(ph[4..8].try_into().unwrap());
             let p_offset = usize::from_le_bytes(ph[8..16].try_into().unwrap());
             let p_vaddr = usize::from_le_bytes(ph[16..24].try_into().unwrap());
-            let p_filesz = usize::from_le_bytes(ph[24..32].try_into().unwrap());
-            let p_memsz = usize::from_le_bytes(ph[32..40].try_into().unwrap());
+            let p_filesz = usize::from_le_bytes(ph[32..40].try_into().unwrap());
+            let p_memsz = usize::from_le_bytes(ph[40..48].try_into().unwrap());
 
             let mut perm = MapPermission::U;
             if p_flags & 4 != 0 {
@@ -528,8 +587,9 @@ mod tests {
         elf_box[68..72].copy_from_slice(&(5u32).to_le_bytes());
         elf_box[72..80].copy_from_slice(&(0usize).to_le_bytes());
         elf_box[80..88].copy_from_slice(&(0usize).to_le_bytes());
-        elf_box[88..96].copy_from_slice(&(16usize).to_le_bytes());
+        elf_box[88..96].copy_from_slice(&(0usize).to_le_bytes());
         elf_box[96..104].copy_from_slice(&(16usize).to_le_bytes());
+        elf_box[104..112].copy_from_slice(&(16usize).to_le_bytes());
 
         let elf: &'static [u8] = Box::leak(Box::new(elf_box));
         let areas = elf_map_areas(elf, 0x8040_0000);

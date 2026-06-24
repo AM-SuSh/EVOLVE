@@ -1,21 +1,33 @@
-//! Trap handling: entry dispatch, syscalls, timer preemption (lab2+).
+﻿//! Trap handling: entry dispatch, syscalls, timer preemption (lab2+).
 
 use crate::println;
 
-use os_context::{restore_to_user, TrapContext, __alltraps};
-use os_syscall::{SYS_EXIT, SYS_WRITE, SYS_YIELD};
+use os_context::{restore_to_user_paged, TrapContext, __alltraps};
+#[cfg(not(any(feature = "lab3", feature = "lab4", feature = "lab5")))]
+use os_context::restore_to_user;
+use os_syscall::{
+    SYS_CLONE, SYS_EXIT, SYS_EXECVE, SYS_GETPID, SYS_WAIT4, SYS_WRITE, SYS_YIELD,
+};
 
 use crate::config::TICKS_PER_SEC;
 use crate::riscv::{
-    read_scause, read_sstatus, set_next_timer, write_sepc, write_sscratch, write_stvec,
+    read_scause, read_sstatus, read_stval, set_next_timer, write_sepc, write_sscratch, write_stvec,
     SCAUSE_SUPERVISOR_ECALL, SCAUSE_SUPERVISOR_TIMER, SCAUSE_USER_ECALL,
 };
+
+#[cfg(feature = "lab4")]
+use crate::process::{
+    mark_current_ready, run_next_process, sync_current_trap_cx, sys_execve, sys_exit, sys_fork,
+    sys_getpid, sys_wait4, sys_write,
+};
+#[cfg(all(not(feature = "lab4"), any(feature = "lab2", feature = "lab3", feature = "lab5")))]
 use crate::task::{mark_current_suspended, run_next_task, sync_current_trap_cx, sys_exit, sys_write};
 
 #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
-use crate::mm::activate_kernel;
+use crate::mm::{activate_current_user, activate_kernel, user_token};
 
 pub fn init() {
+    write_stvec(__alltraps as *const () as usize);
     #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
     {
         let sp: usize;
@@ -24,7 +36,6 @@ pub fn init() {
         }
         write_sscratch(sp);
     }
-    write_stvec(__alltraps as *const () as usize);
 }
 
 #[no_mangle]
@@ -50,8 +61,42 @@ pub fn trap_handler(cx: &mut TrapContext) {
                 }
                 SYS_YIELD => {
                     sync_current_trap_cx(cx);
+                    #[cfg(feature = "lab4")]
+                    mark_current_ready();
+                    #[cfg(all(not(feature = "lab4"), any(feature = "lab2", feature = "lab3", feature = "lab5")))]
                     mark_current_suspended();
+                    #[cfg(feature = "lab4")]
+                    run_next_process();
+                    #[cfg(all(not(feature = "lab4"), any(feature = "lab2", feature = "lab3", feature = "lab5")))]
                     run_next_task();
+                }
+                #[cfg(feature = "lab4")]
+                SYS_GETPID => {
+                    cx.set_return_value(sys_getpid());
+                }
+                #[cfg(feature = "lab4")]
+                SYS_CLONE => {
+                    let ret = sys_fork(cx);
+                    cx.set_return_value(ret);
+                }
+                #[cfg(feature = "lab4")]
+                SYS_EXECVE => {
+                    let ret = sys_execve(
+                        cx,
+                        cx.syscall_arg(0) as *const u8,
+                        cx.syscall_arg(1),
+                        cx.syscall_arg(2),
+                    );
+                    cx.set_return_value(ret);
+                }
+                #[cfg(feature = "lab4")]
+                SYS_WAIT4 => {
+                    let ret = sys_wait4(
+                        cx,
+                        cx.syscall_arg(0) as isize,
+                        cx.syscall_arg(1) as *mut i32,
+                    );
+                    cx.set_return_value(ret);
                 }
                 id => {
                     println!("Unsupported syscall {}.", id);
@@ -62,14 +107,28 @@ pub fn trap_handler(cx: &mut TrapContext) {
         SCAUSE_SUPERVISOR_TIMER => {
             set_next_timer(super::riscv::read_time() + super::config::CLOCK_FREQ / TICKS_PER_SEC);
             sync_current_trap_cx(cx);
+            #[cfg(feature = "lab4")]
+            mark_current_ready();
+            #[cfg(all(not(feature = "lab4"), any(feature = "lab2", feature = "lab3", feature = "lab5")))]
             mark_current_suspended();
+            #[cfg(feature = "lab4")]
+            run_next_process();
+            #[cfg(all(not(feature = "lab4"), any(feature = "lab2", feature = "lab3", feature = "lab5")))]
             run_next_task();
         }
         _ => {
-            println!("Unhandled trap scause={:#x}, sepc={:#x}", scause, cx.sepc);
+            println!(
+                "Unhandled trap scause={:#x}, sepc={:#x}, stval={:#x}",
+                scause,
+                cx.sepc,
+                read_stval()
+            );
             os_sbi::shutdown();
         }
     }
+
+    #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
+    activate_current_user();
 }
 
 pub fn trap_cx_init(entry: usize, sp: usize, kernel_sp: usize) -> TrapContext {
@@ -81,8 +140,25 @@ pub fn prepare_user_return(cx: &TrapContext) {
     write_sepc(cx.sepc);
 }
 
-/// Called from task module when switching to first/next user task.
+/// Called from task/process module when switching to first/next user task.
 pub fn run_user_task(cx: &mut TrapContext) -> ! {
-    prepare_user_return(cx);
-    unsafe { restore_to_user(cx) }
+    #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
+    {
+        activate_kernel();
+        let kernel_sp = cx.kernel_sp;
+        #[cfg(feature = "lab4")]
+        let satp = user_token(crate::process::current_space_id());
+        #[cfg(all(not(feature = "lab4"), any(feature = "lab3", feature = "lab5")))]
+        let satp = user_token(crate::task::current_app_id());
+        prepare_user_return(cx);
+        unsafe { restore_to_user_paged(cx, kernel_sp, satp) }
+    }
+    #[cfg(not(any(feature = "lab3", feature = "lab4", feature = "lab5")))]
+    {
+        let kernel_sp = cx.kernel_sp;
+        let user_sp = cx.user_sp();
+        prepare_user_return(cx);
+        unsafe { restore_to_user(cx, kernel_sp, user_sp) }
+    }
 }
+

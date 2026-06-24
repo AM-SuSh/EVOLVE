@@ -9,6 +9,7 @@ reference/
 # Rust 编译产物
 target/
 **/target/
+os-lab/qemu*.txt
 
 # Cargo 锁文件按 Rust 项目惯例（库不提交，二进制可按需调整）
 # 此处保持默认行为，不强制忽略 Cargo.lock

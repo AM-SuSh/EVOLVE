@@ -14,7 +14,7 @@ __alltraps:
     csrrw sp, sscratch, sp
     addi sp, sp, -TRAP_CTX_SIZE
     sd x1, 1*8(sp)
-    .set n, 2
+    .set n, 3
     .rept 29
         SAVE_GP %n
         .set n, n+1
@@ -23,6 +23,8 @@ __alltraps:
     csrr t1, sepc
     sd t0, 32*8(sp)
     sd t1, 33*8(sp)
+    csrr t2, sscratch
+    sd t2, 2*8(sp)
     addi t2, sp, TRAP_CTX_SIZE
     sd t2, 34*8(sp)
     mv a0, sp
@@ -31,15 +33,16 @@ __alltraps:
 __restore:
     ld t0, 32*8(sp)
     ld t1, 33*8(sp)
-    ld t2, 34*8(sp)
+    ld t2, 2*8(sp)
     csrw sstatus, t0
     csrw sepc, t1
     csrw sscratch, t2
     ld x1, 1*8(sp)
-    .set n, 2
+    .set n, 3
     .rept 29
         LOAD_GP %n
         .set n, n+1
     .endr
     addi sp, sp, TRAP_CTX_SIZE
+    csrrw sp, sscratch, sp
     sret

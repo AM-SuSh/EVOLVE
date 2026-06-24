@@ -71,6 +71,7 @@ impl FrameAllocator for StackFrameAllocator {
 }
 
 static mut FRAME_ALLOCATOR: StackFrameAllocator = StackFrameAllocator::empty();
+static mut FRAME_ALLOC_HOOK: Option<fn(PhysPageNum)> = None;
 
 pub fn init_frame_allocator(start: usize, end: usize) {
     unsafe {
@@ -78,12 +79,30 @@ pub fn init_frame_allocator(start: usize, end: usize) {
     }
 }
 
+/// Optional kernel hook invoked after each successful frame allocation (lab3+).
+pub fn set_frame_alloc_hook(hook: Option<fn(PhysPageNum)>) {
+    unsafe {
+        FRAME_ALLOC_HOOK = hook;
+    }
+}
+
 pub fn frame_alloc() -> Option<PhysPageNum> {
-    unsafe { FRAME_ALLOCATOR.alloc_frame() }
+    let ppn = unsafe { FRAME_ALLOCATOR.alloc_frame() }?;
+    unsafe {
+        if let Some(hook) = FRAME_ALLOC_HOOK {
+            hook(ppn);
+        }
+    }
+    Some(ppn)
 }
 
 pub fn frame_dealloc(ppn: PhysPageNum) {
     unsafe { FRAME_ALLOCATOR.dealloc_frame(ppn) }
+}
+
+/// Next PPN that will be handed out (equals the number of frames already allocated).
+pub fn frame_alloc_watermark() -> usize {
+    unsafe { FRAME_ALLOCATOR.current }
 }
 
 /// Kernel heap allocator trait (byte-granularity).

@@ -3,13 +3,20 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const APP_NAMES: &[&str] = &["hello", "power", "yield"];
+fn app_names() -> &'static [&'static str] {
+    if env::var("CARGO_FEATURE_LAB4").is_ok() || env::var("CARGO_FEATURE_LAB5").is_ok() {
+        &["fork_test", "exec_test", "hello"]
+    } else {
+        &["hello", "power", "yield"]
+    }
+}
 
 fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let workspace_root = manifest_dir.parent().unwrap();
     let target = env::var("TARGET").unwrap();
+    let apps = app_names();
 
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=linker.ld");
@@ -27,10 +34,10 @@ fn main() {
         || env::var("CARGO_FEATURE_LAB5").is_ok();
 
     if enabled {
-        build_user_apps(workspace_root, &target);
+        build_user_apps(workspace_root, &target, apps);
         let apps_dir = out_dir.join("apps");
         fs::create_dir_all(&apps_dir).expect("create apps dir");
-        for app in APP_NAMES {
+        for app in apps {
             let elf = workspace_root
                 .join("target")
                 .join(&target)
@@ -46,8 +53,8 @@ fn main() {
     }
 }
 
-fn build_user_apps(workspace_root: &Path, target: &str) {
-    for app in APP_NAMES {
+fn build_user_apps(workspace_root: &Path, target: &str, apps: &[&str]) {
+    for app in apps {
         let status = Command::new("cargo")
             .current_dir(workspace_root)
             .args([

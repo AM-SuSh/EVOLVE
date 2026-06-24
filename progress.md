@@ -1,3 +1,108 @@
+## 2026-06-24 - Task: 成员 A Day4（fork/exec/wait 进程管理）
+
+### What was done
+
+实现 lab4 动态进程模型，替代 lab3 固定 3-app 批处理链：
+
+- `process.rs`：PCB（pid/父子/僵尸）、`ProcessManager` 就绪队列、`sys_getpid`/`sys_fork`/`sys_execve`/`sys_wait4`/`sys_exit`。
+- `mm.rs`：`fork_user_space` 深拷贝用户页、`replace_user_space`（exec）、`free_user_space`；用户栈映射避开 `0x80420000` 内核恒等区冲突。
+- `trap.rs`/`main.rs`：lab4 syscall 分发与 `process::run_initproc()` 启动路径。
+- `loader.rs`/`kernel/build.rs`：lab4 嵌入 `fork_test`/`exec_test`/`hello`。
+- 用户态（验收所需，成员 B 未交付）：`fork_test`/`exec_test` 及 syscall 封装；`exec` 用 `a1` 传路径长度。
+
+### Testing
+
+- `cargo build -p kernel --features lab4`：通过。
+- QEMU lab4 + `fork_test`（initproc）：`fork_test pass`，父子 pid/wait 正常。
+- QEMU lab4 + `exec_test`（initproc）：`Before exec` → `Hello from user app!`，无 `After exec`。
+- `cargo run -p kernel --features lab3`：回归通过（Hello/Power/5 轮 Yield）。
+
+### Notes
+
+- `os-lab/kernel/src/process.rs`：进程管理与 lab4 syscall 实现。
+- `os-lab/kernel/src/mm.rs`：fork/exec 地址空间操作、栈映射修正。
+- `os-lab/kernel/src/trap.rs`、`main.rs`、`loader.rs`、`config.rs`、`build.rs`：lab4 集成。
+- `os-lab/user/src/bin/fork_test.rs`、`exec_test.rs`、`syscall.rs`、`lib.rs`、`Cargo.toml`：验收用测试程序（跨 B 边界，已注明）。
+- `os-lab/docs/architecture.md`：Lab4 完成态。
+- 回滚：`git checkout` 上述文件列表。
+
+## 2026-06-24 - Task: 成员 A Day3 缺口补全（每任务独立地址空间 + ELF 加载）
+
+### What was done
+
+补全成员 A Day3 计划内未落地项：每任务独立 `MemorySet`/`user_token`、ELF PT_LOAD 加载、`satp` 切换与 trap 返回用户态路径。
+
+**根因修复（两轮）**
+
+1. **三 app 均跑 yield**：用户地址空间对 `stext..FRAME_POOL_START` 全段恒等映射，用户槽 `0x80400000` 与 ELF 段共用同一物理页，后加载的 yield 覆盖 hello/power。修复：`map_kernel_trap_regions_user` 跳过用户槽，仅映射内核镜像 + `ekernel..APP_BASE` + `APP_BASE+REGION..FRAME_POOL_START`。
+2. **sys_write 输出全 `\0`**：`from_utf8` 在已切回内核 satp 后才读用户缓冲区。修复：在用户 satp 下 `copy_from_slice` 到内核栈缓冲，再切回内核 satp 打印。
+
+其余已落地：`restore_to_user_paged`、`trap.asm` 用户 sp、`os-vm` ELF/重叠段、`FRAME_POOL_START` 恒等映射覆盖 `RESTORE_SCRATCH` 等内核静态变量。
+
+### Testing
+
+- `cargo build -p kernel --features lab3`：通过。
+- QEMU lab3：依次 `Hello from user app!`、`Power test start`、`409684505`、`Power check ok`、5 次 `Yield round`、`All user apps exited.`。
+- QEMU lab2 回归：通过（含 hello/power/yield 预期输出）。
+- `cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1`：11 项全部 `ok`。
+
+### Notes
+
+- `os-lab/kernel/src/mm.rs`：`map_kernel_trap_regions_user`、用户槽排除恒等映射。
+- `os-lab/kernel/src/task.rs`：lab3 `sys_write` 在用户 satp 下拷贝缓冲区。
+- `os-lab/docs/architecture.md`：更新 Lab3 完成态描述。
+- `progress.md`：本段记录。
+- 回滚方式：`git checkout os-lab/kernel/src/mm.rs os-lab/kernel/src/task.rs os-lab/docs/architecture.md progress.md`（及本轮涉及的其他 kernel/os-context/os-vm 改动文件）。
+
+## 2026-06-24 - Task: DAY3 三人完成情况核查 + 成员 A DAY4 任务编排
+
+### What was done
+
+**DAY3 完成情况核查（对照计划第三节 Day3 目标、第四节三人分工与成员 A Day3 详细清单）**
+
+| 成员 | 计划任务 | 状态 | 说明 |
+|------|----------|------|------|
+| **A** | `kernel/mm.rs` 地址空间、ELF 加载、内核/用户态切换 | ⚠️ 有条件通过 | 虚存已接入且 QEMU 验收通过；**简化**：共享内核页表 + 固定槽 `0x80400000` 覆写 `.bin`（非每任务独立 satp、非 ELF PT_LOAD）；`TRAMPOLINE`/`TRAP_CONTEXT` 常量已定义未启用 |
+| **B** | `os-alloc`/`os-vm` crate + 单元测试 | ✅ 已完成 | 页帧分配器 + Bump 堆分配器；Sv39 页表 + `MemorySet` + `parse_elf`；host 测试 11 项全过；验证文档已更新 |
+| **C** | `labs/lab3-memory.md`、三方对比数据采集 | ✅ 已完成 | 实验指导 + 答案 + `comparison-data.md`（自研 vs 参考定量数据已采集；本校环境待 Day4 调研） |
+
+**成员 A Day3 详细清单逐项**
+
+| 序号 | 任务 | 状态 |
+|------|------|------|
+| 1 | `mm::init()` + `KERNEL_SPACE` | ✅ |
+| 2 | 内核地址空间映射（含 trampoline） | ⚠️ 缺 trampoline 高地址页 |
+| 3 | `MemorySet`/`MapArea` 封装 | ✅（复用 `os-vm`） |
+| 4 | TCB 独立 `MemorySet`/`user_token` | ❌ 共享页表 |
+| 5 | ELF PT_LOAD 加载 | ❌ 仍用 `.bin` |
+| 6 | trap 路径页表激活 | ⚠️ `ensure_paging` + `activate_kernel`，无 per-task satp |
+| 7 | `main.rs` lab3 启动路径 | ✅ |
+| 8 | `config.rs` 虚存常量 | ⚠️ 部分（跳板地址未接线） |
+
+**Day3 第三节总体验收**：`cargo run -p kernel --features lab3` 输出含 `lab3: virtual memory ready`、`409684505`、`Power check ok`、5 次 `Yield round`、`All user apps exited.`，exit code 0 —— **通过**（接受已知简化）。
+
+**遗留缺口（不阻断 Day3 验收，Day4 可消化）**
+
+- 每任务独立地址空间、ELF 段加载、trampoline 高地址映射（成员 A Day3 计划内未完全落地项）。
+- `process.rs` 仍为占位，lab4 批处理链（`sys_exit` 加载下一 app）待 Day4 重构。
+- kernel / 组件 crate 有 `static_mut_refs` 等 warning，未阻断运行。
+
+**成员 A DAY4 任务已写入计划**（`.cursor/plans/自研os教学实验环境.plan.md`「成员 A Day4 详细任务」）：`process.rs` PCB/进程树、`sys_fork`/`sys_execve`/`sys_wait4`、调度重构、移除批处理链；前置依赖成员 B 交付 `fork_test`/`exec_test`。
+
+### Testing
+
+- `cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1`：11 项全部 `ok`。
+- `cargo run -p kernel --features lab3`：exit code 0；含 `virtual memory ready`、`409684505`、5 次 `Yield round`、`All user apps exited.`。
+- `cargo run -p kernel --features lab2`：exit code 0；回归通过。
+- `cargo check -p kernel --features lab4`：可编译（`process.rs` 占位，符合 Day4 未开工状态）。
+
+### Notes
+
+- `progress.md`：追加 DAY3 核查结论与 DAY4 任务编排。
+- `.cursor/plans/自研os教学实验环境.plan.md`：Day3 todo 标为 completed；新增成员 A Day4 详细任务清单。
+- `os-lab/docs/architecture.md`：更新 Lab3 完成状态、新增 Lab4 待开工说明，移除过时「Lab3 待集成」段落。
+- 回滚方式：`git checkout progress.md .cursor/plans/自研os教学实验环境.plan.md os-lab/docs/architecture.md`。
+
 ## 2026-06-23 - Task: 成员 B Day3（os-alloc/os-vm 正式接手 + 堆分配器 + 单元测试 + 验证文档）
 
 ### What was done
