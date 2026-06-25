@@ -198,47 +198,60 @@ All processes exited.
 
 - lab5 嵌入 `fs_test`、`pipe_test`、`fork_test`、`exec_test`、`hello`；默认 initproc 为 `fs_test`（索引 0）。
 - `pipe_test pass` 由子进程打印（读端成功读取后）。
-- `os-fs` crate 的 `DEFAULT_FILES` 与内核 `testfile` 内容一致，可 `cargo test -p os-fs` 在 host 上独立验证。
+- 内核 `kernel/src/fs.rs` 通过 `os_fs::EmbeddedFs::default_fs()` 读写 `testfile`（与 crate `DEFAULT_FILES` 共用同一文件表）；可 `cargo test -p os-fs` 在 host 上独立验证。
 
-## Day 5 / Lab5 验证（成员 B Day5）
+## Day 6 / 全量交叉回归（成员 B Day6）
 
-### 组件单元测试（host 目标）
+Day6 在成员 A 完成 `os-fs` 内核集成后，对 **Lab1→Lab5** 做端到端交叉回归，确认 feature gate 渐进路径无退化。
 
-lab5 新增 `os-fs`、`os-sbi` host 测试；验收前建议全量回归：
+### 一键命令（PowerShell，仓库根目录）
 
 ```powershell
+cd <仓库根目录>
+. .\scripts\activate-os-env.ps1
+$ErrorActionPreference = 'Continue'   # 避免 cargo 编译 warning 写入 stderr 时 PowerShell 中断
+
 cd os-lab
+cargo check --workspace
+
 cargo test -p os-context -p os-syscall -p os-sbi -p os-fs --target x86_64-pc-windows-msvc
 cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1
-```
 
-预期：`os-context` 3 项、`os-syscall` 4 项、`os-sbi` 2 项、`os-fs` 4 项、`os-alloc` 6 项、`os-vm` 5 项，共 **24 项**全部 `ok`。
-
-### Lab5 编译与 QEMU 运行
-
-若 `cargo run` 构建卡住，先单独构建用户程序：
-
-```powershell
 cargo build -p user --bin fs_test --bin pipe_test --target riscv64gc-unknown-none-elf --release
-cargo check -p kernel --features lab5
 cargo run -p kernel --features lab5 --release
+cargo run -p kernel --features lab4 --release
+cargo run -p kernel --features lab3
+cargo run -p kernel --features lab2
+cargo run -p kernel --features lab1
+
+cargo check -p kernel --features lab1
+cargo check -p kernel --features lab2
+cargo check -p kernel --features lab3
+cargo check -p kernel --features lab4
+cargo check -p kernel --features lab5
 ```
 
-### 成功标准
+Linux/macOS：将 `cargo test` 的 `--target` 换为对应 host triple；`os-vm` 测试须保留 `-- --test-threads=1`。
 
-QEMU 输出中应出现（OpenSBI 启动日志可忽略）：
+### 各 Lab 成功标准（摘要）
 
-```text
-os-lab kernel lab5: filesystem and sync.
-Hello from testfile!
-fs_test pass
-pipe says hi
-pipe_test pass
-All processes exited.
-```
+| Lab | 关键输出 |
+|-----|----------|
+| lab5 | `Hello from testfile!`、`fs_test pass`、`pipe_test pass`、`All processes exited.` |
+| lab4 | `I am parent`、`I am child`、`fork_test pass`、`All processes exited.` |
+| lab3 | `409684505`、5 轮 `Yield round`、`All user apps exited.` |
+| lab2 | `409684505`、≥1 轮 `Yield round`、`All user apps exited.` |
+| lab1 | `Hello, OS!`、`os-lab kernel lab1 is running on QEMU virt.` |
 
-说明：
+各 Lab 细则见上文 Day1–Day5 各节。
 
-- lab5 嵌入 `fs_test`、`pipe_test`、`fork_test`、`exec_test`、`hello`；默认 initproc 为 `fs_test`（索引 0）。
-- `pipe_test pass` 由子进程打印（读端成功读取后）。
-- `os-fs` crate 的 `DEFAULT_FILES` 与内核 `testfile` 内容一致，可 `cargo test -p os-fs` 在 host 上独立验证。
+### Day6 验收勾选清单
+
+- [ ] `cargo check --workspace` 无 error
+- [ ] 组件 host 单元测试 24 项全部 `ok`
+- [ ] Lab5 QEMU：`fs_test pass`、`pipe_test pass`（验证 `os-fs` 内核集成）
+- [ ] Lab4 QEMU：`I am parent`/`I am child`、`All processes exited.`
+- [ ] Lab3 QEMU：5 轮 `Yield round`
+- [ ] Lab2 QEMU：`409684505`、`All user apps exited.`
+- [ ] Lab1 QEMU：`Hello, OS!`
+- [ ] `cargo check -p kernel --features lab1`…`lab5` 均可编译

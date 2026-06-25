@@ -1,6 +1,6 @@
 # os-lab 验证执行指令
 
-伙伴在本机复现 **成员 B Day1（Lab1）**、**Day2（Lab2）** 与 **Day3（Lab3）** 结果时，按本文顺序执行即可。
+伙伴在本机复现 **成员 B Day1（Lab1）** 至 **Day6（全量交叉回归）** 结果时，按本文顺序执行即可。
 
 所有 `cargo` 命令必须在 **`os-lab/`** 目录下运行（workspace 根在此，不在仓库根目录）。**每新开一个 PowerShell 窗口，都必须先执行环境激活脚本**，否则会出现 `cargo` 找不到。
 
@@ -13,8 +13,11 @@
 | Day1 / Lab1 | `cargo check -p os-sbi`、`-p kernel --features lab1` | 无 | `cargo run -p kernel --features lab1` | `Hello, OS!` |
 | Day2 / Lab2 | `-p kernel --features lab2` | `os-context` 3 项 + `os-syscall` 4 项 | `cargo run -p kernel --features lab2` | `409684505`、`Yield round` |
 | Day3 / Lab3 | `-p kernel --features lab3` | `os-alloc` 6 项 + `os-vm` 5 项 | `cargo run -p kernel --features lab3` | 虚存启用日志、5 轮 `Yield round` |
+| Day4 / Lab4 | `-p kernel --features lab4` | Day2/3 回归 | `cargo run -p kernel --features lab4 --release` | `fork_test pass`、`I am parent`/`I am child` |
+| Day5 / Lab5 | `-p kernel --features lab5` | 全量 24 项 | `cargo run -p kernel --features lab5 --release` | `fs_test pass`、`pipe_test pass` |
+| Day6 | `cargo check` lab1–lab5 | 全量 24 项 | lab5→lab1 依次 QEMU | 见第 16 节勾选清单 |
 
-**推荐顺序**：激活环境 → 工具检查 → 全 workspace 编译 → 组件单元测试 → Lab1 → Lab2 → Lab3。
+**推荐顺序**：激活环境 → 工具检查 → 全 workspace 编译 → 组件单元测试 → Lab1 → Lab2 → Lab3 → Lab4 → Lab5；Day6 做 lab5→lab1 倒序 QEMU 全量回归。
 
 **host triple 对照**（`cargo test` 必须指定，不可省略）：
 
@@ -526,7 +529,7 @@ All processes exited.
 
 - lab5 嵌入 5 个用户程序：`fs_test`、`pipe_test`、`fork_test`、`exec_test`、`hello`。
 - `pipe_test pass` 由**子进程**在成功读取管道数据后打印（与内核 `wait4` yield 语义一致）。
-- 内核 fd 层在 `kernel/src/fs.rs`；`os-fs` crate 提供可 host 测试的同名静态文件表（`testfile` 内容一致）。
+- 内核 `kernel/src/fs.rs` 通过 `os_fs::EmbeddedFs::default_fs()` 读写 `testfile`；`os-fs` crate 的 host 单测与 QEMU 共用同一 `DEFAULT_FILES` 文件表。
 
 ---
 
@@ -578,6 +581,7 @@ Linux/macOS：
 | `cargo test` 报 `can't find crate for test` 或 RISC-V 汇编错误 | 未指定 host `--target`；见本文第 4 节 |
 | `cargo run` 下载 rustup 超时 | 检查网络；或先执行 `rustup update stable` |
 | PowerShell 中 `lab1~lab5` 无效 | 逐条执行 `lab1`、`lab2`…`lab5`，不要用 shell 范围写法 |
+| PowerShell 脚本在 `cargo run` 时提前中断 | 激活环境后设置 `$ErrorActionPreference = 'Continue'`（见第 16 节） |
 | Lab2 yield 不足 5 轮 | `SYS_YIELD` 路径已触发即可；与调度实现有关，见第 6 节 |
 | Lab3 无虚存启用日志 | 确认使用 `--features lab3`，而非 `lab2` |
 | Lab3 yield 不足 5 轮 | 检查是否使用 `--features lab3`；分页未启用时行为同 lab2 |
@@ -586,8 +590,57 @@ Linux/macOS：
 | Lab4 仍看到 `After exec` | exec 未成功替换程序；检查 `exec` ABI（`a1` 为路径长度）或内核 `sys_execve` |
 | 用 lab4 跑 lab2/3 测试失败 | lab4 构建集不同，须分别 `cargo run --features lab2` / `lab3` |
 | `cargo run --features lab5` 长时间无输出 / 卡住 | `kernel/build.rs` 嵌套 cargo 可能死锁；先单独 `cargo build -p user --bin fs_test --bin pipe_test ... --release`，再 `cargo run`（A 已在 build.rs 对已有 ELF 跳过子构建） |
-| Lab5 无 `fs_test pass` | 确认 `--features lab5`；检查 `open`/`read` syscall 与内嵌 `testfile` |
+| Lab5 无 `fs_test pass` | 确认 `--features lab5`；检查 `open`/`read` syscall 与 `os-fs` `DEFAULT_FILES` |
 | Lab5 无 `pipe_test pass` | 检查 `SYS_PIPE`（59）与 fork 后 pipe fd 继承；子进程读空时应 `yield_()` 重试；若 `pipe` 写端为 fd 1，本内核会把 `write(1,…)` 当控制台而非管道——`pipe_test` 在 `pipe()` 前用两次 `open` 占位避开 0/1 |
+
+---
+
+## 16. 一键复制：Day6 全量交叉回归
+
+在 Day5 块基础上，对 **Lab1→Lab5** 做端到端交叉回归（**推荐：成员 B Day6 最终验收用此块**）。须在成员 A Day6 完成 `os-fs` 内核集成后执行，以验证 lab5 文件读取路径无退化。
+
+```powershell
+cd <仓库根目录>
+. .\scripts\activate-os-env.ps1
+$ErrorActionPreference = 'Continue'
+
+cd os-lab
+cargo check --workspace
+
+cargo test -p os-context -p os-syscall -p os-sbi -p os-fs --target x86_64-pc-windows-msvc
+cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1
+
+cargo build -p user --bin fs_test --bin pipe_test --target riscv64gc-unknown-none-elf --release
+cargo run -p kernel --features lab5 --release
+cargo run -p kernel --features lab4 --release
+cargo run -p kernel --features lab3
+cargo run -p kernel --features lab2
+cargo run -p kernel --features lab1
+
+cargo check -p kernel --features lab1
+cargo check -p kernel --features lab2
+cargo check -p kernel --features lab3
+cargo check -p kernel --features lab4
+cargo check -p kernel --features lab5
+```
+
+Linux/macOS：
+
+- 将 `cargo test` 的 `--target` 换成对应 host triple。
+- `os-vm` 测试**必须保留** `-- --test-threads=1`。
+- PowerShell 下若未设置 `$ErrorActionPreference = 'Continue'`，`cargo` 编译 warning 写入 stderr 可能导致脚本提前中断。
+
+### Day6 验收勾选清单
+
+- [ ] `cargo check --workspace` 无 error
+- [ ] `os-context` 3 项 + `os-syscall` 4 项 + `os-sbi` 2 项 + `os-fs` 4 项测试通过
+- [ ] `os-alloc` 6 项 + `os-vm` 5 项测试通过（单线程）
+- [ ] Lab5 QEMU：`Hello from testfile!`、`fs_test pass`、`pipe_test pass`、`All processes exited.`（`os-fs` 内核集成）
+- [ ] Lab4 QEMU：`I am parent`、`I am child`、`All processes exited.`
+- [ ] Lab3 QEMU：5 轮 `Yield round`、`All user apps exited.`
+- [ ] Lab2 QEMU：`409684505`、`All user apps exited.`
+- [ ] Lab1 QEMU：`Hello, OS!`、`os-lab kernel lab1 is running on QEMU virt.`
+- [ ] `cargo check -p kernel --features lab1`…`lab5` 均可编译
 
 ---
 
@@ -596,7 +649,7 @@ Linux/macOS：
 - [os-lab.md](os-lab.md)：自研环境入口
 - [environment_setup.md](environment_setup.md)：Rust / QEMU / Git 安装路径
 - [os-lab/README.md](../os-lab/README.md)：快速开始与 feature 说明
-- [os-lab/tests/README.md](../os-lab/tests/README.md)：集成测试与 Day1–Day5 细则
+- [os-lab/tests/README.md](../os-lab/tests/README.md)：集成测试与 Day1–Day6 细则
 - [os-lab/labs/lab1-bare-metal.md](../os-lab/labs/lab1-bare-metal.md)：Lab1 实验指导
 - [os-lab/labs/lab2-trap-and-task.md](../os-lab/labs/lab2-trap-and-task.md)：Lab2 实验指导
 - [os-lab/labs/lab3-memory.md](../os-lab/labs/lab3-memory.md)：Lab3 实验指导

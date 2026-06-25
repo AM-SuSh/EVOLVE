@@ -30,7 +30,13 @@ pub struct ProcessControlBlock {
     pub status: ProcessStatus,
     pub trap_cx: TrapContext,
     pub space_id: usize,
-    pub kernel_stack: [u8; KERNEL_STACK_SIZE],
+}
+
+static mut KERNEL_STACKS: [[u8; KERNEL_STACK_SIZE]; MAX_PROCESS_NUM] =
+    [[0; KERNEL_STACK_SIZE]; MAX_PROCESS_NUM];
+
+fn kernel_stack_top(slot: usize) -> usize {
+    unsafe { KERNEL_STACKS[slot].as_ptr() as usize + KERNEL_STACK_SIZE }
 }
 
 pub struct ProcessManager {
@@ -106,8 +112,7 @@ impl ProcessManager {
         self.next_pid += 1;
 
         let user_sp = APP_BASE_ADDRESS + APP_REGION_SIZE - 16;
-        let kernel_stack = [0u8; KERNEL_STACK_SIZE];
-        let kstack_top = kernel_stack.as_ptr() as usize + KERNEL_STACK_SIZE;
+        let kstack_top = kernel_stack_top(slot);
         let trap_cx = trap_cx_init(entry, user_sp, kstack_top);
 
         self.slots[slot] = Some(ProcessControlBlock {
@@ -119,7 +124,6 @@ impl ProcessManager {
             status: ProcessStatus::Ready,
             trap_cx,
             space_id,
-            kernel_stack,
         });
 
         if let Some(parent) = parent_slot {
@@ -244,8 +248,7 @@ pub fn sys_fork(cx: &mut TrapContext) -> isize {
         );
         let child_pcb = PROCESS_MANAGER.slots[child_slot].as_mut().unwrap();
         child_pcb.trap_cx = child_trap_cx;
-        child_pcb.trap_cx.kernel_sp =
-            child_pcb.kernel_stack.as_ptr() as usize + KERNEL_STACK_SIZE;
+        child_pcb.trap_cx.kernel_sp = kernel_stack_top(child_slot);
         child_pcb.status = ProcessStatus::Ready;
 
         child_pid as isize
@@ -290,14 +293,7 @@ pub fn sys_execve(cx: &mut TrapContext, path: *const u8, path_len: usize, _envp:
     mm::replace_user_space(space_id, elf);
     let entry = elf_entry_point(elf);
     let user_sp = APP_BASE_ADDRESS + APP_REGION_SIZE - 16;
-    let kstack_top = unsafe {
-        PROCESS_MANAGER.slots[slot]
-            .as_mut()
-            .unwrap()
-            .kernel_stack
-            .as_ptr() as usize
-            + KERNEL_STACK_SIZE
-    };
+    let kstack_top = kernel_stack_top(slot);
     *cx = trap_cx_init(entry, user_sp, kstack_top);
     run_user_task(cx);
 }
@@ -343,30 +339,33 @@ fn reap_zombie_child(parent_slot: usize, want_pid: isize) -> Option<(usize, i32)
   }
 }
 
+#[allow(clippy::never_loop)]
 pub fn sys_wait4(cx: &mut TrapContext, want_pid: isize, status_ptr: *mut i32) -> isize {
     unsafe {
         let parent_slot = PROCESS_MANAGER.current;
-        if let Some((pid, code)) = reap_zombie_child(parent_slot, want_pid) {
-            if !write_user_i32(status_ptr, code) {
-                return -1;
+        loop {
+            if let Some((pid, code)) = reap_zombie_child(parent_slot, want_pid) {
+                if !write_user_i32(status_ptr, code) {
+                    return -1;
+                }
+                return pid as isize;
             }
-            return pid as isize;
-        }
-        if want_pid >= 0 {
-            let has_child = PROCESS_MANAGER.slots.iter().any(|slot| {
-                slot.as_ref().is_some_and(|pcb| {
-                    pcb.parent_slot == Some(parent_slot) && pcb.status != ProcessStatus::Zombie
-                })
-            });
-            if !has_child {
-                return -1;
+            if want_pid >= 0 {
+                let has_child = PROCESS_MANAGER.slots.iter().any(|slot| {
+                    slot.as_ref().is_some_and(|pcb| {
+                        pcb.parent_slot == Some(parent_slot) && pcb.status != ProcessStatus::Zombie
+                    })
+                });
+                if !has_child {
+                    return -1;
+                }
             }
+            cx.sepc = cx.sepc.wrapping_sub(4);
+            sync_current_trap_cx(cx);
+            mark_current_ready();
+            run_next_process();
         }
     }
-    // Cooperative wait: yield and re-enter this syscall when scheduled again.
-    sync_current_trap_cx(cx);
-    mark_current_ready();
-    run_next_process();
 }
 
 pub fn sys_exit(exit_code: i32) -> ! {

@@ -1,3 +1,49 @@
+## 2026-06-25 - Task: 修复 lab4 getpid/wait（fork_test pass 复现）
+
+### What was done
+
+- 恢复 `sys_wait4` 阻塞 `loop`（`#[allow(clippy::never_loop)]`），并在 yield 前将 `sepc` 回退 4 字节，使父进程在协作式调度后能重新进入 `wait4` 路径（配合 `trap_handler` 先 `advance_sepc` 的语义）。
+- 将每进程内核栈从 PCB 内嵌字段改为 `KERNEL_STACKS[slot]` 静态数组，避免 `fork_user_space` 在父进程 trap 栈上深调用时栈溢出覆盖相邻 slot 的 `pid` 字段（根因：子进程 `getpid`/`exit` 读到 `pid=0`）。
+
+### Testing
+
+- `cargo run -p kernel --features lab4 --release`：exit 0；`I am parent, child_pid=2`、`I am child, pid=2`、`waited pid done, exit_code=0`、`fork_test pass`、`Process 2/1 exited`、`All processes exited.`。
+- `cargo run -p kernel --features lab5 --release`：exit 0；`fs_test pass`、`pipe_test pass`、`All processes exited.`（无退化）。
+
+### Notes
+
+- `os-lab/kernel/src/process.rs`：`sys_wait4` loop + sepc 回退；PCB 移除 `kernel_stack` 字段，新增 `KERNEL_STACKS` 与 `kernel_stack_top()`。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout os-lab/kernel/src/process.rs progress.md`。
+
+## 2026-06-25 - Task: 成员 B Day6（Lab1–Lab5 交叉回归 + 验证文档）
+
+### What was done
+
+- 在成员 A Day6 `os-fs` 内核集成后，执行 Lab1–Lab5 全量交叉回归：workspace 编译检查、24 项 host 单元测试、lab5→lab1 QEMU 倒序运行、`cargo check` lab1–lab5 feature 全覆盖。
+- 更新 [`os-lab/tests/README.md`](os-lab/tests/README.md)：删除重复 Day5 块；新增 Day6 全量交叉回归节（一键命令、各 Lab 成功标准摘要、验收勾选清单）；修正 lab5 说明为内核委托 `EmbeddedFs::default_fs()`。
+- 更新 [`docs/os-lab_verify.md`](docs/os-lab_verify.md)：验证总览表补充 Day4/Day5/Day6；第 13 节 os-fs 集成表述修正；新增第 16 节 Day6 一键块与勾选清单；FAQ 补充 PowerShell `$ErrorActionPreference` 说明。
+
+### Testing
+
+- `cargo check --workspace`：exit 0（`os-alloc`/`os-vm` warning，无 error）。
+- `cargo test -p os-context -p os-syscall -p os-sbi -p os-fs --target x86_64-pc-windows-msvc`：13 项全部 `ok`。
+- `cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1`：11 项全部 `ok`（合计 **24 项**）。
+- `cargo run -p kernel --features lab5 --release`：exit 0；`Hello from testfile!`、`fs_test pass`、`pipe_test pass`、`All processes exited.`（os-fs 集成后无退化）。
+- `cargo run -p kernel --features lab4 --release`：exit 0；`I am parent`/`I am child`、`All processes exited.`；**未出现** `fork_test pass`/`waited pid done`（子进程 `getpid()` 输出为 0，待 A 排查 `kernel/process.rs`）。
+- `cargo run -p kernel --features lab3`：exit 0；`409684505`、5 轮 `Yield round`、`All user apps exited.`。
+- `cargo run -p kernel --features lab2`：exit 0；`409684505`、5 轮 `Yield round`、`All user apps exited.`。
+- `cargo run -p kernel --features lab1`：exit 0；`Hello, OS!`、`os-lab kernel lab1 is running on QEMU virt.`。
+- `cargo check -p kernel --features lab1`…`lab5`：均 exit 0。
+
+### Notes
+
+- `os-lab/tests/README.md`：Day6 交叉回归节；删除 Day5 重复块；os-fs 集成表述更新。
+- `docs/os-lab_verify.md`：总览表、第 13/15/16 节、相关文档链至 Day6。
+- `progress.md`：追加本轮记录。
+- 已知缺口（不阻断 Day6 B 侧交付）：lab4 QEMU 缺 `fork_test pass`，属内核 `getpid`/wait 路径，需成员 A 在 Day7 前修复；B 已在 Day6 勾选清单中标注 lab4 以 parent/child + `All processes exited.` 为最低通过线。
+- 回滚方式：`git checkout os-lab/tests/README.md docs/os-lab_verify.md progress.md`。
+
 ## 2026-06-25 - Task: 成员 A Day6（os-fs 接入 + clippy 修复 + 架构文档）
 
 ### What was done
