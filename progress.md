@@ -1,3 +1,24 @@
+## 2026-06-25 - Task: 成员 C Day6（三方对比报告 + 学习效率评估 + AI 协作记录完善）
+### What was done
+- 编写 `os-lab/docs/comparison.md`：完整的三方对比分析报告（plan 第 256-260 行 Day6 核心任务）。含三环境概览（mermaid）、定量对比（规模/架构/实验/测试指标表）、定性分析（学习路径清晰度/上手难度/文档友好度）、自研环境 5 大差异化创新点（mermaid）、学习效率评估（理论分析 + 预期学习成果 + 与 xv6 互补建议）、局限与改进方向、结论。所有定量数据基于 comparison-data.md 已采集的真实数据，定性分析有理有据。
+- 学习效率评估作为 comparison.md 第五节（plan 第 260 行"编写学习效率评估部分"），从认知负担/反馈速度/动机维持/知识留存 4 个维度分析自研环境的效率优势，并给出"自研入门 + xv6 深化"的互补学习路径建议。
+- 完善 `os-lab/docs/ai-collaboration.md`（plan 第 259 行）：把原占位的"后续 Lab 记录区"替换为 lab2-5 的完整示例记录，每条含关键问答/AI 帮助最大的地方/独立完成部分/反思，为学生提供丰富的 AI 协作参考。lab1 示例此前已有，现 5 个 lab 全覆盖。
+
+### Testing
+- comparison.md 的定量数据全部来源于 comparison-data.md 的脚本采集结果（自研 1882 行/8 crate/9 测试，参考 36455 行/29 crate/0 测试，本校 xv6 ~6000-8000 行/11 lab），口径一致可对比。
+- 三方对比速览表与 comparison-data.md 的速览表交叉核对一致，无矛盾。
+- 学习效率评估明确标注【待真实学习数据验证】的项，未编造实测数据（遵守"信息不足不得猜测"原则）。
+- ai-collaboration.md 的 lab2-5 示例记录中，技术细节（sscratch 交换、Sv39 拆分、fork 返回两次、CAS 自旋锁等）均与各 lab 文档和实际代码一致。
+
+### Notes
+- `os-lab/docs/comparison.md`：新增，三方对比分析报告 + 学习效率评估（约 200 行，5 张 mermaid）。
+- `os-lab/docs/ai-collaboration.md`：补全 lab2-5 示例记录（原只有 lab1 + 占位）。
+- `progress.md`：追加本轮成员 C Day6 记录。
+- 本轮严格遵守成员 C 文件边界（仅改 os-lab/docs/ 与 progress.md）。
+- 三方对比的核心定位："差异化互补"而非"替代"——自研环境为初学者提供低门槛入门路径，与 xv6 的深化学习互补，契合赛题"设计适合学生自学的教学实验环境"初衷。
+- 诚实记录局限：自研环境覆盖广度有限（无网络/mmap/真实磁盘 FS）、文件系统是教学简化版、学习效率评估基于设计推断【待真实数据验证】。
+- 回滚方式：`rm os-lab/docs/comparison.md` 并 `git checkout os-lab/docs/ai-collaboration.md progress.md`。
+
 ## 2026-06-25 - Task: 修复 lab4 getpid/wait（fork_test pass 复现）
 
 ### What was done
