@@ -123,12 +123,80 @@ Day 1 由成员 A 搭建内核骨架；成员 B 完成 `os-sbi` 与组件 crate 
 
 **已知简化**：fork 全量拷贝地址空间（无 COW）；exec 仅支持嵌入 ELF 名、不经文件系统；`wait4` 通过 yield 轮询等待子进程僵尸。
 
-## Lab5 当前状态（Day5 待开工）
+## Lab1–Lab5 内核模块演进
+
+| Feature | 新增内核模块 | 核心能力 |
+|---------|-------------|----------|
+| lab1 | `main`, `console` | 裸机启动、SBI 输出、关机 |
+| lab2 | `trap`, `task`, `loader` | Trap 入口、批处理调度、用户程序加载 |
+| lab3 | `mm` | 页表、每任务地址空间、ELF 段映射 |
+| lab4 | `process` | PCB、fork/exec/wait、动态调度 |
+| lab5 | `fs`, `sync` | fd 表、只读文件（`os-fs`）、管道、自旋锁 |
+
+## Lab5 当前状态（Day5 已完成，Day6 已接入 os-fs）
+
+- 组件（成员 B）：`os-fs`（`EmbeddedFs` 静态只读表 + 4 项 host 测试）；`os-sbi`/`os-syscall` 补充 Lab5 测试。
+- 内核（成员 A）：
+  - `fs.rs`：每进程 fd 表（`MAX_FD` 槽）、`FdType`（Regular/PipeRead/PipeWrite）；**通过 `os_fs::EmbeddedFs::default_fs()` 读写 `testfile`**；`sys_openat`/`sys_read`/`sys_write`（pipe）/`sys_close`；fork 继承 fd、退出 `close_all_fds`。
+  - `sync.rs`：`SpinMutex`（CAS + Acquire/Release）、环形缓冲 `Pipe` + 引用计数；`sys_pipe` 分配读写 fd。
+  - `process.rs`：`sys_wait4` 协作式等待（单次检查 + yield，无冗余 `loop`）。
+  - `trap.rs`：分发 openat/read/write/close/pipe syscall。
+  - `main.rs`：`lab5: filesystem and sync` → `init_heap` → `sync::init` → `fs::init` → `process::init`。
+- 用户态（成员 B）：`fs_test`、`pipe_test`；`pipe_test` 用 fd 占位规避 fd 0/1 控制台语义（已知 workaround）。
+- 文档（成员 C）：`labs/lab5-fs-and-sync.md`、`labs/answers/lab5-answers.md`、`labs/exercises/lab5-exercises.md`。
+- 验证：`cargo run -p kernel --features lab5` — `Hello from testfile!`、`fs_test pass`、`pipe says hi`、`pipe_test pass`、`All processes exited.`；组件 host 单元测试合计 24 项全过；`make check` 覆盖 lab1–lab5 编译。
+
+**已知简化（不阻断验收，Day7 可继续收尾）**
+
+- 未实现信号量；并发原语仅 `SpinMutex` + 管道。
+- 管道读空返回 -1，用户态 yield 重试；非阻塞语义。
+- `static_mut_refs` 等 clippy 警告在内核全局管理器（`PROCESS_MANAGER`、`FD_TABLES`）中保留，属教学简化，Day7 前清单化即可。
+
+### Lab5 syscall 与 fd 数据流
+
+```mermaid
+flowchart LR
+    subgraph user [用户态]
+        fsTest[fs_test]
+        pipeTest[pipe_test]
+    end
+    subgraph trap [trap.rs]
+        dispatch[syscall 分发]
+    end
+    subgraph fs [fs.rs]
+        fdTable[每进程 fd 表]
+        osFs[os_fs EmbeddedFs]
+    end
+    subgraph sync [sync.rs]
+        pipeBuf[Pipe 环形缓冲]
+        mutex[SpinMutex]
+    end
+
+    fsTest -->|openat/read/close| dispatch
+    pipeTest -->|pipe/read/write| dispatch
+    dispatch -->|Regular fd| fdTable
+    dispatch -->|Pipe fd| fdTable
+    fdTable --> osFs
+    fdTable --> pipeBuf
+    pipeBuf --> mutex
+```
+
+## Day6 工程质量（成员 A）
+
+| 检查项 | 结果 |
+|--------|------|
+| `kernel/fs.rs` 接入 `os-fs` | ✅ 使用 `EmbeddedFs::default_fs()` |
+| `cargo clippy -p kernel --features lab5` | ✅ 无 error（`never_loop` 已修复）；`static_mut_refs` 等 warning 保留并记录 |
+| `cargo package -p os-* --list` | ✅ 6 个组件 crate 均可列出发布文件（`description`/`license`/`repository` 齐全） |
+| Lab1–Lab5 QEMU 回归 | 见 `progress.md` Day6 记录 |
+
+## 快速验证命令
 
 ```powershell
 cd os-lab
 cargo run -p kernel --features lab1    # QEMU 输出 Hello 并退出
 cargo run -p kernel --features lab2    # 多用户程序 + syscall（Day2）
 cargo run -p kernel --features lab4    # fork/exec/wait（Day4）
+cargo run -p kernel --features lab5    # 文件系统 + 管道（Day5）
 make check                           # 验证 lab1–lab5 feature 均可编译
 ```

@@ -1,3 +1,90 @@
+## 2026-06-25 - Task: 成员 A Day6（os-fs 接入 + clippy 修复 + 架构文档）
+
+### What was done
+
+- `kernel/src/fs.rs`：移除内嵌 `EMBEDDED_FILES`，改为 `os_fs::EmbeddedFs::default_fs()` 统一文件表；`sys_read` 经 crate `read_at` + 内核栈缓冲（`MAX_READ_CHUNK=256`）再拷贝到用户态。
+- `kernel/src/process.rs`：修复 clippy `never_loop`——`sys_wait4` 改为单次检查 + yield（协作式等待本就靠 syscall 重入，冗余 `loop` 删除）。
+- `os-lab/docs/architecture.md`：补充 Lab1–Lab5 模块演进表、Day6 工程质量检查表；Lab5 数据流图改为 `os_fs EmbeddedFs` 节点。
+- `os-lab/os-fs/src/lib.rs`：更新模块注释，说明内核已委托 `EmbeddedFs`（注释对齐，无逻辑变更）。
+
+### Testing
+
+- `cargo clippy -p kernel --features lab5`：exit 0，无 error（`static_mut_refs` 等 warning 保留，已记入 architecture）。
+- `cargo package -p os-sbi -p os-context -p os-syscall -p os-alloc -p os-vm -p os-fs --list --allow-dirty`：6 个 crate 均可列出 `src/lib.rs`。
+- `cargo run -p kernel --features lab5 --release`：exit 0；`Hello from testfile!`、`fs_test pass`、`pipe says hi`、`pipe_test pass`、`All processes exited.`。
+- `cargo run -p kernel --features lab4 --release`：exit 0；`I am parent`/`I am child`、`All processes exited.`（wait4 重构未退化）。
+
+### Notes
+
+- `os-lab/kernel/src/fs.rs`：接入 `os-fs` crate，消除双份文件表。
+- `os-lab/kernel/src/process.rs`：`sys_wait4` clippy 修复。
+- `os-lab/docs/architecture.md`：Day6 工程质量与模块演进。
+- `os-lab/os-fs/src/lib.rs`：注释更新（跨 B 边界，仅文档句）。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout os-lab/kernel/src/fs.rs os-lab/kernel/src/process.rs os-lab/docs/architecture.md os-lab/os-fs/src/lib.rs progress.md`。
+
+## 2026-06-25 - Task: DAY5 三人完成情况核查 + 成员 A DAY6 任务编排
+
+### What was done
+
+**DAY5 完成情况核查（对照计划第三节 Day5 目标、第四节三人分工与成员 A Day5 详细清单）**
+
+| 成员 | 计划任务 | 状态 | 说明 |
+|------|----------|------|------|
+| **A** | `kernel/fs.rs` fd 表与文件 syscall、`kernel/sync.rs` 管道与自旋锁 | ✅ 已完成 | fd 表、`openat`/`read`/`write`/`close`、内嵌 `testfile`；`SpinMutex` + 环形缓冲 `Pipe` + `sys_pipe`；lab5 启动路径与 trap 分发已接入；fork fd 继承、退出 `close_all_fds` |
+| **B** | `os-fs` crate、全部组件单元测试、`user/` lab5 测试程序 | ✅ 已完成 | `EmbeddedFs` + 4 项 host 测试；`os-sbi`/`os-syscall` Lab5 测试补全；正式交付 `fs_test`/`pipe_test`；验证文档 Day5 节已更新 |
+| **C** | `labs/lab5-fs-and-sync.md`、5 组文字习题 | ✅ 已完成 | lab5 实验指导 + 答案 + `exercises/` 五组习题；`comparison-data.md` 过时数据已修正 |
+
+**计划第三节 Day5 总体验收项**
+
+| 验收项 | 状态 | 说明 |
+|--------|------|------|
+| `cargo run --features lab5` 文件与并发测试 | ✅ | 输出含 `fs_test pass`、`pipe_test pass`、`All processes exited.`，exit code 0（A/B/C 三轮记录一致） |
+| 组件 crate 单元测试全过 | ✅ | 本轮复测：`os-context` 3 + `os-syscall` 4 + `os-sbi` 2 + `os-fs` 4 + `os-alloc` 6 + `os-vm` 5 = **24 项** 全部 `ok` |
+| `cargo check --workspace` 无编译错误 | ✅ | workspace `cargo check` 通过；`lab5` feature 可编译 |
+| 各 crate `Cargo.toml` 元信息完整 | ✅ | 7 个 lib crate 均有 `description`/`license`/`repository` |
+| `labs/lab5-fs-and-sync.md` 初稿 | ✅ | 含 mermaid、AI 提问模板、三档任务、思考题答案 |
+
+**成员 A Day5 详细清单逐项**
+
+| 序号 | 任务 | 状态 |
+|------|------|------|
+| 1 | `fs.rs` fd 表 + 内嵌只读文件 | ✅ |
+| 2 | `sys_openat`/`sys_read`/`sys_close` + pipe `write` | ✅ |
+| 3 | `sync.rs` `SpinMutex` + `Pipe` | ✅ |
+| 4 | `sys_pipe` | ✅ |
+| 5 | `trap.rs` Lab5 syscall 分发 | ✅ |
+| 6 | `process.rs` fork fd 继承 / 退出清理 | ✅ |
+| 7 | `main.rs` lab5 启动路径 | ✅ |
+| 8 | `config.rs` Lab5 常量 | ✅ |
+| 9 | `build.rs`/`loader.rs` 嵌入 fs/pipe 测试 ELF | ✅ |
+
+**Day5 第三节总体验收**：**通过**（接受已知简化）。
+
+**遗留缺口（不阻断 Day5 验收，Day6–Day7 可消化）**
+
+- `kernel/fs.rs` 未调用 `os-fs` crate（双份 `testfile` 表；feature 已声明 `dep:os-fs`）——Day6 可选接入 `EmbeddedFs::default_fs()`。
+- 未实现信号量（仅 `SpinMutex` + 管道，符合计划风险应对「二选一保质量」）。
+- `os-lab/docs/architecture.md` Lab5 曾标「待开工」——本轮已更新为完成态并补充数据流图。
+- `labs/overview.md` 实验列表仍标 lab2–5「待编写」（C 域文档滞后，不影响代码验收）。
+- `os-alloc`/`os-vm` 有 `static_mut_refs` 等 warning，未阻断运行；clippy 全绿留 Day6–Day7。
+
+**成员 A DAY6 任务已写入计划**（`.cursor/plans/自研os教学实验环境.plan.md`「成员 A Day6 详细任务」）：clippy 审查、crate 发布条件检查、architecture 文档完善、可选 `os-fs` 接入、配合 B 交叉回归。
+
+### Testing
+
+- `cargo test -p os-context -p os-syscall -p os-sbi -p os-fs --target x86_64-pc-windows-msvc`：13 项全部 `ok`。
+- `cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1`：11 项全部 `ok`（合计 24 项）。
+- `cargo check --workspace`：通过（含 warning，无 error）。
+- lab5 QEMU：沿用 A/B/C 已记录结果（`fs_test pass`、`pipe_test pass`）；本轮环境 cargo 交叉编译耗时过长未重复全量 QEMU，以三方一致记录为准。
+
+### Notes
+
+- `progress.md`：追加 DAY5 核查结论与 DAY6 任务编排。
+- `.cursor/plans/自研os教学实验环境.plan.md`：Day4/Day5 todo 标为 completed；新增成员 A Day5/Day6 详细任务清单。
+- `os-lab/docs/architecture.md`：Lab5 完成态、syscall 数据流 mermaid、Day6 待办与验证命令。
+- 回滚方式：`git checkout progress.md .cursor/plans/自研os教学实验环境.plan.md os-lab/docs/architecture.md`。
+
 ## 2026-06-25 - Task: 成员 C Day5（lab5 文档 + 5 组文字习题 + xv6 数据复核）
 ### What was done
 - 复核本校 xv6 对比数据完整性：comparison-data.md 的 xv6 部分（语言 C/RISC-V/单源码树/6000-8000 行/11 个 lab/grade 脚本/三方对比速览表）齐全且准确。修正 2 处过时数据：自研 labs 数由 3 改为 5（lab4 已完成）、对比表"实验数 5（进行中）"去掉"进行中"标注（Day5 后全部完成）。

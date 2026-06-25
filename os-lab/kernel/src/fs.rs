@@ -4,13 +4,18 @@ use crate::config::{MAX_FD, MAX_PROCESS_NUM};
 use crate::mm;
 use crate::process::current_slot;
 use crate::sync;
+use os_fs::{EmbeddedFs, FileId};
 
-static EMBEDDED_FILES: &[(&str, &[u8])] = &[("testfile", b"Hello from testfile!\n")];
+/// Single read-only file table (shared with `os-fs` crate host tests).
+static FS: EmbeddedFs = EmbeddedFs::default_fs();
+
+/// Max bytes copied per `read` syscall (kernel stack buffer).
+const MAX_READ_CHUNK: usize = 256;
 
 #[derive(Clone, Copy)]
 enum FdType {
     Regular {
-        file_id: usize,
+        file_id: FileId,
         offset: usize,
     },
     PipeRead(usize),
@@ -59,10 +64,8 @@ pub fn init_process_fds(slot: usize) {
     }
 }
 
-fn find_file(path: &str) -> Option<usize> {
-    EMBEDDED_FILES
-        .iter()
-        .position(|(name, _)| *name == path)
+fn find_file(path: &str) -> Option<FileId> {
+    FS.open(path)
 }
 
 pub fn clone_fd_table(parent_slot: usize, child_slot: usize) {
@@ -185,18 +188,23 @@ pub fn sys_read(fd: usize, buf: *mut u8, len: usize) -> isize {
     match ty {
         FdType::PipeRead(pipe_id) => sync::pipe_read(pipe_id, buf, len),
         FdType::Regular { file_id, offset } => {
-            let data = EMBEDDED_FILES[file_id].1;
-            if offset >= data.len() {
+            let file_size = FS.size(file_id);
+            if offset >= file_size {
                 return 0;
             }
-            let to_read = len.min(data.len() - offset);
+            let to_read = len.min(file_size - offset).min(MAX_READ_CHUNK);
+            let mut kbuf = [0u8; MAX_READ_CHUNK];
+            let n = FS.read_at(file_id, offset, &mut kbuf[..to_read]);
+            if n == 0 {
+                return 0;
+            }
             mm::activate_current_user();
             unsafe {
-                core::ptr::copy_nonoverlapping(data.as_ptr().add(offset), buf, to_read);
+                core::ptr::copy_nonoverlapping(kbuf.as_ptr(), buf, n);
             }
             mm::activate_kernel();
-            set_fd_offset(slot, fd, offset + to_read);
-            to_read as isize
+            set_fd_offset(slot, fd, offset + n);
+            n as isize
         }
         FdType::PipeWrite(_) => -1,
     }

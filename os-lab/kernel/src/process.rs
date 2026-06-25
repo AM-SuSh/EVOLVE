@@ -344,31 +344,29 @@ fn reap_zombie_child(parent_slot: usize, want_pid: isize) -> Option<(usize, i32)
 }
 
 pub fn sys_wait4(cx: &mut TrapContext, want_pid: isize, status_ptr: *mut i32) -> isize {
-    loop {
-        unsafe {
-            let parent_slot = PROCESS_MANAGER.current;
-            if let Some((pid, code)) = reap_zombie_child(parent_slot, want_pid) {
-                if !write_user_i32(status_ptr, code) {
-                    return -1;
-                }
-                return pid as isize;
+    unsafe {
+        let parent_slot = PROCESS_MANAGER.current;
+        if let Some((pid, code)) = reap_zombie_child(parent_slot, want_pid) {
+            if !write_user_i32(status_ptr, code) {
+                return -1;
             }
-            if want_pid >= 0 {
-                let has_child = PROCESS_MANAGER.slots.iter().any(|slot| {
-                    slot.as_ref().map_or(false, |pcb| {
-                        pcb.parent_slot == Some(parent_slot)
-                            && pcb.status != ProcessStatus::Zombie
-                    })
-                });
-                if !has_child {
-                    return -1;
-                }
+            return pid as isize;
+        }
+        if want_pid >= 0 {
+            let has_child = PROCESS_MANAGER.slots.iter().any(|slot| {
+                slot.as_ref().is_some_and(|pcb| {
+                    pcb.parent_slot == Some(parent_slot) && pcb.status != ProcessStatus::Zombie
+                })
+            });
+            if !has_child {
+                return -1;
             }
         }
-        sync_current_trap_cx(cx);
-        mark_current_ready();
-        run_next_process();
     }
+    // Cooperative wait: yield and re-enter this syscall when scheduled again.
+    sync_current_trap_cx(cx);
+    mark_current_ready();
+    run_next_process();
 }
 
 pub fn sys_exit(exit_code: i32) -> ! {

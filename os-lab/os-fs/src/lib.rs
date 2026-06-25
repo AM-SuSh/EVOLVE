@@ -1,8 +1,7 @@
 //! Embedded read-only file system for the OS teaching lab (lab5).
 //!
 //! This crate provides a **host-testable** static file table. The kernel fd layer
-//! lives in `kernel/src/fs.rs` (member A); contents here must stay aligned with
-//! the kernel's embedded `testfile` for consistent QEMU `fs_test` behaviour.
+//! in `kernel/src/fs.rs` delegates to [`EmbeddedFs::default_fs()`] for open/read.
 
 #![no_std]
 
@@ -10,7 +9,7 @@
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct FileId(pub usize);
 
-/// Default embedded files (aligned with `kernel/src/fs.rs`).
+/// Default embedded files (used by kernel `fs.rs` via [`EmbeddedFs::default_fs()`]).
 pub const DEFAULT_FILES: &[(&str, &[u8])] = &[("testfile", b"Hello from testfile!\n")];
 
 /// Read-only file system backed by a compile-time static table.
