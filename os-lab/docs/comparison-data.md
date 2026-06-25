@@ -8,7 +8,7 @@ Method: script counts (crates incl workspace members, LOC incl .rs/.asm, tests =
 - Source files: 27 (.rs + .asm)
 - Lines of code: 1882
 - Unit tests: 9
-- Labs: 3 (lab1-lab5, mapping to ch1+ch2 / ch2+ch3 / ch4 / ch5 / ch6+ch8)
+- Labs: 5 (lab1-lab5, mapping to ch1+ch2 / ch2+ch3 / ch4 / ch5 / ch6+ch8)
 - Architecture: single kernel + feature gate progressive (6 crates, 2 dependency layers)
 
 ## Reference tg-rcore-tutorial
@@ -67,7 +67,7 @@ Method: script counts (crates incl workspace members, LOC incl .rs/.asm, tests =
 | 组件化 | 6 crate/2 层依赖 | 23 crate/4 层依赖 | 无 crate |
 | 代码行数 | 1882 | 36455 | ~6000-8000（内核） |
 | 单元测试 | 9 个（内嵌） | 0 | 外部 grade 脚本 |
-| 实验数 | 5（进行中） | 5 | 11 |
+| 实验数 | 5 | 5 | 11 |
 | 实验引导 | 问题驱动+先想再对照 | 实现导向 | 步骤式任务清单 |
 
 ### 待成员 C 向本校核实的【本校特有】项

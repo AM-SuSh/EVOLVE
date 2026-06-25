@@ -1,3 +1,26 @@
+## 2026-06-25 - Task: 成员 C Day5（lab5 文档 + 5 组文字习题 + xv6 数据复核）
+### What was done
+- 复核本校 xv6 对比数据完整性：comparison-data.md 的 xv6 部分（语言 C/RISC-V/单源码树/6000-8000 行/11 个 lab/grade 脚本/三方对比速览表）齐全且准确。修正 2 处过时数据：自研 labs 数由 3 改为 5（lab4 已完成）、对比表"实验数 5（进行中）"去掉"进行中"标注（Day5 后全部完成）。
+- 编写 `os-lab/labs/lab5-fs-and-sync.md`：完整的 lab5 实验指导文档，面向学生设计者视角。含问题场景（从"进程无法存数据/交换数据 + 并发出错"两大局限切入）、5 节背景知识（fd 表、内嵌只读文件、管道环形缓冲、自旋锁、数据竞争，含 5 张 mermaid 图）、三档实验任务（跑通 + 5 道阅读理解 + 3 个动手小修改）、验证标准、5 条 AI 提问模板、5 道思考题及参考答案。诚实记录 pipe_test 的 fd 占位 workaround 现象。
+- 编写 `os-lab/labs/answers/lab5-answers.md`：配套答案，含 os-fs/fs.rs/sync.rs 的完整代码逐行解读（FdType 三种类型、openat/read/close/write 分发、SpinMutex 的 CAS+Acquire/Release+RAII、管道环形缓冲+引用计数、sys_pipe 建管道），5 道阅读理解题详细答案，3 个动手修改现象参考。
+- 新建 `os-lab/labs/exercises/` 目录：编写 5 组文字类习题（plan 第 326 行 Day5 任务）。含 README.md 索引 + lab1-5 各一个习题文件，每个 3-5 道概念理解题（不要求写代码，考察对核心概念的掌握），部分答案指向各 lab 文档的"思考题与参考答案"节，部分是新题。
+
+### Testing
+- 实测 `cargo run -p kernel --features lab5`（debug 模式）：输出 `Hello from testfile!`、`fs_test pass`、`pipe says hi`、`pipe_test pass`、`All processes exited.`，exit code 0，无 panic。文档【任务一】预期输出与实测完全一致。
+- 诚实记录已知现象：输出中有一条 `pipe write failed` + 某进程 `exited with code -1`，是成员 B 记录的 fd 占位 workaround 预期行为，不影响 pipe_test pass 判定，文档已明确说明。
+- 核查文档引用的全部代码事实（FdType 枚举三类型、fd 表槽位数组、sys_read 的 match 分发、SpinMutex 的 compare_exchange_weak+Acquire/Release、管道环形缓冲 %SIZE 绕回、pipe_add_refs 引用计数）均与 kernel/src/fs.rs、sync.rs 实际源码逐字对应。
+- 5 组习题的答案与各 lab 文档的"思考题与参考答案"节交叉验证一致，无矛盾。
+
+### Notes
+- `os-lab/labs/lab5-fs-and-sync.md`：新增，lab5 完整实验指导（约 220 行，5 张 mermaid，面向学生设计者视角）。
+- `os-lab/labs/answers/lab5-answers.md`：新增，lab5 答案与代码逐行解读。
+- `os-lab/labs/exercises/README.md` + `lab1-exercises.md`...`lab5-exercises.md`：新增，5 组文字类习题（plan 第 326 行 Day5 任务）。
+- `os-lab/docs/comparison-data.md`：修正 2 处过时数据（自研 labs 数、对比表实验数标注）。
+- `progress.md`：追加本轮成员 C Day5 记录。
+- 本轮严格遵守成员 C 文件边界（仅改 os-lab/labs/、os-lab/docs/、progress.md），未触碰成员 A 的 kernel/src/、成员 B 的 os-*/、user/。
+- 至此 plan 第 326 行 Day5 任务全部完成（lab5 文档 + 5 组习题）。5 个 lab 的实验指导文档（lab1-5）+ 5 个答案文件 + 5 组习题全部就绪，os-lab 的教学文档体系成型。
+- 回滚方式：`rm os-lab/labs/lab5-fs-and-sync.md os-lab/labs/answers/lab5-answers.md os-lab/labs/exercises/` 并 `git checkout os-lab/docs/comparison-data.md progress.md`。
+
 ## 2026-06-24 - Task: 成员 B Day5（os-fs crate + 组件测试 + lab5 用户态/验证）
 
 ### What was done
