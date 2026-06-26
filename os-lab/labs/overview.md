@@ -63,10 +63,10 @@ graph TD
 | 实验 | 主题 | Feature | 对应文档 | 参考环境对应 |
 |------|------|---------|----------|-------------|
 | Lab1 | 裸机启动与最小内核 | `lab1` | [lab1-bare-metal.md](lab1-bare-metal.md) | ch1 + ch2 合并 |
-| Lab2 | 中断处理与多任务 | `lab2` | lab2-trap-and-task.md（待编写） | ch2 + ch3 合并 |
-| Lab3 | 内存管理与虚存 | `lab3` | lab3-memory.md（待编写） | ch4 |
-| Lab4 | 进程管理 | `lab4` | lab4-process.md（待编写） | ch5 |
-| Lab5 | 文件系统与并发 | `lab5` | lab5-fs-and-sync.md（待编写） | ch6 + ch8 合并 |
+| Lab2 | 中断处理与多任务 | `lab2` | [lab2-trap-and-task.md](lab2-trap-and-task.md) | ch2 + ch3 合并 |
+| Lab3 | 内存管理与虚存 | `lab3` | [lab3-memory.md](lab3-memory.md) | ch4 |
+| Lab4 | 进程管理 | `lab4` | [lab4-process.md](lab4-process.md) | ch5 |
+| Lab5 | 文件系统与并发 | `lab5` | [lab5-fs-and-sync.md](lab5-fs-and-sync.md) | ch6 + ch8 合并 |
 
 feature 层级定义在 `kernel/Cargo.toml`：
 
@@ -133,5 +133,5 @@ make test-lab1
 1. **先读 overview（本文档）**，建立对 5 个实验和知识体系的整体认知。
 2. **按 Lab 顺序逐个完成**，每个 Lab 先读文档的"问题场景"理解动机，再看"实验任务"动手编码，最后用文档给的命令验证。
 3. **善用 AI 协作**：每个 Lab 文档末尾都提供「AI 提问模板」，给出与 AI 交互的推荐切入点，帮助你自主探索而非被动接受答案。
-4. **做完习题自查**：每个 Lab 配有 2-3 道文字类习题和参考答案，用于巩固概念理解。
+4. **做完习题自查**：每个 Lab 配有 3-5 道文字类习题（见 [exercises/](exercises/) 目录），做完后对照各 Lab 文档末尾的"思考题与参考答案"节，以及 [answers/](answers/) 目录里的代码解读与习题答案，用于巩固概念理解。
 5. **遇到阻塞**：优先检查 feature 是否选对、环境是否激活（`rustc --version`、`qemu-system-riscv64 --version` 能输出版本）。
