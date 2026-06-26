@@ -1,3 +1,86 @@
+## 2026-06-26 - Task: 成员 A Day7（全流程回归 + README 终稿 + 评审自查）
+
+### What was done
+
+- 执行 Lab1–Lab5 全流程 QEMU 回归（`cargo run -p kernel --features labN --release`），五档 feature 均 exit 0，关键输出与计划验收一致。
+- 确认 Day6 后修复的 lab4 `fork_test pass` 在 Day7 回归中稳定通过（`I am parent`/`I am child`、`waited pid done`、`fork_test pass`）。
+- 更新 `os-lab/README.md`：新人 5 分钟上手路径、实验列表与文档索引、按 Lab 的 QEMU/单元测试命令、与参考环境差异摘要（Day7 A 域 README 终稿）。
+- 更新 `os-lab/docs/architecture.md`：补充 Day7 全流程回归结果表。
+- 按评审四维度做 A 域自查：创新性（feature gate 单内核）✅、完整性（lab1–lab5 可运行可测）✅、代码质量（kernel clippy 无 error，B 域 warning 已文档化）⚠️、`cargo clippy --all -D warnings` 未全绿；文档完整性（README 链至 labs/docs）✅。
+
+### Testing
+
+- `cargo run -p kernel --features lab1 --release`：exit 0；`Hello, OS!`、`os-lab kernel lab1 is running on QEMU virt.`。
+- `cargo run -p kernel --features lab2 --release`：exit 0；`409684505`、5 轮 `Yield round`、`All user apps exited.`。
+- `cargo run -p kernel --features lab3 --release`：exit 0；同上。
+- `cargo run -p kernel --features lab4 --release`：exit 0；`fork_test pass`、`All processes exited.`。
+- `cargo run -p kernel --features lab5 --release`：exit 0；`Hello from testfile!`、`fs_test pass`、`pipe says hi`、`pipe_test pass`、`All processes exited.`。
+- `cargo clippy -p kernel --features lab5`：exit 0，无 error（依赖 crate warning 保留）。
+- `cargo package -p os-sbi -p os-context -p os-syscall -p os-alloc -p os-vm -p os-fs --list --allow-dirty`：6 个组件 crate 均可列出发布文件。
+
+### Notes
+
+- `os-lab/README.md`：Day7 终稿（实验列表、测试命令、文档索引、新人路径）。
+- `os-lab/docs/architecture.md`：Day7 回归结果表。
+- `progress.md`：追加 DAY6 核查结论与本轮 Day7 记录。
+- 回滚方式：`git checkout os-lab/README.md os-lab/docs/architecture.md progress.md`。
+
+## 2026-06-26 - Task: DAY6 三人完成情况核查（对照计划第三节 + 成员分工）
+
+### What was done
+
+对照 `.cursor/plans/自研os教学实验环境.plan.md` 第三节 Day6 总目标（第 248–262 行）与第四节成员 A/B/C Day6 分工，逐项核查仓库现状并汇总结论。
+
+**计划第三节 Day6 总体验收**
+
+| 验收项 | 状态 | 说明 |
+|--------|------|------|
+| 完善 5 份实验指导（mermaid + AI 提问模板） | ✅ | `labs/lab1`–`lab5` 均存在；各含 mermaid 与「AI 提问模板」节 |
+| 5 组文字习题 + 答案 | ✅ | `labs/exercises/lab1`–`lab5-exercises.md` + `labs/answers/lab1`–`lab5-answers.md` |
+| 5 个实验代码答案 | ✅ | `labs/answers/` 五份均含代码片段与习题解析 |
+| `docs/architecture.md` | ✅ | Lab1–Lab5 模块演进、Lab5 数据流 mermaid、Day6 工程质量表 |
+| `docs/comparison.md`（三方对比 + 学习效率） | ✅ | 成员 C Day6 交付 |
+| `docs/ai-collaboration.md` | ✅ | lab1–lab5 示例记录完整 |
+| Markdown 链接有效、mermaid 可渲染 | ⚠️ | `labs/overview.md` 实验列表仍标 lab2–5「待编写」（文档滞后，实际文件已存在）；属 C 域，不阻断 Day6 |
+
+**成员 A Day6 详细清单**
+
+| 序号 | 任务 | 状态 |
+|------|------|------|
+| 1 | `fs.rs` 接入 `os_fs::EmbeddedFs::default_fs()` | ✅ |
+| 2 | `cargo clippy -p kernel --features lab5` | ✅ 无 error；`static_mut_refs` 等 warning 已记入 architecture |
+| 3 | 6 组件 crate `cargo package --list` | ✅ |
+| 4 | `architecture.md` Lab5 完成态 | ✅ |
+| 5 | 交叉评审 B/C 文档与内核一致性 | ✅ A 已核对 fd/pipe 与 `fs.rs`/`sync.rs` 一致 |
+| 6 | 修复 B 回归中 A 域 bug | ✅ lab4 `getpid`/`wait4` 栈溢出与 sepc 回退已修复（见 2026-06-25 记录） |
+
+**成员 B Day6**
+
+| 任务 | 状态 |
+|------|------|
+| Lab1–Lab5 交叉回归 + 24 项 host 单元测试 | ✅ |
+| `tests/README.md` Day6 节 | ✅ |
+| `docs/os-lab_verify.md` Day6 节 | ✅ |
+
+**成员 C Day6**
+
+| 任务 | 状态 |
+|------|------|
+| `docs/comparison.md` 三方对比 | ✅ |
+| 学习效率评估（comparison 第五节） | ✅ |
+| `docs/ai-collaboration.md` 完善 | ✅ |
+
+**Day6 总体验收结论：通过**（接受已知遗留：`overview.md` 链接文案滞后；`cargo clippy --all -D warnings` 因 B 域 `os-alloc`/`os-context` 未全绿，已文档化例外；`design-report.md` 属 Day7 C 域任务）。
+
+### Testing
+
+- 核查基于既有 `progress.md` 记录与本轮文件存在性/内容抽检；QEMU 全量回归在成员 A Day7 任务中复跑确认（见上一条 Day7 记录）。
+
+### Notes
+
+- `progress.md`：追加 DAY6 三方核查结论。
+- 遗留转 Day7：`labs/overview.md` 待 C 更新链接文案；`docs/design-report.md` 待 C 编写；`cargo clippy --all -D warnings` 待 B 域消化（非 A 阻塞项）。
+
 ## 2026-06-25 - Task: 成员 C Day6（三方对比报告 + 学习效率评估 + AI 协作记录完善）
 ### What was done
 - 编写 `os-lab/docs/comparison.md`：完整的三方对比分析报告（plan 第 256-260 行 Day6 核心任务）。含三环境概览（mermaid）、定量对比（规模/架构/实验/测试指标表）、定性分析（学习路径清晰度/上手难度/文档友好度）、自研环境 5 大差异化创新点（mermaid）、学习效率评估（理论分析 + 预期学习成果 + 与 xv6 互补建议）、局限与改进方向、结论。所有定量数据基于 comparison-data.md 已采集的真实数据，定性分析有理有据。

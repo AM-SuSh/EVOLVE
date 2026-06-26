@@ -188,7 +188,19 @@ flowchart LR
 | `kernel/fs.rs` 接入 `os-fs` | ✅ 使用 `EmbeddedFs::default_fs()` |
 | `cargo clippy -p kernel --features lab5` | ✅ 无 error（`never_loop` 已修复）；`static_mut_refs` 等 warning 保留并记录 |
 | `cargo package -p os-* --list` | ✅ 6 个组件 crate 均可列出发布文件（`description`/`license`/`repository` 齐全） |
-| Lab1–Lab5 QEMU 回归 | 见 `progress.md` Day6 记录 |
+| Lab1–Lab5 QEMU 回归 | 见 `progress.md` Day6/Day7 记录 |
+
+## Day7 全流程回归（成员 A）
+
+| Lab | 命令 | 关键输出 | 结果 |
+|-----|------|----------|------|
+| lab1 | `cargo run -p kernel --features lab1 --release` | `Hello, OS!` | ✅ |
+| lab2 | `cargo run -p kernel --features lab2 --release` | `409684505`、5 轮 `Yield round` | ✅ |
+| lab3 | `cargo run -p kernel --features lab3 --release` | 同上 | ✅ |
+| lab4 | `cargo run -p kernel --features lab4 --release` | `fork_test pass`、`All processes exited.` | ✅ |
+| lab5 | `cargo run -p kernel --features lab5 --release` | `fs_test pass`、`pipe_test pass` | ✅ |
+
+`cargo clippy -p kernel --features lab5`：无 error；`os-alloc`/`os-context`/`os-vm` 的 `static_mut_refs` 等 warning 属 B 域教学简化，`-D warnings` 全 workspace 未达标（见 Day6 备注）。
 
 ## 快速验证命令
 
