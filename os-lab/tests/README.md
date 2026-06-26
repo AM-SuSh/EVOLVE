@@ -250,8 +250,65 @@ Linux/macOS：将 `cargo test` 的 `--target` 换为对应 host triple；`os-vm`
 - [ ] `cargo check --workspace` 无 error
 - [ ] 组件 host 单元测试 24 项全部 `ok`
 - [ ] Lab5 QEMU：`fs_test pass`、`pipe_test pass`（验证 `os-fs` 内核集成）
-- [ ] Lab4 QEMU：`I am parent`/`I am child`、`All processes exited.`
+- [ ] Lab4 QEMU：`I am parent`/`I am child`、`fork_test pass`、`All processes exited.`
 - [ ] Lab3 QEMU：5 轮 `Yield round`
 - [ ] Lab2 QEMU：`409684505`、`All user apps exited.`
 - [ ] Lab1 QEMU：`Hello, OS!`
 - [ ] `cargo check -p kernel --features lab1`…`lab5` 均可编译
+
+## Day 7 / 终验回归（成员 B Day7）
+
+Day7 在 Day6 全量交叉回归基础上，增加 **B 域 clippy 全绿** 与 **README 新人 5 分钟路径** 复验，作为三人协作的最终 B 侧收口。
+
+### 一键命令（PowerShell，仓库根目录）
+
+```powershell
+cd <仓库根目录>
+. .\scripts\activate-os-env.ps1
+$ErrorActionPreference = 'Continue'
+
+cd os-lab
+cargo check --workspace
+
+cargo clippy -p os-alloc -p os-context -p os-vm -p os-syscall -p os-sbi -p os-fs -- -D warnings
+
+cargo test -p os-context -p os-syscall -p os-sbi -p os-fs --target x86_64-pc-windows-msvc
+cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1
+
+# README 新人路径（lab1→lab5 正序）
+cargo run -p kernel --features lab1 --release
+cargo run -p kernel --features lab2 --release
+cargo run -p kernel --features lab3 --release
+cargo run -p kernel --features lab4 --release
+cargo run -p kernel --features lab5 --release
+
+cargo build -p user --bin fs_test --bin pipe_test --target riscv64gc-unknown-none-elf --release
+cargo run -p kernel --features lab5 --release
+cargo run -p kernel --features lab4 --release
+cargo run -p kernel --features lab3 --release
+cargo run -p kernel --features lab2 --release
+cargo run -p kernel --features lab1 --release
+
+cargo check -p kernel --features lab1
+cargo check -p kernel --features lab2
+cargo check -p kernel --features lab3
+cargo check -p kernel --features lab4
+cargo check -p kernel --features lab5
+```
+
+Linux/macOS：将 `cargo test` 的 `--target` 换为对应 host triple；`os-vm` 测试须保留 `-- --test-threads=1`。
+
+### Day7 验收勾选清单
+
+- [ ] `cargo clippy -p os-alloc -p os-context -p os-vm -p os-syscall -p os-sbi -p os-fs -- -D warnings` 无 error/warning
+- [ ] `cargo check --workspace` 无 error
+- [ ] 组件 host 单元测试 24 项全部 `ok`
+- [ ] README 新人路径：lab1–lab5 正序 QEMU 均可运行
+- [ ] Lab5 QEMU：`Hello from testfile!`、`fs_test pass`、`pipe_test pass`、`All processes exited.`
+- [ ] Lab4 QEMU：`I am parent`/`I am child`、`fork_test pass`、`All processes exited.`
+- [ ] Lab3 QEMU：5 轮 `Yield round`、`All user apps exited.`
+- [ ] Lab2 QEMU：`409684505`、`All user apps exited.`
+- [ ] Lab1 QEMU：`Hello, OS!`、`os-lab kernel lab1 is running on QEMU virt.`
+- [ ] `cargo check -p kernel --features lab1`…`lab5` 均可编译
+
+**说明**：全 workspace `cargo clippy --all -D warnings` 可能因 `kernel/` 教学简化 `static mut` 仍有个别 warning（A 域）；B 域交付标准为上述 6 个组件 crate clippy 全绿。详见 [`docs/os-lab_verify.md`](../../docs/os-lab_verify.md) 第 17 节。

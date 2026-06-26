@@ -10,6 +10,22 @@
 
 #![no_std]
 
+use core::cell::UnsafeCell;
+
+struct SyncUnsafeCell<T>(UnsafeCell<T>);
+unsafe impl<T> Sync for SyncUnsafeCell<T> {}
+
+impl<T> SyncUnsafeCell<T> {
+    const fn new(value: T) -> Self {
+        Self(UnsafeCell::new(value))
+    }
+
+    fn with<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
+        // SAFETY: kernel is single-threaded; host tests run single-threaded for global heap.
+        unsafe { f(&mut *self.0.get()) }
+    }
+}
+
 pub const PAGE_SIZE: usize = 4096;
 pub const PAGE_SIZE_BITS: usize = 12;
 
@@ -70,39 +86,36 @@ impl FrameAllocator for StackFrameAllocator {
     }
 }
 
-static mut FRAME_ALLOCATOR: StackFrameAllocator = StackFrameAllocator::empty();
-static mut FRAME_ALLOC_HOOK: Option<fn(PhysPageNum)> = None;
+static FRAME_ALLOCATOR: SyncUnsafeCell<StackFrameAllocator> =
+    SyncUnsafeCell::new(StackFrameAllocator::empty());
+static FRAME_ALLOC_HOOK: SyncUnsafeCell<Option<fn(PhysPageNum)>> = SyncUnsafeCell::new(None);
 
 pub fn init_frame_allocator(start: usize, end: usize) {
-    unsafe {
-        FRAME_ALLOCATOR.init(start, end);
-    }
+    FRAME_ALLOCATOR.with(|alloc| alloc.init(start, end));
 }
 
 /// Optional kernel hook invoked after each successful frame allocation (lab3+).
 pub fn set_frame_alloc_hook(hook: Option<fn(PhysPageNum)>) {
-    unsafe {
-        FRAME_ALLOC_HOOK = hook;
-    }
+    FRAME_ALLOC_HOOK.with(|slot| *slot = hook);
 }
 
 pub fn frame_alloc() -> Option<PhysPageNum> {
-    let ppn = unsafe { FRAME_ALLOCATOR.alloc_frame() }?;
-    unsafe {
-        if let Some(hook) = FRAME_ALLOC_HOOK {
+    let ppn = FRAME_ALLOCATOR.with(|alloc| alloc.alloc_frame())?;
+    FRAME_ALLOC_HOOK.with(|hook| {
+        if let Some(hook) = *hook {
             hook(ppn);
         }
-    }
+    });
     Some(ppn)
 }
 
 pub fn frame_dealloc(ppn: PhysPageNum) {
-    unsafe { FRAME_ALLOCATOR.dealloc_frame(ppn) }
+    FRAME_ALLOCATOR.with(|alloc| alloc.dealloc_frame(ppn));
 }
 
 /// Next PPN that will be handed out (equals the number of frames already allocated).
 pub fn frame_alloc_watermark() -> usize {
-    unsafe { FRAME_ALLOCATOR.current }
+    FRAME_ALLOCATOR.with(|alloc| alloc.current)
 }
 
 /// Kernel heap allocator trait (byte-granularity).
@@ -151,20 +164,18 @@ impl HeapAllocator for BumpAllocator {
     }
 }
 
-static mut HEAP: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
-static mut HEAP_ALLOCATOR: BumpAllocator = BumpAllocator::empty();
+static HEAP: SyncUnsafeCell<[u8; HEAP_SIZE]> = SyncUnsafeCell::new([0; HEAP_SIZE]);
+static HEAP_ALLOCATOR: SyncUnsafeCell<BumpAllocator> = SyncUnsafeCell::new(BumpAllocator::empty());
 
 /// Initialize the global bump heap. Called from kernel init in lab5+.
 pub fn init_heap() {
-    let start = unsafe { HEAP.as_ptr() as usize };
-    unsafe {
-        HEAP_ALLOCATOR.init(start, HEAP_SIZE);
-    }
+    let start = HEAP.with(|heap| heap.as_ptr() as usize);
+    HEAP_ALLOCATOR.with(|alloc| alloc.init(start, HEAP_SIZE));
 }
 
 /// Allocate bytes from the global heap (lab5+ kernel use).
 pub fn heap_alloc(layout: core::alloc::Layout) -> Option<*mut u8> {
-    unsafe { HEAP_ALLOCATOR.alloc(layout) }
+    HEAP_ALLOCATOR.with(|alloc| alloc.alloc(layout))
 }
 
 #[cfg(test)]

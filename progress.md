@@ -1,3 +1,35 @@
+## 2026-06-26 - Task: 成员 B Day7（B 域 clippy 修复 + 新人路径复验 + 终验回归）
+
+### What was done
+
+- 修复 B 域 `static_mut_refs`：`os-alloc` 全局帧/堆分配器改用 `SyncUnsafeCell`；`os-context` 的 `RESTORE_SCRATCH` 同理；`os-vm` 测试用堆分配假内存替代 `static mut FAKE_MEM`（避免 2 MiB 栈溢出）。
+- 顺带消除 `os-vm` clippy 告警：`PageTableEntry` 公开、`Default for PageTable`、折叠 `if`、`.flatten()`。
+- 按 `os-lab/README.md` 新人 5 分钟路径从零复验（激活环境 → lab1–lab5 正序 QEMU → 24 项 host 单测）。
+- 执行 Day7 终验回归：`cargo check --workspace`、B 域 clippy、lab5→lab1 倒序 QEMU、`cargo check` lab1–lab5 feature。
+- 更新 `os-lab/tests/README.md` 与 `docs/os-lab_verify.md`：新增 Day7 终验节与勾选清单；Day6 清单 lab4 补上 `fork_test pass`。
+
+### Testing
+
+- `cargo clippy -p os-alloc -p os-context -p os-vm -p os-syscall -p os-sbi -p os-fs -- -D warnings`：exit 0，无 error/warning。
+- `cargo test -p os-context -p os-syscall -p os-sbi -p os-fs --target x86_64-pc-windows-msvc`：13 项全部 `ok`。
+- `cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1`：11 项全部 `ok`（合计 **24 项**）。
+- `cargo check --workspace`：exit 0。
+- README 新人路径 QEMU：lab1 `Hello, OS!`；lab2/3 `409684505`、5 轮 `Yield round`；lab4 `fork_test pass`；lab5 `fs_test pass`、`pipe_test pass`。
+- Day7 倒序 QEMU（lab5→lab1）：全部 exit 0，关键输出与 A Day7 回归表一致。
+- `cargo check -p kernel --features lab1`…`lab5`：全部 exit 0。
+- **边界说明**：全 workspace `cargo clippy --all -D warnings` 仍可能因 `kernel/` 中 `PROCESS_MANAGER`、`FD_TABLES` 等 `static mut`（A 域教学简化）未全绿；B 域 6 组件 crate 已达标。
+
+### Notes
+
+- `os-lab/os-alloc/src/lib.rs`：`SyncUnsafeCell` 包装全局帧/堆分配器。
+- `os-lab/os-context/src/lib.rs`：`RESTORE_SCRATCH` 改用 `SyncUnsafeCell`；补充 `# Safety` 文档。
+- `os-lab/os-vm/src/lib.rs`：clippy 修复 + 测试假内存改堆分配。
+- `os-lab/tests/README.md`：Day7 终验节；Day6 lab4 标准含 `fork_test pass`。
+- `docs/os-lab_verify.md`：验证总览 Day7 行、第 17 节、Day6 lab4 标准同步。
+- `progress.md`：追加本轮成员 B Day7 记录。
+- 至此 plan 成员 B Day7 任务全部完成（clippy 修复 + 新人复验 + 终验文档 + progress）。成员 B 7 天任务全部闭环。
+- 回滚方式：`git checkout os-lab/os-alloc/src/lib.rs os-lab/os-context/src/lib.rs os-lab/os-vm/src/lib.rs os-lab/tests/README.md docs/os-lab_verify.md progress.md`。
+
 ## 2026-06-26 - Task: 成员 C Day7（设计总结报告 + overview 修正 + 文档完整性自查）
 ### What was done
 - 编写 `os-lab/docs/design-report.md`：完整的设计总结报告（plan 第 270-273 行 Day7 核心任务）。含设计思路与目标（三大痛点+三目标+三大架构决策，含 3 张 mermaid）、与 AI 合作的实现过程（三人协作模型+AI 各环节作用表+四条 AI 协作经验，含 1 张 mermaid）、学习效果评估（教学覆盖度三大主题图+学习效率四维度分析+预期学习成果+与 xv6 互补建议，含 2 张 mermaid）、创新点与差异化价值、局限与改进方向、按评审维度（创新性30%/完整性20%/代码质量25%/文档完整性25%）的自查表、总结。

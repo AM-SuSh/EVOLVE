@@ -1,6 +1,6 @@
 # os-lab 验证执行指令
 
-伙伴在本机复现 **成员 B Day1（Lab1）** 至 **Day6（全量交叉回归）** 结果时，按本文顺序执行即可。
+伙伴在本机复现 **成员 B Day1（Lab1）** 至 **Day7（终验回归）** 结果时，按本文顺序执行即可。
 
 所有 `cargo` 命令必须在 **`os-lab/`** 目录下运行（workspace 根在此，不在仓库根目录）。**每新开一个 PowerShell 窗口，都必须先执行环境激活脚本**，否则会出现 `cargo` 找不到。
 
@@ -16,8 +16,9 @@
 | Day4 / Lab4 | `-p kernel --features lab4` | Day2/3 回归 | `cargo run -p kernel --features lab4 --release` | `fork_test pass`、`I am parent`/`I am child` |
 | Day5 / Lab5 | `-p kernel --features lab5` | 全量 24 项 | `cargo run -p kernel --features lab5 --release` | `fs_test pass`、`pipe_test pass` |
 | Day6 | `cargo check` lab1–lab5 | 全量 24 项 | lab5→lab1 依次 QEMU | 见第 16 节勾选清单 |
+| Day7 | `cargo check --workspace` + B 域 clippy | 全量 24 项 | lab5→lab1 + README 新人路径 | 见第 17 节勾选清单 |
 
-**推荐顺序**：激活环境 → 工具检查 → 全 workspace 编译 → 组件单元测试 → Lab1 → Lab2 → Lab3 → Lab4 → Lab5；Day6 做 lab5→lab1 倒序 QEMU 全量回归。
+**推荐顺序**：激活环境 → 工具检查 → 全 workspace 编译 → 组件单元测试 → Lab1 → Lab2 → Lab3 → Lab4 → Lab5；Day6/Day7 做 lab5→lab1 倒序 QEMU 全量回归；Day7 另按 [`os-lab/README.md`](../os-lab/README.md) 新人 5 分钟路径复验。
 
 **host triple 对照**（`cargo test` 必须指定，不可省略）：
 
@@ -636,11 +637,71 @@ Linux/macOS：
 - [ ] `os-context` 3 项 + `os-syscall` 4 项 + `os-sbi` 2 项 + `os-fs` 4 项测试通过
 - [ ] `os-alloc` 6 项 + `os-vm` 5 项测试通过（单线程）
 - [ ] Lab5 QEMU：`Hello from testfile!`、`fs_test pass`、`pipe_test pass`、`All processes exited.`（`os-fs` 内核集成）
-- [ ] Lab4 QEMU：`I am parent`、`I am child`、`All processes exited.`
+- [ ] Lab4 QEMU：`I am parent`/`I am child`、`fork_test pass`、`All processes exited.`
 - [ ] Lab3 QEMU：5 轮 `Yield round`、`All user apps exited.`
 - [ ] Lab2 QEMU：`409684505`、`All user apps exited.`
 - [ ] Lab1 QEMU：`Hello, OS!`、`os-lab kernel lab1 is running on QEMU virt.`
 - [ ] `cargo check -p kernel --features lab1`…`lab5` 均可编译
+
+---
+
+## 17. 一键复制：Day7 终验回归
+
+在 Day6 块基础上，增加 **B 域 clippy 全绿** 与 **README 新人 5 分钟路径** 复验（**推荐：成员 B Day7 最终验收用此块**）。
+
+```powershell
+cd <仓库根目录>
+. .\scripts\activate-os-env.ps1
+$ErrorActionPreference = 'Continue'
+
+cd os-lab
+cargo check --workspace
+
+cargo clippy -p os-alloc -p os-context -p os-vm -p os-syscall -p os-sbi -p os-fs -- -D warnings
+
+cargo test -p os-context -p os-syscall -p os-sbi -p os-fs --target x86_64-pc-windows-msvc
+cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1
+
+# README 新人路径（lab1→lab5 正序）
+cargo run -p kernel --features lab1 --release
+cargo run -p kernel --features lab2 --release
+cargo run -p kernel --features lab3 --release
+cargo run -p kernel --features lab4 --release
+cargo run -p kernel --features lab5 --release
+
+cargo build -p user --bin fs_test --bin pipe_test --target riscv64gc-unknown-none-elf --release
+cargo run -p kernel --features lab5 --release
+cargo run -p kernel --features lab4 --release
+cargo run -p kernel --features lab3 --release
+cargo run -p kernel --features lab2 --release
+cargo run -p kernel --features lab1 --release
+
+cargo check -p kernel --features lab1
+cargo check -p kernel --features lab2
+cargo check -p kernel --features lab3
+cargo check -p kernel --features lab4
+cargo check -p kernel --features lab5
+```
+
+Linux/macOS：
+
+- 将 `cargo test` 的 `--target` 换成对应 host triple。
+- `os-vm` 测试**必须保留** `-- --test-threads=1`。
+
+### Day7 验收勾选清单
+
+- [ ] `cargo clippy -p os-alloc -p os-context -p os-vm -p os-syscall -p os-sbi -p os-fs -- -D warnings` 无 error/warning
+- [ ] `cargo check --workspace` 无 error
+- [ ] 组件 host 单元测试 24 项全部 `ok`
+- [ ] README 新人路径：lab1–lab5 正序 QEMU 均可运行
+- [ ] Lab5 QEMU：`Hello from testfile!`、`fs_test pass`、`pipe_test pass`、`All processes exited.`
+- [ ] Lab4 QEMU：`I am parent`/`I am child`、`fork_test pass`、`All processes exited.`
+- [ ] Lab3 QEMU：5 轮 `Yield round`、`All user apps exited.`
+- [ ] Lab2 QEMU：`409684505`、`All user apps exited.`
+- [ ] Lab1 QEMU：`Hello, OS!`、`os-lab kernel lab1 is running on QEMU virt.`
+- [ ] `cargo check -p kernel --features lab1`…`lab5` 均可编译
+
+**说明**：全 workspace `cargo clippy --all -D warnings` 可能因 `kernel/` 中 `PROCESS_MANAGER`、`FD_TABLES` 等 `static mut` 教学简化仍有个别 warning（属成员 A 域）；**B 域交付标准**为上述 6 个组件 crate 的 clippy 全绿。
 
 ---
 
@@ -649,7 +710,7 @@ Linux/macOS：
 - [os-lab.md](os-lab.md)：自研环境入口
 - [environment_setup.md](environment_setup.md)：Rust / QEMU / Git 安装路径
 - [os-lab/README.md](../os-lab/README.md)：快速开始与 feature 说明
-- [os-lab/tests/README.md](../os-lab/tests/README.md)：集成测试与 Day1–Day6 细则
+- [os-lab/tests/README.md](../os-lab/tests/README.md)：集成测试与 Day1–Day7 细则
 - [os-lab/labs/lab1-bare-metal.md](../os-lab/labs/lab1-bare-metal.md)：Lab1 实验指导
 - [os-lab/labs/lab2-trap-and-task.md](../os-lab/labs/lab2-trap-and-task.md)：Lab2 实验指导
 - [os-lab/labs/lab3-memory.md](../os-lab/labs/lab3-memory.md)：Lab3 实验指导

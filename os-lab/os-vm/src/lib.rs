@@ -81,7 +81,7 @@ const PTE_V: usize = 1;
 
 #[derive(Copy, Clone)]
 #[repr(C)]
-struct PageTableEntry(pub usize);
+pub struct PageTableEntry(pub usize);
 
 impl PageTableEntry {
     fn empty() -> Self {
@@ -232,15 +232,19 @@ impl Drop for PageTable {
     }
 }
 
+impl Default for PageTable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PageTable {
     fn clear_recursive(&self, ppn: PhysPageNum, level: usize) {
         let table = ppn.addr() as *mut PageTableEntry;
         for i in 0..512 {
             let pte = unsafe { *table.add(i) };
-            if pte.is_valid() {
-                if level < 2 {
-                    self.clear_recursive(pte.ppn(), level + 1);
-                }
+            if pte.is_valid() && level < 2 {
+                self.clear_recursive(pte.ppn(), level + 1);
             }
         }
         if level < 2 {
@@ -439,10 +443,8 @@ impl MemorySet {
 
 impl Drop for MemorySet {
     fn drop(&mut self) {
-        for area in self.areas.iter().rev().take(self.area_count) {
-            if let Some(area) = area {
-                area.unmap(&mut self.page_table);
-            }
+        for area in self.areas.iter().rev().take(self.area_count).flatten() {
+            area.unmap(&mut self.page_table);
         }
     }
 }
@@ -517,14 +519,17 @@ mod tests {
     use super::*;
     use os_alloc::{init_frame_allocator, PhysPageNum, PAGE_SIZE};
     use std::boxed::Box;
-
-    static mut FAKE_MEM: [u8; 512 * PAGE_SIZE] = [0; 512 * PAGE_SIZE];
+    use std::vec::Vec;
 
     fn setup_fake_frames() -> usize {
-        let raw = unsafe { FAKE_MEM.as_ptr() as usize };
+        let mut backing = Vec::with_capacity(512 * PAGE_SIZE);
+        backing.resize(512 * PAGE_SIZE, 0);
+        let fake_mem = backing.into_boxed_slice();
+        let raw = fake_mem.as_ptr() as usize;
         let start = (raw + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
-        let end = raw + unsafe { FAKE_MEM.len() };
+        let end = raw + fake_mem.len();
         init_frame_allocator(start, end);
+        Box::leak(fake_mem);
         start
     }
 

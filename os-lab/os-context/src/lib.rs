@@ -77,6 +77,15 @@ mod riscv {
     use super::TrapContext;
     use core::arch::{asm, global_asm};
 
+    struct SyncUnsafeCell<T>(core::cell::UnsafeCell<T>);
+    unsafe impl<T> Sync for SyncUnsafeCell<T> {}
+
+    impl<T> SyncUnsafeCell<T> {
+        const fn new(value: T) -> Self {
+            Self(core::cell::UnsafeCell::new(value))
+        }
+    }
+
     global_asm!(include_str!("trap.asm"));
 
     // Trap entry; set `stvec` to `__alltraps`.
@@ -86,20 +95,30 @@ mod riscv {
     }
 
     /// Restore user registers and `sret` into user mode (lab2, no satp switch).
+    ///
+    /// # Safety
+    ///
+    /// `cx` must point to a valid `TrapContext` that outlives this call; `kernel_sp`
+    /// must be a valid kernel stack top for the current hart.
     pub unsafe fn restore_to_user(cx: *mut TrapContext, kernel_sp: usize, _user_sp: usize) -> ! {
         restore_to_user_impl(cx, kernel_sp, 0);
     }
 
-    static mut RESTORE_SCRATCH: [usize; 2] = [0, 0];
+    static RESTORE_SCRATCH: SyncUnsafeCell<[usize; 2]> = SyncUnsafeCell::new([0, 0]);
 
     /// Like [`restore_to_user`], but switches to `user_satp` immediately before `sret` (lab3+).
+    ///
+    /// # Safety
+    ///
+    /// Same requirements as [`restore_to_user`]; `user_satp` must be a valid Sv39 token.
     pub unsafe fn restore_to_user_paged(
         cx: *mut TrapContext,
         kernel_sp: usize,
         user_satp: usize,
     ) -> ! {
-        RESTORE_SCRATCH[0] = kernel_sp;
-        RESTORE_SCRATCH[1] = user_satp;
+        let scratch = &mut *RESTORE_SCRATCH.0.get();
+        scratch[0] = kernel_sp;
+        scratch[1] = user_satp;
         restore_to_user_paged_body(cx);
     }
 
