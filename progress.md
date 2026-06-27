@@ -1,3 +1,23 @@
+## 2026-06-27 - Task: 整理交付清单与文档索引
+
+### What was done
+
+- 新增 `docs/delivery-checklist.md`：赛题 30%/70% 对照、交付物路径表、评审维度自查、快速/完整验证路径、未纳入 Git 说明、推荐阅读顺序。
+- 新增 `docs/README.md`：仓库文档总索引（按赛题权重、验证、教学实验分类）。
+- 更新 `docs/os-lab.md`、`os-lab/README.md`：链到交付清单与设计报告；`reference-practice-report.md` 结论链到交付清单。
+
+### Testing
+
+- 文档内链路径人工核对：delivery-checklist ↔ design-report / os-lab_verify / reference-practice-report / labs 均可解析。
+- 无代码变更，未重跑 QEMU。
+
+### Notes
+
+- `docs/delivery-checklist.md`：新增，评审主入口。
+- `docs/README.md`：新增，文档导航。
+- `docs/os-lab.md`、`os-lab/README.md`、`docs/reference-practice-report.md`：补充交付链接。
+- 回滚方式：`git checkout docs/ os-lab/README.md progress.md` 并删除 `docs/delivery-checklist.md`、`docs/README.md`。
+
 ## 2026-06-27 - Task: os-lab 终验收尾（clippy 全绿 + Day7 回归）
 
 ### What was done

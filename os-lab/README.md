@@ -2,6 +2,8 @@
 
 基于 Rust + RISC-V 64 的单内核渐进式教学实验环境。学生通过切换 `lab1` 到 `lab5` 的 feature，在同一套代码库中观察内核从裸机到完整系统的演进。
 
+**赛题交付**：[交付清单](../docs/delivery-checklist.md) · [文档索引](../docs/README.md) · [设计总结报告](docs/design-report.md)
+
 ## 环境要求
 
 - Rust stable（见 `rust-toolchain.toml`）
@@ -126,6 +128,7 @@ os-lab/
 
 | 文档 | 说明 |
 |------|------|
+| [docs/design-report.md](docs/design-report.md) | **设计总结报告**（赛题 70% 核心交付） |
 | [docs/architecture.md](docs/architecture.md) | 架构说明、feature 依赖图、Lab1–Lab5 数据流 |
 | [docs/comparison.md](docs/comparison.md) | 三方对比分析与学习效率评估 |
 | [docs/ai-collaboration.md](docs/ai-collaboration.md) | AI 协作过程记录与示例 |

@@ -99,5 +99,4 @@ cargo clean; cargo run --features exercise 2>&1 | tg-rcore-tutorial-checker --ch
 ## 6. 结论
 
 - 5 章 exercise **全部 checker 全绿**（ch3 7/7、ch4 16/16、ch5 17/17、ch6 33/33、ch8 25/25），核心 syscall 已实现并有输出证据。
-- 最大工程陷阱是 **Windows 下 `CHAPTER` 必须为编译期环境变量**，需 `cargo clean` 后重编用户态。
-- 自研 `os-lab`（赛题 70%）与参考 exercise（30%）现已形成「理论练习 + 自研环境」双交付主线。
+- 自研 `os-lab`（赛题 70%）与参考 exercise（30%）形成「理论练习 + 自研环境」双交付主线；**交付清单**见 [delivery-checklist.md](delivery-checklist.md)。

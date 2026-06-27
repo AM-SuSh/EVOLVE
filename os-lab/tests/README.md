@@ -300,6 +300,7 @@ Linux/macOS：将 `cargo test` 的 `--target` 换为对应 host triple；`os-vm`
 
 ### Day7 验收勾选清单
 
+- [ ] 全 workspace `cargo clippy --all -- -D warnings` 与各 `kernel --features lab1`…`lab5` 均无 error/warning
 - [ ] `cargo clippy -p os-alloc -p os-context -p os-vm -p os-syscall -p os-sbi -p os-fs -- -D warnings` 无 error/warning
 - [ ] `cargo check --workspace` 无 error
 - [ ] 组件 host 单元测试 24 项全部 `ok`
@@ -311,4 +312,4 @@ Linux/macOS：将 `cargo test` 的 `--target` 换为对应 host triple；`os-vm`
 - [ ] Lab1 QEMU：`Hello, OS!`、`os-lab kernel lab1 is running on QEMU virt.`
 - [ ] `cargo check -p kernel --features lab1`…`lab5` 均可编译
 
-**说明**：全 workspace `cargo clippy --all -D warnings` 可能因 `kernel/` 教学简化 `static mut` 仍有个别 warning（A 域）；B 域交付标准为上述 6 个组件 crate clippy 全绿。详见 [`docs/os-lab_verify.md`](../../docs/os-lab_verify.md) 第 17 节。
+**说明**：全 workspace 与各 lab feature 的 `cargo clippy -- -D warnings` 均已通过（2026-06-27 终验）。详见 [`docs/os-lab_verify.md`](../../docs/os-lab_verify.md) 第 17 节与 [`docs/delivery-checklist.md`](../../docs/delivery-checklist.md)。

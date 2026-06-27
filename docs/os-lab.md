@@ -2,6 +2,8 @@
 
 自研操作系统教学实验环境位于仓库 `os-lab/` 目录，采用单内核 + feature gate 渐进式架构。
 
+**赛题交付**：完整清单与评审验证路径见 [docs/delivery-checklist.md](../docs/delivery-checklist.md)；文档总索引见 [docs/README.md](../docs/README.md)。
+
 ## 快速验证（Lab1）
 
 完整验证步骤（编译检查 + QEMU）见 **[os-lab_verify.md](os-lab_verify.md)**。
