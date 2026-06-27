@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+#[cfg(feature = "lab2")]
+mod cell;
 mod console;
 
 #[cfg(any(feature = "lab2", feature = "lab3", feature = "lab4", feature = "lab5"))]
@@ -15,7 +17,10 @@ mod trap;
 #[cfg(any(feature = "lab2", feature = "lab3", feature = "lab4", feature = "lab5"))]
 mod loader;
 
-#[cfg(any(feature = "lab2", feature = "lab3", feature = "lab4", feature = "lab5"))]
+#[cfg(all(
+    any(feature = "lab2", feature = "lab3"),
+    not(any(feature = "lab4", feature = "lab5"))
+))]
 mod task;
 
 #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
@@ -77,7 +82,7 @@ pub extern "C" fn rust_main() -> ! {
             process::init();
             process::run_initproc();
         }
-        #[cfg(all(not(feature = "lab4"), any(feature = "lab2", feature = "lab3", feature = "lab5")))]
+        #[cfg(all(not(feature = "lab4"), any(feature = "lab2", feature = "lab3")))]
         {
             task::init();
             task::run_first_task();

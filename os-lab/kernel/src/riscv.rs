@@ -1,5 +1,7 @@
 //! RISC-V CSR helpers used by trap and task modules (lab2+).
 
+#![allow(dead_code)]
+
 use core::arch::asm;
 
 #[inline]

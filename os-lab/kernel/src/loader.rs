@@ -101,7 +101,7 @@ pub fn get_app_elf_by_name(name: &str) -> Option<&'static [u8]> {
 }
 
 pub fn load_apps() {
-    assert!(NUM_APP <= MAX_APP_NUM);
+    const { assert!(NUM_APP <= MAX_APP_NUM) };
     #[cfg(not(any(feature = "lab3", feature = "lab4", feature = "lab5")))]
     {
         use crate::config::APP_BASE_ADDRESS;
@@ -114,7 +114,7 @@ pub fn load_apps() {
             "Loading {} user apps (ELF, lab4 process model)...",
             NUM_APP
         );
-        #[cfg(all(not(any(feature = "lab4", feature = "lab5")), any(feature = "lab3")))]
+        #[cfg(all(not(any(feature = "lab4", feature = "lab5")), feature = "lab3"))]
         println!(
             "Loading {} user apps (ELF, per-task address spaces)...",
             NUM_APP

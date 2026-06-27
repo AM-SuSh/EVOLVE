@@ -1,5 +1,7 @@
 //! Kernel configuration constants (lab2+).
 
+#![allow(dead_code)]
+
 pub const USER_STACK_SIZE: usize = 4096 * 2;
 pub const KERNEL_STACK_SIZE: usize = 4096 * 2;
 pub const MAX_APP_NUM: usize = 16;
@@ -29,5 +31,7 @@ pub const PAGE_SIZE: usize = 4096;
 pub const FRAME_ALLOC_START: usize = APP_BASE_ADDRESS + APP_REGION_SIZE;
 /// Actual frame allocator start (above the user app slot).
 pub const FRAME_POOL_START: usize = FRAME_ALLOC_START + 0x20_0000;
+#[allow(dead_code)]
 pub const TRAMPOLINE: usize = usize::MAX - PAGE_SIZE + 1;
+#[allow(dead_code)]
 pub const TRAP_CONTEXT: usize = TRAMPOLINE - PAGE_SIZE;

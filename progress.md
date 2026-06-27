@@ -1,3 +1,76 @@
+## 2026-06-27 - Task: os-lab 终验收尾（clippy 全绿 + Day7 回归）
+
+### What was done
+
+- kernel 全局状态由 `static mut` 改为 `SyncUnsafeCell`（`process`/`task`/`mm`/`sync`），消除 Rust 2024 `static_mut_refs` 告警。
+- 新增 `kernel/src/cell.rs`；`task` 模块仅在 lab2/lab3 编译（lab4+ 走 `process`）；修复 loader/fs/sync/trap 等 clippy 项。
+- 全 workspace 与各 lab feature 的 `cargo clippy -- -D warnings` **全部通过**。
+- Day7 回归：24 项 host 单测通过；lab5→lab1 QEMU 关键输出均符合验收标准。
+
+### Testing
+
+- `cargo clippy --all -- -D warnings` + `cargo clippy -p kernel --features lab1`…`lab5 -- -D warnings` → 全部 exit 0。
+- `cargo test` 组件 crate 24 项 → 全部 `ok`。
+- QEMU：lab5 `fs_test pass`/`pipe_test pass`；lab4 `fork_test pass`；lab2 `409684505`；lab1 `Hello, OS!`。
+
+### Notes
+
+- `os-lab/kernel/src/cell.rs`：新增 SyncUnsafeCell。
+- `os-lab/kernel/src/process.rs`、`task.rs`、`mm.rs`、`sync.rs`：全局状态封装。
+- `os-lab/kernel/src/main.rs`、`trap.rs`、`loader.rs`、`fs.rs`、`config.rs`、`riscv.rs`：clippy/模块门控修复。
+- `docs/os-lab_verify.md`：Day7 清单更新为 clippy 全绿。
+- 回滚方式：`git checkout os-lab/kernel/src docs/os-lab_verify.md progress.md`。
+
+## 2026-06-27 - Task: ch6 exercise 遗留修复（link/unlink 死锁）
+
+### What was done
+
+- 修复 `easy-fs` 中 `unlink` 在已持有 `fs.lock()` 时调用 `clear()` 再次加锁导致的 **spin 死锁**（`ch6_file2`/`ch6_file3` 挂死根因）。
+- 将 `link`/`unlink` 对齐参考实现：先更新 `nlink` 再改目录项；`unlink` 在单次 `modify_disk_inode` 内完成目录项删除，用 `clear_size` 内联回收数据块。
+- ch6 exercise checker 由 **31/33 → 33/33**，参考环境 5 章 exercise 全部通过。
+
+### Testing
+
+- `CHAPTER=6` + `cargo clean` + `cargo run --features exercise` → `tg-rcore-tutorial-checker --ch 6 --exercise` → **33/33**。
+- 输出含 `Test link OK!`、`Test mass open/unlink OK!`、`ch6 Usertests passed!`（`os-lab/ch6-exercise-full.out`）。
+
+### Notes
+
+- `reference/tg-rcore-tutorial/tg-rcore-tutorial-easy-fs/src/vfs.rs`：重写 `link`/`unlink`，新增 `find_inode_id_with_index`。
+- `reference/tg-rcore-tutorial/tg-rcore-tutorial-ch6/src/fs.rs`：`link` 适配新返回值。
+- `docs/reference-practice-report.md`：ch6 状态更新为 33/33。
+- 回滚方式：`git checkout reference/tg-rcore-tutorial/tg-rcore-tutorial-easy-fs/src/vfs.rs reference/tg-rcore-tutorial/tg-rcore-tutorial-ch6/src/fs.rs docs/reference-practice-report.md progress.md`。
+
+## 2026-06-27 - Task: 参考环境 exercise 收尾 + 练习实现总结报告
+
+### What was done
+
+- **ch6**：补 `read_cstr`；`fstat` 改用 `Stat::new()`；实现 `spawn`（从 fs.img 加载 ELF）；从 ch5 迁移 `mmap`/`munmap`；checker exercise **31/33**（`ch6_file2` link 测例 QEMU 长时间无输出，缺 2 项）。
+- **ch5**：确认挂死根因为未设编译期 `CHAPTER=5`（`initproc` 进 shell）；`cargo clean` + `CHAPTER=5` 后 checker **17/17**。
+- **ch8**：在 `process.rs` 增加 `DeadlockState`（银行家 + 互斥锁等待图）；改造 `mutex_lock`/`semaphore_down`/`enable_deadlock_detect` 等；checker exercise **25/25**。
+- **ch3/ch4**：复验 exercise 仍 **7/7**、**16/16**（此前会话已完成）。
+- 新增 `docs/reference-practice-report.md`（赛题 30% 练习实现总结报告）。
+- 新增 `os-lab/LICENSE`（MIT，满足 crates.io 元数据）。
+
+### Testing
+
+- ch3 exercise：`tg-rcore-tutorial-checker --ch 3 --exercise` → **7/7**（历史输出 `ch3-exercise.out`）。
+- ch4 exercise：checker → **16/16**（`ch4-exercise.out`）。
+- ch5 exercise：`CHAPTER=5` + `cargo clean` + `cargo run --features exercise` → checker **17/17**。
+- ch6 exercise：`CHAPTER=6` + 重编 → checker **31/33**；`Test file0/fstat/spawn0` 等已通过；`Test link OK!`/`mass open/unlink` 未在超时内完成。
+- ch8 exercise：`CHAPTER=8` + 重编 → checker **25/25**（`ch8-exercise-full.out`）。
+
+### Notes
+
+- `reference/tg-rcore-tutorial/tg-rcore-tutorial-ch6/src/main.rs`：read_cstr、spawn、mmap/munmap。
+- `reference/tg-rcore-tutorial/tg-rcore-tutorial-ch6/src/process.rs`：mmap/munmap。
+- `reference/tg-rcore-tutorial/tg-rcore-tutorial-ch8/src/process.rs`：DeadlockState。
+- `reference/tg-rcore-tutorial/tg-rcore-tutorial-ch8/src/main.rs`：死锁检测 syscall 钩子。
+- `docs/reference-practice-report.md`：新增练习总结报告。
+- `os-lab/LICENSE`：新增 MIT 许可证。
+- `os-lab/ch6-exercise-full.out`、`os-lab/ch8-exercise-full.out`：本轮 QEMU 输出留档。
+- 回滚方式：`git checkout reference/tg-rcore-tutorial/tg-rcore-tutorial-ch6/src reference/tg-rcore-tutorial/tg-rcore-tutorial-ch8/src docs/reference-practice-report.md os-lab/LICENSE progress.md`；删除 `os-lab/ch6-exercise-full.out`、`os-lab/ch8-exercise-full.out`。
+
 ## 2026-06-26 - Task: 成员 B Day7（B 域 clippy 修复 + 新人路径复验 + 终验回归）
 
 ### What was done

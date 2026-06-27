@@ -2,6 +2,7 @@
 
 use core::sync::atomic::{AtomicBool, Ordering};
 
+use crate::cell::SyncUnsafeCell;
 use crate::config::{MAX_PIPES, PIPE_BUFFER_SIZE};
 use crate::mm;
 
@@ -83,27 +84,28 @@ struct Pipe {
     inner: SpinMutex<PipeInner>,
 }
 
-static mut PIPES: [Option<Pipe>; MAX_PIPES] = [const { None }; MAX_PIPES];
+static PIPES: SyncUnsafeCell<[Option<Pipe>; MAX_PIPES]> =
+    SyncUnsafeCell::new([const { None }; MAX_PIPES]);
 
 pub fn init() {}
 
 fn alloc_pipe_id() -> Option<usize> {
-    unsafe {
-        for i in 0..MAX_PIPES {
-            if PIPES[i].is_none() {
-                PIPES[i] = Some(Pipe {
+    PIPES.with(|pipes| {
+        for (i, slot) in pipes.iter_mut().enumerate() {
+            if slot.is_none() {
+                *slot = Some(Pipe {
                     inner: SpinMutex::new(PipeInner::new()),
                 });
                 return Some(i);
             }
         }
         None
-    }
+    })
 }
 
 pub fn pipe_add_refs(pipe_id: usize, read: bool, write: bool) {
-    unsafe {
-        let pipe = PIPES[pipe_id].as_ref().expect("pipe_add_refs");
+    PIPES.with_ref(|pipes| {
+        let pipe = pipes[pipe_id].as_ref().expect("pipe_add_refs");
         let mut inner = pipe.inner.lock();
         if read {
             inner.read_refs += 1;
@@ -111,79 +113,89 @@ pub fn pipe_add_refs(pipe_id: usize, read: bool, write: bool) {
         if write {
             inner.write_refs += 1;
         }
-    }
+    });
 }
 
 pub fn pipe_read(pipe_id: usize, buf: *mut u8, len: usize) -> isize {
     if buf.is_null() || len == 0 {
         return 0;
     }
-    let pipe = unsafe { PIPES[pipe_id].as_ref() }.expect("pipe_read");
-    let mut inner = pipe.inner.lock();
-    if inner.count == 0 {
-        if inner.write_closed {
-            return 0;
+    PIPES.with_ref(|pipes| {
+        let pipe = pipes[pipe_id].as_ref().expect("pipe_read");
+        let mut inner = pipe.inner.lock();
+        if inner.count == 0 {
+            if inner.write_closed {
+                return 0;
+            }
+            return -1;
         }
-        return -1;
-    }
-    let to_read = len.min(inner.count);
-    mm::activate_current_user();
-    for i in 0..to_read {
-        let pos = inner.read_pos;
-        let byte = inner.buffer[pos];
-        inner.read_pos = (pos + 1) % PIPE_BUFFER_SIZE;
-        unsafe {
-            core::ptr::write_volatile(buf.add(i), byte);
+        let to_read = len.min(inner.count);
+        mm::activate_current_user();
+        for i in 0..to_read {
+            let pos = inner.read_pos;
+            let byte = inner.buffer[pos];
+            inner.read_pos = (pos + 1) % PIPE_BUFFER_SIZE;
+            unsafe {
+                core::ptr::write_volatile(buf.add(i), byte);
+            }
         }
-    }
-    mm::activate_kernel();
-    inner.count -= to_read;
-    to_read as isize
+        mm::activate_kernel();
+        inner.count -= to_read;
+        to_read as isize
+    })
 }
 
 pub fn pipe_write(pipe_id: usize, buf: *const u8, len: usize) -> isize {
     if buf.is_null() || len == 0 {
         return 0;
     }
-    let pipe = unsafe { PIPES[pipe_id].as_ref() }.expect("pipe_write");
-    let mut inner = pipe.inner.lock();
-    if inner.write_closed {
-        return -1;
-    }
-    mm::activate_current_user();
-    let user_slice = unsafe { core::slice::from_raw_parts(buf, len) };
-    let mut written = 0usize;
-    for &byte in user_slice {
-        if inner.count >= PIPE_BUFFER_SIZE {
-            break;
+    PIPES.with_ref(|pipes| {
+        let pipe = pipes[pipe_id].as_ref().expect("pipe_write");
+        let mut inner = pipe.inner.lock();
+        if inner.write_closed {
+            return -1;
         }
-        let pos = inner.write_pos;
-        inner.buffer[pos] = byte;
-        inner.write_pos = (pos + 1) % PIPE_BUFFER_SIZE;
-        inner.count += 1;
-        written += 1;
-    }
-    mm::activate_kernel();
-    written as isize
+        mm::activate_current_user();
+        let user_slice = unsafe { core::slice::from_raw_parts(buf, len) };
+        let mut written = 0usize;
+        for &byte in user_slice {
+            if inner.count >= PIPE_BUFFER_SIZE {
+                break;
+            }
+            let pos = inner.write_pos;
+            inner.buffer[pos] = byte;
+            inner.write_pos = (pos + 1) % PIPE_BUFFER_SIZE;
+            inner.count += 1;
+            written += 1;
+        }
+        mm::activate_kernel();
+        written as isize
+    })
 }
 
 pub fn pipe_close_read(pipe_id: usize) {
-    if let Some(pipe) = unsafe { PIPES[pipe_id].as_ref() } {
+    PIPES.with_ref(|pipes| {
+        let Some(pipe) = pipes[pipe_id].as_ref() else {
+            return;
+        };
         let mut inner = pipe.inner.lock();
         if inner.read_refs > 0 {
             inner.read_refs -= 1;
         }
         if inner.read_refs == 0 && inner.write_refs == 0 {
             drop(inner);
-            unsafe {
-                PIPES[pipe_id] = None;
-            }
+            PIPES.with(|pipes| {
+                pipes[pipe_id] = None;
+            });
         }
-    }
+    });
 }
 
 pub fn pipe_close_write(pipe_id: usize) {
-    if let Some(pipe) = unsafe { PIPES[pipe_id].as_ref() } {
+    PIPES.with_ref(|pipes| {
+        let Some(pipe) = pipes[pipe_id].as_ref() else {
+            return;
+        };
         let mut inner = pipe.inner.lock();
         inner.write_closed = true;
         if inner.write_refs > 0 {
@@ -191,11 +203,11 @@ pub fn pipe_close_write(pipe_id: usize) {
         }
         if inner.read_refs == 0 && inner.write_refs == 0 {
             drop(inner);
-            unsafe {
-                PIPES[pipe_id] = None;
-            }
+            PIPES.with(|pipes| {
+                pipes[pipe_id] = None;
+            });
         }
-    }
+    });
 }
 
 fn write_user_i32_pair(ptr: *mut i32, read_fd: i32, write_fd: i32) -> bool {
@@ -219,9 +231,9 @@ pub fn sys_pipe(fds: *mut i32) -> isize {
     let read_fd = match crate::fs::alloc_pipe_fds(pipe_id) {
         Some((r, w)) => (r, w),
         None => {
-            unsafe {
-                PIPES[pipe_id] = None;
-            }
+            PIPES.with(|pipes| {
+                pipes[pipe_id] = None;
+            });
             return -1;
         }
     };

@@ -2,6 +2,7 @@
 
 use os_context::TrapContext;
 
+use crate::cell::SyncUnsafeCell;
 use crate::config::{
     APP_BASE_ADDRESS, APP_REGION_SIZE, INITPROC_APP_ID, KERNEL_STACK_SIZE, MAX_CHILDREN,
     MAX_PROCESS_NUM,
@@ -15,6 +16,7 @@ use crate::{print, println};
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum ProcessStatus {
+    #[allow(dead_code)]
     UnInit,
     Ready,
     Running,
@@ -142,83 +144,84 @@ impl ProcessManager {
     }
 }
 
-static mut PROCESS_MANAGER: ProcessManager = ProcessManager::new();
+static PROCESS_MANAGER: SyncUnsafeCell<ProcessManager> =
+    SyncUnsafeCell::new(ProcessManager::new());
 
 pub fn current_slot() -> usize {
-    unsafe { PROCESS_MANAGER.current }
+    PROCESS_MANAGER.with(|pm| pm.current)
 }
 
 pub fn current_space_id() -> usize {
-    unsafe {
-        PROCESS_MANAGER.slots[PROCESS_MANAGER.current]
+    PROCESS_MANAGER.with(|pm| {
+        pm.slots[pm.current]
             .as_ref()
             .expect("no current process")
             .space_id
-    }
+    })
 }
 
 pub fn current_pid() -> usize {
-    unsafe {
-        PROCESS_MANAGER.slots[PROCESS_MANAGER.current]
+    PROCESS_MANAGER.with(|pm| {
+        pm.slots[pm.current]
             .as_ref()
             .expect("no current process")
             .pid
-    }
+    })
 }
 
 pub fn init() {
-    unsafe {
-        let slot = PROCESS_MANAGER.alloc_slot();
-        let space_id = PROCESS_MANAGER.alloc_space_id();
+    PROCESS_MANAGER.with(|pm| {
+        let slot = pm.alloc_slot();
+        let space_id = pm.alloc_space_id();
         let elf = get_app_elf(INITPROC_APP_ID);
         mm::create_user_space(space_id, elf);
         let entry = get_app_entry(INITPROC_APP_ID);
-        PROCESS_MANAGER.spawn(slot, space_id, entry, None);
-        PROCESS_MANAGER.current = slot;
-    }
+        pm.spawn(slot, space_id, entry, None);
+        pm.current = slot;
+    });
 }
 
 pub fn run_initproc() -> ! {
-    unsafe {
-        let slot = PROCESS_MANAGER.current;
-        PROCESS_MANAGER.slots[slot].as_mut().unwrap().status = ProcessStatus::Running;
-        let trap_cx = &mut PROCESS_MANAGER.slots[slot].as_mut().unwrap().trap_cx;
-        run_user_task(trap_cx);
-    }
+    PROCESS_MANAGER.with(|pm| {
+        let slot = pm.current;
+        pm.slots[slot].as_mut().unwrap().status = ProcessStatus::Running;
+        let trap_cx = &mut pm.slots[slot].as_mut().unwrap().trap_cx;
+        run_user_task(trap_cx)
+    })
 }
 
 pub fn mark_current_ready() {
-    unsafe {
-        let slot = PROCESS_MANAGER.current;
-        let pcb = PROCESS_MANAGER.slots[slot].as_mut().unwrap();
+    PROCESS_MANAGER.with(|pm| {
+        let slot = pm.current;
+        let pcb = pm.slots[slot].as_mut().unwrap();
         pcb.status = ProcessStatus::Ready;
-    }
+    });
 }
 
 pub fn sync_current_trap_cx(cx: &TrapContext) {
-    unsafe {
-        let slot = PROCESS_MANAGER.current;
-        if let Some(pcb) = PROCESS_MANAGER.slots[slot].as_mut() {
+    PROCESS_MANAGER.with(|pm| {
+        let slot = pm.current;
+        if let Some(pcb) = pm.slots[slot].as_mut() {
             pcb.trap_cx = *cx;
         }
-    }
+    });
 }
 
 pub fn run_next_process() -> ! {
-    unsafe {
-        if PROCESS_MANAGER.all_done() {
+    PROCESS_MANAGER.with(|pm| {
+        if pm.all_done() {
             println!("All processes exited.");
             os_sbi::shutdown();
         }
-        if let Some(next) = PROCESS_MANAGER.find_next_ready() {
-            PROCESS_MANAGER.slots[next].as_mut().unwrap().status = ProcessStatus::Running;
-            let trap_cx = &mut PROCESS_MANAGER.slots[next].as_mut().unwrap().trap_cx;
-            run_user_task(trap_cx);
+        if let Some(next) = pm.find_next_ready() {
+            pm.slots[next].as_mut().unwrap().status = ProcessStatus::Running;
+            let trap_cx = &mut pm.slots[next].as_mut().unwrap().trap_cx;
+            run_user_task(trap_cx)
         } else {
             println!("All processes exited.");
             os_sbi::shutdown();
         }
-    }
+    })
 }
 
 pub fn sys_getpid() -> isize {
@@ -226,33 +229,28 @@ pub fn sys_getpid() -> isize {
 }
 
 pub fn sys_fork(cx: &mut TrapContext) -> isize {
-    unsafe {
-        let parent_slot = PROCESS_MANAGER.current;
-        let parent = PROCESS_MANAGER.slots[parent_slot]
+    PROCESS_MANAGER.with(|pm| {
+        let parent_slot = pm.current;
+        let parent = pm.slots[parent_slot]
             .as_ref()
             .expect("fork without current process");
         let parent_space = parent.space_id;
-        let child_slot = PROCESS_MANAGER.alloc_slot();
-        let child_space = PROCESS_MANAGER.alloc_space_id();
+        let child_slot = pm.alloc_slot();
+        let child_space = pm.alloc_space_id();
 
         mm::fork_user_space(parent_space, child_space);
 
         let mut child_trap_cx = *cx;
         child_trap_cx.set_return_value(0);
 
-        let child_pid = PROCESS_MANAGER.spawn(
-            child_slot,
-            child_space,
-            cx.sepc,
-            Some(parent_slot),
-        );
-        let child_pcb = PROCESS_MANAGER.slots[child_slot].as_mut().unwrap();
+        let child_pid = pm.spawn(child_slot, child_space, cx.sepc, Some(parent_slot));
+        let child_pcb = pm.slots[child_slot].as_mut().unwrap();
         child_pcb.trap_cx = child_trap_cx;
         child_pcb.trap_cx.kernel_sp = kernel_stack_top(child_slot);
         child_pcb.status = ProcessStatus::Ready;
 
         child_pid as isize
-    }
+    })
 }
 
 fn read_user_str(ptr: *const u8, len: usize) -> Option<[u8; 32]> {
@@ -282,13 +280,13 @@ pub fn sys_execve(cx: &mut TrapContext, path: *const u8, path_len: usize, _envp:
         None => return -1,
     };
 
-    let slot = unsafe { PROCESS_MANAGER.current };
-    let space_id = unsafe {
-        PROCESS_MANAGER.slots[slot]
+    let slot = current_slot();
+    let space_id = PROCESS_MANAGER.with(|pm| {
+        pm.slots[slot]
             .as_ref()
             .expect("exec without process")
             .space_id
-    };
+    });
 
     mm::replace_user_space(space_id, elf);
     let entry = elf_entry_point(elf);
@@ -311,73 +309,73 @@ fn write_user_i32(ptr: *mut i32, value: i32) -> bool {
 }
 
 fn reap_zombie_child(parent_slot: usize, want_pid: isize) -> Option<(usize, i32)> {
-  unsafe {
-    for i in 0..MAX_PROCESS_NUM {
-        let Some(pcb) = PROCESS_MANAGER.slots[i].as_ref() else {
-            continue;
-        };
-        if pcb.status != ProcessStatus::Zombie {
-            continue;
+    PROCESS_MANAGER.with(|pm| {
+        for i in 0..MAX_PROCESS_NUM {
+            let Some(pcb) = pm.slots[i].as_ref() else {
+                continue;
+            };
+            if pcb.status != ProcessStatus::Zombie {
+                continue;
+            }
+            if pcb.parent_slot != Some(parent_slot) {
+                continue;
+            }
+            if want_pid >= 0 && pcb.pid as isize != want_pid {
+                continue;
+            }
+            let pid = pcb.pid;
+            let code = pcb.exit_code;
+            let space_id = pcb.space_id;
+            #[cfg(feature = "lab5")]
+            fs::close_all_fds(i);
+            pm.slots[i] = None;
+            pm.process_count -= 1;
+            mm::free_user_space(space_id);
+            return Some((pid, code));
         }
-        if pcb.parent_slot != Some(parent_slot) {
-            continue;
-        }
-        if want_pid >= 0 && pcb.pid as isize != want_pid {
-            continue;
-        }
-        let pid = pcb.pid;
-        let code = pcb.exit_code;
-        let space_id = pcb.space_id;
-        #[cfg(feature = "lab5")]
-        fs::close_all_fds(i);
-        PROCESS_MANAGER.slots[i] = None;
-        PROCESS_MANAGER.process_count -= 1;
-        mm::free_user_space(space_id);
-        return Some((pid, code));
-    }
-    None
-  }
+        None
+    })
 }
 
 #[allow(clippy::never_loop)]
 pub fn sys_wait4(cx: &mut TrapContext, want_pid: isize, status_ptr: *mut i32) -> isize {
-    unsafe {
-        let parent_slot = PROCESS_MANAGER.current;
-        loop {
-            if let Some((pid, code)) = reap_zombie_child(parent_slot, want_pid) {
-                if !write_user_i32(status_ptr, code) {
-                    return -1;
-                }
-                return pid as isize;
+    loop {
+        if let Some((pid, code)) = reap_zombie_child(current_slot(), want_pid) {
+            if !write_user_i32(status_ptr, code) {
+                return -1;
             }
-            if want_pid >= 0 {
-                let has_child = PROCESS_MANAGER.slots.iter().any(|slot| {
-                    slot.as_ref().is_some_and(|pcb| {
-                        pcb.parent_slot == Some(parent_slot) && pcb.status != ProcessStatus::Zombie
-                    })
-                });
-                if !has_child {
-                    return -1;
-                }
-            }
-            cx.sepc = cx.sepc.wrapping_sub(4);
-            sync_current_trap_cx(cx);
-            mark_current_ready();
-            run_next_process();
+            return pid as isize;
         }
+        if want_pid >= 0 {
+            let has_child = PROCESS_MANAGER.with_ref(|pm| {
+                pm.slots.iter().any(|slot| {
+                    slot.as_ref().is_some_and(|pcb| {
+                        pcb.parent_slot == Some(current_slot())
+                            && pcb.status != ProcessStatus::Zombie
+                    })
+                })
+            });
+            if !has_child {
+                return -1;
+            }
+        }
+        cx.sepc = cx.sepc.wrapping_sub(4);
+        sync_current_trap_cx(cx);
+        mark_current_ready();
+        run_next_process();
     }
 }
 
 pub fn sys_exit(exit_code: i32) -> ! {
-    unsafe {
-        let slot = PROCESS_MANAGER.current;
-        let pid = PROCESS_MANAGER.slots[slot].as_ref().unwrap().pid;
-        let pcb = PROCESS_MANAGER.slots[slot].as_mut().unwrap();
+    PROCESS_MANAGER.with(|pm| {
+        let slot = pm.current;
+        let pid = pm.slots[slot].as_ref().unwrap().pid;
+        let pcb = pm.slots[slot].as_mut().unwrap();
         pcb.exit_code = exit_code;
         pcb.status = ProcessStatus::Zombie;
         println!("Process {} exited with code {}", pid, exit_code);
-        run_next_process();
-    }
+        run_next_process()
+    })
 }
 
 pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {

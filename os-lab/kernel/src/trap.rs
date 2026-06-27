@@ -2,13 +2,16 @@
 
 use crate::println;
 
-use os_context::{restore_to_user_paged, TrapContext, __alltraps};
+use os_context::{TrapContext, __alltraps};
+#[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
+use os_context::restore_to_user_paged;
 #[cfg(not(any(feature = "lab3", feature = "lab4", feature = "lab5")))]
 use os_context::restore_to_user;
-use os_syscall::{
-    SYS_CLONE, SYS_CLOSE, SYS_EXIT, SYS_EXECVE, SYS_GETPID, SYS_OPENAT, SYS_READ, SYS_WAIT4,
-    SYS_WRITE, SYS_YIELD,
-};
+use os_syscall::{SYS_EXIT, SYS_WRITE, SYS_YIELD};
+#[cfg(feature = "lab4")]
+use os_syscall::{SYS_CLONE, SYS_EXECVE, SYS_GETPID, SYS_WAIT4};
+#[cfg(feature = "lab5")]
+use os_syscall::{SYS_CLOSE, SYS_OPENAT, SYS_READ};
 
 #[cfg(feature = "lab5")]
 use crate::config::SYS_PIPE;
@@ -28,7 +31,7 @@ use crate::process::{
     mark_current_ready, run_next_process, sync_current_trap_cx, sys_execve, sys_exit, sys_fork,
     sys_getpid, sys_wait4, sys_write,
 };
-#[cfg(all(not(feature = "lab4"), any(feature = "lab2", feature = "lab3", feature = "lab5")))]
+#[cfg(all(not(feature = "lab4"), any(feature = "lab2", feature = "lab3")))]
 use crate::task::{mark_current_suspended, run_next_task, sync_current_trap_cx, sys_exit, sys_write};
 
 #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
@@ -71,11 +74,11 @@ pub fn trap_handler(cx: &mut TrapContext) {
                     sync_current_trap_cx(cx);
                     #[cfg(feature = "lab4")]
                     mark_current_ready();
-                    #[cfg(all(not(feature = "lab4"), any(feature = "lab2", feature = "lab3", feature = "lab5")))]
+                    #[cfg(all(not(feature = "lab4"), any(feature = "lab2", feature = "lab3")))]
                     mark_current_suspended();
                     #[cfg(feature = "lab4")]
                     run_next_process();
-                    #[cfg(all(not(feature = "lab4"), any(feature = "lab2", feature = "lab3", feature = "lab5")))]
+                    #[cfg(all(not(feature = "lab4"), any(feature = "lab2", feature = "lab3")))]
                     run_next_task();
                 }
                 #[cfg(feature = "lab4")]
@@ -184,7 +187,7 @@ pub fn run_user_task(cx: &mut TrapContext) -> ! {
         let kernel_sp = cx.kernel_sp;
         #[cfg(feature = "lab4")]
         let satp = user_token(crate::process::current_space_id());
-        #[cfg(all(not(feature = "lab4"), any(feature = "lab3", feature = "lab5")))]
+        #[cfg(all(not(feature = "lab4"), feature = "lab3"))]
         let satp = user_token(crate::task::current_app_id());
         prepare_user_return(cx);
         unsafe { restore_to_user_paged(cx, kernel_sp, satp) }

@@ -150,7 +150,7 @@ Day 1 由成员 A 搭建内核骨架；成员 B 完成 `os-sbi` 与组件 crate 
 
 - 未实现信号量；并发原语仅 `SpinMutex` + 管道。
 - 管道读空返回 -1，用户态 yield 重试；非阻塞语义。
-- `static_mut_refs` 等 clippy 警告在内核全局管理器（`PROCESS_MANAGER`、`FD_TABLES`）中保留，属教学简化，Day7 前清单化即可。
+- 内核全局状态（`PROCESS_MANAGER`、`TASK_MANAGER`、`PIPES`、地址空间表）经 `SyncUnsafeCell` 封装；全 workspace `cargo clippy -- -D warnings` 已通过（2026-06-27）。
 
 ### Lab5 syscall 与 fd 数据流
 
@@ -186,7 +186,7 @@ flowchart LR
 | 检查项 | 结果 |
 |--------|------|
 | `kernel/fs.rs` 接入 `os-fs` | ✅ 使用 `EmbeddedFs::default_fs()` |
-| `cargo clippy -p kernel --features lab5` | ✅ 无 error（`never_loop` 已修复）；`static_mut_refs` 等 warning 保留并记录 |
+| `cargo clippy --all -- -D warnings` | ✅ 全 workspace 与各 lab feature 均已通过（2026-06-27） |
 | `cargo package -p os-* --list` | ✅ 6 个组件 crate 均可列出发布文件（`description`/`license`/`repository` 齐全） |
 | Lab1–Lab5 QEMU 回归 | 见 `progress.md` Day6/Day7 记录 |
 
@@ -200,7 +200,7 @@ flowchart LR
 | lab4 | `cargo run -p kernel --features lab4 --release` | `fork_test pass`、`All processes exited.` | ✅ |
 | lab5 | `cargo run -p kernel --features lab5 --release` | `fs_test pass`、`pipe_test pass` | ✅ |
 
-`cargo clippy -p kernel --features lab5`：无 error；`os-alloc`/`os-context`/`os-vm` 的 `static_mut_refs` 等 warning 属 B 域教学简化，`-D warnings` 全 workspace 未达标（见 Day6 备注）。
+`cargo clippy --all -- -D warnings` 与各 `kernel --features lab1`…`lab5`：均已通过（2026-06-27 终验）。
 
 ## 快速验证命令
 

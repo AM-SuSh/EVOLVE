@@ -2,6 +2,7 @@
 
 use os_context::TrapContext;
 
+use crate::cell::SyncUnsafeCell;
 use crate::{print, println};
 
 use crate::config::{KERNEL_STACK_SIZE, MAX_APP_NUM, USER_STACK_SIZE};
@@ -19,6 +20,7 @@ use crate::mm;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum TaskStatus {
+    #[allow(dead_code)]
     UnInit,
     Ready,
     Running,
@@ -28,7 +30,9 @@ pub enum TaskStatus {
 pub struct TaskControlBlock {
     pub task_status: TaskStatus,
     pub trap_cx: TrapContext,
+    #[allow(dead_code)]
     pub user_token: usize,
+    #[allow(dead_code)]
     pub user_stack: [u8; USER_STACK_SIZE],
     pub kernel_stack: [u8; KERNEL_STACK_SIZE],
 }
@@ -105,70 +109,69 @@ impl TaskManager {
     }
 }
 
-pub static mut TASK_MANAGER: TaskManager = TaskManager::new();
+static TASK_MANAGER: SyncUnsafeCell<TaskManager> = SyncUnsafeCell::new(TaskManager::new());
 
+#[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
 pub fn current_app_id() -> usize {
-    unsafe { TASK_MANAGER.current }
+    TASK_MANAGER.with(|tm| tm.current)
 }
 
 pub fn init() {
-    unsafe {
-        TASK_MANAGER.init_tasks();
-    }
+    TASK_MANAGER.with(|tm| tm.init_tasks());
 }
 
 #[cfg(not(any(feature = "lab3", feature = "lab4", feature = "lab5")))]
 pub fn run_first_task() -> ! {
-    unsafe {
+    TASK_MANAGER.with(|tm| {
         load_app(0);
-        TASK_MANAGER.tasks[0].as_mut().unwrap().task_status = TaskStatus::Running;
-        let trap_cx = &mut TASK_MANAGER.tasks[0].as_mut().unwrap().trap_cx;
-        run_user_task(trap_cx);
-    }
+        tm.tasks[0].as_mut().unwrap().task_status = TaskStatus::Running;
+        let trap_cx = &mut tm.tasks[0].as_mut().unwrap().trap_cx;
+        run_user_task(trap_cx)
+    })
 }
 
 #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
 pub fn run_first_task() -> ! {
-    unsafe {
-        TASK_MANAGER.tasks[0].as_mut().unwrap().task_status = TaskStatus::Running;
-        TASK_MANAGER.current = 0;
-        let trap_cx = &mut TASK_MANAGER.tasks[0].as_mut().unwrap().trap_cx;
-        run_user_task(trap_cx);
-    }
+    TASK_MANAGER.with(|tm| {
+        tm.tasks[0].as_mut().unwrap().task_status = TaskStatus::Running;
+        tm.current = 0;
+        let trap_cx = &mut tm.tasks[0].as_mut().unwrap().trap_cx;
+        run_user_task(trap_cx)
+    })
 }
 
 pub fn mark_current_suspended() {
-    unsafe {
-        let task = TASK_MANAGER.tasks[TASK_MANAGER.current].as_mut().unwrap();
+    TASK_MANAGER.with(|tm| {
+        let task = tm.tasks[tm.current].as_mut().unwrap();
         task.task_status = TaskStatus::Ready;
-    }
+    });
 }
 
 /// Copy trap context saved on the kernel stack into the current task TCB.
 pub fn sync_current_trap_cx(cx: &TrapContext) {
-    unsafe {
-        let current = TASK_MANAGER.current;
-        if let Some(task) = TASK_MANAGER.tasks[current].as_mut() {
+    TASK_MANAGER.with(|tm| {
+        let current = tm.current;
+        if let Some(task) = tm.tasks[current].as_mut() {
             task.trap_cx = *cx;
         }
-    }
+    });
 }
 
 pub fn run_next_task() -> ! {
-    unsafe {
-        if TASK_MANAGER.all_exited() {
+    TASK_MANAGER.with(|tm| {
+        if tm.all_exited() {
             println!("All user apps exited.");
             os_sbi::shutdown();
         }
-        if let Some(next) = TASK_MANAGER.find_next_task() {
-            TASK_MANAGER.tasks[next].as_mut().unwrap().task_status = TaskStatus::Running;
-            let trap_cx = &mut TASK_MANAGER.tasks[next].as_mut().unwrap().trap_cx;
-            run_user_task(trap_cx);
+        if let Some(next) = tm.find_next_task() {
+            tm.tasks[next].as_mut().unwrap().task_status = TaskStatus::Running;
+            let trap_cx = &mut tm.tasks[next].as_mut().unwrap().trap_cx;
+            run_user_task(trap_cx)
         } else {
             println!("All user apps exited.");
             os_sbi::shutdown();
         }
-    }
+    })
 }
 
 pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
@@ -183,13 +186,13 @@ pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
         let n = len.min(kbuf.len());
         kbuf[..n].copy_from_slice(&user_slice[..n]);
         crate::mm::activate_kernel();
-        return match core::str::from_utf8(&kbuf[..n]) {
+        match core::str::from_utf8(&kbuf[..n]) {
             Ok(s) => {
                 print!("{}", s);
                 n as isize
             }
             Err(_) => -1,
-        };
+        }
     }
     #[cfg(not(any(feature = "lab3", feature = "lab4", feature = "lab5")))]
     {
@@ -206,49 +209,47 @@ pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
 
 #[cfg(not(any(feature = "lab3", feature = "lab4", feature = "lab5")))]
 pub fn sys_exit(exit_code: i32) -> ! {
-    unsafe {
-        let current = TASK_MANAGER.current;
-        let task = TASK_MANAGER.tasks[current].as_mut().unwrap();
+    TASK_MANAGER.with(|tm| {
+        let current = tm.current;
+        let task = tm.tasks[current].as_mut().unwrap();
         task.task_status = TaskStatus::Exited;
         println!("App {} exited with code {}", current, exit_code);
         let next = current + 1;
         if next < NUM_APP {
-            TASK_MANAGER.current = next;
+            tm.current = next;
             load_app(next);
-            let next_task = TASK_MANAGER.tasks[next].as_mut().unwrap();
+            let next_task = tm.tasks[next].as_mut().unwrap();
             next_task.trap_cx.sepc = get_app_entry(next);
             next_task.trap_cx.set_user_sp(
                 crate::config::APP_BASE_ADDRESS + crate::config::APP_REGION_SIZE - 16,
             );
             next_task.task_status = TaskStatus::Running;
-            run_user_task(&mut next_task.trap_cx);
+            run_user_task(&mut next_task.trap_cx)
         } else {
             println!("All user apps exited.");
             os_sbi::shutdown();
         }
-    }
+    })
 }
 
 #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5"))]
 pub fn sys_exit(exit_code: i32) -> ! {
-    unsafe {
-        let current = TASK_MANAGER.current;
-        let task = TASK_MANAGER.tasks[current].as_mut().unwrap();
+    TASK_MANAGER.with(|tm| {
+        let current = tm.current;
+        let task = tm.tasks[current].as_mut().unwrap();
         task.task_status = TaskStatus::Exited;
         println!("App {} exited with code {}", current, exit_code);
         let next = current + 1;
         if next < NUM_APP {
-            TASK_MANAGER.current = next;
-            let next_task = TASK_MANAGER.tasks[next].as_mut().unwrap();
+            tm.current = next;
+            let next_task = tm.tasks[next].as_mut().unwrap();
             next_task.trap_cx.sepc = get_app_entry(next);
-            next_task.trap_cx.set_user_sp(
-                APP_BASE_ADDRESS + crate::config::APP_REGION_SIZE - 16,
-            );
+            next_task.trap_cx.set_user_sp(APP_BASE_ADDRESS + crate::config::APP_REGION_SIZE - 16);
             next_task.task_status = TaskStatus::Running;
-            run_user_task(&mut next_task.trap_cx);
+            run_user_task(&mut next_task.trap_cx)
         } else {
             println!("All user apps exited.");
             os_sbi::shutdown();
         }
-    }
+    })
 }

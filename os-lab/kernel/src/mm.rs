@@ -1,18 +1,22 @@
 //! Virtual memory: kernel address space, per-task user spaces (lab3+).
 
+#![allow(dead_code)]
+
 use os_alloc::{
     frame_alloc_watermark, init_frame_allocator, set_frame_alloc_hook, PhysPageNum,
 };
 use os_vm::{elf_map_areas, MapArea, MapPermission, MemorySet, VirtAddr};
 
+use crate::cell::SyncUnsafeCell;
 use crate::config::{
     APP_BASE_ADDRESS, APP_REGION_SIZE, FRAME_POOL_START, MAX_PROCESS_NUM, MEMORY_END, PAGE_SIZE,
     USER_STACK_SIZE,
 };
 
-static mut KERNEL_SPACE: Option<MemorySet> = None;
-static mut USER_SPACES: [Option<MemorySet>; MAX_PROCESS_NUM] = [const { None }; MAX_PROCESS_NUM];
-static mut PAGING_ENABLED: bool = false;
+static KERNEL_SPACE: SyncUnsafeCell<Option<MemorySet>> = SyncUnsafeCell::new(None);
+static USER_SPACES: SyncUnsafeCell<[Option<MemorySet>; MAX_PROCESS_NUM]> =
+    SyncUnsafeCell::new([const { None }; MAX_PROCESS_NUM]);
+static PAGING_ENABLED: SyncUnsafeCell<bool> = SyncUnsafeCell::new(false);
 
 extern "C" {
     fn stext();
@@ -45,10 +49,8 @@ fn map_kernel_trap_regions_user(ms: &mut MemorySet) {
 }
 
 fn on_frame_allocated(ppn: PhysPageNum) {
-    unsafe {
-        if !PAGING_ENABLED {
-            return;
-        }
+    if !PAGING_ENABLED.with_ref(|enabled| *enabled) {
+        return;
     }
     let va = ppn.addr();
     let ks = kernel_space_mut();
@@ -78,20 +80,25 @@ fn identity_map_allocated_frames(ks: &mut MemorySet) {
 pub fn init() {
     init_frame_allocator(FRAME_POOL_START, MEMORY_END);
 
-    let mut kernel_space = MemorySet::new_bare();
-    map_kernel_trap_regions(&mut kernel_space);
-    identity_map_allocated_frames(&mut kernel_space);
+    let mut ks = MemorySet::new_bare();
+    map_kernel_trap_regions(&mut ks);
+    identity_map_allocated_frames(&mut ks);
 
-    unsafe {
-        KERNEL_SPACE = Some(kernel_space);
-        PAGING_ENABLED = true;
-        set_frame_alloc_hook(Some(on_frame_allocated));
-        KERNEL_SPACE.as_ref().unwrap().activate();
-    }
+    KERNEL_SPACE.with(|slot| {
+        *slot = Some(ks);
+    });
+    PAGING_ENABLED.with(|enabled| *enabled = true);
+    set_frame_alloc_hook(Some(on_frame_allocated));
+    KERNEL_SPACE.with_ref(|slot| slot.as_ref().unwrap().activate());
 }
 
 pub fn kernel_space_mut() -> &'static mut MemorySet {
-    unsafe { KERNEL_SPACE.as_mut().expect("mm not initialized") }
+    // SAFETY: single-hart kernel; pointer valid for program lifetime.
+    unsafe {
+        (*KERNEL_SPACE.get_mut())
+            .as_mut()
+            .expect("mm not initialized")
+    }
 }
 
 pub fn activate_kernel() {
@@ -100,15 +107,15 @@ pub fn activate_kernel() {
 
 pub fn space_is_free(space_id: usize) -> bool {
     assert!(space_id < MAX_PROCESS_NUM);
-    unsafe { USER_SPACES[space_id].is_none() }
+    USER_SPACES.with_ref(|spaces| spaces[space_id].is_none())
 }
 
 pub fn free_user_space(space_id: usize) {
     assert!(space_id < MAX_PROCESS_NUM);
     activate_kernel();
-    unsafe {
-        USER_SPACES[space_id] = None;
-    }
+    USER_SPACES.with(|spaces| {
+        spaces[space_id] = None;
+    });
 }
 
 /// ELF64 entry point (absolute virtual address from the user linker script).
@@ -127,9 +134,9 @@ pub fn create_user_space(space_id: usize, elf: &'static [u8]) {
 
     map_elf_and_stack(&mut user_space, elf);
 
-    unsafe {
-        USER_SPACES[space_id] = Some(user_space);
-    }
+    USER_SPACES.with(|spaces| {
+        spaces[space_id] = Some(user_space);
+    });
 }
 
 fn map_elf_and_stack(user_space: &mut MemorySet, elf: &'static [u8]) {
@@ -154,21 +161,16 @@ fn map_elf_and_stack(user_space: &mut MemorySet, elf: &'static [u8]) {
 pub fn fork_user_space(parent_id: usize, child_id: usize) {
     assert!(parent_id < MAX_PROCESS_NUM && child_id < MAX_PROCESS_NUM);
     activate_kernel();
-    let parent = unsafe {
-        USER_SPACES[parent_id]
+    USER_SPACES.with(|spaces| {
+        let parent = spaces[parent_id]
             .as_ref()
-            .expect("parent user space missing")
-    };
-
-    let mut child_space = MemorySet::new_bare();
-    map_kernel_trap_regions_user(&mut child_space);
-
-    let user_end = APP_BASE_ADDRESS + APP_REGION_SIZE;
-    copy_user_pages(parent, &mut child_space, APP_BASE_ADDRESS, user_end);
-
-    unsafe {
-        USER_SPACES[child_id] = Some(child_space);
-    }
+            .expect("parent user space missing");
+        let mut child_space = MemorySet::new_bare();
+        map_kernel_trap_regions_user(&mut child_space);
+        let user_end = APP_BASE_ADDRESS + APP_REGION_SIZE;
+        copy_user_pages(parent, &mut child_space, APP_BASE_ADDRESS, user_end);
+        spaces[child_id] = Some(child_space);
+    });
 }
 
 /// Replace the current process user mappings with a fresh ELF image (exec).
@@ -178,9 +180,9 @@ pub fn replace_user_space(space_id: usize, elf: &'static [u8]) {
     let mut user_space = MemorySet::new_bare();
     map_kernel_trap_regions_user(&mut user_space);
     map_elf_and_stack(&mut user_space, elf);
-    unsafe {
-        USER_SPACES[space_id] = Some(user_space);
-    }
+    USER_SPACES.with(|spaces| {
+        spaces[space_id] = Some(user_space);
+    });
 }
 
 fn copy_user_pages(parent: &MemorySet, child: &mut MemorySet, start: usize, end: usize) {
@@ -209,21 +211,21 @@ fn copy_user_pages(parent: &MemorySet, child: &mut MemorySet, start: usize, end:
 }
 
 pub fn activate_user(space_id: usize) {
-    unsafe {
-        USER_SPACES[space_id]
+    USER_SPACES.with_ref(|spaces| {
+        spaces[space_id]
             .as_ref()
             .expect("user space not created")
             .activate();
-    }
+    });
 }
 
 pub fn user_token(space_id: usize) -> usize {
-    unsafe {
-        USER_SPACES[space_id]
+    USER_SPACES.with_ref(|spaces| {
+        spaces[space_id]
             .as_ref()
             .expect("user space not created")
             .token()
-    }
+    })
 }
 
 pub fn activate_current_user() {

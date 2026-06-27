@@ -71,13 +71,11 @@ fn find_file(path: &str) -> Option<FileId> {
 pub fn clone_fd_table(parent_slot: usize, child_slot: usize) {
     unsafe {
         FD_TABLES[child_slot] = FD_TABLES[parent_slot];
-        for slot in FD_TABLES[child_slot].slots.iter() {
-            if let Some(ty) = slot {
-                match ty {
-                    FdType::PipeRead(id) => sync::pipe_add_refs(*id, true, false),
-                    FdType::PipeWrite(id) => sync::pipe_add_refs(*id, false, true),
-                    FdType::Regular { .. } => {}
-                }
+        for ty in FD_TABLES[child_slot].slots.iter().flatten() {
+            match ty {
+                FdType::PipeRead(id) => sync::pipe_add_refs(*id, true, false),
+                FdType::PipeWrite(id) => sync::pipe_add_refs(*id, false, true),
+                FdType::Regular { .. } => {}
             }
         }
     }
