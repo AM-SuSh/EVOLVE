@@ -2,7 +2,7 @@
 
 基于 Rust + RISC-V 64 的单内核渐进式教学实验环境。学生通过切换 `lab1` 到 `lab5` 的 feature，在同一套代码库中观察内核从裸机到完整系统的演进。
 
-**赛题交付**：[交付清单](../docs/delivery-checklist.md) · [文档索引](../docs/README.md) · [设计总结报告](docs/design-report.md)
+**赛题交付**：[交付清单](../docs/delivery-checklist.md) · [文档索引](../docs/README.md) · [设计总结报告](docs/design-report.md) · **[学习手册 Web 版](handbook/README.md)**
 
 ## 环境要求
 

@@ -30,6 +30,7 @@
 | --- | --- | --- |
 | Lab 实验（QEMU） | lab1–lab5 均可运行 | [os-lab/labs/overview.md](../os-lab/labs/overview.md) |
 | 实验指导 | 5 篇 | `os-lab/labs/lab*.md` |
+| **Web 学习手册** | VitePress 静态站 | [docs/handbook.md](handbook.md) → `os-lab/handbook/` |
 | 习题 + 参考答案 | 各 5 篇 | `os-lab/labs/exercises/`、`os-lab/labs/answers/` |
 | 组件单元测试（host） | **24/24** 通过 | [os-lab_verify.md §17](os-lab_verify.md) |
 | clippy 全绿 | workspace + lab1–lab5 feature | [os-lab_verify.md §17](os-lab_verify.md) |
@@ -65,6 +66,7 @@
 | [os-lab/kernel/](../os-lab/kernel/) | 单内核主体（feature `lab1`–`lab5`） |
 | [os-lab/os-sbi/](../os-lab/os-sbi/) … [os-fs/](../os-lab/os-fs/) | 6 个组件 crate |
 | [os-lab/user/](../os-lab/user/) | 用户态测试程序 |
+| [os-lab/handbook/](../os-lab/handbook/) | **Web 学习手册**（VitePress：文档聚合 + 学习进度） |
 | [os-lab/labs/](../os-lab/labs/) | 实验指导、习题、答案 |
 | [os-lab/docs/design-report.md](../os-lab/docs/design-report.md) | 设计总结报告（70% 核心） |
 | [os-lab/docs/architecture.md](../os-lab/docs/architecture.md) | 架构与数据流 |

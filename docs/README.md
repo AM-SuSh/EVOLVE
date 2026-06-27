@@ -37,6 +37,7 @@
 | 类型 | 路径 |
 | --- | --- |
 | 总览 | [os-lab/labs/overview.md](../os-lab/labs/overview.md) |
+| **Web 学习手册** | [docs/handbook.md](handbook.md) → `os-lab/handbook/` |
 | 指导 lab1–5 | `os-lab/labs/lab*-*.md` |
 | 习题 | [os-lab/labs/exercises/](../os-lab/labs/exercises/) |
 | 参考答案 | [os-lab/labs/answers/](../os-lab/labs/answers/) |

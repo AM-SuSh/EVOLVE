@@ -1,0 +1,8 @@
+node_modules/
+.vitepress/dist/
+.vitepress/cache/
+labs/
+exercises/
+answers/
+project/
+setup/

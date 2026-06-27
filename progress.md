@@ -1,3 +1,23 @@
+## 2026-06-27 - Task: os-lab Web 学习手册（VitePress A+B）
+
+### What was done
+
+- 新增 `os-lab/handbook/`：VitePress 静态学习门户，聚合实验指导/习题/答案/设计报告，并提供 Lab1–5 进度勾选与验证命令一键复制。
+- 实现 `LabProgress`、`CopyCommand` 组件；`scripts/sync-content.mjs` 从 `labs/`、`docs/` 自动同步 Markdown（同步目录 gitignore，源文件仍为唯一维护点）。
+- 更新 `docs/handbook.md`、`docs/README.md`、`docs/delivery-checklist.md`、`docs/os-lab.md`、`os-lab/README.md` 链到手册入口。
+
+### Testing
+
+- `cd os-lab/handbook && npm install && npm run build`：**build complete**，24 篇 Markdown 同步成功，无 dead link 阻断。
+- 产物目录：`.vitepress/dist/`（静态 HTML，可 `npm run preview` 本地预览）。
+
+### Notes
+
+- `os-lab/handbook/`：新增 VitePress 项目（package.json、config、theme 组件、guide 原生页、data/labs.json、sync 脚本）。
+- `docs/handbook.md`：手册使用说明。
+- `docs/delivery-checklist.md`、`docs/README.md`、`docs/os-lab.md`、`os-lab/README.md`：补充手册链接。
+- 回滚方式：`git checkout docs/ os-lab/README.md progress.md` 并删除 `os-lab/handbook/` 目录。
+
 ## 2026-06-27 - Task: 整理交付清单与文档索引
 
 ### What was done
