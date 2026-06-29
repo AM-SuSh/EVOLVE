@@ -1,3 +1,37 @@
+## 2026-06-29 - Task: 技术方案 humanizer 扩写与去 AI 味
+
+### What was done
+
+- 按 humanizer-zh / stop-slop 规则重写 `docs/technical-proposal.md` v2.0：大幅削减表格堆砌，改为叙述性正文；扩写设计动机、分章实现、踩坑过程、测试对比与评审维度对应；保留必要 mermaid 与命令块。
+
+### Testing
+
+- 文档内事实与 2026-06-27 终验、checker 结果、仓库路径一致；未改代码，未重跑 QEMU。
+
+### Notes
+
+- `docs/technical-proposal.md`：v1.0→v2.0 全文改写扩写。
+- 回滚方式：`git checkout docs/technical-proposal.md progress.md`。
+
+## 2026-06-29 - Task: 大赛合规自查与完整技术方案文档
+
+### What was done
+
+- 对照大赛总则与「功能挑战」提交要求，梳理项目缺口（许可、PPT/视频、参考补丁入仓等）供决策是否修补。
+- 新增 `docs/technical-proposal.md`：合并设计思路、架构实现、代码说明、问题与方案、测试对比分析、AI 披露、外部来源、分工进度与提交物对照。
+- 更新 `docs/README.md`、`docs/delivery-checklist.md` 链到技术方案入口。
+
+### Testing
+
+- 文档内引用的验证路径与 2026-06-27 终验结论一致（clippy 全绿、24 单测、lab1–5 QEMU、exercise checker 全绿）；未新增代码变更，未重跑 QEMU。
+
+### Notes
+
+- `docs/technical-proposal.md`：新增完整技术方案文档。
+- `docs/README.md`：增加技术方案索引节。
+- `docs/delivery-checklist.md`：交付清单增加技术方案路径。
+- 回滚方式：`git checkout docs/README.md docs/delivery-checklist.md progress.md` 并删除 `docs/technical-proposal.md`。
+
 ## 2026-06-27 - Task: os-lab Web 学习手册（VitePress A+B）
 
 ### What was done

@@ -1,6 +1,12 @@
 # 项目文档索引
 
-本目录汇总赛题交付相关说明。评审方建议从 **[delivery-checklist.md](delivery-checklist.md)** 开始。
+本目录汇总赛题交付相关说明。评审方建议从 **[delivery-checklist.md](delivery-checklist.md)** 开始；大赛正式技术方案见 **[technical-proposal.md](technical-proposal.md)**。
+
+## 正式技术方案
+
+| 文档 | 说明 |
+| --- | --- |
+| [technical-proposal.md](technical-proposal.md) | **完整技术方案文档**（设计思路、实现、测试、AI 披露、外部来源、分工进度） |
 
 ## 按赛题权重
 
