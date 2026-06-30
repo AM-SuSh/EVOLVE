@@ -49,6 +49,7 @@
 | 文档 | 说明 |
 | --- | --- |
 | [docs/delivery-checklist.md](docs/delivery-checklist.md) | **交付清单**、评审维度自查、快速/完整验证路径 |
+| [docs/technical-proposal.md](docs/technical-proposal.md) | **完整技术方案文档**（大赛提交用） |
 | [docs/os-lab_verify.md](docs/os-lab_verify.md) | 自研环境 Day1–Day7 可复制验证指令 |
 | [docs/environment_setup.md](docs/environment_setup.md) | Rust、QEMU、Git 安装与路径配置 |
 
