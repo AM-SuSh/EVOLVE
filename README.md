@@ -48,10 +48,11 @@
 
 | 文档 | 说明 |
 | --- | --- |
-| [docs/delivery-checklist.md](docs/delivery-checklist.md) | **交付清单**、评审维度自查、快速/完整验证路径 |
+| [docs/delivery-checklist.md](docs/delivery-checklist.md) | **交付清单**与验证路径 |
 | [docs/technical-proposal.md](docs/technical-proposal.md) | **完整技术方案文档**（大赛提交用） |
-| [docs/os-lab_verify.md](docs/os-lab_verify.md) | 自研环境 Day1–Day7 可复制验证指令 |
-| [docs/environment_setup.md](docs/environment_setup.md) | Rust、QEMU、Git 安装与路径配置 |
+| [docs/os-lab_verify.md](docs/os-lab_verify.md) | 自研环境验证与复现说明 |
+| [docs/environment_setup.md](docs/environment_setup.md) | Rust、QEMU、Git 安装与配置 |
+| [docs/project_plan.md](docs/project_plan.md) | **项目阶段计划表** |
 
 ## 教学实验（学生向）
 
@@ -66,13 +67,12 @@
 | 参考答案 | [os-lab/labs/answers/](os-lab/labs/answers/) |
 | 测试说明 | [os-lab/tests/README.md](os-lab/tests/README.md) |
 
-## 过程文档（可选阅读）
+## 附录
 
 | 文档 | 说明 |
 | --- | --- |
-| [docs/project_plan.md](docs/project_plan.md) | 项目计划、里程碑、三人分工 |
-| [progress.md](progress.md) | 施工与验证进度日志 |
 | [Task.md](Task.md) | 赛题原文 |
+| [progress.md](progress.md) | 开发过程记录 |
 
 ## 代码入口
 

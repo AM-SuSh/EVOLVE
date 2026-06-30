@@ -1,37 +1,17 @@
-# 参考实验环境拉取与基础测试报告
+# 参考实验环境基础测试报告
 
-## 0. 环境重建后重跑记录（2026-06-20）
+本文记录赛题参考仓库 `tg-rcore-tutorial` 在锁定基线下的 **base 模式** 测试结果。练习（exercise）实现与 checker 结果见 [reference-practice-report.md](reference-practice-report.md)。
 
-机器环境丢失重建后，重新拉取参考仓库并复跑全部 5 章 base 测试，结果与首次一致，进一步验证本机环境可用。
-
-```text
-repo:   https://github.com/rcore-os/tg-rcore-tutorial.git (branch: test)
-commit: d6330a6db1f81c8c1cfba5ec3db9923199398f24
-rustc:  1.96.0   QEMU: 11.0.50   checker: 0.4.8
-```
-
-| 章节 | 结果 | 通过数 |
-| --- | --- | --- |
-| ch3 | 通过 | Test PASSED: 4/4（write A/B/C OK，无 FAIL） |
-| ch4 | 通过 | Test PASSED: 6/6（write C OK、sbrk almost OK） |
-| ch5 | 通过 | Test PASSED: 14/14（forktest pass、exit pass、child process 匹配） |
-| ch6 | 通过 | Test PASSED: 15/15（file_test passed、forktest pass） |
-| ch8 | 通过 | Test PASSED: 22/22（pipetest、mutex/condvar/thread 全通过） |
-
-> ch5/ch6/ch8 均按报告要求设置 `CHAPTER=-5/-6/-8` 后通过；首轮 ch5 曾因 `cargo run` 在 `CHAPTER` 未生效时进入交互路径而超时，显式设置环境变量后即 14/14 通过。
-
-## 1. 参考仓库
-
-本轮拉取的参考实验环境：
+## 1. 参考仓库基线
 
 ```text
-repo: https://github.com/rcore-os/tg-rcore-tutorial.git
+repo:   https://github.com/rcore-os/tg-rcore-tutorial.git
 branch: test
 commit: d6330a6db1f81c8c1cfba5ec3db9923199398f24
-local path: reference/tg-rcore-tutorial
+local:  reference/tg-rcore-tutorial
 ```
 
-根据参考仓库 README，赛题要求中的 5 个基础实验章节为：
+赛题要求的五个基础实验章节：
 
 ```text
 tg-rcore-tutorial-ch3
@@ -43,77 +23,29 @@ tg-rcore-tutorial-ch8
 
 ## 2. 测试环境
 
-测试前在仓库根目录激活本机 D 盘实验环境：
-
-```powershell
-. .\scripts\activate-os-env.ps1
-```
-
-关键工具版本：
-
 ```text
-rustc 1.96.0
-cargo 1.96.0
-QEMU 11.0.50
-tg-rcore-tutorial-checker 0.4.8
+rustc:   1.96.0
+cargo:   1.96.0
+QEMU:    11.0.50
+checker: tg-rcore-tutorial-checker 0.4.8
 ```
+
+环境安装与激活见 [environment_setup.md](environment_setup.md)。
 
 ## 3. 测试结果
 
-| 章节 | 测试类型 | 结果 | 关键通过项 |
+| 章节 | 测试类型 | 结果 | checker |
 | --- | --- | --- | --- |
-| ch3 | base | 通过 | `Test write A/B/C OK!`，未出现 `FAIL: T.T` |
-| ch4 | base | 通过 | `Test write A/B/C OK!`、`Test sbrk almost OK!` |
-| ch5 | base | 通过 | `forktest pass.`、子进程退出码匹配、未出现失败标记 |
-| ch6 | base | 通过 | `file_test passed!`，并继承前序章节基础测例通过 |
-| ch8 | base | 通过 | `pipetest passed!`、同步/互斥/条件变量/线程相关测例通过 |
+| ch3 | base | 通过 | 4/4 |
+| ch4 | base | 通过 | 6/6 |
+| ch5 | base | 通过 | 14/14 |
+| ch6 | base | 通过 | 15/15 |
+| ch8 | base | 通过 | 22/22 |
 
-## 4. 实际执行命令
+各章关键通过项：ch3 `write A/B/C`；ch4 含 `sbrk`；ch5 `forktest` 与子进程退出码；ch6 `file_test`；ch8 `pipetest` 及同步原语相关测例。
 
-ch3：
+## 4. 复现说明
 
-```powershell
-cd .\reference\tg-rcore-tutorial\tg-rcore-tutorial-ch3
-. ..\..\..\scripts\activate-os-env.ps1
-cargo build
-bash -lc "cargo run 2>&1 | tg-rcore-tutorial-checker --ch 3"
-```
+在已激活实验环境的终端中，进入对应章节目录，将 `cargo run` 输出管道至 `tg-rcore-tutorial-checker --ch <N>` 进行判定。ch5、ch6、ch8 须设置 `CHAPTER=-5`、`-6`、`-8` 后重新编译运行；完整命令与环境变量说明见 [reference-practice-report.md §1](reference-practice-report.md)。
 
-ch4：
-
-```powershell
-cd .\reference\tg-rcore-tutorial\tg-rcore-tutorial-ch4
-. ..\..\..\scripts\activate-os-env.ps1
-bash -lc "cargo run 2>&1 | tg-rcore-tutorial-checker --ch 4"
-```
-
-ch5：
-
-```powershell
-cd .\reference\tg-rcore-tutorial\tg-rcore-tutorial-ch5
-. ..\..\..\scripts\activate-os-env.ps1
-bash -lc "cargo clean; export CHAPTER=-5; cargo run 2>&1 | tg-rcore-tutorial-checker --ch 5"
-```
-
-ch6：
-
-```powershell
-cd .\reference\tg-rcore-tutorial\tg-rcore-tutorial-ch6
-. ..\..\..\scripts\activate-os-env.ps1
-bash -lc "cargo clean; export CHAPTER=-6; cargo run 2>&1 | tg-rcore-tutorial-checker --ch 6"
-```
-
-ch8：
-
-```powershell
-cd .\reference\tg-rcore-tutorial\tg-rcore-tutorial-ch8
-. ..\..\..\scripts\activate-os-env.ps1
-bash -lc "cargo clean; export CHAPTER=-8; cargo run 2>&1 | tg-rcore-tutorial-checker --ch 8"
-```
-
-## 5. 注意事项
-
-- 在 Windows Git Bash 环境中，参考仓库 `test.sh` 中的 `tee /dev/stderr` 会报 `No such file or directory`，导致脚本整体返回失败。
-- 该问题不代表内核测试失败；本轮通过等价的 `cargo run | tg-rcore-tutorial-checker` 管线完成了输出判定。
-- ch5、ch6、ch8 的基础测试需要设置 `CHAPTER=-5`、`CHAPTER=-6`、`CHAPTER=-8`，否则可能进入不符合基础测试预期的交互式运行路径。
-- 本轮只验证参考仓库基础模式，不运行 `exercise` 测试；`exercise` 需要完成对应章节练习实现后再作为作业验证入口。
+参考仓库未纳入 Git（体积较大），可按 [reference-patches/README.md](../reference-patches/README.md) clone 基线后应用练习补丁。

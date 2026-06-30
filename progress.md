@@ -1,26 +1,3 @@
-## 2026-06-30 - Task: 处理 origin/main 合并冲突
-
-### What was done
-
-- 解决 `git pull` 产生的三处冲突：`progress.md`、`docs/delivery-checklist.md`、`docs/README.md`（modify/delete）。
-- `progress.md`：保留远程「项目进度总览」与 AI 声明，在其后并入本地 2026-06-29 合规/README 任务记录。
-- `delivery-checklist.md`：合并根 `README.md`、`docs/LICENSE` 与远程 `technical-proposal.md` 入口。
-- 确认删除 `docs/README.md`（导航已迁至根 `README.md`）；根 `README.md` 补充技术方案文档链接。
-
-### Testing
-
-- 全仓库检索冲突标记 `<<<<<<<` / `=======` / `>>>>>>>`：无残留。
-- `git status`：合并已完成，工作区干净（除合并前已有的未跟踪/未暂存项）。
-
-### Notes
-
-- `progress.md`：合并远程总览与本地 2026-06-29 记录。
-- `docs/delivery-checklist.md`：合并双方文件清单行。
-- `docs/README.md`：删除（`git rm`）。
-- `README.md`：补充 `technical-proposal.md` 链接。
-- `docs/technical-proposal.md`：自远程并入。
-- 回滚方式：`git reset --hard HEAD~1`（若尚未 push）；或 `git revert -m 1 HEAD` 保留历史。
-
 # os-lab 项目进度总览
 
 ## 一、项目概览与团队分工

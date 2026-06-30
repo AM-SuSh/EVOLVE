@@ -1,92 +1,98 @@
-# 操作系统实验环境配置记录
+# 实验环境安装与配置
 
-## 1. 环境要求来源
+本文说明复现本仓库参考练习与自研 `os-lab` 所需工具链。验证步骤见 [delivery-checklist.md §3](delivery-checklist.md)。
 
-根据 `Task.md` 和参考实验环境 `rcore-os/tg-rcore-tutorial` 的说明，本项目本机实验环境需要满足：
+## 1. 环境要求
 
-- Rust stable toolchain。
-- RISC-V 64 裸机目标：`riscv64gc-unknown-none-elf`。
-- Rust 组件：`rust-src`、`llvm-tools-preview`。
-- Visual Studio C++ Build Tools：提供 MSVC `link.exe` / `cl.exe`，是 Rust 在 Windows 上做原生编译（如 `cargo install`）的硬性前置。
-- QEMU：`qemu-system-riscv64`，版本建议不低于 7.0。
-- 推荐 Cargo 工具：`cargo-binutils`、`cargo-clone`。
-- 章节测试工具：`tg-rcore-tutorial-checker`。
-- Git Bash：用于运行参考实验中的 shell 脚本。
+依据赛题 [Task.md](../Task.md) 与参考环境 [tg-rcore-tutorial](https://github.com/rcore-os/tg-rcore-tutorial)：
 
-## 2. 当前安装位置
 
-当前环境统一安装在 `D:\AppGallery` 下：
+| 类别           | 要求                                                           |
+| ------------ | ------------------------------------------------------------ |
+| Rust         | stable toolchain                                             |
+| 裸机目标         | `riscv64gc-unknown-none-elf`                                 |
+| Rust 组件      | `rust-src`、`llvm-tools-preview`                              |
+| Windows 原生编译 | Visual Studio C++ Build Tools（提供 MSVC `link.exe` / `cl.exe`） |
+| 模拟器          | `qemu-system-riscv64`，建议 ≥ 7.0                               |
+| Cargo 工具（推荐） | `cargo-binutils`、`cargo-clone`                               |
+| 章节测试         | `tg-rcore-tutorial-checker`                                  |
+| Shell        | Git Bash（运行参考实验中的 shell 脚本）                                  |
 
-| 组件 | 路径 |
-| --- | --- |
-| Cargo home | `D:\AppGallery\Rust\cargo` |
-| Rustup home | `D:\AppGallery\Rust\rustup` |
-| QEMU | `D:\AppGallery\QEMU` |
-| MSVC Build Tools | `D:\AppGallery\BuildTools` |
-| Git Bash | `D:\Hit下载\Git\usr\bin\bash.exe` |
 
-> 注意：Git 实际安装在 `D:\Hit下载\Git`，不在 `D:\AppGallery\Git`。
 
-用户级环境变量已设置为：
 
-```
-CARGO_HOME=D:\AppGallery\Rust\cargo
-RUSTUP_HOME=D:\AppGallery\Rust\rustup
-PATH includes D:\AppGallery\Rust\cargo\bin
-PATH includes D:\AppGallery\QEMU
-```
+## 2. 安装步骤
 
-MSVC Build Tools 不需要写入 PATH：`rustc` 通过 `vswhere` 与注册表自动定位 `link.exe` / `cl.exe`，不受 PATH 中其他同名程序影响。
 
-新打开的终端会继承以上用户级环境变量。若当前终端未刷新环境，可在仓库根目录执行：
+
+### 2.1 Rust 工具链
 
 ```powershell
-. .\scripts\activate-os-env.ps1
+rustup default stable
+rustup target add riscv64gc-unknown-none-elf
+rustup component add rust-src llvm-tools-preview
 ```
 
-注意：前面的点号表示 dot-source，作用是让脚本修改当前 PowerShell 会话的环境变量。
 
-## 3. 已安装内容
 
-已验证的核心版本：
+### 2.2 Cargo 辅助工具
+
+```powershell
+cargo install cargo-binutils cargo-clone tg-rcore-tutorial-checker
+```
+
+
+
+### 2.3 QEMU
+
+安装 [QEMU](https://www.qemu.org/download/) 并将 `qemu-system-riscv64` 所在目录加入 `PATH`。
+
+### 2.4 Visual Studio C++ Build Tools（Windows）
+
+安装 [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)，勾选「使用 C++ 的桌面开发」工作负载。`rustc` 通过 `vswhere` 自动定位 MSVC 链接器，通常无需手动写入 `PATH`。
+
+### 2.5 Git Bash
+
+安装 [Git for Windows](https://gitforwindows.org/)，确保 `bash` 在 `PATH` 中可用。
+
+## 3. 环境变量
+
+按需设置（路径替换为本机实际安装位置）：
+
+```
+CARGO_HOME=<cargo 主目录>
+RUSTUP_HOME=<rustup 主目录>
+PATH 包含：<cargo>/bin、<QEMU 目录>、<Git>/usr/bin
+```
+
+仓库提供 Windows 便捷脚本 [scripts/activate-os-env.ps1](../scripts/activate-os-env.ps1)，在**当前 PowerShell 会话**中设置 `CARGO_HOME`、`RUSTUP_HOME` 与 `PATH`。脚本内路径为提交方开发机示例；若与本机不符，可复制为 `scripts/activate-os-env.local.ps1`（已列入 `.gitignore`）后修改路径，再执行：
+
+```powershell
+cd <仓库根目录>
+. .\scripts\activate-os-env.local.ps1   # 或 activate-os-env.ps1
+```
+
+注意：前面的点号表示 dot-source，使环境变量作用于当前会话而非子进程。
+
+## 4. 已验证版本（参考）
+
+提交方在以下版本组合下完成全部 exercise 与 `os-lab` 验证：
 
 ```text
-rustc 1.96.0 (ac68faa20 2026-05-25)
-cargo 1.96.0 (30a34c682 2026-05-25)
-QEMU emulator version 11.0.50 (v11.0.0-12631-g54e84cdc7a)
-MSVC 14.44.35207 (Visual Studio Build Tools 2022)
-Windows SDK 10.0.22621.0
+rustc 1.96.0
+cargo 1.96.0
+QEMU 11.0.x（≥ 7.0 即可）
+MSVC 14.44（Visual Studio Build Tools 2022）
 ```
 
-已安装 Rust target：
+已安装 target：`riscv64gc-unknown-none-elf`、`x86_64-pc-windows-msvc`（host 单元测试用）。
 
-```text
-riscv64gc-unknown-none-elf
-x86_64-pc-windows-msvc
-```
-
-已安装 Rust 组件：
-
-```text
-rust-src
-llvm-tools-x86_64-pc-windows-msvc
-rust-std-riscv64gc-unknown-none-elf
-```
-
-已安装 Cargo 工具：
-
-```text
-cargo-binutils v0.4.0
-cargo-clone v1.2.4
-tg-rcore-tutorial-checker v0.4.8
-```
-
-## 4. 验证命令
+## 5. 验证命令
 
 在仓库根目录执行：
 
 ```powershell
-. .\scripts\activate-os-env.ps1
+. .\scripts\activate-os-env.ps1    # 或本机 .local.ps1
 rustc --version
 cargo --version
 rustup target list --installed
@@ -96,9 +102,10 @@ cargo install --list
 bash --version
 ```
 
-若以上命令能正常输出版本和安装清单，则本机基础实验环境已可用于后续参考实验配置。
+以上命令均能输出版本与安装清单后，即可按 [delivery-checklist.md](delivery-checklist.md) 进行快速或完整验证。
 
-## 5. 关键排障记录
+## 6. 常见问题
 
-- **MSVC link.exe 缺失**：若未安装 Visual Studio C++ Build Tools，`cargo install` 会因 PATH 中存在 Git 的 GNU coreutils `link.exe`（`D:\Hit下载\Git\usr\bin\link.exe`）而报 `link: extra operand`。解决办法是安装 VS Build Tools 的「使用 C++ 的桌面开发」工作负载（见 `progress.md` 对应记录），安装后 rustc 会自动找到真正的 MSVC `link.exe`，无需手动改 PATH。
-- **编码问题**：在 Windows PowerShell 5.1 中执行包含中文的脚本时，GBK 默认编码会导致方括号语法解析失败。如需编写带中文输出的脚本，请使用 UTF-8 with BOM 或改为全英文输出。
+- **MSVC** `link.exe` **缺失或冲突**：未安装 VS C++Build Tools 时，++`cargo install` ++可能误调用 Git 自带的 GNU++ `link.exe` ++并报++ `link: extra operand`++。安装 Build Tools 的「使用 C++ 的桌面开发」后，`rustc` 会自动选用 MSVC 链接器。
+- **PowerShell 中文脚本乱码**：Windows PowerShell 5.1 默认 GBK 编码可能导致含中文的脚本解析失败。脚本文件使用 UTF-8 with BOM，或改用英文输出。
+
