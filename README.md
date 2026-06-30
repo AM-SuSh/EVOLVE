@@ -12,7 +12,7 @@
 | 30% 练习 | 在参考环境 ch3/ch4/ch5/ch6/ch8 完成 exercise，补丁见 [reference-patches/](reference-patches/) |
 | 70% 自研 | 独立实现 `os-lab/` 教学实验环境，不修改上游参考仓库 |
 
-技术方案与对比分析中的基线描述与上表一致，见 [os-lab/docs/design-report.md](os-lab/docs/design-report.md)、[docs/reference-practice-report.md](docs/reference-practice-report.md)。
+技术方案与对比分析中的基线描述与上表一致，见 [os-lab/docs/design-report.md](os-lab/docs/design-report.md)、[docs/reference-report.md](docs/reference-report.md)。
 
 ## 许可证
 
@@ -29,15 +29,14 @@
 
 | 文档 | 说明 |
 | --- | --- |
-| [docs/reference-practice-report.md](docs/reference-practice-report.md) | **练习实现总结报告**（exercise 实现过程、checker 结果、复现命令） |
-| [docs/reference_test_report.md](docs/reference_test_report.md) | 参考仓库 base 测试记录（非 exercise） |
+| [docs/reference-report.md](docs/reference-report.md) | **参考环境报告**（base 测试、exercise 实现、checker 结果、复现命令） |
 | [reference-patches/](reference-patches/) | 练习实现 `.patch`（相对基线 `d6330a6` 的可审阅 diff） |
 
 ### 70%：自研 os-lab
 
 | 文档 | 说明 |
 | --- | --- |
-| [docs/os-lab.md](docs/os-lab.md) | 自研环境入口（链到 `os-lab/` 代码与实验） |
+| [docs/os-lab.md](docs/os-lab.md) | **自研环境统一入口**（概览、验证、手册） |
 | [os-lab/docs/design-report.md](os-lab/docs/design-report.md) | **教学实验环境设计总结报告** |
 | [os-lab/docs/comparison.md](os-lab/docs/comparison.md) | 本校 / 参考 / 自研三方对比与学习效率评估 |
 | [os-lab/docs/comparison-data.md](os-lab/docs/comparison-data.md) | 对比原始数据与采集说明 |
@@ -50,7 +49,6 @@
 | --- | --- |
 | [docs/delivery-checklist.md](docs/delivery-checklist.md) | **交付清单**与验证路径 |
 | [docs/technical-proposal.md](docs/technical-proposal.md) | **完整技术方案文档**（大赛提交用） |
-| [docs/os-lab_verify.md](docs/os-lab_verify.md) | 自研环境验证与复现说明 |
 | [docs/environment_setup.md](docs/environment_setup.md) | Rust、QEMU、Git 安装与配置 |
 | [docs/project_plan.md](docs/project_plan.md) | **项目阶段计划表** |
 
@@ -61,7 +59,7 @@
 | 类型 | 路径 |
 | --- | --- |
 | 总览 | [os-lab/labs/overview.md](os-lab/labs/overview.md) |
-| **Web 学习手册** | [docs/handbook.md](docs/handbook.md) → `os-lab/handbook/` |
+| **Web 学习手册** | [docs/os-lab.md](docs/os-lab.md) → `os-lab/handbook/` |
 | 指导 lab1–5 | `os-lab/labs/lab*-*.md` |
 | 习题 | [os-lab/labs/exercises/](os-lab/labs/exercises/) |
 | 参考答案 | [os-lab/labs/answers/](os-lab/labs/answers/) |

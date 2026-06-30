@@ -31,7 +31,7 @@
 
 赛题要求我们做两件事。第一条：在官方参考教学环境上完成 5 个基础实验的编程练习（exercise），写实现总结。第二条：自己设计一套能自学的 OS 教学实验环境，要有指导文档、代码、测试、习题和答案，还要和本校环境、参考环境做对比，说明学习效率。
 
-我们的交付可以概括成「练」和「建」两条线。练的部分在 `reference/tg-rcore-tutorial` 上打补丁，五章 exercise 全部通过官方 checker。建的部分是自研 `os-lab`：一个 Rust 写的、在 QEMU 上跑的 RISC-V 64 单内核，用 Cargo feature 从 lab1 逐步长到 lab5，配套五套实验文档、24 个 host 单元测试、Web 学习手册，以及设计报告和三方对比。练习总结见 [reference-practice-report.md](reference-practice-report.md)，自研环境设计见 [design-report.md](../os-lab/docs/design-report.md)。
+我们的交付可以概括成「练」和「建」两条线。练的部分在 `reference/tg-rcore-tutorial` 上打补丁，五章 exercise 全部通过官方 checker。建的部分是自研 `os-lab`：一个 Rust 写的、在 QEMU 上跑的 RISC-V 64 单内核，用 Cargo feature 从 lab1 逐步长到 lab5，配套五套实验文档、24 个 host 单元测试、Web 学习手册，以及设计报告和三方对比。参考环境报告见 [reference-report.md](reference-report.md)，自研环境设计见 [design-report.md](../os-lab/docs/design-report.md)。
 
 ```mermaid
 flowchart LR
@@ -67,7 +67,7 @@ flowchart LR
 
 ### 2.1 基线项目与版本锁定
 
-练习的基线是 [rcore-os/tg-rcore-tutorial](https://github.com/rcore-os/tg-rcore-tutorial)，锁定 branch `test`、commit `d6330a6`。仓库体积大（本地 clone 约 1.5GB），所以放在 `reference/` 并由 `.gitignore` 排除，文档和测试报告里已注明完整 clone 命令，见 [reference_test_report.md](reference_test_report.md)。
+练习的基线是 [rcore-os/tg-rcore-tutorial](https://github.com/rcore-os/tg-rcore-tutorial)，锁定 branch `test`、commit `d6330a6`。仓库体积大（本地 clone 约 1.5GB），所以放在 `reference/` 并由 `.gitignore` 排除，文档和测试报告里已注明完整 clone 命令，见 [reference-report.md](reference-report.md)。
 
 架构对照用的是同系列的 [rCore-Tutorial-in-single-workspace](https://github.com/rcore-os/rCore-Tutorial-in-single-workspace)（branch `test`），用于比较 crate 数量、依赖层数和知识点覆盖。三方对比里的「本校环境」指 MIT 6.S081 的 xv6-riscv。运行时还依赖 OpenSBI 固件和 QEMU，许可遵循各自上游。
 
@@ -227,7 +227,7 @@ cargo test -p os-context -p os-syscall -p os-sbi -p os-fs --target x86_64-pc-win
 cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1
 ```
 
-`os-vm` 测试必须单线程，否则全局分配器状态会打架。完整验证步骤见 [os-lab_verify.md](os-lab_verify.md) §11。
+`os-vm` 测试必须单线程，否则全局分配器状态会打架。完整验证步骤见 [os-lab.md](os-lab.md) §5。
 
 ---
 
@@ -276,7 +276,7 @@ cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-thread
 ### 6.1 参考练习阶段
 
 **ch5 QEMU 挂在** `>>`  
-现象像内核死循环，实际是 `initproc` 进了交互 shell。根因是 Windows 上没设 `CHAPTER=5`，且用户程序是编译期选分支，改环境变量不 `cargo clean` 不会生效。解决：文档写死「设 CHAPTER → clean → 再 run」，并在 [reference-practice-report.md](reference-practice-report.md) 里用一整节说明。
+现象像内核死循环，实际是 `initproc` 进了交互 shell。根因是 Windows 上没设 `CHAPTER=5`，且用户程序是编译期选分支，改环境变量不 `cargo clean` 不会生效。解决：文档写死「设 CHAPTER → clean → 再 run」，并在 [reference-report.md](reference-report.md) 里用一整节说明。
 
 **ch6 waitpid 永不返回**  
 用 QEMU 打日志发现子进程卡在 unlink 路径。持锁重入 `fs.lock()` 导致自旋锁死锁。解决：缩短锁持有范围，先释放再 `clear()`。
@@ -305,7 +305,7 @@ Rust 2024 对 `static mut` 引用更严。全局内核状态改用 `SyncUnsafeCe
 
 同一文件串行改，不同 crate 可并行；每完成一个模块须通过 QEMU、checker 或 `cargo test` 验证后再合并。
 
-参考仓库体积大未纳入 Git；文档中写明 commit 号与 clone 步骤，可按 [reference-practice-report.md](reference-practice-report.md) 复现 exercise 验收。
+参考仓库体积大未纳入 Git；文档中写明 commit 号与 clone 步骤，可按 [reference-report.md](reference-report.md) 复现 exercise 验收。
 
 ---
 
@@ -313,9 +313,9 @@ Rust 2024 对 `static mut` 引用更严。全局内核状态改用 `SyncUnsafeCe
 
 ### 7.1 功能测试：参考练习
 
-五章 exercise 全部用官方 checker 验收，结果如下：ch3 7/7，ch4 16/16，ch5 17/17，ch6 33/33，ch8 25/25。实现摘要与复现命令见 [reference-practice-report.md](reference-practice-report.md)。
+五章 exercise 全部用官方 checker 验收，结果如下：ch3 7/7，ch4 16/16，ch5 17/17，ch6 33/33，ch8 25/25。实现摘要与复现命令见 [reference-report.md](reference-report.md)。
 
-base 测试（非 exercise）记录见 [reference_test_report.md](reference_test_report.md)。exercise 在 base 之上加编程题，checker 会检查继承章节的输出是否仍然正确。
+base 测试（非 exercise）记录见 [reference-report.md §3](reference-report.md)。exercise 在 base 之上加编程题，checker 会检查继承章节的输出是否仍然正确。
 
 ### 7.2 功能测试：自研 os-lab
 
@@ -329,7 +329,7 @@ QEMU：lab1 到 lab5 正序跑通，再倒序回归一遍，关键字符串都�
 
 手册：`npm run build` 同步 24 篇 Markdown，无 dead link 阻断。
 
-复现命令见 [os-lab_verify.md](os-lab_verify.md) §11。
+复现命令见 [os-lab.md](os-lab.md) §5。
 
 ### 7.3 与同类项目的对比
 
@@ -381,7 +381,7 @@ os-lab 代码：模块骨架和 trap 注释。
 ### 8.4 记录存放
 
 Lab 级问答：[ai-collaboration.md](../os-lab/docs/ai-collaboration.md)  
-练习阶段 AI 摘要：[reference-practice-report.md](reference-practice-report.md) 第 2、4 节  
+练习阶段 AI 摘要：[reference-report.md](reference-report.md) 第 5、7 节  
 
 本文档经团队审校；事实部分以仓库代码为准。
 
@@ -409,7 +409,7 @@ VitePress、Vue：手册站点构建依赖，npm 许可各自上游。
 
 ### 9.4 未进 Git 的内容
 
-`reference/` 约 1.5GB，按 [reference_test_report.md](reference_test_report.md) clone 后应用 [reference-patches/](../reference-patches/)。  
+`reference/` 约 1.5GB，按 [reference-report.md](reference-report.md) clone 后应用 [reference-patches/](../reference-patches/)。  
 `target/`、本地构建日志为运行产物，执行验证命令即可生成。
 
 ---
@@ -419,14 +419,14 @@ VitePress、Vue：手册站点构建依赖，npm 许可各自上游。
 
 | 赛题要求项     | 交付物                                                                                                                                                                    |
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 设计提案与开发文档 | 本文；[design-report.md](../os-lab/docs/design-report.md)、[reference-practice-report.md](reference-practice-report.md)、[comparison.md](../os-lab/docs/comparison.md) 等分报告 |
+| 设计提案与开发文档 | 本文；[design-report.md](../os-lab/docs/design-report.md)、[reference-report.md](reference-report.md)、[comparison.md](../os-lab/docs/comparison.md) 等分报告 |
 | 项目源代码     | 自研 `os-lab/` 完整在仓；参考练习补丁见 [reference-patches/](../reference-patches/)                                                                                                  |
 | 测试结果分析    | 本文第 7 节；[comparison.md](../os-lab/docs/comparison.md)、[comparison-data.md](../os-lab/docs/comparison-data.md)                                                          |
 | 项目阶段计划    | [project_plan.md](project_plan.md)                                                                                                                                     |
-| 交付索引与复现   | [delivery-checklist.md](delivery-checklist.md)、[os-lab_verify.md](os-lab_verify.md)                                                                                    |
+| 交付索引与复现   | [delivery-checklist.md](delivery-checklist.md)、[os-lab.md](os-lab.md)                                                                                               |
 
 
-推荐阅读顺序：[delivery-checklist.md](delivery-checklist.md) → 本文 → [design-report.md](../os-lab/docs/design-report.md) → [os-lab_verify.md](os-lab_verify.md) 动手复现。
+推荐阅读顺序：[delivery-checklist.md](delivery-checklist.md) → 本文 → [design-report.md](../os-lab/docs/design-report.md) → [os-lab.md](os-lab.md) 动手复现。
 
 ---
 
@@ -444,9 +444,9 @@ VitePress、Vue：手册站点构建依赖，npm 许可各自上游。
 | 类别     | 文档                                                                                                                                                            |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 赛题与交付  | [Task.md](../Task.md)、[delivery-checklist.md](delivery-checklist.md)、[project_plan.md](project_plan.md)                                                       |
-| 参考练习   | [reference-practice-report.md](reference-practice-report.md)、[reference_test_report.md](reference_test_report.md)、[reference-patches/](../reference-patches/) |
+| 参考练习   | [reference-report.md](reference-report.md)、[reference-patches/](../reference-patches/) |
 | 自研环境   | [design-report.md](../os-lab/docs/design-report.md)、[architecture.md](../os-lab/docs/architecture.md)、[comparison.md](../os-lab/docs/comparison.md)           |
-| AI 与验证 | [ai-collaboration.md](../os-lab/docs/ai-collaboration.md)、[os-lab_verify.md](os-lab_verify.md)、[environment_setup.md](environment_setup.md)                   |
+| AI 与验证 | [ai-collaboration.md](../os-lab/docs/ai-collaboration.md)、[os-lab.md](os-lab.md)、[environment_setup.md](environment_setup.md)                                  |
 
 
 ---

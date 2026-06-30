@@ -33,12 +33,12 @@ flowchart TD
 
 | 阶段 | 时间 | 目标 | 主要工作 | 产出物 | 交付入口 |
 | --- | --- | --- | --- | --- | --- |
-| **0 资料锁定** | 06-01～06-19 | 固化可复现基线 | 锁定参考仓库提交号；梳理 exercise 验收项；搭建 Rust/QEMU 环境；制定本计划 | 环境配置说明、参考 base 测试记录、本计划表 | [environment_setup.md](environment_setup.md)、[reference_test_report.md](reference_test_report.md) |
-| **1 参考练习** | 06-19～06-28 | 完成 30% 练习主线 | 在 ch3/ch4/ch5/ch6/ch8 实现 exercise；记录实现过程与 checker 结果；整理可审阅补丁 | 练习补丁、练习实现总结 | [reference-patches/](../reference-patches/)、[reference-practice-report.md](reference-practice-report.md) |
+| **0 资料锁定** | 06-01～06-19 | 固化可复现基线 | 锁定参考仓库提交号；梳理 exercise 验收项；搭建 Rust/QEMU 环境；制定本计划 | 环境配置说明、参考 base 测试记录、本计划表 | [environment_setup.md](environment_setup.md)、[reference-report.md](reference-report.md) |
+| **1 参考练习** | 06-19～06-28 | 完成 30% 练习主线 | 在 ch3/ch4/ch5/ch6/ch8 实现 exercise；记录实现过程与 checker 结果；整理可审阅补丁 | 练习补丁、练习实现总结 | [reference-patches/](../reference-patches/)、[reference-report.md](reference-report.md) |
 | **2 自研设计** | 06-20～06-23 | 确定 70% 架构与教学路径 | 单内核 + feature gate 方案；6 组件 crate 边界；lab1–5 知识点与实验目录规划 | 架构说明、实验总览 | [architecture.md](../os-lab/docs/architecture.md)、[labs/overview.md](../os-lab/labs/overview.md) |
-| **3 自研实现** | 06-21～06-27 | 代码与教学文档落地 | 内核 lab1–5 逐级实现；组件单测与 QEMU 回归；5 篇指导 + 习题 + 答案 | `os-lab/` 源码、实验文档、验证说明 | [os-lab/README.md](../os-lab/README.md)、[os-lab_verify.md](os-lab_verify.md) |
+| **3 自研实现** | 06-21～06-27 | 代码与教学文档落地 | 内核 lab1–5 逐级实现；组件单测与 QEMU 回归；5 篇指导 + 习题 + 答案 | `os-lab/` 源码、实验文档、验证说明 | [os-lab/README.md](../os-lab/README.md)、[os-lab.md](os-lab.md) |
 | **4 评估对比** | 06-23～06-27 | 证明教学价值 | 本校 / 参考 / 自研三方对比；学习效率数据采集与分析 | 对比报告与数据附录 | [comparison.md](../os-lab/docs/comparison.md)、[comparison-data.md](../os-lab/docs/comparison-data.md) |
-| **5 交付整理** | 06-27～06-30 | 形成可提交包 | 设计总结报告、AI 协作记录、Web 手册、技术方案、交付清单 | 全套评审材料 | [design-report.md](../os-lab/docs/design-report.md)、[handbook.md](handbook.md)、[delivery-checklist.md](delivery-checklist.md) |
+| **5 交付整理** | 06-27～06-30 | 形成可提交包 | 设计总结报告、AI 协作记录、Web 手册、技术方案、交付清单 | 全套评审材料 | [design-report.md](../os-lab/docs/design-report.md)、[os-lab.md](os-lab.md)、[delivery-checklist.md](delivery-checklist.md) |
 
 各阶段按「单项主责 + 交叉复核」推进；涉及同一源码文件时串行修改，不同 crate 或文档目录可并行。
 

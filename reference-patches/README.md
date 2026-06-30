@@ -20,7 +20,7 @@
 | [ch6-exercise.patch](ch6-exercise.patch) | ch6 硬链接 + `fstat` | `tg-rcore-tutorial-ch6/src/main.rs`、`process.rs`、`fs.rs`；`tg-rcore-tutorial-easy-fs/src/vfs.rs` |
 | [ch8-exercise.patch](ch8-exercise.patch) | ch8 死锁检测 | `tg-rcore-tutorial-ch8/src/main.rs`、`process.rs` |
 
-checker 验收结果与复现命令见 [docs/reference-practice-report.md](../docs/reference-practice-report.md)。
+checker 验收结果与复现命令见 [docs/reference-report.md](../docs/reference-report.md)。
 
 ## 应用方式
 
