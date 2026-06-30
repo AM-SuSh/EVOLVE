@@ -1,6 +1,6 @@
 # 仓库总览
 
-本仓库汇总操作系统课程赛题交付材料。评审方建议从 **[docs/delivery-checklist.md](docs/delivery-checklist.md)** 开始，再按本文导航进入代码、报告和验证文档。
+本仓库汇总操作系统课程赛题交付材料。
 
 ## 项目基线
 
