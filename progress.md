@@ -12,13 +12,11 @@
 
 ### 成员分工
 
-> 说明：本日志历史记录条目与 git commit message 中沿用「成员 A / 成员 B / 成员 C」称谓，与真实姓名对应关系如下。
-
-| 称谓（历史记录/git） | 姓名 | 主要职责 | 负责目录 |
-|---------------------|------|---------|---------|
-| 成员 A | **高嘉泽** | 内核主体实现：feature gate 骨架、trap / mm / process / fs / sync 各模块随 lab1–lab5 逐级演进；构建系统（Makefile / build.rs / linker） | `os-lab/kernel/` |
-| 成员 B | **郭一心** | 6 个组件 crate（os-sbi / os-context / os-syscall / os-alloc / os-vm / os-fs）实现与 host 单元测试；user 用户态测试程序 | `os-lab/os-*/`、`os-lab/user/`、`os-lab/tests/` |
-| 成员 C | **董田** | 教学文档体系：5 个 lab 实验指导、5 组答案、5 组习题、overview 总览；设计总结报告、三方对比、AI 协作记录；交付清单与文档索引 | `os-lab/labs/`、`os-lab/docs/`、`docs/` |
+| 成员 | 主要职责 | 负责目录 |
+|------|---------|---------|
+| 成员 A | 内核主体实现：feature gate 骨架、trap / mm / process / fs / sync 各模块随 lab1–lab5 逐级演进；构建系统（Makefile / build.rs / linker） | `os-lab/kernel/` |
+| 成员 B | 6 个组件 crate（os-sbi / os-context / os-syscall / os-alloc / os-vm / os-fs）实现与 host 单元测试；user 用户态测试程序 | `os-lab/os-*/`、`os-lab/user/`、`os-lab/tests/` |
+| 成员 C | 教学文档体系：5 个 lab 实验指导、5 组答案、5 组习题、overview 总览；设计总结报告、三方对比、AI 协作记录；交付清单与文档索引 | `os-lab/labs/`、`os-lab/docs/`、`docs/` |
 
 ---
 
@@ -55,45 +53,9 @@
 
 ---
 
-## 三、AI 工具使用声明
+## 三、每日开发进度记录
 
-> 依据赛题规则：允许参赛学生合理使用 AI 工具（VSCode 集成 AI 助手、自研 AI Agent 等基于大语言模型的工具），不视为作弊；但需在开发相关文档中声明所用 AI 工具/大模型名称及使用场景，并单独说明 AI 工具的成果与交互记录。本节即该项声明。
-
-### 3.1 使用的 AI 工具与模型
-
-| 工具 | 类型 | 用途 |
-|------|------|------|
-| VSCode 集成 AI 编程助手 | 基于大语言模型的代码助手 | 代码生成辅助、编译错误诊断、概念讲解 |
-| 通用大语言模型对话工具 | 基于大语言模型的问答助手 | 原理讲解、文档组织、测试用例设计 |
-
-> 团队成员根据各自分工与习惯，选用上述工具中的一种或多种。所有 AI 输出均经人工审查与验证后方予以采纳。
-
-### 3.2 使用场景
-
-| 场景 | 说明 | 人的把关 |
-|------|------|---------|
-| 概念讲解 | 解释 RISC-V 特权级、Sv39 页表、trap 机制、fork/exec 语义等 OS 原理 | 对照 OSTEP / RISC-V 手册交叉验证 |
-| 代码辅助 | 生成函数骨架、诊断编译错误、解释汇编与位运算、定位死锁根因 | 人工审查正确性、做架构决策、QEMU 实测验证 |
-| 文档撰写 | 协助组织文档结构、生成 mermaid 图表、撰写报告草稿 | 人工定教学定位、以学生视角走查、核实引用事实 |
-| 测试验证 | 协助设计单元测试与集成测试用例、分析失败原因 | 人工实测每个 lab 与每项测试的实际运行结果 |
-
-### 3.3 成果归属与边界
-
-- **核心设计决策由团队做出**：单内核 feature gate 架构、6 crate 组件划分、问题驱动文档风格、三人文件边界分工等，均为团队自主决策，AI 仅提供辅助建议。
-- **AI 输出经人工把关**：所有最终采纳的代码与文档均经对应责任人审查、修改并验证。关键结论（如链接地址约定、Sv39 位拆分、死锁根因）均用 QEMU 实测或教材交叉验证，发现 AI 描述与实测不符时以实测为准并修正（典型案例如 lab1「改链接地址崩溃」练习，AI 最初描述与实测现象不符，经实测修正为 0x88000000）。
-- **AI 不替代验证**：赛题要求的 24 项单元测试、lab1–lab5 QEMU 回归、参考环境 5 章 exercise checker，全部由团队在本机真实运行并记录输出，非 AI 生成。
-
-### 3.4 交互记录交付位置
-
-按赛题要求，与 AI 的逐章详细交互记录（含关键问答、AI 引导内容、个人收获、是否验证、反思）集中交付于：
-
-- **`os-lab/docs/ai-collaboration.md`**：Lab1–Lab5 的逐章 AI 协作记录（协作原则 + 记录模板 + 5 个 lab 的示例记录）。
-- 本文件 `progress.md` 各历史条目中的「Testing」节，记录了每个任务的人工验证证据（命令、输出、退出码）。
-- git commit message 记录了每个开发节点的实际提交内容。
-
----
-
-## 四、每日开发进度记录
+> AI 工具使用声明、成果归属与交互记录见 [项目总报告.md §8](项目总报告.md#8-开发时使用-ai-工具的成果) 与 `os-lab/docs/ai-collaboration.md`。
 
 ## 2026-06-30 - Task: 同步文档引用至汇总后的 docs 结构
 
@@ -1260,7 +1222,7 @@
 - `docs/environment_setup.md`：新增本机实验环境配置说明、验证命令、安装路径和 C 盘清理状态。
 - `scripts/activate-os-env.ps1`：新增当前 PowerShell 会话的实验环境激活脚本。
 - `progress.md`：新增本轮环境迁移与验证记录。
-- 本机环境：`C:\Users\Jane Aurora\.cargo` 和 `C:\Users\Jane Aurora\.rustup` 已清理；`C:\Program Files\qemu` 仍有少量卸载器残留文件，Windows 返回 `Access is denied`，但其中已不存在 `qemu-system-riscv64.exe`，用户 PATH 也不再指向该目录。
+- 本机环境：原 `C:\Users\<user>\.cargo` 和 `C:\Users\<user>\.rustup` 已清理；`C:\Program Files\qemu` 仍有少量卸载器残留文件，Windows 返回 `Access is denied`，但其中已不存在 `qemu-system-riscv64.exe`，用户 PATH 也不再指向该目录。
 - 回滚方式：删除 `docs/environment_setup.md` 和 `scripts/activate-os-env.ps1`，从 `progress.md` 删除本轮记录；本机环境可通过卸载 `D:\AppGallery\QEMU`、删除 `D:\AppGallery\Rust`，并从用户环境变量中移除 `CARGO_HOME`、`RUSTUP_HOME`、`D:\AppGallery\Rust\cargo\bin` 和 `D:\AppGallery\QEMU` 进行回滚。
 
 ## 2026-06-19 - Task: 制定项目完成计划文档
