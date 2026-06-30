@@ -49,6 +49,7 @@
 | --- | --- |
 | [Task.md](../Task.md) | 赛题原文 |
 | [docs/README.md](README.md) | **文档总索引**（评审导航） |
+| [docs/technical-proposal.md](technical-proposal.md) | **完整技术方案文档**（大赛提交用） |
 | [docs/delivery-checklist.md](delivery-checklist.md) | 本文：交付清单与验收路径 |
 | [docs/environment_setup.md](environment_setup.md) | Rust / QEMU / Git 环境安装 |
 | [docs/os-lab_verify.md](os-lab_verify.md) | 自研环境分 Day 验证指令（可复制执行） |
