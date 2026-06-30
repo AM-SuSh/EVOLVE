@@ -1,0 +1,194 @@
+diff --git a/tg-rcore-tutorial-ch3/src/main.rs b/tg-rcore-tutorial-ch3/src/main.rs
+index 2debcba..7dba9b6 100644
+--- a/tg-rcore-tutorial-ch3/src/main.rs
++++ b/tg-rcore-tutorial-ch3/src/main.rs
+@@ -54,8 +54,9 @@ core::arch::global_asm!(include_str!(env!("APP_ASM")));
+ // 最大支持的应用程序数量
+ const APP_CAPACITY: usize = 32;
+ 
+-// 定义内核入口点：分配 (APP_CAPACITY + 2) * 8 KiB = 272 KiB 的内核栈
+-// 比第二章更大，因为需要同时容纳多个任务的内核上下文。
++// 定义内核入口点：分配 (APP_CAPACITY + 4) * 8 KiB = 288 KiB 的内核栈。
++// 当前工具链下，`rust_main` 会在栈上放整个 TCB 数组，debug 构建产生的栈帧
++// 比教程原始版本更大；额外预留 16 KiB 头部空间，避免把 .bss 静态量踩坏。
+ //
+ // 这里不再调用 tg_linker::boot0! 宏，避免外部已发布版本与 Rust 2024
+ // 在属性语义上的兼容差异影响本 crate 的发布校验。
+@@ -64,7 +65,7 @@ const APP_CAPACITY: usize = 32;
+ #[unsafe(no_mangle)]
+ #[unsafe(link_section = ".text.entry")]
+ unsafe extern "C" fn _start() -> ! {
+-    const STACK_SIZE: usize = (APP_CAPACITY + 2) * 8192;
++    const STACK_SIZE: usize = (APP_CAPACITY + 4) * 8192;
+     #[unsafe(link_section = ".boot.stack")]
+     static mut STACK: [u8; STACK_SIZE] = [0u8; STACK_SIZE];
+ 
+@@ -273,12 +274,7 @@ mod impls {
+     /// QEMU virt 平台的时钟频率为 12.5 MHz（10000/125 = 80 ns/tick）。
+     impl Clock for SyscallContext {
+         #[inline]
+-        fn clock_gettime(
+-            &self,
+-            _caller: Caller,
+-            clock_id: ClockId,
+-            tp: usize,
+-        ) -> isize {
++        fn clock_gettime(&self, _caller: Caller, clock_id: ClockId, tp: usize) -> isize {
+             match clock_id {
+                 ClockId::CLOCK_MONOTONIC => {
+                     // 将 RISC-V time 寄存器的值转换为纳秒
+@@ -303,15 +299,18 @@ mod impls {
+     /// - 查询系统调用计数（trace_request=2）
+     impl Trace for SyscallContext {
+         #[inline]
+-        fn trace(
+-            &self,
+-            _caller: Caller,
+-            _trace_request: usize,
+-            _id: usize,
+-            _data: usize,
+-        ) -> isize {
+-            tg_console::log::info!("trace: not implemented");
+-            -1
++        fn trace(&self, _caller: Caller, trace_request: usize, id: usize, data: usize) -> isize {
++            match trace_request {
++                0 => unsafe { core::ptr::read(id as *const u8) as isize },
++                1 => {
++                    unsafe { core::ptr::write(id as *mut u8, data as u8) };
++                    0
++                }
++                2 => crate::task::current_task()
++                    .map(|task| task.syscall_count(id) as isize)
++                    .unwrap_or(-1),
++                _ => -1,
++            }
+         }
+     }
+ }
+diff --git a/tg-rcore-tutorial-ch3/src/task.rs b/tg-rcore-tutorial-ch3/src/task.rs
+index 6f8ca1e..7718c87 100644
+--- a/tg-rcore-tutorial-ch3/src/task.rs
++++ b/tg-rcore-tutorial-ch3/src/task.rs
+@@ -15,9 +15,31 @@
+ //! - 再看 `handle_syscall`：理解系统调用结果如何映射成调度事件；
+ //! - 最后对照 `ch3/src/main.rs`：把“事件生成”和“事件消费”串成闭环。
+ 
++use core::ptr;
+ use tg_kernel_context::LocalContext;
+ use tg_syscall::{Caller, SyscallId};
+ 
++/// 每个任务最多记录的不同 syscall 编号数量。
++///
++/// 第三章测试只会涉及少量 syscall，使用稀疏表即可避免把大数组塞进 TCB，
++/// 从而挤爆 `rust_main` 的内核栈。
++const SYSCALL_RECORD_CAPACITY: usize = 16;
++
++#[derive(Clone, Copy)]
++struct SyscallCounterSlot {
++    id: SyscallId,
++    count: usize,
++}
++
++impl SyscallCounterSlot {
++    const ZERO: Self = Self {
++        id: SyscallId(0),
++        count: 0,
++    };
++}
++
++static mut CURRENT_TASK: *mut TaskControlBlock = ptr::null_mut();
++
+ /// 任务控制块（Task Control Block, TCB）
+ ///
+ /// 每个用户程序对应一个 TCB，包含：
+@@ -32,6 +54,8 @@ pub struct TaskControlBlock {
+     /// 用户栈：8 KiB（1024 个 usize = 1024 × 8 = 8192 字节）
+     /// 每个任务拥有独立的栈空间，避免栈溢出影响其他任务
+     stack: [usize; 1024],
++    /// 当前任务已经出现过的 syscall 计数表。
++    syscall_counters: [SyscallCounterSlot; SYSCALL_RECORD_CAPACITY],
+ }
+ 
+ /// 调度事件
+@@ -55,6 +79,7 @@ impl TaskControlBlock {
+         ctx: LocalContext::empty(),
+         finish: false,
+         stack: [0; 1024],
++        syscall_counters: [SyscallCounterSlot::ZERO; SYSCALL_RECORD_CAPACITY],
+     };
+ 
+     /// 初始化一个任务
+@@ -65,6 +90,7 @@ impl TaskControlBlock {
+     pub fn init(&mut self, entry: usize) {
+         self.stack.fill(0);
+         self.finish = false;
++        self.syscall_counters.fill(SyscallCounterSlot::ZERO);
+         self.ctx = LocalContext::user(entry);
+         // 栈从高地址向低地址增长，所以 sp 指向栈顶（数组末尾之后的地址）
+         *self.ctx.sp_mut() = self.stack.as_ptr() as usize + core::mem::size_of_val(&self.stack);
+@@ -84,8 +110,8 @@ impl TaskControlBlock {
+     /// 从用户上下文中提取系统调用 ID（a7 寄存器）和参数（a0-a5 寄存器），
+     /// 分发到对应的处理函数，并将返回值写回 a0 寄存器。
+     pub fn handle_syscall(&mut self) -> SchedulingEvent {
+-        use tg_syscall::{SyscallId as Id, SyscallResult as Ret};
+         use SchedulingEvent as Event;
++        use tg_syscall::{SyscallId as Id, SyscallResult as Ret};
+ 
+         // a7 寄存器存放 syscall ID
+         let id = self.ctx.a(7).into();
+@@ -98,7 +124,11 @@ impl TaskControlBlock {
+             self.ctx.a(4),
+             self.ctx.a(5),
+         ];
+-        match tg_syscall::handle(Caller { entity: 0, flow: 0 }, id, args) {
++        self.record_syscall(id);
++        set_current_task(self as *mut _);
++        let result = tg_syscall::handle(Caller { entity: 0, flow: 0 }, id, args);
++        set_current_task(ptr::null_mut());
++        match result {
+             Ret::Done(ret) => match id {
+                 // exit 系统调用：返回退出事件
+                 Id::EXIT => Event::Exit(self.ctx.a(0)),
+@@ -119,4 +149,42 @@ impl TaskControlBlock {
+             Ret::Unsupported(_) => Event::UnsupportedSyscall(id),
+         }
+     }
++
++    fn record_syscall(&mut self, id: SyscallId) {
++        for slot in &mut self.syscall_counters {
++            if slot.count != 0 && slot.id == id {
++                slot.count += 1;
++                return;
++            }
++        }
++        for slot in &mut self.syscall_counters {
++            if slot.count == 0 {
++                *slot = SyscallCounterSlot { id, count: 1 };
++                return;
++            }
++        }
++    }
++
++    /// 查询当前任务某个 syscall 号的累计调用次数。
++    pub(super) fn syscall_count(&self, id: usize) -> usize {
++        self.syscall_counters
++            .iter()
++            .find(|slot| slot.count != 0 && slot.id.0 == id)
++            .map_or(0, |slot| slot.count)
++    }
++}
++
++#[inline]
++fn set_current_task(task: *mut TaskControlBlock) {
++    unsafe { CURRENT_TASK = task };
++}
++
++/// 返回当前正在内核中处理 syscall 的任务。
++pub(super) fn current_task() -> Option<&'static mut TaskControlBlock> {
++    let task = unsafe { CURRENT_TASK };
++    if task.is_null() {
++        None
++    } else {
++        Some(unsafe { &mut *task })
++    }
+ }

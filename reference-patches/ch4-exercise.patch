@@ -1,0 +1,319 @@
+diff --git a/tg-rcore-tutorial-ch4/src/main.rs b/tg-rcore-tutorial-ch4/src/main.rs
+index 2775322..d62084b 100644
+--- a/tg-rcore-tutorial-ch4/src/main.rs
++++ b/tg-rcore-tutorial-ch4/src/main.rs
+@@ -246,9 +246,17 @@ extern "C" fn schedule() -> ! {
+             scause::Trap::Exception(scause::Exception::UserEnvCall) => {
+                 use tg_syscall::{SyscallId as Id, SyscallResult as Ret};
+ 
+-                let ctx = &mut ctx.context;
+-                let id: Id = ctx.a(7).into();
+-                let args = [ctx.a(0), ctx.a(1), ctx.a(2), ctx.a(3), ctx.a(4), ctx.a(5)];
++                let process = unsafe { PROCESSES.get_mut() }.get_mut(0).unwrap();
++                let (raw_id, args) = {
++                    let ctx = &process.context.context;
++                    (
++                        ctx.a(7),
++                        [ctx.a(0), ctx.a(1), ctx.a(2), ctx.a(3), ctx.a(4), ctx.a(5)],
++                    )
++                };
++                process.record_syscall(raw_id);
++                let id: Id = raw_id.into();
++                let ctx = &mut process.context.context;
+                 match tg_syscall::handle(Caller { entity: 0, flow: 0 }, id, args) {
+                     Ret::Done(ret) => match id {
+                         // exit：移除进程
+@@ -358,7 +366,7 @@ fn kernel_space(
+ mod impls {
+     use crate::{build_flags, Sv39, PROCESSES};
+     use alloc::alloc::alloc_zeroed;
+-    use core::{alloc::Layout, ptr::NonNull};
++    use core::{alloc::Layout, ops::Range, ptr::NonNull};
+     use tg_console::log;
+     use tg_kernel_vm::{
+         page_table::{MmuMeta, Pte, VAddr, VmFlags, PPN, VPN},
+@@ -454,6 +462,43 @@ mod impls {
+     /// 系统调用上下文实现
+     pub struct SyscallContext;
+ 
++    #[inline]
++    fn ranges_overlap(lhs: &Range<VPN<Sv39>>, rhs: &Range<VPN<Sv39>>) -> bool {
++        lhs.start < rhs.end && rhs.start < lhs.end
++    }
++
++    #[inline]
++    fn range_is_fully_mapped(areas: &[Range<VPN<Sv39>>], range: &Range<VPN<Sv39>>) -> bool {
++        let mut vpn = range.start;
++        while vpn < range.end {
++            if !areas.iter().any(|area| area.start <= vpn && vpn < area.end) {
++                return false;
++            }
++            vpn = vpn + 1;
++        }
++        true
++    }
++
++    #[inline]
++    fn user_map_flags(prot: usize) -> Option<VmFlags<Sv39>> {
++        if prot & !0x7 != 0 || prot & 0x7 == 0 {
++            return None;
++        }
++        let mut flags = *b"U___V";
++        if prot & 0x4 != 0 {
++            flags[1] = b'X';
++        }
++        if prot & 0x2 != 0 {
++            flags[2] = b'W';
++        }
++        if prot & 0x1 != 0 {
++            flags[3] = b'R';
++        }
++        Some(VmFlags::build_from_str(unsafe {
++            core::str::from_utf8_unchecked(&flags)
++        }))
++    }
++
+     /// IO 系统调用实现
+     ///
+     /// **与前几章的关键区别**：用户传入的 `buf` 是虚拟地址，
+@@ -463,7 +508,7 @@ mod impls {
+             match fd {
+                 STDOUT | STDDEBUG => {
+                     // 检查用户地址是否可读
+-                    const READABLE: VmFlags<Sv39> = build_flags("RV");
++                    const READABLE: VmFlags<Sv39> = build_flags("U__RV");
+                     if let Some(ptr) = unsafe { PROCESSES.get_mut() }
+                         .get_mut(caller.entity)
+                         .unwrap()
+@@ -530,7 +575,7 @@ mod impls {
+         #[inline]
+         fn clock_gettime(&self, caller: Caller, clock_id: ClockId, tp: usize) -> isize {
+             // 检查用户地址是否可写
+-            const WRITABLE: VmFlags<Sv39> = build_flags("W_V");
++            const WRITABLE: VmFlags<Sv39> = build_flags("U_W_V");
+             match clock_id {
+                 ClockId::CLOCK_MONOTONIC => {
+                     if let Some(mut ptr) = unsafe { PROCESSES.get_mut() }
+@@ -565,13 +610,29 @@ mod impls {
+         #[inline]
+         fn trace(
+             &self,
+-            _caller: Caller,
+-            _trace_request: usize,
+-            _id: usize,
+-            _data: usize,
++            caller: Caller,
++            trace_request: usize,
++            id: usize,
++            data: usize,
+         ) -> isize {
+-            tg_console::log::info!("trace: not implemented");
+-            -1
++            const READABLE: VmFlags<Sv39> = build_flags("U__RV");
++            const WRITABLE: VmFlags<Sv39> = build_flags("U_W_V");
++            let process = unsafe { PROCESSES.get_mut() }.get_mut(caller.entity).unwrap();
++            match trace_request {
++                0 => process
++                    .address_space
++                    .translate::<u8>(VAddr::new(id), READABLE)
++                    .map_or(-1, |ptr| unsafe { *ptr.as_ptr() as isize }),
++                1 => process
++                    .address_space
++                    .translate::<u8>(VAddr::new(id), WRITABLE)
++                    .map_or(-1, |mut ptr| {
++                        unsafe { *ptr.as_mut() = data as u8 };
++                        0
++                    }),
++                2 => process.syscall_times(id) as isize,
++                _ => -1,
++            }
+         }
+     }
+ 
+@@ -582,7 +643,7 @@ mod impls {
+     impl Memory for SyscallContext {
+         fn mmap(
+             &self,
+-            _caller: Caller,
++            caller: Caller,
+             addr: usize,
+             len: usize,
+             prot: i32,
+@@ -590,15 +651,51 @@ mod impls {
+             _fd: i32,
+             _offset: usize,
+         ) -> isize {
+-            tg_console::log::info!(
+-                "mmap: addr = {addr:#x}, len = {len}, prot = {prot}, not implemented"
+-            );
+-            -1
++            const PAGE_SIZE: usize = 1 << Sv39::PAGE_BITS;
++            if addr & (PAGE_SIZE - 1) != 0 || prot < 0 {
++                return -1;
++            }
++            let Some(flags) = user_map_flags(prot as usize) else {
++                return -1;
++            };
++            if len == 0 {
++                return 0;
++            }
++            let Some(end) = addr.checked_add(len) else {
++                return -1;
++            };
++            let range = VAddr::<Sv39>::new(addr).floor()..VAddr::<Sv39>::new(end).ceil();
++            let process = unsafe { PROCESSES.get_mut() }.get_mut(caller.entity).unwrap();
++            if process
++                .address_space
++                .areas
++                .iter()
++                .any(|area| ranges_overlap(area, &range))
++            {
++                return -1;
++            }
++            process.address_space.map(range, &[], 0, flags);
++            0
+         }
+ 
+-        fn munmap(&self, _caller: Caller, addr: usize, len: usize) -> isize {
+-            tg_console::log::info!("munmap: addr = {addr:#x}, len = {len}, not implemented");
+-            -1
++        fn munmap(&self, caller: Caller, addr: usize, len: usize) -> isize {
++            const PAGE_SIZE: usize = 1 << Sv39::PAGE_BITS;
++            if addr & (PAGE_SIZE - 1) != 0 {
++                return -1;
++            }
++            if len == 0 {
++                return 0;
++            }
++            let Some(end) = addr.checked_add(len) else {
++                return -1;
++            };
++            let range = VAddr::<Sv39>::new(addr).floor()..VAddr::<Sv39>::new(end).ceil();
++            let process = unsafe { PROCESSES.get_mut() }.get_mut(caller.entity).unwrap();
++            if !range_is_fully_mapped(&process.address_space.areas, &range) {
++                return -1;
++            }
++            process.address_space.unmap(range);
++            0
+         }
+     }
+ }
+diff --git a/tg-rcore-tutorial-ch4/src/process.rs b/tg-rcore-tutorial-ch4/src/process.rs
+index 238bde5..d9846f6 100644
+--- a/tg-rcore-tutorial-ch4/src/process.rs
++++ b/tg-rcore-tutorial-ch4/src/process.rs
+@@ -21,11 +21,14 @@
+ 
+ use crate::{build_flags, parse_flags, Sv39, Sv39Manager};
+ use alloc::alloc::alloc_zeroed;
++use alloc::collections::BTreeMap;
++use alloc::vec;
++use alloc::vec::Vec;
+ use core::alloc::Layout;
+ use tg_console::log;
+ use tg_kernel_context::{foreign::ForeignContext, LocalContext};
+ use tg_kernel_vm::{
+-    page_table::{MmuMeta, VAddr, PPN, VPN},
++    page_table::{MmuMeta, VAddr, VmFlags, PPN, VPN},
+     AddressSpace,
+ };
+ use xmas_elf::{
+@@ -33,6 +36,8 @@ use xmas_elf::{
+     program, ElfFile,
+ };
+ 
++const MAX_SYSCALL_NUM: usize = 512;
++
+ /// 进程结构体
+ ///
+ /// 包含进程运行所需的全部信息：
+@@ -49,6 +54,8 @@ pub struct Process {
+     pub heap_bottom: usize,
+     /// 当前程序 break 位置（堆顶）
+     pub program_brk: usize,
++    /// 当前进程各系统调用的调用次数
++    syscall_times: Vec<usize>,
+ }
+ 
+ impl Process {
+@@ -77,6 +84,8 @@ impl Process {
+ 
+         let mut address_space = AddressSpace::new();
+         let mut max_end_va: usize = 0;
++        let mut page_flags = BTreeMap::<VPN<Sv39>, VmFlags<Sv39>>::new();
++        let mut load_segments = Vec::new();
+ 
+         // 遍历 ELF 的 LOAD 段，映射到地址空间
+         for program in elf.program_iter() {
+@@ -107,13 +116,35 @@ impl Process {
+             if program.flags().is_read() {
+                 flags[3] = b'R';
+             }
+-            // 将 ELF 段的数据映射到地址空间
+-            address_space.map(
+-                VAddr::new(off_mem).floor()..VAddr::new(end_mem).ceil(),
+-                &elf.input[off_file..][..len_file],
+-                off_mem & PAGE_MASK,
+-                parse_flags(unsafe { core::str::from_utf8_unchecked(&flags) }).unwrap(),
+-            );
++            let flags = parse_flags(unsafe { core::str::from_utf8_unchecked(&flags) }).unwrap();
++            let vpn_range = VAddr::new(off_mem).floor()..VAddr::new(end_mem).ceil();
++            let mut vpn = vpn_range.start;
++            while vpn < vpn_range.end {
++                page_flags
++                    .entry(vpn)
++                    .and_modify(|page_flag| *page_flag |= flags)
++                    .or_insert(flags);
++                vpn = vpn + 1;
++            }
++            load_segments.push((off_mem, &elf.input[off_file..][..len_file]));
++        }
++
++        for (vpn, flags) in page_flags {
++            address_space.map(vpn..vpn + 1, &[], 0, flags);
++        }
++
++        for (start, data) in load_segments {
++            let mut copied = 0usize;
++            while copied < data.len() {
++                let addr = VAddr::<Sv39>::new(start + copied);
++                let copy_len = (PAGE_SIZE - addr.offset()).min(data.len() - copied);
++                let mut ptr = address_space.translate::<u8>(addr, VmFlags::VALID).unwrap();
++                unsafe {
++                    core::slice::from_raw_parts_mut(ptr.as_mut(), copy_len)
++                        .copy_from_slice(&data[copied..copied + copy_len]);
++                }
++                copied += copy_len;
++            }
+         }
+ 
+         // 堆底从 ELF 加载的最高地址的下一页开始
+@@ -150,6 +181,7 @@ impl Process {
+             address_space,
+             heap_bottom,
+             program_brk: heap_bottom,
++            syscall_times: vec![0; MAX_SYSCALL_NUM],
+         })
+     }
+ 
+@@ -187,4 +219,20 @@ impl Process {
+         self.program_brk = new_brk;
+         Some(old_brk)
+     }
++
++    /// 记录一次系统调用
++    pub fn record_syscall(&mut self, syscall_id: usize) {
++        if syscall_id < MAX_SYSCALL_NUM {
++            self.syscall_times[syscall_id] += 1;
++        }
++    }
++
++    /// 查询某个系统调用的调用次数
++    pub fn syscall_times(&self, syscall_id: usize) -> usize {
++        if syscall_id < MAX_SYSCALL_NUM {
++            self.syscall_times[syscall_id]
++        } else {
++            0
++        }
++    }
+ }

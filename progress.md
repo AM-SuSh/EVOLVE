@@ -1,3 +1,72 @@
+## 2026-06-29 - Task: 删除 docs/README.md 并合并至根 README
+
+### What was done
+
+- 将 `docs/README.md` 中的文档授权说明（CC BY-SA 4.0 署名与 BY-SA 共享要求）并入根 `README.md` 许可证章节。
+- 更新 `docs/delivery-checklist.md`：移除对已删文件的引用，文档完整性自查改链至根 `README.md`。
+- 删除 `docs/README.md`；仓库文档导航统一由根 `README.md` 承担。
+
+### Testing
+
+- 全仓库检索 `docs/README.md` 引用，确认交付清单等活跃文档已无残留链接。
+- 人工核对根 `README.md` 许可证段落与 `docs/LICENSE` 表述一致。
+
+### Notes
+
+- `README.md`：许可证章节补充 CC BY-SA 授权说明。
+- `docs/delivery-checklist.md`：更新文件清单与自查链接。
+- `docs/README.md`：删除。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- README.md docs/delivery-checklist.md progress.md` 并 `git restore docs/README.md`（若曾提交）或从历史恢复该文件。
+
+## 2026-06-29 - Task: 补齐合规性缺口（许可证、练习补丁、基线说明）
+
+### What was done
+
+- 新增 `docs/LICENSE`（CC BY-SA 4.0），并在 `docs/README.md` 补充文档授权说明。
+- 将自研源码许可证由 MIT 调整为 **BSD-3-Clause**，同步更新 `os-lab/LICENSE`、`os-lab/Cargo.toml`、`os-lab/handbook/.vitepress/config.mts` 及交付清单中的许可证表述。
+- 新增 `reference-patches/`：导出 ch3/ch4/ch5/ch6/ch8 共 5 个 exercise `.patch`（相对基线 `d6330a6`）及 README 应用说明。
+- 更新根 `README.md`：补充 tg-rcore 基线说明与许可证分区，移除“合规性缺口”待办段落；同步更新 `delivery-checklist.md`、`reference-practice-report.md` 等链接。
+
+### Testing
+
+- 在 `reference/tg-rcore-tutorial`（基线 `d6330a6`）目录执行 `git apply --check`：ch3/ch4/ch5/ch6/ch8 五个补丁均可干净应用（exit 0）。
+- `cargo metadata` 确认 workspace `license` 字段为 `BSD-3-Clause`。
+- 人工核对根 `README.md`、`docs/README.md`、`docs/LICENSE` 路径与授权表述一致。
+
+### Notes
+
+- `docs/LICENSE`：新增，CC BY-SA 4.0 文档许可证。
+- `docs/README.md`：补充文档授权说明。
+- `os-lab/LICENSE`：MIT → BSD-3-Clause。
+- `os-lab/Cargo.toml`：`license` 字段改为 BSD-3-Clause。
+- `os-lab/handbook/.vitepress/config.mts`：页脚版权改为 BSD-3-Clause。
+- `reference-patches/`：新增 ch3–ch8 exercise 补丁与 README。
+- `README.md`：基线说明、许可证、reference-patches 入口；移除缺口列表。
+- `docs/delivery-checklist.md`、`docs/reference-practice-report.md`、`docs/os-lab.md`、`os-lab/README.md`、`.gitignore`：同步合规与导航。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- README.md docs/ os-lab/LICENSE os-lab/Cargo.toml os-lab/handbook/.vitepress/config.mts os-lab/README.md .gitignore progress.md` 并删除 `docs/LICENSE`、`reference-patches/` 目录。
+
+## 2026-06-29 - Task: 提升仓库根 README 并补充合规性缺口说明
+
+### What was done
+
+- 新增仓库根 `README.md`，将原 `docs/README.md` 的评审导航内容提升为全仓库首页入口，并按根目录路径重写链接。
+- 在根 `README.md` 中补充当前仍存在的 4 项合规性缺口说明，包括文档授权、源码许可证、参考练习补丁提交形态、以及 tg-rcore 基线标注风险。
+- 将 `docs/README.md` 调整为简化版跳转页，保留常用文档入口，避免既有文档内链直接失效。
+
+### Testing
+
+- 人工核对 `README.md` 与 `docs/README.md` 的主要相对链接路径，确认可分别从仓库根目录和 `docs/` 目录解析。
+- 无代码变更，未执行编译或 QEMU 验证。
+
+### Notes
+
+- `README.md`：新增，作为仓库首页导航，并补充合规性缺口说明。
+- `docs/README.md`：改为指向根 `README.md` 的文档跳转页，同时保留常用入口。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- README.md docs/README.md progress.md`；如需完全回到改动前状态，再删除新增的根 `README.md`。
+
 ## 2026-06-27 - Task: os-lab Web 学习手册（VitePress A+B）
 
 ### What was done

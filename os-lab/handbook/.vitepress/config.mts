@@ -102,7 +102,7 @@ export default defineConfig({
     socialLinks: [],
     footer: {
       message: 'os-lab 自研操作系统教学实验环境',
-      copyright: 'MIT License',
+      copyright: 'BSD-3-Clause',
     },
     outline: { level: [2, 3] },
     search: { provider: 'local' },

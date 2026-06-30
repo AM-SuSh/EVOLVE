@@ -21,7 +21,7 @@
 | ch8 死锁检测 | **25/25** | 同上 |
 
 - **base 测试**（参考框架自带，非 exercise）：见 [reference_test_report.md](reference_test_report.md)  
-- **本地实现位置**：`reference/tg-rcore-tutorial/`（已在 `.gitignore`，克隆后本地存在；见 [§5](#5-未纳入-git-的说明)）  
+- **本地实现位置**：`reference/tg-rcore-tutorial/`（可选 clone；练习 diff 已提交至 [reference-patches/](../reference-patches/)）  
 - **复现命令**：见 [reference-practice-report.md §5](reference-practice-report.md)
 
 ### 1.2 自研环境（70%）验收摘要
@@ -37,7 +37,7 @@
 | 设计总结报告 | 1 篇 | [design-report.md](../os-lab/docs/design-report.md) |
 | 三方对比 + 学习效率 | 1 篇 + 数据附录 | [comparison.md](../os-lab/docs/comparison.md)、[comparison-data.md](../os-lab/docs/comparison-data.md) |
 | AI 协作记录 | 1 篇 | [ai-collaboration.md](../os-lab/docs/ai-collaboration.md) |
-| 许可证 | MIT | [os-lab/LICENSE](../os-lab/LICENSE) |
+| 许可证 | BSD-3-Clause | [os-lab/LICENSE](../os-lab/LICENSE) |
 
 ---
 
@@ -48,7 +48,8 @@
 | 路径 | 用途 |
 | --- | --- |
 | [Task.md](../Task.md) | 赛题原文 |
-| [docs/README.md](README.md) | **文档总索引**（评审导航） |
+| [README.md](../README.md) | **仓库总览**（评审导航、基线说明、许可证、文档授权） |
+| [docs/LICENSE](LICENSE) | 技术文档 CC BY-SA 4.0 许可证 |
 | [docs/delivery-checklist.md](delivery-checklist.md) | 本文：交付清单与验收路径 |
 | [docs/environment_setup.md](environment_setup.md) | Rust / QEMU / Git 环境安装 |
 | [docs/os-lab_verify.md](os-lab_verify.md) | 自研环境分 Day 验证指令（可复制执行） |
@@ -72,14 +73,15 @@
 | [os-lab/docs/architecture.md](../os-lab/docs/architecture.md) | 架构与数据流 |
 | [os-lab/docs/comparison.md](../os-lab/docs/comparison.md) | 三方对比与学习效率 |
 | [os-lab/tests/README.md](../os-lab/tests/README.md) | 集成测试与 Day6/Day7 细则 |
-| [os-lab/LICENSE](../os-lab/LICENSE) | MIT 许可证 |
+| [os-lab/LICENSE](../os-lab/LICENSE) | BSD-3-Clause 许可证 |
 
-### 2.3 参考练习实现（本地，未提交 Git）
+### 2.3 参考练习补丁
 
 | 路径 | 用途 |
 | --- | --- |
-| `reference/tg-rcore-tutorial/` | 参考仓库 clone + exercise 补丁 |
-| `os-lab/ch*-exercise*.out`（可选） | 本地 QEMU 输出留档，**非必须提交** |
+| [reference-patches/](../reference-patches/) | ch3/ch4/ch5/ch6/ch8 exercise `.patch`（基线 `d6330a6`） |
+| [reference-patches/README.md](../reference-patches/README.md) | 补丁清单与应用说明 |
+| `reference/tg-rcore-tutorial/`（可选 clone） | 完整参考仓库；打补丁后复现 exercise |
 
 ---
 
@@ -90,7 +92,7 @@
 | **创新性** | 30% | 单内核 feature gate、问题驱动文档、AI 协作模板、精简 crate 拆分 | ✅ 见 [design-report.md §四](../os-lab/docs/design-report.md)、[comparison.md](../os-lab/docs/comparison.md) |
 | **完整性** | 20% | lab1–5 可运行、5 章参考 exercise 全绿、指导/习题/答案齐全 | ✅ |
 | **代码质量** | 25% | 24 项单元测试、clippy `-D warnings`、QEMU 关键输出可复现 | ✅ 2026-06-27 终验 |
-| **文档完整性** | 25% | 设计报告、对比分析、实验指导、验证文档、交付清单 | ✅ 见 [docs/README.md](README.md) |
+| **文档完整性** | 25% | 设计报告、对比分析、实验指导、验证文档、交付清单 | ✅ 见 [README.md](../README.md)、[delivery-checklist.md](delivery-checklist.md) |
 
 ---
 
@@ -137,7 +139,7 @@ Get-Content ..\..\os-lab\ch6-check.out | tg-rcore-tutorial-checker --ch 6 --exer
 
 | 项 | 原因 | 评审方如何获取 |
 | --- | --- | --- |
-| `reference/` | `.gitignore`：第三方教程仓库体积大（约 1.5GB） | 按 [reference_test_report.md §1](reference_test_report.md) clone `tg-rcore-tutorial` @ `test` / `d6330a6`；练习补丁在本地 `reference/` 内 |
+| `reference/` | `.gitignore`：第三方教程仓库体积大（约 1.5GB） | 按 [reference_test_report.md §1](reference_test_report.md) clone 基线后，应用 [reference-patches/](../reference-patches/) 内补丁 |
 | `os-lab/ch*.out`、`_tmp-*.txt` | 本地 QEMU/构建日志，非正式交付物 | 评审方自行运行生成，或阅读报告中的 checker 摘要 |
 | `**/*.local.ps1` | 本机路径配置 | 使用 `scripts/activate-os-env.ps1` 或自建 `*.local.ps1` |
 

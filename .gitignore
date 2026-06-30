@@ -6,6 +6,10 @@
 # 参考资料（第三方教程仓库，不纳入版本库；GitHub 上有对应原版）
 reference/
 
+# 补丁生成临时目录
+.tmp-patch-src/
+.tmp-patch-work/
+
 # Rust 编译产物
 target/
 **/target/

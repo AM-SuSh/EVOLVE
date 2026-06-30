@@ -1,0 +1,405 @@
+diff --git a/tg-rcore-tutorial-ch5/src/main.rs b/tg-rcore-tutorial-ch5/src/main.rs
+index 937dcf7..7f77b80 100644
+--- a/tg-rcore-tutorial-ch5/src/main.rs
++++ b/tg-rcore-tutorial-ch5/src/main.rs
+@@ -52,7 +52,7 @@ extern crate alloc;
+ use crate::{
+     impls::{Console, Sv39Manager, SyscallContext},
+     process::Process,
+-    processor::{ProcManager, PROCESSOR},
++    processor::{PROCESSOR, ProcManager},
+ };
+ use alloc::{alloc::alloc, collections::BTreeMap};
+ use core::{alloc::Layout, cell::UnsafeCell, ffi::CStr, mem::MaybeUninit};
+@@ -65,8 +65,8 @@ use tg_kernel_context::foreign::MultislotPortal;
+ #[cfg(target_arch = "riscv64")]
+ use tg_kernel_vm::page_table::Sv39;
+ use tg_kernel_vm::{
+-    page_table::{MmuMeta, VAddr, VmFlags, VmMeta, PPN, VPN},
+     AddressSpace,
++    page_table::{MmuMeta, PPN, VAddr, VPN, VmFlags, VmMeta},
+ };
+ use tg_sbi;
+ use tg_syscall::Caller;
+@@ -315,8 +315,8 @@ fn kernel_space(layout: tg_linker::KernelLayout, memory: usize, portal: usize) {
+         log::info!("{region}");
+         use tg_linker::KernelRegionTitle::*;
+         let flags = match region.title {
+-            Text => "X_RV",       // 代码段：可执行、可读
+-            Rodata => "__RV",     // 只读数据：可读
++            Text => "X_RV",        // 代码段：可执行、可读
++            Rodata => "__RV",      // 只读数据：可读
+             Data | Boot => "_WRV", // 数据段：可写、可读
+         };
+         let s = VAddr::<Sv39>::new(region.range.start);
+@@ -365,14 +365,14 @@ fn map_portal(space: &AddressSpace<Sv39, Sv39Manager>) {
+ /// 包括 IO、Process、Scheduling、Clock、Memory 等系统调用接口。
+ mod impls {
+     use crate::{
+-        build_flags, process::Process as ProcStruct, processor::ProcManager, Sv39, APPS, PROCESSOR,
++        APPS, PROCESSOR, Sv39, build_flags, process::Process as ProcStruct, processor::ProcManager,
+     };
+     use alloc::alloc::alloc_zeroed;
+     use core::{alloc::Layout, ptr::NonNull};
+     use tg_console::log;
+     use tg_kernel_vm::{
+-        page_table::{MmuMeta, Pte, VAddr, VmFlags, PPN, VPN},
+         PageManager,
++        page_table::{MmuMeta, PPN, Pte, VAddr, VPN, VmFlags},
+     };
+     use tg_syscall::*;
+     use tg_task_manage::{PManager, ProcId};
+@@ -643,14 +643,31 @@ mod impls {
+         /// 与 fork+exec 不同，spawn 直接从 ELF 创建新进程，
+         /// 无需复制父进程地址空间。
+         ///
+-        /// TODO: 实现 spawn 系统调用（练习题）
+-        fn spawn(&self, _caller: Caller, _path: usize, _count: usize) -> isize {
+-            let current = PROCESSOR.get_mut().current().unwrap();
+-            tg_console::log::info!(
+-                "spawn: parent pid = {}, not implemented",
+-                current.pid.get_usize()
+-            );
+-            -1
++        fn spawn(&self, _caller: Caller, path: usize, count: usize) -> isize {
++            const READABLE: VmFlags<Sv39> = build_flags("RV");
++            let processor: *mut PManager<ProcStruct, ProcManager> = PROCESSOR.get_mut() as *mut _;
++            let (parent_pid, elf) = {
++                let current = unsafe { (*processor).current().unwrap() };
++                let parent_pid = current.pid;
++                let elf = current
++                    .address_space
++                    .translate::<u8>(VAddr::new(path), READABLE)
++                    .map(|ptr| unsafe {
++                        core::str::from_utf8_unchecked(core::slice::from_raw_parts(
++                            ptr.as_ptr(),
++                            count,
++                        ))
++                    })
++                    .and_then(|name| APPS.get(name))
++                    .and_then(|input| ElfFile::new(input).ok());
++                (parent_pid, elf)
++            };
++
++            elf.and_then(ProcStruct::from_elf).map_or(-1, |child_proc| {
++                let pid = child_proc.pid;
++                unsafe { (*processor).add(pid, child_proc, parent_pid) };
++                pid.get_usize() as isize
++            })
+         }
+ 
+         /// sbrk 系统调用：调整进程堆空间大小
+@@ -678,15 +695,13 @@ mod impls {
+ 
+         /// set_priority 系统调用：设置当前进程优先级
+         ///
+-        /// TODO: 实现 set_priority 系统调用（练习题：stride 调度算法）
+         fn set_priority(&self, _caller: Caller, prio: isize) -> isize {
++            if prio < 2 {
++                return -1;
++            }
+             let current = PROCESSOR.get_mut().current().unwrap();
+-            tg_console::log::info!(
+-                "set_priority: pid = {}, prio = {}, not implemented",
+-                current.pid.get_usize(),
+-                prio
+-            );
+-            -1
++            current.set_priority(prio as usize);
++            prio
+         }
+     }
+ 
+@@ -728,7 +743,6 @@ mod impls {
+     impl Memory for SyscallContext {
+         /// mmap 系统调用：映射匿名内存
+         ///
+-        /// TODO: 实现 mmap 系统调用（练习题）
+         fn mmap(
+             &self,
+             _caller: Caller,
+@@ -739,18 +753,22 @@ mod impls {
+             _fd: i32,
+             _offset: usize,
+         ) -> isize {
+-            tg_console::log::info!(
+-                "mmap: addr = {addr:#x}, len = {len}, prot = {prot}, not implemented"
+-            );
+-            -1
++            if prot < 0 {
++                return -1;
++            }
++            let current = PROCESSOR.get_mut().current().unwrap();
++            if current.mmap(addr, len, prot as usize) {
++                0
++            } else {
++                -1
++            }
+         }
+ 
+         /// munmap 系统调用：取消内存映射
+         ///
+-        /// TODO: 实现 munmap 系统调用（练习题）
+         fn munmap(&self, _caller: Caller, addr: usize, len: usize) -> isize {
+-            tg_console::log::info!("munmap: addr = {addr:#x}, len = {len}, not implemented");
+-            -1
++            let current = PROCESSOR.get_mut().current().unwrap();
++            if current.munmap(addr, len) { 0 } else { -1 }
+         }
+     }
+ }
+diff --git a/tg-rcore-tutorial-ch5/src/process.rs b/tg-rcore-tutorial-ch5/src/process.rs
+index c0f3874..c85bf5f 100644
+--- a/tg-rcore-tutorial-ch5/src/process.rs
++++ b/tg-rcore-tutorial-ch5/src/process.rs
+@@ -20,18 +20,19 @@
+ //! - 再看 `fork`：重点理解地址空间深拷贝与上下文复制；
+ //! - 最后看 `exec`：对比“保留 PID、替换执行映像”的设计含义。
+ 
+-use crate::{build_flags, map_portal, parse_flags, Sv39, Sv39Manager};
++use crate::{Sv39, Sv39Manager, build_flags, map_portal, parse_flags};
+ use alloc::alloc::alloc_zeroed;
+ use core::alloc::Layout;
+-use tg_kernel_context::{foreign::ForeignContext, LocalContext};
++use tg_kernel_context::{LocalContext, foreign::ForeignContext};
+ use tg_kernel_vm::{
+-    page_table::{MmuMeta, VAddr, PPN, VPN},
+     AddressSpace,
++    page_table::{MmuMeta, PPN, VAddr, VPN, VmFlags},
+ };
+ use tg_task_manage::ProcId;
+ use xmas_elf::{
++    ElfFile,
+     header::{self, HeaderPt2, Machine},
+-    program, ElfFile,
++    program,
+ };
+ 
+ /// 进程结构体
+@@ -50,6 +51,10 @@ pub struct Process {
+     pub heap_bottom: usize,
+     /// 当前程序 break 位置（堆顶），通过 sbrk 调整
+     pub program_brk: usize,
++    /// 调度优先级，值越大获得的 CPU 时间越多
++    pub priority: usize,
++    /// stride 调度中的当前累计步长
++    pub stride: u128,
+ }
+ 
+ impl Process {
+@@ -89,6 +94,8 @@ impl Process {
+             address_space,
+             heap_bottom: self.heap_bottom,
+             program_brk: self.program_brk,
++            priority: self.priority,
++            stride: self.stride,
+         })
+     }
+ 
+@@ -125,8 +132,8 @@ impl Process {
+                 continue;
+             }
+ 
+-            let off_file = program.offset() as usize;     // 段在文件中的偏移
+-            let len_file = program.file_size() as usize;  // 文件中的数据长度
++            let off_file = program.offset() as usize; // 段在文件中的偏移
++            let len_file = program.file_size() as usize; // 文件中的数据长度
+             let off_mem = program.virtual_addr() as usize; // 虚拟地址起始
+             let end_mem = off_mem + program.mem_size() as usize; // 虚拟地址结束
+             assert_eq!(off_file & PAGE_MASK, off_mem & PAGE_MASK);
+@@ -192,6 +199,8 @@ impl Process {
+             address_space,
+             heap_bottom,
+             program_brk: heap_bottom,
++            priority: 16,
++            stride: 0,
+         })
+     }
+ 
+@@ -230,4 +239,105 @@ impl Process {
+         self.program_brk = new_brk;
+         Some(old_brk)
+     }
++
++    /// 返回当前优先级对应的 stride 步长。
++    #[inline]
++    pub fn pass(&self) -> u128 {
++        const BIG_STRIDE: u128 = 1u128 << 63;
++        BIG_STRIDE / self.priority as u128
++    }
++
++    /// 在一次调度选中后推进当前进程的 stride。
++    #[inline]
++    pub fn advance_stride(&mut self) {
++        self.stride = self.stride.saturating_add(self.pass());
++    }
++
++    /// 设置当前进程优先级。
++    #[inline]
++    pub fn set_priority(&mut self, priority: usize) {
++        self.priority = priority;
++    }
++
++    /// 为当前进程映射匿名内存。
++    pub fn mmap(&mut self, start: usize, len: usize, prot: usize) -> bool {
++        const PAGE_SIZE: usize = 1 << Sv39::PAGE_BITS;
++
++        if start & (PAGE_SIZE - 1) != 0 {
++            return false;
++        }
++        if prot == 0 || prot & !0x7 != 0 {
++            return false;
++        }
++        if len == 0 {
++            return true;
++        }
++
++        let end = if let Some(end) = start.checked_add(len) {
++            end
++        } else {
++            return false;
++        };
++        let start_vpn = VAddr::<Sv39>::new(start).floor();
++        let end_vpn = VAddr::<Sv39>::new(end).ceil();
++
++        if self
++            .address_space
++            .areas
++            .iter()
++            .any(|area| area.start < end_vpn && start_vpn < area.end)
++        {
++            return false;
++        }
++
++        let mut flags: [u8; 5] = *b"U___V";
++        if prot & 0x4 != 0 {
++            flags[1] = b'X';
++        }
++        if prot & 0x2 != 0 {
++            flags[2] = b'W';
++        }
++        if prot & 0x1 != 0 {
++            flags[3] = b'R';
++        }
++        let flags: VmFlags<Sv39> = parse_flags(core::str::from_utf8(&flags).unwrap()).unwrap();
++        self.address_space.map(start_vpn..end_vpn, &[], 0, flags);
++        true
++    }
++
++    /// 取消当前进程的一段匿名映射。
++    pub fn munmap(&mut self, start: usize, len: usize) -> bool {
++        const PAGE_SIZE: usize = 1 << Sv39::PAGE_BITS;
++
++        if start & (PAGE_SIZE - 1) != 0 {
++            return false;
++        }
++        if len == 0 {
++            return true;
++        }
++
++        let end = if let Some(end) = start.checked_add(len) {
++            end
++        } else {
++            return false;
++        };
++        let start_vpn = VAddr::<Sv39>::new(start).floor();
++        let end_vpn = VAddr::<Sv39>::new(end).ceil();
++
++        let mut vpn = start_vpn;
++        while vpn < end_vpn {
++            if !self
++                .address_space
++                .areas
++                .iter()
++                .any(|area| area.start <= vpn && vpn < area.end)
++            {
++                return false;
++            }
++            vpn = vpn + 1;
++        }
++
++        self.address_space.unmap(start_vpn..end_vpn);
++        true
++    }
+ }
+diff --git a/tg-rcore-tutorial-ch5/src/processor.rs b/tg-rcore-tutorial-ch5/src/processor.rs
+index 59f057a..0beefea 100644
+--- a/tg-rcore-tutorial-ch5/src/processor.rs
++++ b/tg-rcore-tutorial-ch5/src/processor.rs
+@@ -23,7 +23,7 @@
+ //! - 最后结合 `ch5/src/main.rs` 中对 `PROCESSOR` 的调用观察状态流转。
+ 
+ use crate::process::Process;
+-use alloc::collections::{BTreeMap, VecDeque};
++use alloc::{collections::BTreeMap, vec::Vec};
+ use core::cell::UnsafeCell;
+ use tg_task_manage::{Manage, PManager, ProcId, Schedule};
+ 
+@@ -61,12 +61,12 @@ pub static PROCESSOR: Processor = Processor::new();
+ /// - `tasks`：以 ProcId 为键的进程映射表，存储所有进程实体
+ /// - `ready_queue`：就绪队列，存储等待执行的进程 PID
+ ///
+-/// 当前使用 FIFO/RR 调度策略。练习题要求改为 stride 调度算法。
++/// 练习题要求将调度策略升级为 stride 调度算法。
+ pub struct ProcManager {
+     /// 所有进程实体的映射表
+     tasks: BTreeMap<ProcId, Process>,
+-    /// 就绪队列（FIFO 调度）
+-    ready_queue: VecDeque<ProcId>,
++    /// 就绪队列
++    ready_queue: Vec<ProcId>,
+ }
+ 
+ impl ProcManager {
+@@ -74,7 +74,7 @@ impl ProcManager {
+     pub fn new() -> Self {
+         Self {
+             tasks: BTreeMap::new(),
+-            ready_queue: VecDeque::new(),
++            ready_queue: Vec::new(),
+         }
+     }
+ }
+@@ -100,15 +100,37 @@ impl Manage<Process, ProcId> for ProcManager {
+     }
+ }
+ 
+-/// 实现 Schedule trait：进程调度（当前为 FIFO/RR）
++/// 实现 Schedule trait：进程调度（stride 调度）
+ impl Schedule<ProcId> for ProcManager {
+-    /// 将进程加入就绪队列尾部
++    /// 将进程加入就绪队列
+     fn add(&mut self, id: ProcId) {
+-        self.ready_queue.push_back(id);
++        if !self.ready_queue.contains(&id) {
++            self.ready_queue.push(id);
++        }
+     }
+ 
+-    /// 从就绪队列头部取出下一个要执行的进程
++    /// 选择当前 stride 最小的进程执行，并推进其 stride
+     fn fetch(&mut self) -> Option<ProcId> {
+-        self.ready_queue.pop_front()
++        let mut best: Option<(usize, u128, ProcId)> = None;
++        for (idx, &id) in self.ready_queue.iter().enumerate() {
++            let Some(task) = self.tasks.get(&id) else {
++                continue;
++            };
++            match best {
++                Some((_, best_stride, best_id))
++                    if task.stride > best_stride
++                        || (task.stride == best_stride && id > best_id) => {}
++                _ => best = Some((idx, task.stride, id)),
++            }
++        }
++
++        let (idx, _, id) = best?;
++        self.ready_queue.remove(idx);
++        if let Some(task) = self.tasks.get_mut(&id) {
++            task.advance_stride();
++            Some(id)
++        } else {
++            None
++        }
+     }
+ }

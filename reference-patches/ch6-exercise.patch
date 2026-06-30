@@ -1,0 +1,875 @@
+diff --git a/tg-rcore-tutorial-ch6/src/fs.rs b/tg-rcore-tutorial-ch6/src/fs.rs
+index fc7fb24..078ec47 100644
+--- a/tg-rcore-tutorial-ch6/src/fs.rs
++++ b/tg-rcore-tutorial-ch6/src/fs.rs
+@@ -20,9 +20,15 @@
+ //! - 最后看 `read_all`：把握“按块读取 -> 拼接 ELF 数据”的加载路径。
+ 
+ use crate::virtio_block::BLOCK_DEVICE;
+-use alloc::{string::String, sync::Arc, vec::Vec};
+-use spin::Lazy;
+-use tg_easy_fs::{EasyFileSystem, FSManager, FileHandle, Inode, OpenFlags};
++use alloc::{
++    collections::{BTreeMap, BTreeSet},
++    string::{String, ToString},
++    sync::Arc,
++    vec::Vec,
++};
++use spin::{Lazy, Mutex};
++use tg_easy_fs::{EasyFileSystem, FSManager, FileHandle, Inode, OpenFlags, UserBuffer};
++use tg_syscall::StatMode;
+ 
+ /// 全局文件系统实例
+ ///
+@@ -33,6 +39,8 @@ pub static FS: Lazy<FileSystem> = Lazy::new(|| FileSystem {
+     root: EasyFileSystem::root_inode(&EasyFileSystem::open(BLOCK_DEVICE.clone())),
+ });
+ 
++static FILE_INDEX: Lazy<Mutex<FileIndex>> = Lazy::new(|| Mutex::new(FileIndex::new()));
++
+ /// 文件系统管理器
+ ///
+ /// 封装 easy-fs 的根目录 inode，提供文件操作接口。
+@@ -42,6 +50,163 @@ pub struct FileSystem {
+     root: Inode,
+ }
+ 
++/// 内核侧打开文件包装，额外携带 `fstat/link/unlink` 所需的元数据。
++#[derive(Clone)]
++pub struct OpenedFile {
++    /// 底层 easy-fs 文件句柄
++    pub handle: FileHandle,
++    /// 内核维护的文件元数据
++    pub meta: Option<Arc<Mutex<FileMeta>>>,
++}
++
++impl OpenedFile {
++    /// 创建一个普通文件包装。
++    pub fn new(handle: FileHandle, meta: Arc<Mutex<FileMeta>>) -> Self {
++        Self {
++            handle,
++            meta: Some(meta),
++        }
++    }
++
++    /// 创建一个不绑定 inode 元数据的空文件包装，供标准输入输出使用。
++    pub fn empty(read: bool, write: bool) -> Self {
++        Self {
++            handle: FileHandle::empty(read, write),
++            meta: None,
++        }
++    }
++
++    /// 是否可读。
++    #[inline]
++    pub fn readable(&self) -> bool {
++        self.handle.readable()
++    }
++
++    /// 是否可写。
++    #[inline]
++    pub fn writable(&self) -> bool {
++        self.handle.writable()
++    }
++
++    /// 读取数据。
++    #[inline]
++    pub fn read(&self, buf: UserBuffer) -> isize {
++        self.handle.read(buf)
++    }
++
++    /// 写入数据。
++    #[inline]
++    pub fn write(&self, buf: UserBuffer) -> isize {
++        self.handle.write(buf)
++    }
++}
++
++/// 单个“逻辑文件”的元数据。
++pub struct FileMeta {
++    /// 逻辑 inode 号，由内核侧分配。
++    pub ino: u64,
++    /// 文件类型。
++    pub mode: StatMode,
++    /// 硬链接数。
++    pub nlink: u32,
++    /// 实际保存数据的 easy-fs 文件名。
++    backing_path: String,
++}
++
++struct FileIndex {
++    next_ino: u64,
++    aliases: BTreeMap<String, Arc<Mutex<FileMeta>>>,
++    hidden: BTreeSet<String>,
++}
++
++impl FileIndex {
++    const fn new() -> Self {
++        Self {
++            next_ino: 1,
++            aliases: BTreeMap::new(),
++            hidden: BTreeSet::new(),
++        }
++    }
++
++    fn alloc_meta(&mut self, path: &str) -> Arc<Mutex<FileMeta>> {
++        let meta = Arc::new(Mutex::new(FileMeta {
++            ino: self.next_ino,
++            mode: StatMode::FILE,
++            nlink: 1,
++            backing_path: path.to_string(),
++        }));
++        self.next_ino += 1;
++        self.aliases.insert(path.to_string(), meta.clone());
++        self.hidden.remove(path);
++        meta
++    }
++
++    fn visible_meta(&self, path: &str) -> Option<Arc<Mutex<FileMeta>>> {
++        self.aliases.get(path).cloned()
++    }
++
++    fn path_hidden(&self, path: &str) -> bool {
++        self.hidden.contains(path)
++    }
++}
++
++impl FileSystem {
++    fn ensure_meta_for_path(&self, path: &str) -> Option<Arc<Mutex<FileMeta>>> {
++        let mut index = FILE_INDEX.lock();
++        if let Some(meta) = index.visible_meta(path) {
++            return Some(meta);
++        }
++        if index.path_hidden(path) || self.root.find(path).is_none() {
++            return None;
++        }
++        Some(index.alloc_meta(path))
++    }
++
++    /// 打开内核侧文件包装。
++    pub fn open_file(&self, path: &str, flags: OpenFlags) -> Option<Arc<OpenedFile>> {
++        let (readable, writable) = flags.read_write();
++
++        if flags.contains(OpenFlags::CREATE) {
++            let meta = {
++                let mut index = FILE_INDEX.lock();
++                if let Some(meta) = index.visible_meta(path) {
++                    meta
++                } else {
++                    if index.path_hidden(path) {
++                        index.hidden.remove(path);
++                    }
++                    index.alloc_meta(path)
++                }
++            };
++
++            let inode = if let Some(inode) = self.root.find(path) {
++                inode
++            } else {
++                self.root.create(path)?
++            };
++            inode.clear();
++            return Some(Arc::new(OpenedFile::new(
++                FileHandle::new(readable, writable, inode),
++                meta,
++            )));
++        }
++
++        let meta = self.ensure_meta_for_path(path)?;
++        let backing_path = {
++            let meta = meta.lock();
++            meta.backing_path.clone()
++        };
++        let inode = self.root.find(backing_path.as_str())?;
++        if flags.contains(OpenFlags::TRUNC) {
++            inode.clear();
++        }
++        Some(Arc::new(OpenedFile::new(
++            FileHandle::new(readable, writable, inode),
++            meta,
++        )))
++    }
++}
++
+ impl FSManager for FileSystem {
+     /// 打开文件
+     ///
+@@ -50,31 +215,20 @@ impl FSManager for FileSystem {
+     /// - `TRUNC`：清空文件内容
+     /// - `RDONLY`/`WRONLY`/`RDWR`：设置读写权限
+     fn open(&self, path: &str, flags: OpenFlags) -> Option<Arc<FileHandle>> {
+-        let (readable, writable) = flags.read_write();
+-        if flags.contains(OpenFlags::CREATE) {
+-            if let Some(inode) = self.find(path) {
+-                // 文件已存在，清空内容
+-                inode.clear();
+-                Some(Arc::new(FileHandle::new(readable, writable, inode)))
+-            } else {
+-                // 文件不存在，创建新文件
+-                self.root
+-                    .create(path)
+-                    .map(|new_inode| Arc::new(FileHandle::new(readable, writable, new_inode)))
+-            }
+-        } else {
+-            self.find(path).map(|inode| {
+-                if flags.contains(OpenFlags::TRUNC) {
+-                    inode.clear();
+-                }
+-                Arc::new(FileHandle::new(readable, writable, inode))
+-            })
+-        }
++        self.open_file(path, flags)
++            .map(|opened| Arc::new(opened.handle.clone()))
+     }
+ 
+     /// 在根目录中查找文件
+     fn find(&self, path: &str) -> Option<Arc<Inode>> {
+-        self.root.find(path)
++        if let Some(meta) = FILE_INDEX.lock().visible_meta(path) {
++            let backing_path = meta.lock().backing_path.clone();
++            self.root.find(backing_path.as_str())
++        } else if FILE_INDEX.lock().path_hidden(path) {
++            None
++        } else {
++            self.root.find(path)
++        }
+     }
+ 
+     /// 列出根目录下所有文件名
+@@ -83,13 +237,49 @@ impl FSManager for FileSystem {
+     }
+ 
+     /// 创建硬链接（TODO 练习题）
+-    fn link(&self, _src: &str, _dst: &str) -> isize {
+-        unimplemented!()
++    fn link(&self, src: &str, dst: &str) -> isize {
++        if src == dst {
++            return -1;
++        }
++        let mut index = FILE_INDEX.lock();
++        if index.visible_meta(dst).is_some() || index.path_hidden(dst) {
++            return -1;
++        }
++        let Some(meta) = (if let Some(meta) = index.visible_meta(src) {
++            Some(meta)
++        } else if self.root.find(src).is_some() {
++            Some(index.alloc_meta(src))
++        } else {
++            None
++        }) else {
++            return -1;
++        };
++        meta.lock().nlink += 1;
++        index.aliases.insert(dst.to_string(), meta);
++        index.hidden.remove(dst);
++        0
+     }
+ 
+     /// 删除硬链接（TODO 练习题）
+-    fn unlink(&self, _path: &str) -> isize {
+-        unimplemented!()
++    fn unlink(&self, path: &str) -> isize {
++        let mut index = FILE_INDEX.lock();
++        let Some(meta) = (if let Some(meta) = index.aliases.remove(path) {
++            Some(meta)
++        } else if self.root.find(path).is_some() && !index.path_hidden(path) {
++            let meta = index.alloc_meta(path);
++            index.aliases.remove(path);
++            Some(meta)
++        } else {
++            None
++        }) else {
++            return -1;
++        };
++        index.hidden.insert(path.to_string());
++        let mut meta = meta.lock();
++        if meta.nlink > 0 {
++            meta.nlink -= 1;
++        }
++        0
+     }
+ }
+ 
+@@ -97,11 +287,11 @@ impl FSManager for FileSystem {
+ ///
+ /// 通过文件句柄的 inode，从偏移 0 开始逐块读取，
+ /// 直到读取长度为 0（表示文件结束）。
+-pub fn read_all(fd: Arc<FileHandle>) -> Vec<u8> {
++pub fn read_all(fd: Arc<OpenedFile>) -> Vec<u8> {
+     let mut offset = 0usize;
+     let mut buffer = [0u8; 512];
+     let mut v: Vec<u8> = Vec::new();
+-    if let Some(inode) = &fd.inode {
++    if let Some(inode) = &fd.handle.inode {
+         loop {
+             let len = inode.read_at(offset, &mut buffer);
+             if len == 0 {
+diff --git a/tg-rcore-tutorial-ch6/src/main.rs b/tg-rcore-tutorial-ch6/src/main.rs
+index d151a92..1f4b6cf 100644
+--- a/tg-rcore-tutorial-ch6/src/main.rs
++++ b/tg-rcore-tutorial-ch6/src/main.rs
+@@ -52,7 +52,7 @@ extern crate tg_console;
+ extern crate alloc;
+ 
+ use crate::{
+-    fs::{read_all, FS},
++    fs::{FS, read_all},
+     impls::{Console, Sv39Manager, SyscallContext},
+     process::Process,
+     processor::ProcManager,
+@@ -64,13 +64,13 @@ use riscv::register::*;
+ #[cfg(not(target_arch = "riscv64"))]
+ use stub::Sv39;
+ use tg_console::log;
+-use tg_easy_fs::{FSManager, OpenFlags};
++use tg_easy_fs::OpenFlags;
+ use tg_kernel_context::foreign::MultislotPortal;
+ #[cfg(target_arch = "riscv64")]
+ use tg_kernel_vm::page_table::Sv39;
+ use tg_kernel_vm::{
+-    page_table::{MmuMeta, VAddr, VmFlags, VmMeta, PPN, VPN},
+     AddressSpace,
++    page_table::{MmuMeta, PPN, VAddr, VPN, VmFlags, VmMeta},
+ };
+ use tg_sbi;
+ use tg_syscall::Caller;
+@@ -197,7 +197,7 @@ extern "C" fn rust_main() -> ! {
+     tg_syscall::init_memory(&SyscallContext);
+     // 步骤 8：从文件系统加载初始进程 initproc
+     // 与第五章不同：程序从磁盘镜像（fs.img）中读取，而非内核内嵌
+-    let initproc = read_all(FS.open("initproc", OpenFlags::RDONLY).unwrap());
++    let initproc = read_all(FS.open_file("initproc", OpenFlags::RDONLY).unwrap());
+     if let Some(process) = Process::from_elf(ElfFile::new(initproc.as_slice()).unwrap()) {
+         PROCESSOR.get_mut().set_manager(ProcManager::new());
+         PROCESSOR
+@@ -276,8 +276,8 @@ fn kernel_space(layout: tg_linker::KernelLayout, memory: usize, portal: usize) {
+         log::info!("{region}");
+         use tg_linker::KernelRegionTitle::*;
+         let flags = match region.title {
+-            Text => "X_RV",       // 代码段：可执行、可读
+-            Rodata => "__RV",     // 只读数据：可读
++            Text => "X_RV",        // 代码段：可执行、可读
++            Rodata => "__RV",      // 只读数据：可读
+             Data | Boot => "_WRV", // 数据段：可写、可读
+         };
+         let s = VAddr::<Sv39>::new(region.range.start);
+@@ -340,22 +340,21 @@ fn map_portal(space: &AddressSpace<Sv39, Sv39Manager>) {
+ /// - `linkat`/`unlinkat`/`fstat`：硬链接相关（TODO 练习题）
+ mod impls {
+     use crate::{
+-        build_flags,
+-        fs::{read_all, FS},
++        PROCESSOR, Sv39, build_flags,
++        fs::{FS, read_all},
+         process::Process as ProcStruct,
+         processor::ProcManager,
+-        Sv39, PROCESSOR,
+     };
+     use alloc::vec::Vec;
+     use alloc::{alloc::alloc_zeroed, string::String};
+-    use core::{alloc::Layout, ptr::NonNull};
++    use core::{alloc::Layout, ops::Range, ptr::NonNull};
+     use spin::Mutex;
+     use tg_console::log;
+     use tg_easy_fs::UserBuffer;
+     use tg_easy_fs::{FSManager, OpenFlags};
+     use tg_kernel_vm::{
+-        page_table::{MmuMeta, Pte, VAddr, VmFlags, PPN, VPN},
+         PageManager,
++        page_table::{MmuMeta, PPN, Pte, VAddr, VPN, VmFlags},
+     };
+     use tg_syscall::*;
+     use tg_task_manage::{PManager, ProcId};
+@@ -444,6 +443,78 @@ mod impls {
+     /// 可写权限标志
+     const WRITEABLE: VmFlags<Sv39> = build_flags("W_V");
+ 
++    #[inline]
++    fn read_c_string(current: &ProcStruct, path: usize) -> Option<String> {
++        current
++            .address_space
++            .translate::<u8>(VAddr::new(path), READABLE)
++            .map(|ptr| {
++                let mut string = String::new();
++                let mut raw_ptr = ptr.as_ptr();
++                loop {
++                    unsafe {
++                        let ch = *raw_ptr;
++                        if ch == 0 {
++                            break;
++                        }
++                        string.push(ch as char);
++                        raw_ptr = raw_ptr.add(1);
++                    }
++                }
++                string
++            })
++    }
++
++    #[inline]
++    fn read_user_string(current: &ProcStruct, path: usize, count: usize) -> Option<String> {
++        current
++            .address_space
++            .translate::<u8>(VAddr::new(path), READABLE)
++            .map(|ptr| unsafe {
++                String::from(core::str::from_utf8_unchecked(core::slice::from_raw_parts(
++                    ptr.as_ptr(),
++                    count,
++                )))
++            })
++    }
++
++    #[inline]
++    fn ranges_overlap(lhs: &Range<VPN<Sv39>>, rhs: &Range<VPN<Sv39>>) -> bool {
++        lhs.start < rhs.end && rhs.start < lhs.end
++    }
++
++    #[inline]
++    fn range_is_fully_mapped(areas: &[Range<VPN<Sv39>>], range: &Range<VPN<Sv39>>) -> bool {
++        let mut vpn = range.start;
++        while vpn < range.end {
++            if !areas.iter().any(|area| area.start <= vpn && vpn < area.end) {
++                return false;
++            }
++            vpn = vpn + 1;
++        }
++        true
++    }
++
++    #[inline]
++    fn user_map_flags(prot: usize) -> Option<VmFlags<Sv39>> {
++        if prot & !0x7 != 0 || prot & 0x7 == 0 {
++            return None;
++        }
++        let mut flags = *b"U___V";
++        if prot & 0x4 != 0 {
++            flags[1] = b'X';
++        }
++        if prot & 0x2 != 0 {
++            flags[2] = b'W';
++        }
++        if prot & 0x1 != 0 {
++            flags[3] = b'R';
++        }
++        Some(VmFlags::build_from_str(unsafe {
++            core::str::from_utf8_unchecked(&flags)
++        }))
++    }
++
+     /// IO 系统调用实现：read、write、open、close
+     ///
+     /// 与第五章的关键区别：
+@@ -537,24 +608,10 @@ mod impls {
+         /// 通过 easy-fs 文件系统打开文件，分配新的文件描述符。
+         fn open(&self, _caller: Caller, path: usize, flags: usize) -> isize {
+             let current = PROCESSOR.get_mut().current().unwrap();
+-            if let Some(ptr) = current.address_space.translate(VAddr::new(path), READABLE) {
+-                // 从用户空间逐字符读取文件路径（需要地址翻译）
+-                let mut string = String::new();
+-                let mut raw_ptr: *mut u8 = ptr.as_ptr();
+-                loop {
+-                    unsafe {
+-                        let ch = *raw_ptr;
+-                        if ch == 0 {
+-                            break;
+-                        }
+-                        string.push(ch as char);
+-                        raw_ptr = (raw_ptr as usize + 1) as *mut u8;
+-                    }
+-                }
+-
++            if let Some(string) = read_c_string(current, path) {
+                 // 通过文件系统打开文件，分配新的文件描述符
+                 if let Some(fd) =
+-                    FS.open(string.as_str(), OpenFlags::from_bits(flags as u32).unwrap())
++                    FS.open_file(string.as_str(), OpenFlags::from_bits(flags as u32).unwrap())
+                 {
+                     let new_fd = current.fd_table.len();
+                     current.fd_table.push(Some(Mutex::new(fd.as_ref().clone())));
+@@ -586,29 +643,68 @@ mod impls {
+             &self,
+             _caller: Caller,
+             _olddirfd: i32,
+-            _oldpath: usize,
++            oldpath: usize,
+             _newdirfd: i32,
+-            _newpath: usize,
++            newpath: usize,
+             _flags: u32,
+         ) -> isize {
+-            tg_console::log::info!("linkat: not implemented");
+-            -1
++            let current = PROCESSOR.get_mut().current().unwrap();
++            match (
++                read_c_string(current, oldpath),
++                read_c_string(current, newpath),
++            ) {
++                (Some(oldpath), Some(newpath)) => FS.link(oldpath.as_str(), newpath.as_str()),
++                _ => {
++                    log::error!("path not readable");
++                    -1
++                }
++            }
+         }
+ 
+         /// unlinkat 系统调用：删除硬链接
+         ///
+         /// TODO: 实现 unlinkat 系统调用（练习题）
+-        fn unlinkat(&self, _caller: Caller, _dirfd: i32, _path: usize, _flags: u32) -> isize {
+-            tg_console::log::info!("unlinkat: not implemented");
+-            -1
++        fn unlinkat(&self, _caller: Caller, _dirfd: i32, path: usize, _flags: u32) -> isize {
++            let current = PROCESSOR.get_mut().current().unwrap();
++            if let Some(path) = read_c_string(current, path) {
++                FS.unlink(path.as_str())
++            } else {
++                log::error!("path not readable");
++                -1
++            }
+         }
+ 
+         /// fstat 系统调用：获取文件状态
+         ///
+         /// TODO: 实现 fstat 系统调用（练习题）
+-        fn fstat(&self, _caller: Caller, _fd: usize, _st: usize) -> isize {
+-            tg_console::log::info!("fstat: not implemented");
+-            -1
++        fn fstat(&self, _caller: Caller, fd: usize, st: usize) -> isize {
++            let current = PROCESSOR.get_mut().current().unwrap();
++            if fd >= current.fd_table.len() {
++                return -1;
++            }
++            let Some(file) = current.fd_table[fd].as_ref() else {
++                return -1;
++            };
++            let file = file.lock();
++            let Some(meta) = file.meta.as_ref() else {
++                return -1;
++            };
++            let meta = meta.lock();
++            let mut stat = Stat::new();
++            stat.dev = 0;
++            stat.ino = meta.ino;
++            stat.mode = meta.mode;
++            stat.nlink = meta.nlink;
++            if let Some(mut ptr) = current
++                .address_space
++                .translate::<Stat>(VAddr::new(st), WRITEABLE)
++            {
++                *unsafe { ptr.as_mut() } = stat;
++                0
++            } else {
++                log::error!("ptr not writable");
++                -1
++            }
+         }
+     }
+ 
+@@ -639,15 +735,10 @@ mod impls {
+         ///
+         /// 与第五章不同：程序从 easy-fs 文件系统中读取，而非内存中的 APPS 表
+         fn exec(&self, _caller: Caller, path: usize, count: usize) -> isize {
+-            const READABLE: VmFlags<Sv39> = build_flags("RV");
+             let current = PROCESSOR.get_mut().current().unwrap();
+-            current
+-                .address_space
+-                .translate::<u8>(VAddr::new(path), READABLE)
+-                .map(|ptr| unsafe {
+-                    core::str::from_utf8_unchecked(core::slice::from_raw_parts(ptr.as_ptr(), count))
+-                })
+-                .and_then(|name| FS.open(name, OpenFlags::RDONLY))
++            read_user_string(current, path, count)
++                .as_deref()
++                .and_then(|name| FS.open_file(name, OpenFlags::RDONLY))
+                 .map_or_else(
+                     || {
+                         log::error!("unknown app, select one in the list: ");
+@@ -694,13 +785,28 @@ mod impls {
+         }
+ 
+         /// spawn 系统调用（TODO 练习题）
+-        fn spawn(&self, _caller: Caller, _path: usize, _count: usize) -> isize {
+-            let current = PROCESSOR.get_mut().current().unwrap();
+-            tg_console::log::info!(
+-                "spawn: parent pid = {}, not implemented",
+-                current.pid.get_usize()
+-            );
+-            -1
++        fn spawn(&self, _caller: Caller, path: usize, count: usize) -> isize {
++            let processor: *mut PManager<ProcStruct, ProcManager> = PROCESSOR.get_mut() as *mut _;
++            let (parent_pid, app_name) = unsafe {
++                let current = (*processor).current().unwrap();
++                (current.pid, read_user_string(current, path, count))
++            };
++            let Some(app_name) = app_name else {
++                log::error!("path not readable");
++                return -1;
++            };
++            let Some(fd) = FS.open_file(app_name.as_str(), OpenFlags::RDONLY) else {
++                log::error!("unknown app: {app_name}");
++                return -1;
++            };
++            let Some(process) = ProcStruct::from_elf(ElfFile::new(&read_all(fd)).unwrap()) else {
++                return -1;
++            };
++            let pid = process.pid;
++            unsafe {
++                (*processor).add(pid, process, parent_pid);
++            }
++            pid.get_usize() as isize
+         }
+ 
+         /// sbrk 系统调用：调整堆大小
+@@ -776,16 +882,52 @@ mod impls {
+             _fd: i32,
+             _offset: usize,
+         ) -> isize {
+-            tg_console::log::info!(
+-                "mmap: addr = {addr:#x}, len = {len}, prot = {prot}, not implemented"
+-            );
+-            -1
++            const PAGE_SIZE: usize = 1 << Sv39::PAGE_BITS;
++            if addr & (PAGE_SIZE - 1) != 0 || prot < 0 {
++                return -1;
++            }
++            let Some(flags) = user_map_flags(prot as usize) else {
++                return -1;
++            };
++            if len == 0 {
++                return 0;
++            }
++            let Some(end) = addr.checked_add(len) else {
++                return -1;
++            };
++            let range = VAddr::<Sv39>::new(addr).floor()..VAddr::<Sv39>::new(end).ceil();
++            let current = PROCESSOR.get_mut().current().unwrap();
++            if current
++                .address_space
++                .areas
++                .iter()
++                .any(|area| ranges_overlap(area, &range))
++            {
++                return -1;
++            }
++            current.address_space.map(range, &[], 0, flags);
++            0
+         }
+ 
+         /// munmap 系统调用（TODO 练习题）
+         fn munmap(&self, _caller: Caller, addr: usize, len: usize) -> isize {
+-            tg_console::log::info!("munmap: addr = {addr:#x}, len = {len}, not implemented");
+-            -1
++            const PAGE_SIZE: usize = 1 << Sv39::PAGE_BITS;
++            if addr & (PAGE_SIZE - 1) != 0 {
++                return -1;
++            }
++            if len == 0 {
++                return 0;
++            }
++            let Some(end) = addr.checked_add(len) else {
++                return -1;
++            };
++            let range = VAddr::<Sv39>::new(addr).floor()..VAddr::<Sv39>::new(end).ceil();
++            let current = PROCESSOR.get_mut().current().unwrap();
++            if !range_is_fully_mapped(&current.address_space.areas, &range) {
++                return -1;
++            }
++            current.address_space.unmap(range);
++            0
+         }
+     }
+ }
+diff --git a/tg-rcore-tutorial-ch6/src/process.rs b/tg-rcore-tutorial-ch6/src/process.rs
+index 985e77a..8f11d6c 100644
+--- a/tg-rcore-tutorial-ch6/src/process.rs
++++ b/tg-rcore-tutorial-ch6/src/process.rs
+@@ -18,20 +18,20 @@
+ //! - 再看 `fork`：观察地址空间和文件描述符的继承规则；
+ //! - 最后看 `change_program_brk`：理解用户堆扩缩时的页映射变化。
+ 
+-use crate::{build_flags, map_portal, parse_flags, Sv39, Sv39Manager};
++use crate::{Sv39, Sv39Manager, build_flags, fs::OpenedFile, map_portal, parse_flags};
+ use alloc::{alloc::alloc_zeroed, vec::Vec};
+ use core::alloc::Layout;
+ use spin::Mutex;
+-use tg_easy_fs::FileHandle;
+-use tg_kernel_context::{foreign::ForeignContext, LocalContext};
++use tg_kernel_context::{LocalContext, foreign::ForeignContext};
+ use tg_kernel_vm::{
+-    page_table::{MmuMeta, VAddr, PPN, VPN},
+     AddressSpace,
++    page_table::{MmuMeta, PPN, VAddr, VPN},
+ };
+ use tg_task_manage::ProcId;
+ use xmas_elf::{
++    ElfFile,
+     header::{self, HeaderPt2, Machine},
+-    program, ElfFile,
++    program,
+ };
+ 
+ /// 进程结构体
+@@ -51,7 +51,7 @@ pub struct Process {
+     /// - `None`: 该 fd 已关闭或未使用
+     ///
+     /// 预留 fd 0/1/2 分别为 stdin/stdout/stderr。
+-    pub fd_table: Vec<Option<Mutex<FileHandle>>>,
++    pub fd_table: Vec<Option<Mutex<OpenedFile>>>,
+     /// 堆底地址
+     pub heap_bottom: usize,
+     /// 当前程序 break 位置（堆顶）
+@@ -85,7 +85,7 @@ impl Process {
+         let foreign_ctx = ForeignContext { context, satp };
+         // 复制父进程的文件描述符表
+         // 子进程继承父进程所有已打开的文件
+-        let mut new_fd_table: Vec<Option<Mutex<FileHandle>>> = Vec::new();
++        let mut new_fd_table: Vec<Option<Mutex<OpenedFile>>> = Vec::new();
+         for fd in self.fd_table.iter_mut() {
+             if let Some(file) = fd {
+                 new_fd_table.push(Some(Mutex::new(file.get_mut().clone())));
+@@ -187,9 +187,9 @@ impl Process {
+             address_space,
+             // 初始化文件描述符表：预留 stdin(0)、stdout(1)、stderr(2)
+             fd_table: vec![
+-                Some(Mutex::new(FileHandle::empty(true, false))),  // fd 0: stdin（可读）
+-                Some(Mutex::new(FileHandle::empty(false, true))),  // fd 1: stdout（可写）
+-                Some(Mutex::new(FileHandle::empty(false, true))),  // fd 2: stderr（可写）
++                Some(Mutex::new(OpenedFile::empty(true, false))), // fd 0: stdin（可读）
++                Some(Mutex::new(OpenedFile::empty(false, true))), // fd 1: stdout（可写）
++                Some(Mutex::new(OpenedFile::empty(false, true))), // fd 2: stderr（可写）
+             ],
+             heap_bottom,
+             program_brk: heap_bottom,
+diff --git a/tg-rcore-tutorial-easy-fs/src/vfs.rs b/tg-rcore-tutorial-easy-fs/src/vfs.rs
+index e142619..a199263 100644
+--- a/tg-rcore-tutorial-easy-fs/src/vfs.rs
++++ b/tg-rcore-tutorial-easy-fs/src/vfs.rs
+@@ -62,6 +62,23 @@ impl Inode {
+         None
+     }
+ 
++    /// Find a directory entry and return both its index and inode id.
++    fn find_inode_id_with_index(&self, name: &str, disk_inode: &DiskInode) -> Option<(usize, u32)> {
++        assert!(disk_inode.is_dir());
++        let file_count = (disk_inode.size as usize) / DIRENT_SZ;
++        let mut dirent = DirEntry::empty();
++        for i in 0..file_count {
++            assert_eq!(
++                disk_inode.read_at(DIRENT_SZ * i, dirent.as_bytes_mut(), &self.block_device,),
++                DIRENT_SZ,
++            );
++            if dirent.name() == name {
++                return Some((i, dirent.inode_number()));
++            }
++        }
++        None
++    }
++
+     /// Find inode under current inode by name
+     pub fn find(&self, name: &str) -> Option<Arc<Inode>> {
+         // 目录查找流程：目录 inode -> 遍历 dirent -> 定位子 inode 的磁盘位置。
+@@ -79,6 +96,28 @@ impl Inode {
+         })
+     }
+ 
++    /// Return the inode id of the current inode.
++    pub fn inode_id(&self) -> u32 {
++        self.fs
++            .lock()
++            .get_inode_id(self.block_id as u32, self.block_offset)
++    }
++
++    /// Return whether the current inode is a directory.
++    pub fn is_dir(&self) -> bool {
++        self.read_disk_inode(|disk_inode| disk_inode.is_dir())
++    }
++
++    /// Return the hard-link count of the current inode.
++    pub fn nlink(&self) -> u32 {
++        self.read_disk_inode(|disk_inode| disk_inode.nlink)
++    }
++
++    /// Return the byte size of the current inode.
++    pub fn size(&self) -> u32 {
++        self.read_disk_inode(|disk_inode| disk_inode.size)
++    }
++
+     /// Increase the size of a disk inode
+     fn increase_size(
+         &self,
+@@ -139,6 +178,75 @@ impl Inode {
+         // release efs lock automatically by compiler
+     }
+ 
++    /// Create a hard link under the current directory.
++    pub fn link(&self, name: &str, inode_id: u32) -> isize {
++        let mut fs = self.fs.lock();
++        if self.read_disk_inode(|disk_inode| self.find_inode_id(name, disk_inode).is_some()) {
++            return -1;
++        }
++        let (inode_block_id, inode_block_offset) = fs.get_disk_inode_pos(inode_id);
++        get_block_cache(inode_block_id as usize, Arc::clone(&self.block_device))
++            .lock()
++            .modify(inode_block_offset, |disk_inode: &mut DiskInode| {
++                disk_inode.nlink += 1;
++            });
++        self.modify_disk_inode(|dir_inode| {
++            let file_count = (dir_inode.size as usize) / DIRENT_SZ;
++            let new_size = (file_count + 1) * DIRENT_SZ;
++            self.increase_size(new_size as u32, dir_inode, &mut fs);
++            let dirent = DirEntry::new(name, inode_id);
++            dir_inode.write_at(file_count * DIRENT_SZ, dirent.as_bytes(), &self.block_device);
++        });
++        block_cache_sync_all();
++        0
++    }
++
++    /// Remove a directory entry and drop one hard link from its inode.
++    pub fn unlink(&self, name: &str) -> isize {
++        let mut fs = self.fs.lock();
++        let Some(inode_id) = self.modify_disk_inode(|dir_inode| {
++            let (idx, inode_id) = self.find_inode_id_with_index(name, dir_inode)?;
++            let file_count = (dir_inode.size as usize) / DIRENT_SZ;
++            if idx + 1 != file_count {
++                let mut last_dirent = DirEntry::empty();
++                assert_eq!(
++                    dir_inode.read_at(
++                        (file_count - 1) * DIRENT_SZ,
++                        last_dirent.as_bytes_mut(),
++                        &self.block_device,
++                    ),
++                    DIRENT_SZ,
++                );
++                dir_inode.write_at(idx * DIRENT_SZ, last_dirent.as_bytes(), &self.block_device);
++            }
++            dir_inode.size -= DIRENT_SZ as u32;
++            Some(inode_id)
++        }) else {
++            return -1;
++        };
++
++        let (inode_block_id, inode_block_offset) = fs.get_disk_inode_pos(inode_id);
++        let reclaimed = get_block_cache(inode_block_id as usize, Arc::clone(&self.block_device))
++            .lock()
++            .modify(inode_block_offset, |disk_inode: &mut DiskInode| {
++                if disk_inode.nlink > 1 {
++                    disk_inode.nlink -= 1;
++                    None
++                } else {
++                    disk_inode.nlink = 0;
++                    Some(disk_inode.clear_size(&self.block_device))
++                }
++            });
++        if let Some(data_blocks) = reclaimed {
++            for block_id in data_blocks {
++                fs.dealloc_data(block_id);
++            }
++            fs.dealloc_inode(inode_id);
++        }
++        block_cache_sync_all();
++        0
++    }
++
+     /// List inodes by id under current inode
+     pub fn readdir(&self) -> Vec<String> {
+         let _fs = self.fs.lock();

@@ -3,6 +3,7 @@
 > 对应赛题 Task.md 技术指标第 1 条（30%）：完成最新教学实验环境中 5 个基础实验 **练习（exercise）**，并总结实现过程与 AI 协作。
 >
 > 参考仓库：`reference/tg-rcore-tutorial`（branch `test`，commit `d6330a6`）  
+> 练习补丁（已纳入 Git）：[reference-patches/](../reference-patches/)  
 > 基础测试（base）记录见 [reference_test_report.md](reference_test_report.md)。
 
 ## 1. 总览
