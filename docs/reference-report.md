@@ -111,7 +111,7 @@ base 测试验证参考框架自带内核行为（见上文 §3）。exercise �
 
 ## 7. AI 协作说明
 
-各章 AI 辅助集中于：阅读 exercise 文档与 syscall 语义、编译错误定位、数据结构与钩子位置建议。所有实现均以 checker 验收为准；详细问答记录见 [ai-collaboration.md](../os-lab/docs/ai-collaboration.md) 与 [technical-proposal.md §8](technical-proposal.md)。
+各章 AI 辅助集中于：阅读 exercise 文档与 syscall 语义、编译错误定位、数据结构与钩子位置建议。所有实现均以 checker 验收为准；详细问答记录见 [ai-collaboration.md](../os-lab/docs/ai-collaboration.md) 与 [项目总报告.md §8](../项目总报告.md#8-开发时使用-ai-工具的成果)。
 
 ## 8. 复现说明
 
@@ -139,4 +139,4 @@ cargo run --features exercise 2>&1 | tg-rcore-tutorial-checker --ch 5 --exercise
 
 ## 9. 结论
 
-五章 base 测试与 exercise checker 全部通过（base：4/4、6/6、14/14、15/15、22/22；exercise：7/7、16/16、17/17、33/33、25/25）。练习实现补丁已提交至 `reference-patches/`，与自研 `os-lab` 形成「参考练习 + 自研环境」双主线；交付索引见 [delivery-checklist.md](delivery-checklist.md)。
+五章 base 测试与 exercise checker 全部通过（base：4/4、6/6、14/14、15/15、22/22；exercise：7/7、16/16、17/17、33/33、25/25）。练习实现补丁已提交至 `reference-patches/`，与自研 `os-lab` 形成「参考练习 + 自研环境」双主线；交付索引见 [README.md](../README.md)。

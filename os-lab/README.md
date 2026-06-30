@@ -2,7 +2,7 @@
 
 基于 Rust + RISC-V 64 的单内核渐进式教学实验环境。学生通过切换 `lab1` 到 `lab5` 的 feature，在同一套代码库中观察内核从裸机到完整系统的演进。
 
-**赛题交付**：[交付清单](../docs/delivery-checklist.md) · [仓库总览](../README.md) · [设计总结报告](docs/design-report.md) · **[学习手册 Web 版](handbook/README.md)**
+**赛题交付**：[仓库总览](../README.md) · [自研环境说明](../docs/os-lab.md) · [设计总结报告](docs/design-report.md) · **[学习手册 Web 版](handbook/README.md)**
 
 ## 环境要求
 
@@ -11,7 +11,7 @@
 - QEMU：`qemu-system-riscv64`（建议 ≥ 7.0）
 - 组件：`rust-src`、`llvm-tools-preview`
 
-本仓库根目录已提供环境激活脚本；完整验证步骤见 [docs/os-lab_verify.md](../docs/os-lab_verify.md)。
+本仓库根目录已提供环境激活脚本；完整验证步骤见 [docs/os-lab.md](../docs/os-lab.md)。
 
 ```powershell
 . ..\scripts\activate-os-env.ps1
@@ -97,7 +97,7 @@ cargo test -p os-context -p os-syscall -p os-sbi -p os-fs --target x86_64-pc-win
 cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1
 ```
 
-预期合计 **24 项**全部 `ok`。详细成功标准见 [tests/README.md](tests/README.md) 与 [docs/os-lab_verify.md](../docs/os-lab_verify.md)。
+预期合计 **24 项**全部 `ok`。详细成功标准见 [tests/README.md](tests/README.md) 与 [docs/os-lab.md](../docs/os-lab.md)。
 
 ### 编译检查
 

@@ -2,7 +2,7 @@
 
 仓库 `os-lab/` 为赛题**自研环境**：基于 Rust + RISC-V 64 的单内核渐进式教学实验，通过 `lab1`–`lab5` feature 在同一代码库中从裸机演进到文件系统与管道。
 
-本文为自研环境统一说明文档，集中提供环境入口、验证与复现、Web 手册使用方式。交付范围总览见 [delivery-checklist.md](delivery-checklist.md)；仓库索引见 [README.md](../README.md)。
+本文为自研环境统一说明文档，集中提供环境入口、验证与复现、Web 手册使用方式。交付范围总览见 [README.md](../README.md)；仓库索引见本文与根目录 README。
 
 ## 1. 交付物入口
 
@@ -462,7 +462,7 @@ npm run preview
 
 ## 8. 相关文档
 
-- [delivery-checklist.md](delivery-checklist.md)：交付范围与验证路径
+- [README.md](../README.md)：仓库导航与交付索引
 - [environment_setup.md](environment_setup.md)：工具链安装
 - [os-lab/README.md](../os-lab/README.md)：源码 workspace 快速开始
 - [os-lab/tests/README.md](../os-lab/tests/README.md)：集成测试说明

@@ -4,7 +4,7 @@ Day 2 起由成员 B 补充内核与用户态集成测试。
 
 ## Day 1 验证
 
-完整步骤见仓库 [`docs/os-lab_verify.md`](../../docs/os-lab_verify.md)。
+完整步骤见仓库 [`docs/os-lab.md`](../../docs/os-lab.md)。
 
 简要命令（仓库根目录激活环境后）：
 
@@ -312,4 +312,4 @@ Linux/macOS：将 `cargo test` 的 `--target` 换为对应 host triple；`os-vm`
 - [ ] Lab1 QEMU：`Hello, OS!`、`os-lab kernel lab1 is running on QEMU virt.`
 - [ ] `cargo check -p kernel --features lab1`…`lab5` 均可编译
 
-**说明**：全 workspace 与各 lab feature 的 `cargo clippy -- -D warnings` 均已通过（2026-06-27 终验）。详见 [`docs/os-lab_verify.md`](../../docs/os-lab_verify.md) 第 17 节与 [`docs/delivery-checklist.md`](../../docs/delivery-checklist.md)。
+**说明**：全 workspace 与各 lab feature 的 `cargo clippy -- -D warnings` 均已通过（2026-06-27 终验）。详见 [`docs/os-lab.md` §5.11](../../docs/os-lab.md#511-完整验证) 与 [仓库总览](../../README.md)。

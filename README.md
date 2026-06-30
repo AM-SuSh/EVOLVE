@@ -12,7 +12,7 @@
 | 30% 练习 | 在参考环境 ch3/ch4/ch5/ch6/ch8 完成 exercise，补丁见 [reference-patches/](reference-patches/) |
 | 70% 自研 | 独立实现 `os-lab/` 教学实验环境，不修改上游参考仓库 |
 
-技术方案与对比分析中的基线描述与上表一致，见 [os-lab/docs/design-report.md](os-lab/docs/design-report.md)、[docs/reference-report.md](docs/reference-report.md)。
+项目总报告与对比分析中的基线描述与上表一致，见 [项目总报告.md](项目总报告.md)、[os-lab/docs/design-report.md](os-lab/docs/design-report.md)、[docs/reference-report.md](docs/reference-report.md)。
 
 ## 许可证
 
@@ -38,19 +38,19 @@
 | --- | --- |
 | [docs/os-lab.md](docs/os-lab.md) | **自研环境统一入口**（概览、验证、手册） |
 | [os-lab/docs/design-report.md](os-lab/docs/design-report.md) | **教学实验环境设计总结报告** |
+| [os-lab/docs/architecture.md](os-lab/docs/architecture.md) | 架构、feature 依赖、Lab 数据流 |
 | [os-lab/docs/comparison.md](os-lab/docs/comparison.md) | 本校 / 参考 / 自研三方对比与学习效率评估 |
 | [os-lab/docs/comparison-data.md](os-lab/docs/comparison-data.md) | 对比原始数据与采集说明 |
-| [os-lab/docs/architecture.md](os-lab/docs/architecture.md) | 架构、feature 依赖、Lab 数据流 |
 | [os-lab/docs/ai-collaboration.md](os-lab/docs/ai-collaboration.md) | AI 协作过程记录 |
 
 ## 验证与交付
 
 | 文档 | 说明 |
 | --- | --- |
-| [docs/delivery-checklist.md](docs/delivery-checklist.md) | **交付清单**与验证路径 |
-| [docs/technical-proposal.md](docs/technical-proposal.md) | **完整技术方案文档**（大赛提交用） |
+| [项目总报告.md](项目总报告.md) | **项目总报告 / 完整技术方案**（大赛提交用） |
+| [docs/os-lab.md](docs/os-lab.md) | **自研环境验证与复现**、Web 学习手册说明 |
 | [docs/environment_setup.md](docs/environment_setup.md) | Rust、QEMU、Git 安装与配置 |
-| [docs/project_plan.md](docs/project_plan.md) | **项目阶段计划表** |
+| [progress.md](progress.md) | **项目阶段计划**与开发过程记录 |
 
 ## 教学实验（学生向）
 
@@ -71,6 +71,7 @@
 | --- | --- |
 | [Task.md](Task.md) | 赛题原文 |
 | [progress.md](progress.md) | 开发过程记录 |
+| [docs/LICENSE](docs/LICENSE) | 技术文档许可证 |
 
 ## 代码入口
 

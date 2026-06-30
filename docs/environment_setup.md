@@ -1,6 +1,6 @@
 # 实验环境安装与配置
 
-本文说明复现本仓库参考练习与自研 `os-lab` 所需工具链。验证步骤见 [delivery-checklist.md §3](delivery-checklist.md)。
+本文说明复现本仓库参考练习与自研 `os-lab` 所需工具链。验证步骤见 [os-lab.md §5](os-lab.md#5-验证与复现) 与 [README.md §验证与交付](../README.md#验证与交付)。
 
 ## 1. 环境要求
 
@@ -102,7 +102,7 @@ cargo install --list
 bash --version
 ```
 
-以上命令均能输出版本与安装清单后，即可按 [delivery-checklist.md](delivery-checklist.md) 进行快速或完整验证。
+以上命令均能输出版本与安装清单后，即可按 [os-lab.md §5](os-lab.md#5-验证与复现) 进行快速或完整验证。
 
 ## 6. 常见问题
 

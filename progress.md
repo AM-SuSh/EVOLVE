@@ -95,6 +95,48 @@
 
 ## 四、每日开发进度记录
 
+## 2026-06-30 - Task: 同步文档引用至汇总后的 docs 结构
+
+### What was done
+
+- 按当前 `docs/` 实际文件（`reference-report.md`、`os-lab.md` 等）更新 `technical-proposal.md` 全文内链与文档汇总表。
+- 同步修正 `README.md`、`environment_setup.md`、`os-lab.md`、`reference-report.md`、`os-lab/README.md`、`os-lab/tests/README.md` 中对已删除文件的引用。
+- 更新 `os-lab/handbook/scripts/sync-content.mjs`，手册同步源由 `os-lab_verify.md` 改为 `os-lab.md`。
+
+### Testing
+
+- 全仓库检索 `reference-practice-report`、`reference_test_report`、`os-lab_verify`、`handbook.md`、`delivery-checklist`、`project_plan` 等旧文件名，确认活跃交付文档已无残留链接（`progress.md` 历史记录除外）。
+- 核对 `docs/` 目录现存 6 个 Markdown 文件与更新后链接目标一致。
+
+### Notes
+
+- `docs/technical-proposal.md`：文档索引、提交物清单、附录及正文引用全部对齐汇总后结构。
+- `README.md`：验证与交付节改链至 `os-lab.md`、`progress.md`。
+- `docs/environment_setup.md`、`docs/os-lab.md`、`docs/reference-report.md`：移除对已删 `delivery-checklist.md` 等的引用。
+- `os-lab/README.md`、`os-lab/tests/README.md`：验证文档改链至 `docs/os-lab.md`。
+- `os-lab/handbook/scripts/sync-content.mjs`：同步源与链接重写规则更新。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- docs/ README.md os-lab/README.md os-lab/tests/README.md os-lab/handbook/scripts/sync-content.mjs progress.md`。
+
+## 2026-06-30 - Task: 汇总项目文档并完善技术方案主文档
+
+### What was done
+
+- 汇总根目录、`docs/`、`os-lab/docs/`、`os-lab/labs/`、`os-lab/handbook/` 与 `reference-patches/` 中的项目文档入口。
+- 更新 `docs/technical-proposal.md` 为 v3.0，新增当前项目文档汇总与引用关系，强化外部来源、AI 使用边界、交付物清单和附录索引。
+- 保持详细实现、验证、对比、习题答案等内容链接到对应支撑文档，避免主方案重复堆叠。
+
+### Testing
+
+- 人工核对技术方案中的文档链接类别，确认已覆盖赛题、计划、环境、参考练习、自研设计、实验材料、验证、对比、AI 协作和 Web 手册。
+- 本轮仅修改 Markdown 文档，未运行代码构建或 QEMU 测试。
+
+### Notes
+
+- `docs/technical-proposal.md`：补充项目文档汇总、来源说明、交付清单和完整文档索引。
+- `progress.md`：追加本轮文档修改记录。
+- 回滚方式：`git checkout -- docs/technical-proposal.md progress.md`，或从提交历史恢复上述两个文件。
+
 ## 2026-06-29 - Task: 删除 docs/README.md 并合并至根 README
 
 ### What was done

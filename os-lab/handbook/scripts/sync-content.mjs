@@ -23,7 +23,7 @@ const COPY_JOBS = [
 
 const SINGLE_FILES = [
   { from: path.join(REPO_ROOT, 'docs', 'environment_setup.md'), to: path.join(HANDBOOK_ROOT, 'setup', 'environment.md') },
-  { from: path.join(REPO_ROOT, 'docs', 'os-lab_verify.md'), to: path.join(HANDBOOK_ROOT, 'setup', 'verify-full.md') },
+  { from: path.join(REPO_ROOT, 'docs', 'os-lab.md'), to: path.join(HANDBOOK_ROOT, 'setup', 'verify-full.md') },
 ]
 
 function rewriteLinks(text) {
@@ -31,10 +31,11 @@ function rewriteLinks(text) {
     text
       // 仓库 docs 相对路径
       .replace(/\]\(\.\.\/\.\.\/docs\/environment_setup\.md\)/g, '](/setup/environment)')
-      .replace(/\]\(\.\.\/\.\.\/docs\/os-lab_verify\.md\)/g, '](/setup/verify-full)')
+      .replace(/\]\(\.\.\/\.\.\/docs\/os-lab\.md(?:#[^)]*)?\)/g, '](/setup/verify-full)')
+      .replace(/\]\(\.\.\/\.\.\/docs\/os-lab_verify\.md(?:#[^)]*)?\)/g, '](/setup/verify-full)')
       .replace(/\]\(\.\/environment_setup\.md\)/g, '](/setup/environment)')
-      .replace(/\]\(\.\/os-lab_verify\.md\)/g, '](/setup/verify-full)')
-      .replace(/\]\(\.\/os-lab\.md\)/g, '](/guide/quick-start)')
+      .replace(/\]\(\.\/os-lab\.md(?:#[^)]*)?\)/g, '](/setup/verify-full)')
+      .replace(/\]\(\.\/os-lab_verify\.md(?:#[^)]*)?\)/g, '](/setup/verify-full)')
       // os-lab 内部
       .replace(/\]\(\.\.\/docs\/([^)]+)\)/g, '](/project/$1)')
       .replace(/\]\(\.\.\/os-lab\/docs\/([^)]+)\)/g, '](/project/$1)')
@@ -68,8 +69,8 @@ function rewriteLinks(text) {
       .replace(/\]\(answers\/\)/g, '](/answers/lab1-answers)')
       .replace(/\]\(environment_setup\)/g, '](/setup/environment)')
       .replace(/\]\(environment_setup\.md\)/g, '](/setup/environment)')
-      .replace(/\]\(os-lab\)/g, '](/guide/quick-start)')
-      .replace(/\]\(os-lab\.md\)/g, '](/guide/quick-start)')
+      .replace(/\]\(os-lab\)/g, '](/setup/verify-full)')
+      .replace(/\]\(os-lab\.md(?:#[^)]*)?\)/g, '](/setup/verify-full)')
       .replace(/\]\(\.\/exercises\/\)/g, '](/exercises/README)')
       .replace(/\]\(\.\/exercises\/index\)/g, '](/exercises/README)')
       .replace(/\]\(\.\/answers\/\)/g, '](/answers/lab1-answers)')
