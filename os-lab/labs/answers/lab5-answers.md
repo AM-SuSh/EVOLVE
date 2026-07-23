@@ -7,7 +7,7 @@
 
 ### 1.1 组件 crate：os-fs（`os-fs/src/lib.rs`）
 
-os-fs 提供"文件"的抽象数据结构，但不直接处理磁盘 I/O（教学简化为内嵌数据）。核心是 `EmbeddedFs` 静态只读文件表，提供 `open`/`read_at`/`size` 接口。内核的 `kernel/src/fs.rs` 维护一张类似的 `EMBEDDED_FILES` 表。
+os-fs 提供"文件"的抽象数据结构，但不直接处理磁盘 I/O（教学简化为内嵌数据）。核心是 `EmbeddedFs` + 静态只读表 **`DEFAULT_FILES`**，提供 `open`/`read_at`/`size` 接口。内核 `kernel/src/fs.rs` 用 `static FS: EmbeddedFs = EmbeddedFs::default_fs()` 共用同一张表，**不再**维护内核内的 `EMBEDDED_FILES`。
 
 ### 1.2 文件描述符表（`kernel/src/fs.rs`）
 
@@ -15,7 +15,7 @@ os-fs 提供"文件"的抽象数据结构，但不直接处理磁盘 I/O（教�
 
 ```rust
 enum FdType {
-    Regular { file_id: usize, offset: usize },   // 普通文件：记是哪个文件 + 读到哪
+    Regular { file_id: FileId, offset: usize },  // FileId 来自 os_fs
     PipeRead(usize),                               // 管道读端：记管道 id
     PipeWrite(usize),                              // 管道写端：记管道 id
 }
@@ -45,7 +45,7 @@ fd 就是数组下标。open 时 `alloc` 一个槽位，返回的下标即 fd。
 ```rust
 pub fn sys_openat(path, path_len, _flags) -> isize {
     let name = read_user_str(path, path_len)?;     // 从用户空间读文件名
-    let file_id = find_file(name)?;                // 在 EMBEDDED_FILES 查 id
+    let file_id = find_file(name)?;                // FS.open → DEFAULT_FILES
     FD_TABLES[slot].alloc(FdType::Regular { file_id, offset: 0 })  // 分配 fd
 }
 
@@ -53,7 +53,7 @@ pub fn sys_read(fd, buf, len) -> isize {
     match get_fd(slot, fd)? {
         FdType::PipeRead(id) => sync::pipe_read(id, buf, len),     // 读管道
         FdType::Regular { file_id, offset } => {
-            // 从 EMBEDDED_FILES[file_id] 的 offset 处拷贝到用户 buf
+            // FS.read_at(file_id, offset, ...) 拷贝到用户 buf
             // 然后 offset 前移
         }
         FdType::PipeWrite(_) => -1,                // 写端不能读
@@ -68,11 +68,11 @@ pub fn sys_read(fd, buf, len) -> isize {
 ```rust
 pub fn clone_fd_table(parent_slot, child_slot) {
     FD_TABLES[child_slot] = FD_TABLES[parent_slot];   // 子进程复制父的 fd 表
-    for slot in FD_TABLES[child_slot].slots {
+    for ty in FD_TABLES[child_slot].slots.iter().flatten() {
         match ty {
-            FdType::PipeRead(id) => sync::pipe_add_refs(id, true, false),   // 管道引用 +1
-            FdType::PipeWrite(id) => sync::pipe_add_refs(id, false, true),
-            Regular { .. } => {}    // 普通文件不用计数（只读静态数据）
+            FdType::PipeRead(id) => sync::pipe_add_refs(*id, true, false),   // 管道引用 +1
+            FdType::PipeWrite(id) => sync::pipe_add_refs(*id, false, true),
+            FdType::Regular { .. } => {}    // 普通文件不用计数（只读静态数据）
         }
     }
 }
@@ -179,6 +179,6 @@ fd 继承是 shell 管道的基础（`ls|grep` 靠 fork 后子进程各拿管道
 
 ## 三、任务三动手修改的现象参考
 
-- **修改 1（新增内嵌文件）**：在 EMBEDDED_FILES 加一项，用户程序 openat+read 能读到，走通"加文件→open→read"闭环。
+- **修改 1（新增内嵌文件）**：在 `os-fs` 的 `DEFAULT_FILES` 加一项，用户程序 openat+read 能读到，走通"加文件→open→read"闭环。
 - **修改 2（去掉管道锁）**：数据竞争有随机性，可能偶尔正常偶尔数据错乱/count 计数错误。验证锁的必要性——无锁时并发操作共享缓冲区会出错。
 - **修改 3（写满等待）**：结合 lab2 yield，写满时让出 CPU 等读端消费。体会"阻塞式 I/O"的实现——比自旋/直接返回更高效，但要处理"何时唤醒"的同步问题。

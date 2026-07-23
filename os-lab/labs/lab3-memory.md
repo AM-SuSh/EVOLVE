@@ -115,7 +115,7 @@ graph TD
 
 ```mermaid
 graph LR
-    R["可用物理范围<br/>[FRAME_ALLOC_START, MEMORY_END)"] --> A["StackFrameAllocator"]
+    R["可用物理范围<br/>[FRAME_POOL_START, MEMORY_END)"] --> A["StackFrameAllocator"]
     A -->|"alloc: current++"| H["已分出的帧: current-1, current-2, ..."]
     A -->|"dealloc: current--"| R2["回收最近一块"]
 
@@ -125,31 +125,33 @@ graph LR
     class H hold;
 ```
 
+> 说明：`config.rs` 里还有 `FRAME_ALLOC_START`，它是用户槽之上的保留区下界；真正喂给分配器的是更高的 **`FRAME_POOL_START`**（`FRAME_ALLOC_START + 0x20_0000`），避免与用户程序槽争用。
+
 > 后续实验/真实系统会用更复杂的分配器（伙伴系统、slab），能处理"任意顺序回收"。本实验的栈式只能回收最后分配的那块，但对 lab3 够用。
 
 ### 2.5 地址空间 MemorySet：内核与用户的隔离
 
 > 🤔 **先想**：现在你有页表、有分配器。一个程序运行时，它要看到自己的代码、数据、栈，还要能调用内核——可内核代码又不能让它直接碰。你会怎么组织一个程序的"全部可见内存"？
 
-答案是把一个程序能看到的内存组织成一个 **地址空间（MemorySet）**，它由若干 **映射区（MapArea）** 组成，每个区是一段连续的虚拟页，映射到物理帧并带权限。本实验的内核地址空间长这样：
+答案是把一个程序能看到的内存组织成一个 **地址空间（MemorySet）**，它由若干 **映射区（MapArea）** 组成，每个区是一段连续的虚拟页，映射到物理帧并带权限。本实验大致长这样：
 
 ```mermaid
 graph TD
     KS["内核地址空间 MemorySet"]
-    KS --> A1["恒等映射区: 内核代码<br/>stext → ekernel, RWX"]
-    KS --> A2["恒等映射区: 启动栈<br/>boot_stack → boot_stack_top, RWX"]
-    KS --> A3["恒等映射区: 可分配物理内存窗口<br/>FRAME_ALLOC_START → +N, RW"]
-    KS --> A4["用户程序区: app 代码<br/>APP_BASE_ADDRESS, URWX"]
-    KS --> A5["用户程序区: 用户栈<br/>栈底 → 栈顶, URW"]
+    KS --> A1["整段恒等映射<br/>stext → FRAME_POOL_START, RWX"]
+    US["每任务用户地址空间"]
+    US --> B1["内核 trap 相关恒等区<br/>map_kernel_trap_regions_user<br/>排除用户槽 0x80400000..0x80420000"]
+    US --> B2["ELF PT_LOAD 段<br/>create_user_space → elf_map_areas, 带 U"]
+    US --> B3["用户栈<br/>APP 区高地址 U|R|W"]
 
     classDef k fill:#ffebee,stroke:#c62828;
     classDef u fill:#e3f2fd,stroke:#1565c0;
-    class A1,A2,A3 k;
-    class A4,A5 u;
+    class A1,B1 k;
+    class B2,B3 u;
 ```
 
-- **恒等映射（identity map）**：虚拟页号 = 物理帧号。内核代码本来就在物理地址 `0x80200000`，恒等映射让虚拟地址 `0x80200000` 也指向它，这样开启分页后内核还能照常运行。
-- **用户区**：用户程序的代码和数据映射进来，带 `U` 位让用户态能访问；用户栈同理。
+- **恒等映射（identity map）**：虚拟页号 = 物理帧号。内核侧一次 `map_identical_region(stext, FRAME_POOL_START)`，保证开分页后内核还能照常运行。
+- **用户区**：`create_user_space` 经 ELF PT_LOAD（`elf_map_areas`）映射私有用户页并带 `U` 位；再映射用户栈。
 - **激活**：把地址空间的根页表物理帧号写进 `satp` 寄存器（`satp = (8 << 60) | root_ppn`，其中 8 表示 Sv39 模式），再 `sfence.vma` 刷新 TLB，分页就生效了。
 
 ## 三、实验任务
@@ -219,7 +221,7 @@ All user apps exited.
 
 **修改 1：观察页错误的后果（理解性实验）**
 
-在 `os-vm/src/lib.rs` 的 `MapPermission` 里，找到用户程序区的映射，临时把 `U` 位去掉（改成不含 `U` 的权限），重新跑。
+`MapPermission` 只是权限标志位集合，本身不包含某段映射。用户程序的 `U` 位是在映射时加上的：ELF 段在 `os-vm` 的 `elf_map_areas` / `parse_elf` 里默认带 `MapPermission::U`，用户栈在 `kernel/src/mm.rs` 的 `map_elf_and_stack` 里用 `U|R|W`。临时在这些构造权限的地方去掉 `U`，重新跑。
 
 - 预期现象：用户程序一访问自己的代码/数据就触发页错误（因为不带 `U` 位，用户态访问被拒），内核报错或崩溃。
 - 通过标准：观察到异常，能解释"为什么去掉 U 位用户程序就跑不了"。做完**务必改回**。

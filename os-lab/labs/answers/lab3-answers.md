@@ -162,18 +162,16 @@ impl MemorySet {
 
 ```rust
 pub fn init() {
-    init_frame_allocator(FRAME_ALLOC_START, MEMORY_END);  // 初始化分配器
+    init_frame_allocator(FRAME_POOL_START, MEMORY_END);  // 初始化分配器
     let mut kernel_space = MemorySet::new_bare();
     let kperm = R.union(W).union(X);
-    // 三个恒等映射区，保证开分页后内核还能跑
-    kernel_space.map_identical_region(stext, ekernel, kperm);         // 内核镜像
-    kernel_space.map_identical_region(boot_stack, boot_stack_top, kperm); // 启动栈
-    kernel_space.map_identical_region(mem_start, mem_start + N, RW);  // 可分配内存窗口
+    // 内核侧整段恒等映射，保证开分页后内核还能跑
+    kernel_space.map_identical_region(stext, FRAME_POOL_START, kperm);
     KERNEL_SPACE = Some(kernel_space);
 }
 ```
 
-`map_user_app` 把用户程序二进制映射进内核地址空间（带 U 位 + 数据拷贝），并映射用户栈。
+用户程序不走已删除的 `map_user_app`，而是由 `create_user_space`：先 `map_kernel_trap_regions_user`（恒等映射内核 trap 相关区，并**排除**用户槽 `0x80400000..0x80420000`），再 `map_elf_and_stack`（`elf_map_areas` 解析 ELF PT_LOAD + 映射用户栈，带 `U` 位）。
 
 ### 1.5 lab3 对 trap 的改动（`kernel/src/trap.rs`）
 
@@ -191,7 +189,7 @@ lab3 的 trap 入口多了 `activate_kernel` 和 `sscratch` 设置——确保�
 
 ### 任务二第 3 题：恒等映射的必要性
 
-开分页后所有访存都要过页表。内核代码在物理 `0x80200000`，如果虚拟 `0x80200000` 没映射，CPU 一执行就页错误崩溃。恒等映射让虚拟地址 = 物理地址，开分页前后内核看到的地址不变，照常跑。代码映射内核镜像、启动栈、可分配内存窗口三块，保证内核运行所需的地址都有效。
+开分页后所有访存都要过页表。内核代码在物理 `0x80200000`，如果虚拟 `0x80200000` 没映射，CPU 一执行就页错误崩溃。恒等映射让虚拟地址 = 物理地址，开分页前后内核看到的地址不变，照常跑。代码把 `stext..FRAME_POOL_START` 整段恒等映射，保证内核运行所需的地址都有效；用户地址空间另建，经 ELF 段与用户栈映射。
 
 ### 任务二第 4 题：find_pte 的 alloc 参数
 
@@ -203,6 +201,6 @@ lab2 无分页，trap 不管 satp。lab3 开分页后，用户程序运行用的
 
 ## 三、任务三动手修改的现象参考
 
-- **修改 1（去掉 U 位）**：用户程序访问自己的代码/数据时触发页错误——因为不带 U 位，用户态访问被硬件拒绝（页错误异常）。用户程序根本跑不起来，内核报错或陷入异常处理。这验证了 U 位是用户/内核隔离的核心。
+- **修改 1（去掉 U 位）**：在 `elf_map_areas` / 用户栈映射处去掉 `U` 后，用户程序访问自己的代码/数据时触发页错误——因为不带 U 位，用户态访问被硬件拒绝。用户程序根本跑不起来，内核报错或陷入异常处理。这验证了 U 位是用户/内核隔离的核心。
 - **修改 2（改 PAGE_SIZE=8192）**：不能简单改。Sv39 的偏移位是硬件固定的 12 位（RISC-V 规范），改 8192 要用 Sv48/Sv57 等别的模式；而且 `0x1ff` 等魔数、`>> 12` 等位运算全都基于 4KB 假设，会连锁出错。这是硬件约定，软件层不能随意改。
 - **修改 3（追踪翻译）**：在 translate 加 println 能看到完整的"虚拟页号 → 3 级索引 → 物理帧号"链路，验证你对 Sv39 的理解。注意 println 本身可能改变时序，但 lab3 简单场景下能看到清晰输出。

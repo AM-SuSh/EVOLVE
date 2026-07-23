@@ -136,7 +136,7 @@ cd os-lab
 make check
 ```
 
-`os-sbi` 无 host 单元测试，以编译通过 + Lab1 QEMU 输出为准。
+`os-sbi` 含 2 项 host 单元测试（Legacy 功能号常量断言），并以 Lab1 QEMU 输出为准。
 
 ### 5.4 组件单元测试（host）
 

@@ -9,7 +9,7 @@ os-lab 是一套基于 **Rust + RISC-V 64 + QEMU** 的自研操作系统教学�
 - 编程语言：Rust（stable）
 - 目标平台：`riscv64gc-unknown-none-elf`
 - 运行环境：QEMU `virt` 机器（`qemu-system-riscv64`）
-- 组件化：内核主体之外，另有 5 个独立的库 crate（`os-context`/`os-syscall`/`os-alloc`/`os-vm`/`os-fs`），每个都具备单独发布到 crates.io 的条件
+- 组件化：内核主体之外，另有 6 个独立的库 crate（`os-sbi`/`os-context`/`os-syscall`/`os-alloc`/`os-vm`/`os-fs`），外加 `user` 用户态程序 crate；组件 crate 各自具备单独发布到 crates.io 的条件
 
 ## 二、前置准备
 
@@ -48,7 +48,7 @@ graph TD
     Lab2 -.-> K2["Trap 机制<br/>上下文切换<br/>系统调用<br/>时间片调度"]
     Lab3 -.-> K3["物理页帧分配<br/>多级页表<br/>地址空间隔离<br/>ELF 加载"]
     Lab4 -.-> K4["fork/exec/wait<br/>进程树<br/>调度策略"]
-    Lab5 -.-> K5["块设备与文件抽象<br/>管道<br/>互斥锁/信号量"]
+    Lab5 -.-> K5["内嵌只读文件抽象<br/>管道<br/>自旋锁"]
 
     classDef lab fill:#e1f5ff,stroke:#0288d1,stroke-width:2px;
     classDef knowledge fill:#fff3e0,stroke:#ef6c00,stroke-width:1px;
@@ -73,7 +73,7 @@ feature 层级定义在 `kernel/Cargo.toml`：
 ```toml
 [features]
 default = ["lab1"]
-lab1 = []
+lab1 = ["dep:os-sbi"]
 lab2 = ["lab1", "dep:os-context", "dep:os-syscall"]
 lab3 = ["lab2", "dep:os-alloc", "dep:os-vm"]
 lab4 = ["lab3"]
@@ -82,17 +82,19 @@ lab5 = ["lab4", "dep:os-fs"]
 
 ## 五、组件 Crate 依赖关系
 
-内核之外的 5 个库 crate 按实验阶段逐步引入。下图展示它们与内核主体 `kernel` 的依赖关系。
+内核之外的 6 个 `os-*` 库 crate 按实验阶段逐步引入。下图展示它们与内核主体 `kernel` 的依赖关系。
 
 ```mermaid
 graph LR
     kernel["kernel (bin)"]
+    sbi["os-sbi"]
     ctx["os-context"]
     sys["os-syscall"]
     alloc["os-alloc"]
     vm["os-vm"]
     fs["os-fs"]
 
+    kernel -->|"lab1 起"| sbi
     kernel -->|"lab2 起"| ctx
     kernel -->|"lab2 起"| sys
     kernel -->|"lab3 起"| alloc
@@ -102,7 +104,7 @@ graph LR
     fs --> alloc
 ```
 
-对比参考环境 `tg-rcore-tutorial` 的 23 个 crate、4 层依赖，本环境只有 6 个 crate、2 层依赖，认知负担显著降低。
+对比参考环境 `tg-rcore-tutorial` 的 23 个 crate、4 层依赖，本环境只有 `kernel` + 6 个 `os-*`（另加 `user`）、约 2 层依赖，认知负担显著降低。
 
 ## 六、快速开始
 

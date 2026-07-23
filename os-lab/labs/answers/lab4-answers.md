@@ -19,8 +19,11 @@ pub struct ProcessControlBlock {
     pub status: ProcessStatus,
     pub trap_cx: TrapContext,                // 上下文（fork/exec 的核心）
     pub space_id: usize,                     // 地址空间编号（关联 mm 层）
-    pub kernel_stack: [u8; KERNEL_STACK_SIZE],
 }
+
+// 内核栈不在 PCB 内：模块级数组，按槽位取栈顶
+static mut KERNEL_STACKS: [[u8; KERNEL_STACK_SIZE]; MAX_PROCESS_NUM] = ...;
+fn kernel_stack_top(slot: usize) -> usize { ... }
 ```
 
 进程的状态机：

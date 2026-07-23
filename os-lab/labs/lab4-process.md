@@ -142,13 +142,15 @@ graph TD
     PCB --> F5["trap_cx: 上下文（fork/exec 的核心）"]
     PCB --> F6["space_id: 地址空间编号"]
     PCB --> F7["exit_code: 退出码（留给 wait）"]
-    PCB --> F8["kernel_stack: 内核栈"]
+    STK["模块级 KERNEL_STACKS[slot]<br/>经 kernel_stack_top / trap_cx.kernel_sp 使用"]
 
     classDef pcb fill:#e3f2fd,stroke:#1565c0,stroke-width:2px;
     classDef field fill:#fff3e0,stroke:#ef6c00;
     class PCB pcb;
-    class F1,F2,F3,F4,F5,F6,F7,F8 field;
+    class F1,F2,F3,F4,F5,F6,F7,STK field;
 ```
+
+内核栈**不在** PCB 字段里，而是模块级数组 `KERNEL_STACKS`，按槽位取栈顶写入 `trap_cx.kernel_sp`。
 
 `ProcessManager` 用一个槽位数组管理所有 PCB，`next_pid` 单调递增保证 PID 唯一。
 

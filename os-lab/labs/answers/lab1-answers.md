@@ -18,24 +18,26 @@ _start:
 
     .section .bss.stack
     .globl boot_stack
+    .globl boot_stack_top
 boot_stack:
-    .space 4096 * 16           # 预留 64KB 启动栈
+    .space 4096 * 64           # 预留 256KB 启动栈
 boot_stack_top:
 ```
 
 - `.section .text.entry`：把 `_start` 放进名为 `.text.entry` 的段，配合 `linker.ld` 让它成为内核镜像最前面的字节（OpenSBI 跳转过来必须落在入口上）。
 - `.globl _start`：声明为全局符号，供链接器和后续汇编引用。
 - `la sp, boot_stack_top`：把栈指针 `sp` 指向预分配栈的顶端。**这一步必须在 `call` 之前**——Rust 函数调用要用栈保存返回地址和局部变量，`sp` 无效时调用 Rust 函数会崩溃。
-- `.space 4096 * 16`：预留 64KB 栈空间，足够 lab1 这种简单内核使用。
+- `.space 4096 * 64`：预留 256KB 栈空间（后续 Lab 函数调用更深，预留偏大一些更稳妥）。
 
 ### 1.2 Rust 入口 `kernel/src/main.rs`
+
+lab1 路径（未启用 lab2+ feature）的主干如下（实际源码用 `#[cfg]` 分支区分各级 Lab）：
 
 ```rust
 #![no_std]
 #![no_main]
 
 mod console;
-mod sbi;
 
 use core::arch::global_asm;
 global_asm!(include_str!("entry.asm"));   // 把汇编嵌入进来
@@ -46,7 +48,7 @@ pub extern "C" fn rust_main() -> ! {
     console::init();      // 2. 控制台初始化（当前为空占位）
     println!("Hello, OS!");                 // 3. 输出
     println!("os-lab kernel lab1 is running on QEMU virt.");
-    sbi::shutdown();      // 4. 关机
+    os_sbi::shutdown();   // 4. 经独立 crate 关机
 }
 ```
 
@@ -54,6 +56,7 @@ pub extern "C" fn rust_main() -> ! {
 - `extern "C"`：用 C 的调用约定，这样汇编能正确传参/返回。
 - `-> !`：返回类型表示"永不返回"——内核主函数不该返回，返回了就是错误。
 - `clear_bss()`：BSS 段是"未初始化的全局变量"，Rust 假设它初值为 0，但在裸机上没人保证这点，必须手动清零，否则可能读到垃圾值。
+- SBI 封装已抽到 workspace 成员 `os-sbi`；`kernel/Cargo.toml` 中 `lab1 = ["dep:os-sbi"]`，内核通过 `os_sbi::` 调用，不再有 `mod sbi` / `kernel/src/sbi.rs`。
 
 `clear_bss` 的实现：
 
@@ -79,19 +82,19 @@ panic 处理（`no_std` 程序强制要求）：
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     println!("{}", info);
-    sbi::shutdown();
+    os_sbi::shutdown();
 }
 ```
 
 发生 panic 时打印信息后关机，避免内核进入未定义状态。
 
-### 1.3 SBI 调用 `kernel/src/sbi.rs`
+### 1.3 SBI 调用 `os-sbi/src/lib.rs`
 
-内核没有驱动，怎么在屏幕上画字？答案是请 OpenSBI 代劳，通过 `ecall` 指令陷入 M-mode。
+内核没有驱动，怎么在屏幕上画字？答案是请 OpenSBI 代劳，通过 `ecall` 指令陷入 M-mode。相关逻辑在独立组件 crate `os-sbi` 中：
 
 ```rust
-const SBI_LEGACY_CONSOLE_PUTCHAR: usize = 1;
-const SBI_LEGACY_SHUTDOWN: usize = 8;
+pub const SBI_LEGACY_CONSOLE_PUTCHAR: usize = 1;
+pub const SBI_LEGACY_SHUTDOWN: usize = 8;
 
 pub fn console_putchar(ch: u8) {
     unsafe {
@@ -120,6 +123,7 @@ pub fn shutdown() -> ! {
 - `a7` 寄存器放"功能编号"（1 = 输出字符，8 = 关机），`a0` 放参数。
 - `ecall` 是 RISC-V 的"环境调用"指令，执行后 CPU 陷入更高特权级（M-mode），由 OpenSBI 处理。
 - 输出字符和关机用的是**同一条 `ecall` 指令**，区别只在 `a7` 里的功能编号。
+- crate 内另有 host 单元测试，校验上述功能号常量；非 `riscv64` 目标上提供空实现桩，便于在 Windows host 上跑测试。
 
 ### 1.4 控制台输出 `kernel/src/console.rs`
 
@@ -129,7 +133,7 @@ pub fn shutdown() -> ! {
 impl Write for Stdout {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for byte in s.bytes() {
-            crate::sbi::console_putchar(byte);   // 每个字节走一次 SBI
+            os_sbi::console_putchar(byte);   // 每个字节走一次 SBI
         }
         Ok(())
     }
@@ -193,6 +197,7 @@ SECTIONS
 - 输出字符时：`a7` 放功能号 `1`（console putchar），`a0` 放要输出的字符。
 - 关机时：`a7` 放功能号 `8`（shutdown）。
 - 两者用的是**同一条 `ecall` 指令**，区别仅在 `a7` 的值。OpenSBI 根据 `a7` 分发到不同的处理逻辑。
+- 代码位置：`os-sbi/src/lib.rs`（不是已删除的 `kernel/src/sbi.rs`）。
 
 ### 任务二第 4 题：链接地址 0x80200000
 
@@ -206,4 +211,4 @@ SECTIONS
 
 - **修改 1（换欢迎语）**：能正常输出你的自定义文字，证明你已经掌握"修改 Rust 源码 → 重新编译 → QEMU 运行"的开发循环。
 - **修改 2（改链接地址，用 `0x88000000`）**：QEMU 启动即报错退出，输出 `qemu-system-riscv64: No enough memory to place DTB after kernel/initrd`，exit code 非 0，看不到 `Hello, OS!`。原因是内核被链接到远离 `0x80200000` 的地址，OpenSBI 固定跳转到 `0x80200000` 后取到的不是正确指令。
-- **修改 3（改小栈）**：lab1 仍能正常跑，因为它没有深层函数调用和大的局部变量，16KB 栈绰绰有余。这也提示：后续 lab（尤其是有递归/深调用的进程管理）不能随意减小栈。
+- **修改 3（改小栈）**：把 `.space 4096 * 64` 改成 `4096 * 4` 后，lab1 仍能正常跑，因为它没有深层函数调用和大的局部变量，16KB 栈绰绰有余。这也提示：后续 lab（尤其是有递归/深调用的进程管理）不能随意减小栈。

@@ -137,11 +137,13 @@ pub fn trap_handler(cx: &mut TrapContext) {
 pub struct TaskControlBlock {
     pub task_status: TaskStatus,   // UnInit/Ready/Running/Exited
     pub trap_cx: TrapContext,      // 该任务的上下文
+    pub user_token: usize,         // lab2 常为 0；lab3+ 为用户 satp token
     pub user_stack: [u8; USER_STACK_SIZE],
     pub kernel_stack: [u8; KERNEL_STACK_SIZE],
 }
 ```
 
+- `user_token`：分页开启后保存该任务用户地址空间的 satp 值；lab2 无虚存时通常为 0。
 - `init_tasks`：为每个 app 构造初始 TCB，`trap_cx_init` 设置 entry 和栈。
 - `run_first_task`/`run_next_task`：选一个 Ready 任务，调 `run_user_task` 进入用户态。
 - `sys_write(fd, buf, len)`：把用户传的字节切片当 UTF-8 解码后 `print!`（fd 必须是 1 = stdout）。

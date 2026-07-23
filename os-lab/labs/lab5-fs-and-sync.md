@@ -49,14 +49,14 @@ graph LR
 
 > 🤔 **先想**：完整的文件系统（磁盘、inode、目录树）非常复杂。作为教学起步，你会怎么用一个最简单的方式让进程"读到文件内容"？
 
-本实验用最简方案：**把文件内容直接编译进内核镜像**（`EMBEDDED_FILES`），是一张静态表 `&[(&str, &[u8])]`。`sys_openat("testfile")` 在表里查到对应字节切片，`sys_read` 按 offset 拷贝到用户缓冲。
+本实验用最简方案：**把文件内容编译进镜像**，静态表定义在 **`os-fs/src/lib.rs` 的 `DEFAULT_FILES`**（`&[(&str, &[u8])]`）。内核 `fs.rs` 通过 `EmbeddedFs::default_fs()` 共用同一张表（`static FS`），**没有**内核内的 `EMBEDDED_FILES`。`sys_openat("testfile")` 经 `FS.open` 查到对应字节切片，`sys_read` 按 offset 拷贝到用户缓冲。
 
 ```mermaid
 graph LR
-    O["openat(\"testfile\")"] --> F["在 EMBEDDED_FILES 查到 file_id=0"]
+    O["openat(\"testfile\")"] --> F["FS.open → DEFAULT_FILES 查到 file_id"]
     F --> A["分配 fd，记录 file_id + offset=0"]
-    R["read(fd, buf, len)"] --> G["查 fd 得 file_id=0, offset"]
-    G --> C["从字节切片 offset 处拷贝到用户 buf"]
+    R["read(fd, buf, len)"] --> G["查 fd 得 file_id, offset"]
+    G --> C["FS.read_at 拷贝到用户 buf"]
     C --> U["offset 前移"]
 
     classDef open fill:#e3f2fd,stroke:#1565c0;
@@ -192,7 +192,7 @@ All processes exited.               ← 全部退出，关机
 
 **修改 1：新增一个内嵌文件**
 
-在 `kernel/src/fs.rs` 的 `EMBEDDED_FILES` 表里加一项，比如 `("greeting", b"Hi from new file!\n")`，然后写个小用户程序 `openat("greeting")` + `read` + 打印。
+在 `os-fs/src/lib.rs` 的 `DEFAULT_FILES` 表里加一项，比如 `("greeting", b"Hi from new file!\n")`，然后写个小用户程序 `openat("greeting")` + `read` + 打印（内核经 `EmbeddedFs::default_fs()` 自动共用这张表）。
 
 - 通过标准：看到 `Hi from new file!` 输出。
 - 这个练习让你走通"添加文件 → open → read"的完整闭环。

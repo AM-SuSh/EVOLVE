@@ -139,7 +139,7 @@ Day 1 由成员 A 搭建内核骨架；成员 B 完成 `os-sbi` 与组件 crate 
 - 内核（成员 A）：
   - `fs.rs`：每进程 fd 表（`MAX_FD` 槽）、`FdType`（Regular/PipeRead/PipeWrite）；**通过 `os_fs::EmbeddedFs::default_fs()` 读写 `testfile`**；`sys_openat`/`sys_read`/`sys_write`（pipe）/`sys_close`；fork 继承 fd、退出 `close_all_fds`。
   - `sync.rs`：`SpinMutex`（CAS + Acquire/Release）、环形缓冲 `Pipe` + 引用计数；`sys_pipe` 分配读写 fd。
-  - `process.rs`：`sys_wait4` 协作式等待（单次检查 + yield，无冗余 `loop`）。
+  - `process.rs`：`sys_wait4` 协作式等待（检查僵尸 → 未就绪则回退 `sepc`、`mark_current_ready` 后调用 `run_next_process() -> !`；再次被调度时从 trap 重入 wait。源码仍写 `loop`，因 `run_next_process` 永不返回，由 `#[allow(clippy::never_loop)]` 标注）。
   - `trap.rs`：分发 openat/read/write/close/pipe syscall。
   - `main.rs`：`lab5: filesystem and sync` → `init_heap` → `sync::init` → `fs::init` → `process::init`。
 - 用户态（成员 B）：`fs_test`、`pipe_test`；`pipe_test` 用 fd 占位规避 fd 0/1 控制台语义（已知 workaround）。
@@ -195,8 +195,8 @@ flowchart LR
 | Lab | 命令 | 关键输出 | 结果 |
 |-----|------|----------|------|
 | lab1 | `cargo run -p kernel --features lab1 --release` | `Hello, OS!` | ✅ |
-| lab2 | `cargo run -p kernel --features lab2 --release` | `409684505`、5 轮 `Yield round` | ✅ |
-| lab3 | `cargo run -p kernel --features lab3 --release` | 同上 | ✅ |
+| lab2 | `cargo run -p kernel --features lab2 --release` | `409684505`、≥1 轮 `Yield round`（批处理下常为 1 轮） | ✅ |
+| lab3 | `cargo run -p kernel --features lab3 --release` | `409684505`、5 轮 `Yield round` | ✅ |
 | lab4 | `cargo run -p kernel --features lab4 --release` | `fork_test pass`、`All processes exited.` | ✅ |
 | lab5 | `cargo run -p kernel --features lab5 --release` | `fs_test pass`、`pipe_test pass` | ✅ |
 

@@ -19,7 +19,7 @@ npm run dev
 
 浏览器打开终端提示的本地地址（默认 `http://localhost:5173`）。
 
-`npm run dev` / `npm run build` 会自动执行 `npm run sync`，从 `../labs/`、`../docs/`、`../../docs/` 同步 Markdown 到 `content/`（该目录已 gitignore，勿手改）。
+`npm run dev` / `npm run build` 会自动执行 `npm run sync`，从 `../labs/`、`../docs/`、`../../docs/` 同步 Markdown 到 `labs/`、`exercises/`、`answers/`、`project/`、`setup/`（这些目录已 gitignore，勿手改）。
 
 ## 构建静态站点
 

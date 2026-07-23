@@ -110,19 +110,19 @@ RISC-V Linux ABI 就是这么一套约定（操作系统圈通用的"普通话"�
 ```mermaid
 graph LR
     A["App 0 Ready"] -->|"运行"| B["App 0 Running"]
-    B -->|"exit/时间片到"| C["标记 Suspended"]
+    B -->|"exit/时间片到"| C["标记 Exited"]
     C -->|"选下一个 Ready"| D["App 1 Running"]
     D -->|"...退完"| E["All exited, 关机"]
 
     classDef ready fill:#e1f5ff,stroke:#0288d1;
     classDef run fill:#fff3e0,stroke:#ef6c00;
     classDef done fill:#e8f5e9,stroke:#2e7d32;
-    class A,C ready;
+    class A ready;
     class B,D run;
-    class E done;
+    class C,E done;
 ```
 
-- 每个任务用一个 **TaskControlBlock（TCB）** 记录它的状态（Ready/Running/Exited）、TrapContext、用户栈、内核栈。这就是你"如果要设计会怎么记"的答案——内核为每个程序存一份它的全部上下文。
+- 每个任务用一个 **TaskControlBlock（TCB）** 记录它的状态（`Ready`/`Running`/`Exited`，**没有** `Suspended`）、TrapContext、用户栈、内核栈，以及预留给 lab3+ 的 `user_token`。这就是你"如果要设计会怎么记"的答案——内核为每个程序存一份它的全部上下文。
 - 当前任务调用 `exit` 或 `yield`，调度器选下一个 Ready 的任务运行。
 - 所有任务都 Exited 时，内核关机。
 
@@ -143,6 +143,7 @@ lab2 涉及的代码分布在这些文件，请先浏览一遍建立印象（具
 | `os-syscall/src/lib.rs` | syscall 编号 | 怎么让内核认出"这是 write 还是 exit"？ |
 | `kernel/src/trap.rs` | trap 分发 | 内核怎么区分"系统调用"和"异常"？分发用什么结构？ |
 | `kernel/src/task.rs` | 任务管理 | 一个任务要记录什么？切换时哪些状态要变？ |
+| `kernel/src/loader.rs` | 用户程序加载 | lab2 嵌 `.bin`、lab3+ 嵌 ELF——程序字节从哪来、入口地址怎么定？ |
 | `user/src/lib.rs`、`bin/*.rs` | 用户程序 | 用户态怎么"发起"一次系统调用？ |
 
 > 提示：本实验不给完整代码讲解（那样就变成抄答案了）。每个文件的"为什么这么写"请结合【背景知识】自己想明白。完整代码解读见 `labs/answers/lab2-answers.md`，**强烈建议先自己想完再对照答案**。

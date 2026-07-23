@@ -127,8 +127,8 @@ lab1 涉及的代码分布在以下文件（路径相对 `os-lab/`），请先�
 |------|------|------------------|
 | `kernel/src/entry.asm` | 汇编入口 | 第一条指令做了什么、为什么是汇编而不是 Rust |
 | `kernel/src/main.rs` | Rust 入口 | `#![no_std]`/`#![no_main]` 的含义、`clear_bss` 的作用、panic 处理 |
-| `kernel/src/sbi.rs` | SBI 调用 | 内核没有驱动时如何"委托"OpenSBI 输出字符和关机 |
-| `kernel/src/console.rs` | 控制台 | 如何把逐字节输出包装成 `println!` 宏 |
+| `os-sbi/src/lib.rs` | SBI 调用（独立 crate） | 内核没有驱动时如何"委托"OpenSBI 输出字符和关机；`lab1` feature 依赖 `os-sbi` |
+| `kernel/src/console.rs` | 控制台 | 如何把逐字节输出包装成 `println!` 宏（内部调用 `os_sbi::console_putchar`） |
 | `kernel/linker.ld` | 链接脚本 | 为什么内核要链接到固定地址 `0x80200000` |
 
 > 提示：本实验不给完整代码讲解（那样就变成抄答案了）。每个文件的"为什么这么写"，请你结合上面的【背景知识】自己读代码、想明白；想不通的地方正是【五、AI 提问模板】的用武之地。完整代码的逐行解读见 `labs/answers/lab1-answers.md`，**建议先自己读完再对照答案**。
@@ -168,7 +168,7 @@ os-lab kernel lab1 is running on QEMU virt.
 
 1. 在 `entry.asm` 里，`_start` 为什么要先 `la sp, boot_stack_top` 再 `call rust_main`？如果直接 `call rust_main` 会发生什么？
 2. 在 `main.rs` 里，`rust_main` 为什么返回类型是 `-> !`（never）？`clear_bss()` 为什么必须在 `println!` 之前调用？
-3. 在 `sbi.rs` 里，输出一个字符时 `a7` 和 `a0` 寄存器分别放了什么？关机和输出字符用的是同一个指令吗？
+3. 在 `os-sbi/src/lib.rs` 里，输出一个字符时 `a7` 和 `a0` 寄存器分别放了什么？关机和输出字符用的是同一个指令吗？
 4. 在 `linker.ld` 里，`BASE_ADDRESS = 0x80200000` 这个数字从哪里来？把它改成别的值会发生什么（见任务三第 2 项）？
 
 > 阅读提示：对照【2.3 执行流程时序图】，把"一段字符从你的代码走到屏幕"的完整链路在脑中走一遍。能讲清楚这张图，lab1 就过关了。
@@ -179,7 +179,7 @@ os-lab kernel lab1 is running on QEMU virt.
 
 **修改 1：换一句欢迎语**
 
-在 `main.rs` 的 `rust_main` 函数里（约第 35 行），把 `println!("Hello, OS!");` 改成输出你自己的学号或名字，例如：
+在 `main.rs` 的 `rust_main` 函数里（lab1 分支，`println!("Hello, OS!")` 那一行），把欢迎语改成输出你自己的学号或名字，例如：
 
 ```rust
 println!("Hello, OS! 我学号是 xxx");
@@ -200,7 +200,7 @@ println!("Hello, OS! 我学号是 xxx");
 
 **修改 3：调整启动栈大小**
 
-在 `entry.asm` 里把 `.space 4096 * 16` 改成 `.space 4096 * 4`（16KB），`cargo run` 观察是否仍正常。
+当前 `entry.asm` 里是 `.space 4096 * 64`（256KB）。把它改成 `.space 4096 * 4`（16KB），`cargo run` 观察是否仍正常。
 
 - 通过标准：lab1 这种简单内核 16KB 栈够用，应仍能正常输出和退出。能解释"为什么改小也能跑"（lab1 没有深层函数调用/大局部变量）。
 
