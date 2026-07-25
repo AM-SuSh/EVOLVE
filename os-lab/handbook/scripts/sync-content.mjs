@@ -12,11 +12,10 @@ const HANDBOOK_ROOT = path.resolve(__dirname, '..')
 const OS_LAB_ROOT = path.resolve(HANDBOOK_ROOT, '..')
 const REPO_ROOT = path.resolve(OS_LAB_ROOT, '..')
 
-const SYNC_DIRS = ['labs', 'exercises', 'answers', 'project', 'setup']
+const SYNC_DIRS = ['labs', 'answers', 'project', 'setup']
 
 const COPY_JOBS = [
   { from: path.join(OS_LAB_ROOT, 'labs'), to: path.join(HANDBOOK_ROOT, 'labs'), filter: (f) => f.endsWith('.md') },
-  { from: path.join(OS_LAB_ROOT, 'labs', 'exercises'), to: path.join(HANDBOOK_ROOT, 'exercises'), filter: (f) => f.endsWith('.md') },
   { from: path.join(OS_LAB_ROOT, 'labs', 'answers'), to: path.join(HANDBOOK_ROOT, 'answers'), filter: (f) => f.endsWith('.md') },
   { from: path.join(OS_LAB_ROOT, 'docs'), to: path.join(HANDBOOK_ROOT, 'project'), filter: (f) => f.endsWith('.md') },
 ]
@@ -40,7 +39,7 @@ function rewriteLinks(text) {
       .replace(/\]\(\.\.\/docs\/([^)]+)\)/g, '](/project/$1)')
       .replace(/\]\(\.\.\/os-lab\/docs\/([^)]+)\)/g, '](/project/$1)')
       .replace(/\]\(\.\.\/os-lab\/labs\/([^)]+)\)/g, '](/labs/$1)')
-      .replace(/\]\(\.\.\/os-lab\/README\.md\)/g, '](/guide/quick-start)')
+      .replace(/\]\(\.\.\/os-lab\/README\.md\)/g, '](/guide/start)')
       .replace(/\]\(\.\.\/os-lab\/tests\/README\.md\)/g, '](/guide/verify)')
       .replace(/\]\(\.\.\/labs\/([^)]+)\)/g, '](/labs/$1)')
       .replace(/\]\(\.\.\/lab(\d)[^)]*\)/g, (_, n) => {
@@ -53,7 +52,6 @@ function rewriteLinks(text) {
         }
         return `](${map[n] || '/labs/overview'})`
       })
-      .replace(/\]\(\.\.\/exercises\/([^)]+)\)/g, '](/exercises/$1)')
       .replace(/\]\(\.\.\/answers\/([^)]+)\)/g, '](/answers/$1)')
       .replace(/\]\(lab(\d)-[^)]*\.md\)/g, (_, n) => {
         const map = {
@@ -65,20 +63,16 @@ function rewriteLinks(text) {
         }
         return `](${map[n]})`
       })
-      .replace(/\]\(exercises\/\)/g, '](/exercises/README)')
-      .replace(/\]\(answers\/\)/g, '](/answers/lab1-answers)')
+      .replace(/\]\(answers\/\)/g, '](/answers/README)')
       .replace(/\]\(environment_setup\)/g, '](/setup/environment)')
       .replace(/\]\(environment_setup\.md\)/g, '](/setup/environment)')
       .replace(/\]\(os-lab\)/g, '](/setup/verify-full)')
       .replace(/\]\(os-lab\.md(?:#[^)]*)?\)/g, '](/setup/verify-full)')
-      .replace(/\]\(\.\/exercises\/\)/g, '](/exercises/README)')
-      .replace(/\]\(\.\/exercises\/index\)/g, '](/exercises/README)')
-      .replace(/\]\(\.\/answers\/\)/g, '](/answers/lab1-answers)')
-      .replace(/\]\(\.\/answers\/index\)/g, '](/answers/lab1-answers)')
+      .replace(/\]\(\.\/answers\/\)/g, '](/answers/README)')
+      .replace(/\]\(\.\/answers\/index\)/g, '](/answers/README)')
       .replace(/\]\(overview\.md\)/g, '](/labs/overview)')
       // 已是站点内绝对路径的 lab 链接（去掉 .md）
       .replace(/\]\(\/labs\/([^)]+)\.md\)/g, '](/labs/$1)')
-      .replace(/\]\(\/exercises\/([^)]+)\.md\)/g, '](/exercises/$1)')
       .replace(/\]\(\/answers\/([^)]+)\.md\)/g, '](/answers/$1)')
   )
 }
@@ -117,6 +111,9 @@ function rmSyncDirs() {
     const p = path.join(HANDBOOK_ROOT, dir)
     if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true })
   }
+  // 历史遗留：曾同步 exercises/，现已废弃，构建前一并清理
+  const legacyExercises = path.join(HANDBOOK_ROOT, 'exercises')
+  if (fs.existsSync(legacyExercises)) fs.rmSync(legacyExercises, { recursive: true, force: true })
 }
 
 console.log('sync handbook content...')

@@ -3,6 +3,7 @@ node_modules/
 .vitepress/cache/
 labs/
 exercises/
+# exercises/：历史同步残留，sync 时会清理；保留忽略规则以免误提交
 answers/
 project/
 setup/

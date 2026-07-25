@@ -67,15 +67,15 @@ cargo run -p kernel --features lab3 --release
 
 ## 实验列表
 
-| 实验 | 主题 | 指导文档 | 习题 |
-|------|------|----------|------|
-| Lab1 | 裸机启动与最小内核 | [labs/lab1-bare-metal.md](labs/lab1-bare-metal.md) | [exercises/lab1-exercises.md](labs/exercises/lab1-exercises.md) |
-| Lab2 | 中断处理与多任务 | [labs/lab2-trap-and-task.md](labs/lab2-trap-and-task.md) | [exercises/lab2-exercises.md](labs/exercises/lab2-exercises.md) |
-| Lab3 | 内存管理与虚存 | [labs/lab3-memory.md](labs/lab3-memory.md) | [exercises/lab3-exercises.md](labs/exercises/lab3-exercises.md) |
-| Lab4 | 进程管理 | [labs/lab4-process.md](labs/lab4-process.md) | [exercises/lab4-exercises.md](labs/exercises/lab4-exercises.md) |
-| Lab5 | 文件系统与并发 | [labs/lab5-fs-and-sync.md](labs/lab5-fs-and-sync.md) | [exercises/lab5-exercises.md](labs/exercises/lab5-exercises.md) |
+| 实验 | 主题 | 指导文档 | 参考答案（含【任务二】） |
+|------|------|----------|--------------------------|
+| Lab1 | 裸机启动与最小内核 | [labs/lab1-bare-metal.md](labs/lab1-bare-metal.md) | [answers/lab1-answers.md](labs/answers/lab1-answers.md) |
+| Lab2 | 中断处理与多任务 | [labs/lab2-trap-and-task.md](labs/lab2-trap-and-task.md) | [answers/lab2-answers.md](labs/answers/lab2-answers.md) |
+| Lab3 | 内存管理与虚存 | [labs/lab3-memory.md](labs/lab3-memory.md) | [answers/lab3-answers.md](labs/answers/lab3-answers.md) |
+| Lab4 | 进程管理 | [labs/lab4-process.md](labs/lab4-process.md) | [answers/lab4-answers.md](labs/answers/lab4-answers.md) |
+| Lab5 | 文件系统与并发 | [labs/lab5-fs-and-sync.md](labs/lab5-fs-and-sync.md) | [answers/lab5-answers.md](labs/answers/lab5-answers.md) |
 
-实验总览与知识点地图：[labs/overview.md](labs/overview.md)。参考答案见 [labs/answers/](labs/answers/)。
+实验总览与知识点地图：[labs/overview.md](labs/overview.md)。材料说明见 [labs/README.md](labs/README.md)。
 
 ## 测试与验证
 
@@ -119,7 +119,7 @@ os-lab/
 ├── os-vm/           # 虚存管理（lab3+）
 ├── os-fs/           # 文件系统（lab5）
 ├── user/            # 用户态测试程序（lab2+）
-├── labs/            # 实验指导、习题与答案
+├── labs/            # 实验指导与参考答案（任务二）
 ├── docs/            # 架构说明、三方对比、AI 协作记录
 └── tests/           # 集成测试说明
 ```

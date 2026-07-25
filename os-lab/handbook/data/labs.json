@@ -6,15 +6,14 @@
       "title": "裸机启动与最小内核",
       "subtitle": "RISC-V 启动、SBI、链接脚本",
       "guide": "/labs/lab1-bare-metal",
-      "exercises": "/exercises/lab1-exercises",
       "answers": "/answers/lab1-answers",
       "verifyCmd": "cargo run -p kernel --features lab1 --release",
       "expected": ["Hello, OS!", "os-lab kernel lab1 is running on QEMU virt."],
       "checklist": [
         { "id": "read", "label": "阅读实验指导（问题场景 + 背景知识）" },
         { "id": "run", "label": "在 QEMU 中跑通 lab1" },
-        { "id": "exercise", "label": "完成文字习题" },
-        { "id": "review", "label": "对照参考答案自查" }
+        { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
+        { "id": "review", "label": "对照 labs/answers/lab1-answers.md 自查" }
       ]
     },
     {
@@ -23,15 +22,14 @@
       "title": "中断处理与多任务",
       "subtitle": "Trap、上下文切换、系统调用、调度",
       "guide": "/labs/lab2-trap-and-task",
-      "exercises": "/exercises/lab2-exercises",
       "answers": "/answers/lab2-answers",
       "verifyCmd": "cargo run -p kernel --features lab2 --release",
       "expected": ["409684505", "Yield round"],
       "checklist": [
         { "id": "read", "label": "理解 trap 入口与返回路径" },
         { "id": "run", "label": "跑通 lab2 用户态测例" },
-        { "id": "exercise", "label": "完成文字习题" },
-        { "id": "review", "label": "对照参考答案自查" }
+        { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
+        { "id": "review", "label": "对照 labs/answers/lab2-answers.md 自查" }
       ]
     },
     {
@@ -40,15 +38,14 @@
       "title": "内存管理与虚存",
       "subtitle": "页帧分配、Sv39 页表、地址空间",
       "guide": "/labs/lab3-memory",
-      "exercises": "/exercises/lab3-exercises",
       "answers": "/answers/lab3-answers",
       "verifyCmd": "cargo run -p kernel --features lab3 --release",
       "expected": ["lab3"],
       "checklist": [
         { "id": "read", "label": "理解物理页与页表映射" },
         { "id": "run", "label": "跑通 lab3 QEMU 输出" },
-        { "id": "exercise", "label": "完成文字习题" },
-        { "id": "review", "label": "对照参考答案自查" }
+        { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
+        { "id": "review", "label": "对照 labs/answers/lab3-answers.md 自查" }
       ]
     },
     {
@@ -57,15 +54,14 @@
       "title": "进程管理",
       "subtitle": "fork、exec、wait、进程树",
       "guide": "/labs/lab4-process",
-      "exercises": "/exercises/lab4-exercises",
       "answers": "/answers/lab4-answers",
       "verifyCmd": "cargo run -p kernel --features lab4 --release",
       "expected": ["fork_test pass"],
       "checklist": [
         { "id": "read", "label": "理解 fork/exec/wait 语义" },
         { "id": "run", "label": "跑通 fork_test" },
-        { "id": "exercise", "label": "完成文字习题" },
-        { "id": "review", "label": "对照参考答案自查" }
+        { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
+        { "id": "review", "label": "对照 labs/answers/lab4-answers.md 自查" }
       ]
     },
     {
@@ -74,16 +70,15 @@
       "title": "文件系统与并发",
       "subtitle": "块设备、管道、自旋锁",
       "guide": "/labs/lab5-fs-and-sync",
-      "exercises": "/exercises/lab5-exercises",
       "answers": "/answers/lab5-answers",
       "verifyCmd": "cargo run -p kernel --features lab5 --release",
       "expected": ["fs_test pass", "pipe_test pass"],
       "checklist": [
         { "id": "read", "label": "理解 fd 与管道机制" },
         { "id": "run", "label": "跑通 fs_test 与 pipe_test" },
-        { "id": "exercise", "label": "完成文字习题" },
+        { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
         { "id": "exercise-unit", "label": "（可选）跑通 24 项 host 单测" },
-        { "id": "review", "label": "对照参考答案自查" }
+        { "id": "review", "label": "对照 labs/answers/lab5-answers.md 自查" }
       ]
     }
   ],

@@ -1,7 +1,8 @@
 # Lab2 参考答案与代码解读
 
-> 本文件是 [lab2-trap-and-task.md](../lab2-trap-and-task.md) 的配套答案，含完整代码逐行解读和阅读理解题答案。
-> **使用建议**：先独立完成 lab2 的【任务二：阅读理解】，再来对答案。
+> 配套实验指导：[lab2-trap-and-task.md](../lab2-trap-and-task.md)  
+> 对应内容：【任务二：阅读理解与思考题（必做）】参考答案 + 代码解读  
+> **使用建议**：先独立完成实验文档【任务二】，再来对答案。
 
 ## 一、完整代码逐行解读
 
@@ -169,27 +170,27 @@ pub fn write(fd: usize, buf: &[u8]) -> isize {
 
 这就是用户程序侧的 `ecall`——和内核侧的 `trap_handler` 形成完整的请求-响应闭环。
 
-## 二、阅读理解题参考答案
+## 二、任务二：阅读理解与思考题参考答案
 
-### 任务二第 1 题：`csrrw sp, sscratch, sp` 的作用
+### 第 1 题：`csrrw sp, sscratch, sp` 为什么必须在最前面
 
-执行前：`sp` = 用户栈指针，`sscratch` = 内核栈指针。这一条指令把两者交换，执行后：`sp` = 内核栈（可以安全保存寄存器），`sscratch` = 用户栈（保存了以便恢复）。必须在最前面，因为后续所有 `sd x, offset(sp)` 都依赖 `sp` 指向内核栈；先保存再换栈会写到用户栈导致破坏或崩溃。
+执行前：`sp` = 用户栈指针，`sscratch` = 内核栈指针。`csrrw sp, sscratch, sp` 把两者交换：执行后 `sp` 指向内核栈（可安全保存寄存器），`sscratch` 暂存用户栈指针供返回时使用。必须在最前面，因为后续所有 `sd x, offset(sp)` 都依赖 `sp` 已指向内核栈；若先保存再换栈，会写到用户栈，破坏用户数据甚至访问非法地址。
 
-### 任务二第 2 题：为什么保存这么多 + 漏 sepc 后果
+### 第 2 题：`TrapContext` 要保存什么，漏保存 `sepc` 会怎样
 
-用户程序被 trap 打断时，它的全部状态（32 GPR + sstatus + sepc）都是"正在运行中的中间结果"，必须完整保存才能精确恢复。漏保存 `sepc`：`sepc` 记录 trap 时的 PC，恢复时 `sret` 会跳到 `sepc` 指向的地址；如果 sepc 是错值，返回后会跳到不可预测的位置执行，必然崩溃。
+用户程序被 trap 打断时，它的全部状态（32 个通用寄存器、`sstatus`、`sepc`）都是「正在运行中的中间结果」，必须完整保存才能精确恢复。`sepc` 记录 trap 时的用户 PC；漏保存会导致 `sret` 跳到错误地址，返回后执行不可预测的指令而崩溃。
 
-### 任务二第 3 题：`advance_sepc` 的必要性
+### 第 3 题：处理 `sys_write` 时为什么要先 `advance_sepc()`
 
-`ecall` 触发 trap 后，`sepc` 指向 `ecall` 指令本身的地址。返回时 `sret` 跳到 `sepc`——如果不 `advance_sepc()`（sepc 不加 4），返回后会重新执行同一条 `ecall`，再次陷入同一个 syscall，死循环。所以处理 syscall 前先 `advance_sepc()` 让 sepc 指向下一条指令。
+`ecall` 触发 trap 后，`sepc` 指向 `ecall` 指令本身。返回时 `sret` 跳到 `sepc`——若不 `advance_sepc()`（`sepc` 不加 4），会再次执行同一条 `ecall`，陷入死循环。处理 syscall 前先 `advance_sepc()`，让 PC 指向下一条指令。
 
-### 任务二第 4 题：参数传递链路
+### 第 4 题：用户态 `sys_write` 的参数怎么传到内核
 
-用户侧 `sys_write`：`a7=64`(SYS_WRITE)、`a0=fd`、`a1=buf.as_ptr()`、`a2=buf.len()`，执行 `ecall`。trap 后 `__alltraps` 把这些寄存器存进 TrapContext.x[]（a0=x10、a1=x11、a2=x12、a7=x17）。内核 `trap_handler` 用 `cx.syscall_id()`（取 x17）确认是 WRITE，用 `cx.syscall_arg(0/1/2)`（取 x10/11/12）取出 fd/buf/len 传给 `sys_write(fd, buf, len)`。链路：用户寄存器 → TrapContext.x[] → 内核函数参数。
+用户侧按 ABI：`a7=64`（SYS_WRITE）、`a0=fd`、`a1=buf` 指针、`a2=len`，再 `ecall`。trap 后 `__alltraps` 把这些寄存器存进 `TrapContext.x[]`（`a0`=x10、`a1`=x11、`a2`=x12、`a7`=x17）。内核 `trap_handler` 用 `cx.syscall_id()` 确认是 WRITE，用 `cx.syscall_arg(0/1/2)` 取出 fd/buf/len 传给 `sys_write(fd, buf, len)`。链路：用户态寄存器 → TrapContext → 内核函数参数。
 
-### 任务二第 5 题：用户栈和内核栈为什么分开
+### 第 5 题：TCB 要记录什么，用户栈和内核栈为什么分开
 
-三层理由：① 安全——用户栈在用户空间，用户程序能乱写；内核栈在内核空间，用户碰不到，分开后内核有受保护的栈。② 正确——trap 时用户栈可能没映射（lab3 虚存后）或已满，内核往里写会出错。③ 隔离——用户程序的栈溢出不会破坏内核数据。合成一个栈这三点都没法保证。
+TCB 至少记录任务状态、`TrapContext`、用户栈与内核栈（及 Lab3+ 的地址空间 token 等）。用户栈和内核栈必须分开，原因有三：① **安全**——用户栈在用户空间，用户程序能随意写；内核栈在内核空间，用户碰不到。② **正确**——trap 时若仍用用户栈，可能已满或状态不可信，内核往里写会出错（Lab3 虚存后用户栈甚至可能未映射）。③ **隔离**——用户栈溢出不会破坏内核数据；合成一个栈则无法实现特权级隔离。Lab3 会进一步用独立地址空间把两套栈彻底分开。
 
 ## 三、任务三动手修改的现象参考
 

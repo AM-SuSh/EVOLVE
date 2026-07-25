@@ -21,6 +21,7 @@ export default defineConfig({
     logo: '/logo.svg',
     nav: [
       { text: '首页', link: '/' },
+      { text: '开始学习', link: '/guide/start' },
       { text: '学习进度', link: '/guide/progress' },
       { text: '实验总览', link: '/labs/overview' },
       { text: '快速验证', link: '/guide/verify' },
@@ -31,7 +32,7 @@ export default defineConfig({
         {
           text: '入门',
           items: [
-            { text: '5 分钟上手', link: '/guide/quick-start' },
+            { text: '认识 os-lab', link: '/guide/start' },
             { text: '学习进度', link: '/guide/progress' },
             { text: '验证命令', link: '/guide/verify' },
             { text: '环境安装', link: '/setup/environment' },
@@ -43,6 +44,7 @@ export default defineConfig({
         {
           text: '实验指导',
           items: [
+            { text: '材料说明', link: '/labs/README' },
             { text: '总览与知识地图', link: '/labs/overview' },
             { text: 'Lab1 裸机启动', link: '/labs/lab1-bare-metal' },
             { text: 'Lab2 中断与多任务', link: '/labs/lab2-trap-and-task' },
@@ -52,23 +54,11 @@ export default defineConfig({
           ],
         },
       ],
-      '/exercises/': [
-        {
-          text: '文字习题',
-          items: [
-            { text: '习题说明', link: '/exercises/README' },
-            { text: 'Lab1 习题', link: '/exercises/lab1-exercises' },
-            { text: 'Lab2 习题', link: '/exercises/lab2-exercises' },
-            { text: 'Lab3 习题', link: '/exercises/lab3-exercises' },
-            { text: 'Lab4 习题', link: '/exercises/lab4-exercises' },
-            { text: 'Lab5 习题', link: '/exercises/lab5-exercises' },
-          ],
-        },
-      ],
       '/answers/': [
         {
           text: '参考答案',
           items: [
+            { text: '答案说明', link: '/answers/README' },
             { text: 'Lab1 答案', link: '/answers/lab1-answers' },
             { text: 'Lab2 答案', link: '/answers/lab2-answers' },
             { text: 'Lab3 答案', link: '/answers/lab3-answers' },

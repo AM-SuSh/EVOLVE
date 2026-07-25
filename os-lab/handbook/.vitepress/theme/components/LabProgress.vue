@@ -10,7 +10,6 @@ type Lab = {
   title: string
   subtitle: string
   guide: string
-  exercises: string
   answers: string
   verifyCmd: string
   expected: string[]
@@ -109,7 +108,6 @@ watch(checked, save, { deep: true })
 
       <div class="lab-links">
         <a :href="lab.guide">实验指导</a>
-        <a :href="lab.exercises">文字习题</a>
         <a :href="lab.answers">参考答案</a>
       </div>
 

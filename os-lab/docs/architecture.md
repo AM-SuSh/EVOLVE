@@ -143,7 +143,7 @@ Day 1 由成员 A 搭建内核骨架；成员 B 完成 `os-sbi` 与组件 crate 
   - `trap.rs`：分发 openat/read/write/close/pipe syscall。
   - `main.rs`：`lab5: filesystem and sync` → `init_heap` → `sync::init` → `fs::init` → `process::init`。
 - 用户态（成员 B）：`fs_test`、`pipe_test`；`pipe_test` 用 fd 占位规避 fd 0/1 控制台语义（已知 workaround）。
-- 文档（成员 C）：`labs/lab5-fs-and-sync.md`、`labs/answers/lab5-answers.md`、`labs/exercises/lab5-exercises.md`。
+- 文档（成员 C）：`labs/lab5-fs-and-sync.md`、`labs/answers/lab5-answers.md`。
 - 验证：`cargo run -p kernel --features lab5` — `Hello from testfile!`、`fs_test pass`、`pipe says hi`、`pipe_test pass`、`All processes exited.`；组件 host 单元测试合计 24 项全过；`make check` 覆盖 lab1–lab5 编译。
 
 **已知简化（不阻断验收，Day7 可继续收尾）**
