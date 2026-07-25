@@ -197,9 +197,11 @@ pub fn pipe_close_write(pipe_id: usize) {
             return;
         };
         let mut inner = pipe.inner.lock();
-        inner.write_closed = true;
         if inner.write_refs > 0 {
             inner.write_refs -= 1;
+        }
+        if inner.write_refs == 0 {
+            inner.write_closed = true;
         }
         if inner.read_refs == 0 && inner.write_refs == 0 {
             drop(inner);

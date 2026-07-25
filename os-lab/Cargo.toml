@@ -9,6 +9,8 @@ members = [
     "os-syscall",
     "os-context",
     "user",
+    "os-signal",
+    "os-sync",
 ]
 
 [workspace.package]

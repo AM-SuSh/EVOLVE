@@ -5,13 +5,15 @@
 use os_alloc::{
     frame_alloc_watermark, init_frame_allocator, set_frame_alloc_hook, PhysPageNum,
 };
-use os_vm::{elf_map_areas, MapArea, MapPermission, MemorySet, VirtAddr};
+use os_vm::{MapArea, MapPermission, MemorySet, VirtAddr};
 
 use crate::cell::SyncUnsafeCell;
 use crate::config::{
     APP_BASE_ADDRESS, APP_REGION_SIZE, FRAME_POOL_START, MAX_PROCESS_NUM, MEMORY_END, PAGE_SIZE,
     USER_STACK_SIZE,
 };
+#[cfg(feature = "lab6")]
+use crate::config::{VIRTIO_MMIO_BASE, VIRTIO_MMIO_SIZE};
 
 static KERNEL_SPACE: SyncUnsafeCell<Option<MemorySet>> = SyncUnsafeCell::new(None);
 static USER_SPACES: SyncUnsafeCell<[Option<MemorySet>; MAX_PROCESS_NUM]> =
@@ -139,11 +141,8 @@ pub fn create_user_space(space_id: usize, elf: &'static [u8]) {
     });
 }
 
-fn map_elf_and_stack(user_space: &mut MemorySet, elf: &'static [u8]) {
-    let parsed = elf_map_areas(elf, 0);
-    for area in parsed.areas.iter().take(parsed.count) {
-        user_space.map_area(area.clone());
-    }
+fn map_elf_and_stack(user_space: &mut MemorySet, elf: &[u8]) {
+    user_space.map_elf_pt_load(elf, 0);
 
     let stack_bottom = APP_BASE_ADDRESS + APP_REGION_SIZE - USER_STACK_SIZE;
     // User stack only (guard page at APP_BASE+APP_REGION stays unmapped).
@@ -175,14 +174,7 @@ pub fn fork_user_space(parent_id: usize, child_id: usize) {
 
 /// Replace the current process user mappings with a fresh ELF image (exec).
 pub fn replace_user_space(space_id: usize, elf: &'static [u8]) {
-    assert!(space_id < MAX_PROCESS_NUM);
-    activate_kernel();
-    let mut user_space = MemorySet::new_bare();
-    map_kernel_trap_regions_user(&mut user_space);
-    map_elf_and_stack(&mut user_space, elf);
-    USER_SPACES.with(|spaces| {
-        spaces[space_id] = Some(user_space);
-    });
+    replace_user_space_from_static(space_id, elf);
 }
 
 fn copy_user_pages(parent: &MemorySet, child: &mut MemorySet, start: usize, end: usize) {
@@ -234,4 +226,188 @@ pub fn activate_current_user() {
     #[cfg(not(feature = "lab4"))]
     let space_id = crate::task::current_app_id();
     activate_user(space_id);
+}
+
+/// Map VirtIO MMIO region into the kernel address space (lab6).
+#[cfg(feature = "lab6")]
+pub fn map_mmio_devices() {
+    let mut ks = kernel_space_mut();
+    ks.map_identical_region(
+        VIRTIO_MMIO_BASE,
+        VIRTIO_MMIO_BASE + VIRTIO_MMIO_SIZE,
+        MapPermission::R.union(MapPermission::W),
+    );
+}
+
+/// Translate a kernel virtual address to physical (for VirtIO DMA).
+#[cfg(feature = "lab6")]
+pub fn kernel_translate(va: usize) -> Option<usize> {
+    kernel_space_mut().translate_va(va)
+}
+
+#[cfg(feature = "lab6")]
+fn prot_to_perm(prot: usize) -> Option<MapPermission> {
+    if prot == 0 || prot & !0x7 != 0 {
+        return None;
+    }
+    let mut perm = MapPermission::U;
+    if prot & 0x1 != 0 {
+        perm = perm.union(MapPermission::R);
+    }
+    if prot & 0x2 != 0 {
+        perm = perm.union(MapPermission::W);
+    }
+    if prot & 0x4 != 0 {
+        perm = perm.union(MapPermission::X);
+    }
+    Some(perm)
+}
+
+#[cfg(feature = "lab6")]
+fn with_current_user_space<R>(f: impl FnOnce(&mut MemorySet) -> R) -> R {
+    activate_kernel();
+    let space_id = crate::process::current_space_id();
+    USER_SPACES.with(|spaces| {
+        let space = spaces[space_id]
+            .as_mut()
+            .expect("current user space missing");
+        f(space)
+    })
+}
+
+/// Map anonymous pages at `addr` for `len` bytes with `prot` (Linux mmap prot bits).
+#[cfg(feature = "lab6")]
+pub fn sys_mmap(addr: usize, len: usize, prot: isize) -> isize {
+    if prot < 0 {
+        return -1;
+    }
+    if addr & (PAGE_SIZE - 1) != 0 {
+        return -1;
+    }
+    let Some(perm) = prot_to_perm(prot as usize) else {
+        return -1;
+    };
+    if len == 0 {
+        return 0;
+    }
+    let Some(end) = addr.checked_add(len) else {
+        return -1;
+    };
+    let page_end = (end + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
+    if with_current_user_space(|space| space.map_anonymous(addr, page_end, perm)) {
+        0
+    } else {
+        -1
+    }
+}
+
+/// Unmap `[addr, addr+len)` previously mapped by mmap.
+#[cfg(feature = "lab6")]
+pub fn sys_munmap(addr: usize, len: usize) -> isize {
+    if addr & (PAGE_SIZE - 1) != 0 {
+        return -1;
+    }
+    if len == 0 {
+        return 0;
+    }
+    let Some(end) = addr.checked_add(len) else {
+        return -1;
+    };
+    let page_end = (end + PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
+    if with_current_user_space(|space| space.unmap_range(addr, page_end)) {
+        0
+    } else {
+        -1
+    }
+}
+
+/// Build user space from an owned ELF buffer (bytes copied into user pages; buffer freed).
+#[cfg(feature = "lab6")]
+pub fn create_user_space_from_elf(space_id: usize, elf: alloc::vec::Vec<u8>) {
+    assert!(space_id < MAX_PROCESS_NUM);
+    activate_kernel();
+    let mut user_space = MemorySet::new_bare();
+    map_kernel_trap_regions_user(&mut user_space);
+    map_elf_and_stack(&mut user_space, &elf);
+    drop(elf);
+    USER_SPACES.with(|spaces| {
+        spaces[space_id] = Some(user_space);
+    });
+}
+
+/// Replace the current process user mappings with a fresh ELF image (exec).
+/// Reuses the existing page table and kernel trap regions; only unmaps the user
+/// app slot (`APP_BASE`..`APP_BASE+APP_REGION`) so identity-mapped kernel pages
+/// are not incorrectly deallocated.
+pub fn replace_user_space_from_static(space_id: usize, elf: &'static [u8]) {
+    assert!(space_id < MAX_PROCESS_NUM);
+    activate_kernel();
+    let user_end = APP_BASE_ADDRESS + APP_REGION_SIZE;
+    USER_SPACES.with(|spaces| {
+        let space = match spaces[space_id].as_mut() {
+            Some(s) => s,
+            None => {
+                let mut user_space = MemorySet::new_bare();
+                map_kernel_trap_regions_user(&mut user_space);
+                spaces[space_id] = Some(user_space);
+                spaces[space_id].as_mut().unwrap()
+            }
+        };
+        let _ = space.unmap_range(APP_BASE_ADDRESS, user_end);
+        map_elf_and_stack(space, elf);
+    });
+}
+
+/// Replace current process image from an owned ELF buffer.
+#[cfg(feature = "lab6")]
+pub fn replace_user_space_from_elf(space_id: usize, elf: alloc::vec::Vec<u8>) {
+    assert!(space_id < MAX_PROCESS_NUM);
+    activate_kernel();
+    let mut user_space = MemorySet::new_bare();
+    map_kernel_trap_regions_user(&mut user_space);
+    map_elf_and_stack(&mut user_space, &elf);
+    drop(elf);
+    USER_SPACES.with(|spaces| {
+        spaces[space_id] = Some(user_space);
+    });
+}
+
+/// Allocate a fresh user stack region for a new thread (lab8).
+/// Returns `(user_sp, stack_region_start)`.
+#[cfg(feature = "lab8")]
+pub fn alloc_thread_user_stack(space_id: usize) -> Option<(usize, usize)> {
+    assert!(space_id < MAX_PROCESS_NUM);
+    activate_kernel();
+    let perm = MapPermission::U
+        .union(MapPermission::R)
+        .union(MapPermission::W);
+    let stack_bytes = USER_STACK_SIZE * 2;
+    USER_SPACES.with(|spaces| {
+        let space = spaces[space_id].as_mut()?;
+        let mut va = APP_BASE_ADDRESS + APP_REGION_SIZE - USER_STACK_SIZE;
+        while va >= APP_BASE_ADDRESS + PAGE_SIZE {
+            if space.translate(VirtAddr(va)).is_none() {
+                let top = va + stack_bytes;
+                if space.map_anonymous(va, top, perm) {
+                    return Some((top - 16, va));
+                }
+                return None;
+            }
+            va = va.saturating_sub(stack_bytes);
+        }
+        None
+    })
+}
+
+/// Unmap a thread stack region allocated by [`alloc_thread_user_stack`].
+#[cfg(feature = "lab8")]
+pub fn free_thread_user_stack(space_id: usize, stack_va: usize) {
+    assert!(space_id < MAX_PROCESS_NUM);
+    activate_kernel();
+    let end = stack_va + USER_STACK_SIZE * 2;
+    USER_SPACES.with(|spaces| {
+        if let Some(space) = spaces[space_id].as_mut() {
+            let _ = space.unmap_range(stack_va, end);
+        }
+    });
 }

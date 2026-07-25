@@ -8,3 +8,6 @@ repository.workspace = true
 description = "Physical frame and heap allocators for the OS teaching lab"
 
 [lib]
+
+[dependencies]
+linked_list_allocator = "0.10.5"

@@ -10,7 +10,11 @@
 
 #![no_std]
 
+use core::alloc::Layout;
 use core::cell::UnsafeCell;
+use core::ptr::NonNull;
+
+use linked_list_allocator::Heap;
 
 struct SyncUnsafeCell<T>(UnsafeCell<T>);
 unsafe impl<T> Sync for SyncUnsafeCell<T> {}
@@ -29,7 +33,7 @@ impl<T> SyncUnsafeCell<T> {
 pub const PAGE_SIZE: usize = 4096;
 pub const PAGE_SIZE_BITS: usize = 12;
 
-const HEAP_SIZE: usize = 32 * 1024;
+const HEAP_SIZE: usize = 1024 * 1024;
 
 /// Physical page number.
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
@@ -147,6 +151,10 @@ impl BumpAllocator {
         self.heap_end = start + size;
         self.current = start;
     }
+
+    pub fn used_bytes(&self) -> usize {
+        self.current.saturating_sub(self.heap_start)
+    }
 }
 
 impl HeapAllocator for BumpAllocator {
@@ -165,17 +173,33 @@ impl HeapAllocator for BumpAllocator {
 }
 
 static HEAP: SyncUnsafeCell<[u8; HEAP_SIZE]> = SyncUnsafeCell::new([0; HEAP_SIZE]);
-static HEAP_ALLOCATOR: SyncUnsafeCell<BumpAllocator> = SyncUnsafeCell::new(BumpAllocator::empty());
+static HEAP_ALLOCATOR: SyncUnsafeCell<Heap> = SyncUnsafeCell::new(Heap::empty());
 
-/// Initialize the global bump heap. Called from kernel init in lab5+.
+/// Initialize the global heap. Called from kernel init in lab5+.
 pub fn init_heap() {
-    let start = HEAP.with(|heap| heap.as_ptr() as usize);
-    HEAP_ALLOCATOR.with(|alloc| alloc.init(start, HEAP_SIZE));
+    HEAP_ALLOCATOR.with(|alloc| unsafe {
+        alloc.init(HEAP.with(|heap| heap.as_mut_ptr()), HEAP_SIZE);
+    });
 }
 
 /// Allocate bytes from the global heap (lab5+ kernel use).
-pub fn heap_alloc(layout: core::alloc::Layout) -> Option<*mut u8> {
-    HEAP_ALLOCATOR.with(|alloc| alloc.alloc(layout))
+pub fn heap_alloc(layout: Layout) -> Option<*mut u8> {
+    HEAP_ALLOCATOR.with(|alloc| {
+        alloc
+            .allocate_first_fit(layout)
+            .ok()
+            .map(|ptr| ptr.as_ptr())
+    })
+}
+
+/// Deallocate bytes from the global heap (lab6+ when `Vec`/`Arc` drop).
+pub fn heap_dealloc(ptr: *mut u8, layout: Layout) {
+    if ptr.is_null() {
+        return;
+    }
+    HEAP_ALLOCATOR.with(|alloc| unsafe {
+        let _ = alloc.deallocate(NonNull::new_unchecked(ptr), layout);
+    });
 }
 
 #[cfg(test)]

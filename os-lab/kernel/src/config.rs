@@ -19,10 +19,20 @@ pub const MAX_PIPES: usize = 8;
 pub const SYS_PIPE: usize = 59;
 /// Max child slots recorded per process.
 pub const MAX_CHILDREN: usize = 8;
+/// Max kernel threads (lab8+).
+#[cfg(feature = "lab8")]
+pub const MAX_THREADS: usize = 32;
+/// Max mutex / semaphore / condvar slots per process (lab8+).
+#[cfg(feature = "lab8")]
+pub const MAX_SYNC_SLOTS: usize = 8;
 pub const APP_BASE_ADDRESS: usize = 0x8040_0000;
 pub const APP_REGION_SIZE: usize = 0x20_000;
 pub const CLOCK_FREQ: usize = 12_500_000;
 pub const TICKS_PER_SEC: usize = 100;
+
+/// VirtIO block device MMIO (QEMU virt).
+pub const VIRTIO_MMIO_BASE: usize = 0x1000_1000;
+pub const VIRTIO_MMIO_SIZE: usize = 0x1000;
 
 // lab3+ virtual memory layout
 pub const MEMORY_END: usize = 0x8800_0000;

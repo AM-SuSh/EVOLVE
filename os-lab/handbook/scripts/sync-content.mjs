@@ -49,6 +49,9 @@ function rewriteLinks(text) {
           3: '/labs/lab3-memory',
           4: '/labs/lab4-process',
           5: '/labs/lab5-fs-and-sync',
+          6: '/labs/lab6-disk-fs',
+          7: '/labs/lab7-ipc-signal',
+          8: '/labs/lab8-thread-sync',
         }
         return `](${map[n] || '/labs/overview'})`
       })
@@ -60,6 +63,9 @@ function rewriteLinks(text) {
           3: '/labs/lab3-memory',
           4: '/labs/lab4-process',
           5: '/labs/lab5-fs-and-sync',
+          6: '/labs/lab6-disk-fs',
+          7: '/labs/lab7-ipc-signal',
+          8: '/labs/lab8-thread-sync',
         }
         return `](${map[n]})`
       })
