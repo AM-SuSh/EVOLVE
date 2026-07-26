@@ -9,7 +9,7 @@
     "version": { "const": 1 },
     "id": { "type": "string", "minLength": 1, "maxLength": 160 },
     "sessionId": { "type": "string", "minLength": 1, "maxLength": 160 },
-    "labId": { "enum": ["lab1", "lab2", "lab3", "lab4", "lab5"] },
+    "labId": { "enum": ["lab1", "lab2", "lab3", "lab4", "lab5", "lab6", "lab7", "lab8"] },
     "timestamp": { "type": "string", "format": "date-time" },
     "type": {
       "enum": [

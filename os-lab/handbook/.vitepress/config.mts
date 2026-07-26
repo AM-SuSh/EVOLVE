@@ -25,13 +25,12 @@ export default withMermaid(defineConfig({
   head: [['meta', { name: 'theme-color', content: '#126a73' }]],
   themeConfig: {
     logo: '/logo.svg',
+    // 引导式学习是主入口；进度勾选/验证速查从顶栏移入侧栏，避免与工作台重复。
     nav: [
       { text: '首页', link: '/' },
-      { text: '开始学习', link: '/guide/start' },
       { text: '引导式学习', link: '/guide/ai-tutor' },
-      { text: '实验总览', link: '/labs/overview' },
-      { text: '学习进度', link: '/guide/progress' },
-      { text: '快速验证', link: '/guide/verify' },
+      { text: '开始学习', link: '/guide/start' },
+      { text: '实验手册', link: '/labs/overview' },
       { text: '环境配置', link: '/setup/environment' },
     ],
     sidebar: {
@@ -150,6 +149,13 @@ export default withMermaid(defineConfig({
     resolve: {
       alias: {
         '@data': resolve(handbookRoot, 'data'),
+      },
+    },
+    server: {
+      fs: {
+        // 前端直接 import os-lab/learning/rubric.mjs 与 os-lab/tutor/prompts/guardrails.yaml
+        // （评分与护栏的单一事实源），dev server 需要允许访问 handbook 之外的 os-lab 目录。
+        allow: [handbookRoot, resolve(handbookRoot, '..')],
       },
     },
   },

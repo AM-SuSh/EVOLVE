@@ -1,5 +1,4 @@
 import http from 'node:http'
-import os from 'node:os'
 import path from 'node:path'
 import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
@@ -8,17 +7,37 @@ import { scoreLearningEvents } from '../learning/rubric.mjs'
 
 const handbookRoot = path.dirname(fileURLToPath(import.meta.url))
 const promptRoot = path.resolve(handbookRoot, '..', 'tutor', 'prompts')
+
+/**
+ * 模型接入（baseUrl/model/apiKey）由前端工作台的设置界面按请求传入（body.llm）；
+ * 这里的默认值只在前端未配置时兜底。环境变量属于服务端运维项（端口、数据目录、CORS）。
+ */
 const port = Number(process.env.OS_LAB_TUTOR_PORT || 8787)
-const upstream = (process.env.OS_LAB_LLM_BASE_URL || 'http://127.0.0.1:11434/v1').replace(/\/$/, '')
-const model = process.env.OS_LAB_LLM_MODEL || 'qwen2.5:7b'
-const apiKey = process.env.OS_LAB_LLM_API_KEY || ''
-const dataDir = process.env.OS_LAB_TUTOR_DATA_DIR || path.join(os.tmpdir(), 'os-lab-tutor-sessions')
+const defaultUpstream = (process.env.OS_LAB_LLM_BASE_URL || 'http://127.0.0.1:11434/v1').replace(/\/$/, '')
+const defaultModel = process.env.OS_LAB_LLM_MODEL || 'qwen2.5:7b'
+const defaultApiKey = process.env.OS_LAB_LLM_API_KEY || ''
+// 学习事件默认落在仓库内（gitignore），而不是系统临时目录——临时目录会被清理，
+// 真实学生实验的数据不能放在那里。
+const dataDir =
+  process.env.OS_LAB_TUTOR_DATA_DIR || path.resolve(handbookRoot, '..', 'learning', 'sessions')
 const allowedOrigins = new Set(
   (process.env.OS_LAB_TUTOR_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
 )
+
+/** 归一化前端传来的 llm 覆盖项；非法字段忽略，回落到服务端默认。 */
+function resolveLlm(llm) {
+  const clean = (value, max) =>
+    typeof value === 'string' && value.trim().length <= max ? value.trim() : ''
+  const baseUrl = clean(llm?.baseUrl, 200)
+  return {
+    upstream: /^https?:\/\//.test(baseUrl) ? baseUrl.replace(/\/$/, '') : defaultUpstream,
+    model: clean(llm?.model, 200) || defaultModel,
+    apiKey: clean(llm?.apiKey, 500) || defaultApiKey,
+  }
+}
 
 const stageIds = new Set(['orient', 'read', 'run', 'debug', 'reflect'])
 const labIds = new Set(['lab1', 'lab2', 'lab3', 'lab4', 'lab5', 'lab6', 'lab7', 'lab8'])
@@ -164,12 +183,12 @@ function frameworkFor(labId, stage, reading) {
   }
 }
 
-async function checkUpstream() {
+async function checkUpstream(llm) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 2_500)
   try {
-    const response = await fetch(`${upstream}/models`, {
-      headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+    const response = await fetch(`${llm.upstream}/models`, {
+      headers: llm.apiKey ? { Authorization: `Bearer ${llm.apiKey}` } : {},
       signal: controller.signal,
     })
     return response.ok
@@ -266,7 +285,7 @@ async function pipeUpstreamStream(upstreamResponse, response) {
 async function handleChat(body, request, response, origin) {
   const labId = String(body.labId || '')
   if (!labIds.has(labId)) {
-    json(response, 400, { error: 'labId 必须是 lab1、lab2、lab3、lab4 或 lab5' }, origin)
+    json(response, 400, { error: 'labId 必须是 lab1 到 lab8 之一' }, origin)
     return
   }
   const stage = stageIds.has(String(body.stage)) ? String(body.stage) : 'orient'
@@ -291,12 +310,13 @@ async function handleChat(body, request, response, origin) {
     return
   }
 
+  const llm = resolveLlm(body.llm)
   const wantsStream = String(request.headers.accept || '').includes('text/event-stream')
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 60_000)
 
   const upstreamBody = JSON.stringify({
-    model,
+    model: llm.model,
     temperature: 0.3,
     max_tokens: 900,
     stream: wantsStream,
@@ -308,11 +328,11 @@ async function handleChat(body, request, response, origin) {
   })
 
   try {
-    const upstreamResponse = await fetch(`${upstream}/chat/completions`, {
+    const upstreamResponse = await fetch(`${llm.upstream}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        ...(llm.apiKey ? { Authorization: `Bearer ${llm.apiKey}` } : {}),
       },
       signal: controller.signal,
       body: upstreamBody,
@@ -341,7 +361,7 @@ async function handleChat(body, request, response, origin) {
       json(response, 200, {
         reply,
         mode: 'remote',
-        model,
+        model: llm.model,
         framework: { ...framework, prompt: undefined },
         guardrail: { triggered: false },
       }, origin)
@@ -349,7 +369,7 @@ async function handleChat(body, request, response, origin) {
     }
 
     openEventStream(response, origin)
-    sendFrame(response, { type: 'meta', model, triggered: false, framework: framework.version })
+    sendFrame(response, { type: 'meta', model: llm.model, triggered: false, framework: framework.version })
     const reply = await pipeUpstreamStream(upstreamResponse, response)
     if (!reply.trim()) sendFrame(response, { type: 'error', error: '上游模型没有返回文本' })
     else sendFrame(response, { type: 'done', reply })
@@ -380,13 +400,15 @@ const server = http.createServer(async (request, response) => {
 
   const pathname = new URL(request.url || '/', 'http://localhost').pathname
   try {
-    if (request.method === 'GET' && pathname === '/health') {
-      const connected = await checkUpstream()
+    // GET 探测默认上游；POST 带 body.llm 时探测前端设置界面指定的上游。
+    if (pathname === '/health' && (request.method === 'GET' || request.method === 'POST')) {
+      const llm = resolveLlm(request.method === 'POST' ? (await readBody(request)).llm : undefined)
+      const connected = await checkUpstream(llm)
       json(response, 200, {
         ok: true,
         connected,
         mode: connected ? 'remote' : 'offline',
-        model,
+        model: llm.model,
         frameworkVersion: 'multi-lab-v2.1',
       }, origin)
       return
@@ -438,6 +460,7 @@ const server = http.createServer(async (request, response) => {
 
 server.listen(port, '127.0.0.1', () => {
   console.log(`os-lab tutor proxy: http://127.0.0.1:${port}`)
-  console.log(`framework: multi-lab-v2.1 · upstream: ${upstream} · model: ${model}`)
+  console.log(`framework: multi-lab-v2.1 · 默认上游: ${defaultUpstream} · 默认模型: ${defaultModel}`)
+  console.log('模型接入配置在工作台右上角「模型设置」中填写（按请求生效）')
   console.log(`events: ${dataDir}`)
 })

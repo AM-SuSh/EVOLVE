@@ -1,3 +1,9 @@
+import { parse as parseYaml } from 'yaml'
+// @ts-expect-error 评分唯一实现（前端与 tutor-server 共用，避免两处漂移）
+import { scoreLearningEvents } from '../../../learning/rubric.mjs'
+// 护栏规则单一事实源：与 tutor-server 读同一份 YAML
+import guardrailSource from '../../../tutor/prompts/guardrails.yaml?raw'
+
 export type TutorStageId = 'orient' | 'read' | 'run' | 'debug' | 'reflect'
 
 export type TutorLabId = 'lab1' | 'lab2' | 'lab3' | 'lab4' | 'lab5' | 'lab6' | 'lab7' | 'lab8'
@@ -484,6 +490,49 @@ export function tutorPromptsFor(lab: TutorLab, stage: TutorStageId): TutorPrompt
 }
 
 const STORAGE_KEY = 'os-lab-tutor-events-v3'
+const LLM_CONFIG_KEY = 'os-lab-llm-config-v1'
+
+/**
+ * 模型接入配置在前端填写、存浏览器本地，随每次请求发给 tutor-server。
+ * 空字段表示使用服务端默认（本机 Ollama qwen2.5:7b）。
+ */
+export interface LlmConfig {
+  baseUrl: string
+  model: string
+  apiKey: string
+}
+
+export const emptyLlmConfig: LlmConfig = { baseUrl: '', model: '', apiKey: '' }
+
+export function loadLlmConfig(): LlmConfig {
+  if (typeof localStorage === 'undefined') return { ...emptyLlmConfig }
+  try {
+    const value = JSON.parse(localStorage.getItem(LLM_CONFIG_KEY) || '{}')
+    return {
+      baseUrl: typeof value?.baseUrl === 'string' ? value.baseUrl : '',
+      model: typeof value?.model === 'string' ? value.model : '',
+      apiKey: typeof value?.apiKey === 'string' ? value.apiKey : '',
+    }
+  } catch {
+    return { ...emptyLlmConfig }
+  }
+}
+
+export function saveLlmConfig(config: LlmConfig) {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(
+    LLM_CONFIG_KEY,
+    JSON.stringify({
+      baseUrl: config.baseUrl.trim(),
+      model: config.model.trim(),
+      apiKey: config.apiKey.trim(),
+    }),
+  )
+}
+
+export function hasCustomLlmConfig(config: LlmConfig) {
+  return Boolean(config.baseUrl.trim() || config.model.trim() || config.apiKey.trim())
+}
 
 export function createId(prefix: string) {
   const random =
@@ -531,91 +580,32 @@ export function appendEvent(
   return { event, next }
 }
 
+/** 评分唯一实现在 `learning/rubric.mjs`，此处仅转发，权重与算法不再在前端重复。 */
 export function scoreEvents(events: LearningEvent[]): TutorScore {
-  const studentMessages = events.filter((event) => event.type === 'student_message')
-  const guardrails = events.filter((event) => event.type === 'guardrail_triggered').length
-  const verificationEvents = events.filter((event) => event.type === 'verification_attempt')
-  const reflectionEvents = events.filter((event) => event.type === 'reflection_submitted')
-  const stages = new Set(
-    events.filter((event) => event.type === 'stage_enter').map((event) => event.stage),
-  )
-  const evidenceLedMessages = studentMessages.filter((event) =>
-    /(我认为|我猜|我观察|我尝试|我验证|我的假设|输出|代码路径)/.test(event.content || ''),
-  ).length
-  const thinking = studentMessages.length
-    ? clamp(
-        (stages.has('orient') ? 20 : 0) +
-          (stages.has('read') ? 20 : 0) +
-          (studentMessages[0].category !== 'direct_answer' ? 25 : 0) +
-          evidenceLedMessages * 18,
-      )
-    : 0
-  const qualityWeights: Record<QuestionCategory, number> = {
-    concept: 0.8,
-    phenomenon: 0.75,
-    cause: 1,
-    comparison: 1,
-    exploration: 1,
-    direct_answer: 0,
-  }
-  const qualityTotal = studentMessages.reduce(
-    (total, event) => total + qualityWeights[event.category || 'concept'],
-    0,
-  )
-  const questionQuality = studentMessages.length
-    ? clamp(Math.round((qualityTotal / studentMessages.length) * 100))
-    : 0
-  const distinctStagesWithQuestions = new Set(studentMessages.map((event) => event.stage)).size
-  const depth = studentMessages.length
-    ? clamp(20 + Math.max(0, studentMessages.length - 1) * 22 + distinctStagesWithQuestions * 10)
-    : 0
-  const passedVerifications = verificationEvents.filter(
-    (event) => event.metadata?.passed === true,
-  ).length
-  const verification = clamp(verificationEvents.length * 42 + passedVerifications * 16)
-  const reflectionText = reflectionEvents.map((event) => event.content || '').join('\n')
-  const reflectionSignals = [
-    /(独立|自己|我的判断|我理解)/.test(reflectionText),
-    /(AI|导师|提醒|帮助)/i.test(reflectionText),
-    /(验证|QEMU|输出|测试|代码路径)/i.test(reflectionText),
-  ].filter(Boolean).length
-  const reflection = reflectionEvents.length ? clamp(25 + reflectionSignals * 25) : 0
-  const result = passedVerifications > 0 ? 100 : verificationEvents.length > 0 ? 35 : 0
-  const guardrailPenalty = Math.min(25, guardrails * 5)
-  const process = clamp(
-    Math.round(thinking * 0.25 + questionQuality * 0.25 + depth * 0.2 + verification * 0.3 - guardrailPenalty),
-  )
-  const total = clamp(Math.round(process * 0.45 + result * 0.35 + reflection * 0.2))
+  return scoreLearningEvents(events) as TutorScore
+}
 
-  const summary =
-    !studentMessages.length
-      ? '先写下一条自己的判断，评分才会开始形成。'
-      : !verificationEvents.length
-        ? '已有提问记录；补一次 QEMU 验证，把回答变成可检验证据。'
-        : !reflectionEvents.length
-          ? '验证已经记录；完成三句话复盘即可闭合学习证据链。'
-          : guardrails > 0
-            ? '证据链已形成；减少索要完整答案，过程分会更准确。'
-            : total >= 80
-              ? '判断、验证和复盘已经形成完整证据链。'
-              : '闭环已完成；继续用更具体的现象和假设提高追问质量。'
+export interface GuardrailRule {
+  id: string
+  event?: string
+  patterns?: Array<string | number>
+  response?: string
+}
 
-  return {
-    total,
-    process,
-    result,
-    thinking,
-    questionQuality,
-    depth,
-    verification,
-    reflection,
-    guardrailPenalty,
-    summary,
-  }
+export const guardrailRules: GuardrailRule[] = parseYaml(guardrailSource)?.rules || []
+
+/** 与 tutor-server 同源同规则的护栏判定：小写化 + 去空白后做子串匹配。 */
+export function matchGuardrailRule(text: string): GuardrailRule | undefined {
+  const normalized = text.toLowerCase().replace(/\s+/g, '')
+  return guardrailRules.find((rule) =>
+    rule.patterns?.some((pattern) =>
+      normalized.includes(String(pattern).toLowerCase().replace(/\s+/g, '')),
+    ),
+  )
 }
 
 export function isDirectAnswerRequest(text: string) {
-  return /(完整代码|直接.*答案|帮我写完|全部实现|可复制.*代码|不要解释.*代码|直接给.*patch|替我改完|把.*代码.*给我)/i.test(text)
+  return matchGuardrailRule(text)?.id === 'direct-answer'
 }
 
 export function inferCategory(text: string): QuestionCategory {
@@ -653,8 +643,4 @@ export function offlineTutorReply(
     reflect: `用三句话收束 ${lab.label}：你能独立解释什么？AI 提醒了哪个关键点？你用哪条运行结果或代码路径验证了它？`,
   }
   return stageReplies[stage]
-}
-
-function clamp(value: number, min = 0, max = 100) {
-  return Math.max(min, Math.min(max, value))
 }

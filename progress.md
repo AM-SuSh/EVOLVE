@@ -57,6 +57,34 @@
 
 > AI 工具使用声明、成果归属与交互记录见 [项目总报告.md §8](项目总报告.md#8-开发时使用-ai-工具的成果) 与 `os-lab/docs/ai-collaboration.md`。
 
+## 2026-07-26 - Task: 合并后一致性收口、构建死锁修复与 AI 配置前端化
+
+### What was done
+
+- 核查双向合并（GitHub 侧 Lab1-5 重写 + Lab6-8 全套 / 本地侧学习工作台）：确认无内容丢失——旧 Lab1-5 习题已并入各实验文档「任务二」与 answers/，本地工作台改动全部保留。
+- 修复 `kernel/build.rs` 嵌套 cargo 死锁：用户程序改为一次性构建到独立 `target/user-apps` 目录（外层 cargo 持有 `target/` 目录锁，嵌套共用必死锁；干净环境首次 check/run lab6-8 必现）。同时消除「ELF 已存在即跳过」导致的用户程序改动不重编问题。
+- 评分单源化：删除 `tutor-model.ts` 中与 `learning/rubric.mjs` 重复的评分实现，前端改为直接 import 后者；删除无引用的 `tutor/prompts/rubric-weights.json`。
+- 护栏单源化：前端离线判定改为与 tutor-server 共读 `tutor/prompts/guardrails.yaml`（原客户端独有正则已折算为 YAML 模式补入）。
+- 契约同步：`tutor/schema/interaction-event.json` 的 labId 扩到 lab1-8；tutor-server 报错文案同步。
+- 学习事件落盘目录从 `os.tmpdir()` 改为仓库内 `os-lab/learning/sessions/`（gitignore）。
+- AI 模型接入配置前端化：工作台顶栏新增「模型设置」（接口地址 / 模型名 / API Key，存浏览器 localStorage），随每次 `/chat`、`/health` 请求下发；tutor-server 增加 `resolveLlm` 按请求覆盖上游，不再引入后端配置文件。
+- 修复手册占位与导航：`guide/start.md`、`index.md`、`guide/verify.md`、`guide/progress.md` 全部更新到 Lab1-8（原 Lab6-8 显示「占位/待补充」）；顶栏导航精简为 5 项、引导式学习设为主入口，首页与 start 页统一引导学生进入工作台。
+- 仓库卫生：参考练习证据 `.out/.err` 移入 `artifacts/`（本文引用路径已同步），删除约 20 个临时日志（`_fetch*`、`_tmp-*`、`lab6-*.log` 等），`.gitignore` 增加防复发规则。
+
+### Testing
+
+- build.rs：`rm -rf target/user-apps` 后 `cargo check -p kernel --features lab8 --release` 冷路径 6.58s 通过；lab6 亦通过。
+- QEMU 回归：lab6/lab7/lab8 三档全链 pass，输出留档 `artifacts/lab6…`（见 lab7/lab8 `artifacts/lab7-qemu-20260726.out`、`artifacts/lab8-qemu-20260726.out`）；lab8 以 `All threads exited.` 正常收尾。
+- handbook：`npm run build` 通过（0 死链，同步 42 个 markdown）。
+- tutor-server 冒烟：`GET /health` 返回默认模型；`POST /health` 携带自定义 `llm` 时按其上游探测并回显模型名；`POST /chat` 命中护栏（含携带自定义 `llm` 时）直接整段返回、不请求上游；`/report` 对 lab6 事件按 rubric 正确评分。
+
+### Notes
+
+- 主要改动文件：`os-lab/kernel/build.rs`、`os-lab/handbook/tutor-server.mjs`、`.vitepress/theme/tutor-model.ts`、`components/LabWorkspace.vue`、`.vitepress/config.mts`、`tutor/prompts/guardrails.yaml`、`tutor/schema/interaction-event.json`、`guide/{start,ai-tutor,verify,progress}.md`、`index.md`、`.gitignore`。
+- 模型配置只存学生本机浏览器；服务端环境变量仅保留运维项（端口 / 数据目录 / CORS），使用说明见 handbook「引导式学习 · 模型怎么配置」。
+- Lab 手册人工复核的位置、方法与注意事项另见仓库根 `Lab手册复核指南.md`。
+- 回滚方式：恢复上述文件并删除本条记录；`artifacts/` 中的三份 QEMU 留档可保留。
+
 ## 2026-07-26 - Task: AI 学习台双栏重构与阶段滚动修复
 
 ### What was done
@@ -615,7 +643,7 @@
 ### Testing
 
 - `CHAPTER=6` + `cargo clean` + `cargo run --features exercise` → `tg-rcore-tutorial-checker --ch 6 --exercise` → **33/33**。
-- 输出含 `Test link OK!`、`Test mass open/unlink OK!`、`ch6 Usertests passed!`（`os-lab/ch6-exercise-full.out`）。
+- 输出含 `Test link OK!`、`Test mass open/unlink OK!`、`ch6 Usertests passed!`（`artifacts/ch6-exercise-full.out`）。
 
 ### Notes
 
@@ -637,7 +665,7 @@
 
 ### Testing
 
-- ch3 exercise：`tg-rcore-tutorial-checker --ch 3 --exercise` → **7/7**（历史输出 `ch3-exercise.out`）。
+- ch3 exercise：`tg-rcore-tutorial-checker --ch 3 --exercise` → **7/7**（历史输出 `artifacts/ch3-exercise.out`）。
 - ch4 exercise：checker → **16/16**（`ch4-exercise.out`）。
 - ch5 exercise：`CHAPTER=5` + `cargo clean` + `cargo run --features exercise` → checker **17/17**。
 - ch6 exercise：`CHAPTER=6` + 重编 → checker **31/33**；`Test file0/fstat/spawn0` 等已通过；`Test link OK!`/`mass open/unlink` 未在超时内完成。
@@ -651,8 +679,8 @@
 - `reference/tg-rcore-tutorial/tg-rcore-tutorial-ch8/src/main.rs`：死锁检测 syscall 钩子。
 - `docs/reference-practice-report.md`：新增练习总结报告。
 - `os-lab/LICENSE`：新增 MIT 许可证。
-- `os-lab/ch6-exercise-full.out`、`os-lab/ch8-exercise-full.out`：本轮 QEMU 输出留档。
-- 回滚方式：`git checkout reference/tg-rcore-tutorial/tg-rcore-tutorial-ch6/src reference/tg-rcore-tutorial/tg-rcore-tutorial-ch8/src docs/reference-practice-report.md os-lab/LICENSE progress.md`；删除 `os-lab/ch6-exercise-full.out`、`os-lab/ch8-exercise-full.out`。
+- `artifacts/ch6-exercise-full.out`、`artifacts/ch8-exercise-full.out`：本轮 QEMU 输出留档。
+- 回滚方式：`git checkout reference/tg-rcore-tutorial/tg-rcore-tutorial-ch6/src reference/tg-rcore-tutorial/tg-rcore-tutorial-ch8/src docs/reference-practice-report.md os-lab/LICENSE progress.md`；删除 `artifacts/ch6-exercise-full.out`、`artifacts/ch8-exercise-full.out`。
 
 ## 2026-06-26 - Task: 成员 B Day7（B 域 clippy 修复 + 新人路径复验 + 终验回归）
 

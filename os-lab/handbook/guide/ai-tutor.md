@@ -22,8 +22,32 @@ description: 在实验手册旁边，用一位只提问不代写的 AI 导师学
 
 <CopyCommand command="npm run tutor" />
 
-默认连本机 `http://127.0.0.1:11434/v1`（Ollama）的 `qwen2.5:7b`，可用环境变量覆盖：
-
-<CopyCommand command="OS_LAB_LLM_BASE_URL=... OS_LAB_LLM_MODEL=... OS_LAB_LLM_API_KEY=... npm run tutor" />
-
 工作台顶部的连接状态按钮可以随时重新探测。
+
+## 模型怎么配置
+
+**在工作台界面上配置**：进入任意 Lab 工作台（如 [Lab1](/learn/lab1)），点击右上角的 **齿轮按钮（模型设置）**，填写三项：
+
+| 设置项 | 说明 |
+| --- | --- |
+| 接口地址 | OpenAI 兼容 base URL；本机 Ollama、vLLM 或云端 API 均可，如 `http://127.0.0.1:11434/v1` |
+| 模型名 | 如 `qwen2.5:7b`、`deepseek-chat` |
+| API Key | 云端 API 需要时填写；本机 Ollama 留空 |
+
+保存后立即重连生效。配置只保存在**本机浏览器**（localStorage），随每次提问发给本地导师服务转发，不会写入仓库；换设备需重新填写。全部留空 = 使用默认的本机 Ollama `qwen2.5:7b`。
+
+服务端只保留少量运维项，用环境变量控制（一般不需要动）：
+
+| 环境变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `OS_LAB_TUTOR_PORT` | `8787` | 导师服务监听端口 |
+| `OS_LAB_TUTOR_DATA_DIR` | `os-lab/learning/sessions/` | 学习事件 JSONL 落盘目录（已 gitignore） |
+| `OS_LAB_TUTOR_ORIGIN` | dev 端口 5173 | 允许的前端来源，逗号分隔 |
+
+前端连接哪个导师服务由 Vite 环境变量 `VITE_OS_LAB_TUTOR_ENDPOINT` 决定（默认 `http://127.0.0.1:8787`），改端口时在 `os-lab/handbook/.env.local` 中写：
+
+```text
+VITE_OS_LAB_TUTOR_ENDPOINT=http://127.0.0.1:8788
+```
+
+教学提示词全部在 `os-lab/tutor/prompts/` 下按文件管理：`system.md`（教学边界）、`labN/context.md`（各 Lab 上下文）、`stages/stage-*.md`（阶段策略）、`guardrails.yaml`（护栏规则，前后端共用同一份）。改完重启 `npm run tutor` 生效。

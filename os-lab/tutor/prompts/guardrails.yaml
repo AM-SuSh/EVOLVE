@@ -10,6 +10,11 @@ rules:
       - 可复制代码
       - 直接给 patch
       - 替我改完
+      - 替我写
+      - 把代码给我
+      - 代码发给我
+      - 告诉我答案
+      - 直接给出答案
     response: 我不能交付可直接提交的完整实现。先把问题缩小到一个机制、函数或可观察现象，并写出你已经确认的一条事实。
   - id: unverified-completion
     event: verification_required

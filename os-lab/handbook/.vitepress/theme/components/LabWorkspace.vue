@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useData, useRouter, withBase } from 'vitepress'
-import { BookOpen, Home, Moon, MessagesSquare, Sun } from 'lucide-vue-next'
+import { BookOpen, Home, Moon, MessagesSquare, Settings, Sun } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
 import TutorPane from './TutorPane.vue'
 import JourneyRail from './JourneyRail.vue'
@@ -11,12 +11,16 @@ import {
   createId,
   exportEventsAsJsonl,
   getTutorLab,
+  hasCustomLlmConfig,
   inferCategory,
   isDirectAnswerRequest,
   loadEvents,
+  loadLlmConfig,
   offlineTutorReply,
+  saveLlmConfig,
   tutorStages,
   type LearningEvent,
+  type LlmConfig,
   type TutorLabId,
   type TutorMessage,
   type TutorPrompt,
@@ -43,6 +47,11 @@ const modelName = ref('')
 const notice = ref('')
 const currentSection = ref({ h2: '', h3: '' })
 const mobileView = ref<'manual' | 'tutor'>('manual')
+
+/* 模型接入配置：前端填写、存浏览器本地，按请求发给 tutor-server。 */
+const llmConfig = ref<LlmConfig>(loadLlmConfig())
+const llmDraft = ref<LlmConfig>({ ...llmConfig.value })
+const showLlmSettings = ref(false)
 
 let noticeTimer = 0
 
@@ -139,7 +148,14 @@ function startSession() {
 async function checkConnection() {
   connection.value = 'checking'
   try {
-    const response = await fetch(`${endpoint}/health`)
+    // 有自定义模型配置时用 POST 探测该上游，否则 GET 探测服务端默认上游。
+    const response = hasCustomLlmConfig(llmConfig.value)
+      ? await fetch(`${endpoint}/health`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ llm: llmConfig.value }),
+        })
+      : await fetch(`${endpoint}/health`)
     if (!response.ok) throw new Error(`health ${response.status}`)
     const payload = (await response.json()) as { connected?: boolean; model?: string }
     connection.value = payload.connected ? 'remote' : 'offline'
@@ -148,6 +164,27 @@ async function checkConnection() {
     connection.value = 'offline'
     modelName.value = ''
   }
+}
+
+/* -- 模型设置 --------------------------------------------------------------- */
+
+function openLlmSettings() {
+  llmDraft.value = { ...llmConfig.value }
+  showLlmSettings.value = true
+}
+
+async function saveLlmSettings() {
+  llmConfig.value = { ...llmDraft.value }
+  saveLlmConfig(llmConfig.value)
+  showLlmSettings.value = false
+  toast('模型设置已保存，正在重新探测连接…')
+  await checkConnection()
+  toast(connection.value === 'remote' ? `已连接：${modelName.value}` : '未连上模型，导师将使用离线引导。')
+}
+
+async function resetLlmSettings() {
+  llmDraft.value = { baseUrl: '', model: '', apiKey: '' }
+  await saveLlmSettings()
 }
 
 /* -- 与导师服务通信 --------------------------------------------------------- */
@@ -164,6 +201,8 @@ function chatPayload(message: string) {
     labId: props.labId,
     stage: activeStage.value,
     message,
+    // 前端配置的模型接入随请求下发；全空时服务端使用默认上游。
+    ...(hasCustomLlmConfig(llmConfig.value) ? { llm: llmConfig.value } : {}),
     // 学生正在读哪一节 —— 导师据此说「你刚读到 sscratch 那节」。
     reading: currentSection.value,
     history: messages.value
@@ -477,6 +516,15 @@ onBeforeUnmount(() => {
         <button
           class="ws-topbar-icon"
           type="button"
+          aria-label="模型设置"
+          title="模型设置"
+          @click="openLlmSettings"
+        >
+          <Settings :size="16" aria-hidden="true" />
+        </button>
+        <button
+          class="ws-topbar-icon"
+          type="button"
           :aria-label="isDark ? '切换到浅色主题' : '切换到深色主题'"
           :title="isDark ? '切换到浅色主题' : '切换到深色主题'"
           @click="isDark = !isDark"
@@ -541,6 +589,59 @@ onBeforeUnmount(() => {
     </main>
 
     <p v-if="notice" class="ws-toast" role="status">{{ notice }}</p>
+
+    <div
+      v-if="showLlmSettings"
+      class="ws-modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="模型设置"
+      @click.self="showLlmSettings = false"
+    >
+      <div class="ws-modal">
+        <h2>模型设置</h2>
+        <p class="ws-modal-hint">
+          配置只保存在本机浏览器，随每次提问发给本地导师服务；全部留空表示使用默认的本机
+          Ollama（qwen2.5:7b）。换设备需要重新填写。
+        </p>
+        <label class="ws-modal-field">
+          <span>接口地址（OpenAI 兼容 base URL）</span>
+          <input
+            v-model="llmDraft.baseUrl"
+            type="url"
+            placeholder="http://127.0.0.1:11434/v1"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </label>
+        <label class="ws-modal-field">
+          <span>模型名</span>
+          <input
+            v-model="llmDraft.model"
+            type="text"
+            placeholder="qwen2.5:7b"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </label>
+        <label class="ws-modal-field">
+          <span>API Key（本机 Ollama 留空即可）</span>
+          <input v-model="llmDraft.apiKey" type="password" placeholder="sk-…" autocomplete="off" />
+        </label>
+        <div class="ws-modal-actions">
+          <button type="button" class="ws-modal-secondary" @click="resetLlmSettings">
+            恢复默认
+          </button>
+          <span class="ws-modal-spacer" aria-hidden="true"></span>
+          <button type="button" class="ws-modal-secondary" @click="showLlmSettings = false">
+            取消
+          </button>
+          <button type="button" class="ws-modal-primary" @click="saveLlmSettings">
+            保存并重连
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -660,6 +761,108 @@ onBeforeUnmount(() => {
 
 .ws-mobile-switch {
   display: none;
+}
+
+/* -- 模型设置弹窗 ---------------------------------------------------------- */
+.ws-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ws-z-toast);
+  display: grid;
+  place-items: center;
+  padding: var(--ws-space-4);
+  background: color-mix(in srgb, var(--ws-ink) 40%, transparent);
+}
+
+.ws-modal {
+  width: min(460px, 100%);
+  padding: var(--ws-space-5);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-lg, var(--ws-radius-md));
+  background: var(--ws-surface);
+  box-shadow: var(--ws-shadow-3);
+}
+
+.ws-modal h2 {
+  margin: 0 0 var(--ws-space-2);
+  font-size: var(--ws-text-lg, 1.1rem);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-modal-hint {
+  margin: 0 0 var(--ws-space-4);
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-sm);
+  line-height: var(--ws-leading-normal);
+}
+
+.ws-modal-field {
+  display: block;
+  margin-bottom: var(--ws-space-3);
+}
+
+.ws-modal-field span {
+  display: block;
+  margin-bottom: var(--ws-space-1);
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-medium);
+}
+
+.ws-modal-field input {
+  width: 100%;
+  min-height: var(--ws-control-md);
+  padding: var(--ws-space-1) var(--ws-space-3);
+  color: var(--ws-ink);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+  font: inherit;
+  font-size: var(--ws-text-sm);
+}
+
+.ws-modal-field input:focus {
+  border-color: var(--ws-accent);
+  outline: none;
+}
+
+.ws-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ws-space-2);
+  margin-top: var(--ws-space-4);
+}
+
+.ws-modal-spacer {
+  flex: 1;
+}
+
+.ws-modal-primary,
+.ws-modal-secondary {
+  min-height: var(--ws-control-md);
+  padding: var(--ws-space-1) var(--ws-space-3);
+  border-radius: var(--ws-radius-md);
+  font: inherit;
+  font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-medium);
+  cursor: pointer;
+}
+
+.ws-modal-primary {
+  color: var(--ws-accent-contrast);
+  border: 1px solid var(--ws-accent);
+  background: var(--ws-accent);
+}
+
+.ws-modal-secondary {
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  background: var(--ws-surface);
+}
+
+.ws-modal-secondary:hover {
+  color: var(--ws-accent);
+  border-color: var(--ws-accent);
 }
 
 /* -- 提示 ------------------------------------------------------------------ */
