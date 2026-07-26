@@ -1,0 +1,599 @@
+export type TutorStageId = 'orient' | 'read' | 'run' | 'debug' | 'reflect'
+
+export type TutorLabId = 'lab1' | 'lab2' | 'lab3' | 'lab4' | 'lab5'
+
+export type TutorRole = 'student' | 'assistant'
+
+export type QuestionCategory =
+  | 'concept'
+  | 'phenomenon'
+  | 'cause'
+  | 'comparison'
+  | 'exploration'
+  | 'direct_answer'
+
+export interface TutorStage {
+  id: TutorStageId
+  index: string
+  title: string
+  shortTitle: string
+  description: string
+  goal: string
+  evidence: string
+  checkpoint: string
+}
+
+export interface TutorPrompt {
+  id: string
+  stage: TutorStageId
+  category: Exclude<QuestionCategory, 'direct_answer'>
+  label: string
+  text: string
+}
+
+export interface StageResource {
+  paths: string[]
+  docs: Array<{ title: string; description: string; href: string }>
+}
+
+export interface TutorLab {
+  id: TutorLabId
+  label: string
+  title: string
+  shortTitle: string
+  systemLayer: string
+  buildOutcome: string
+  bridge: string
+  focus: string
+  documentRoute: string
+  initialQuestion: string
+  verificationCommand: string
+  resources: Record<TutorStageId, StageResource>
+}
+
+export interface TutorMessage {
+  id: string
+  role: TutorRole
+  content: string
+  timestamp: string
+  kind?: 'stage_intro' | 'conversation'
+  stage?: TutorStageId
+  category?: QuestionCategory
+  guardrail?: boolean
+}
+
+export interface LearningEvent {
+  version: 1
+  id: string
+  sessionId: string
+  labId: TutorLabId
+  timestamp: string
+  type:
+    | 'session_start'
+    | 'stage_enter'
+    | 'template_used'
+    | 'student_message'
+    | 'ai_response'
+    | 'guardrail_triggered'
+    | 'verification_attempt'
+    | 'reflection_submitted'
+    | 'manual_note'
+  stage: TutorStageId
+  category?: QuestionCategory
+  content?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface TutorScore {
+  total: number
+  process: number
+  result: number
+  thinking: number
+  questionQuality: number
+  depth: number
+  verification: number
+  reflection: number
+  guardrailPenalty: number
+  summary: string
+}
+
+export const categoryLabels: Record<QuestionCategory, string> = {
+  concept: '概念澄清',
+  phenomenon: '现象描述',
+  cause: '追因分析',
+  comparison: '对比迁移',
+  exploration: '实验验证',
+  direct_answer: '索要答案',
+}
+
+export const tutorStages: TutorStage[] = [
+  {
+    id: 'orient',
+    index: '00',
+    title: '建立问题边界',
+    shortTitle: '定界',
+    description: '先说出这个实验要解决的系统问题，以及你当前的判断。',
+    goal: '把“我不会写”改写成一个可讨论、可验证的问题。',
+    evidence: '一条自己的初始判断',
+    checkpoint: '我能说清实验目标、关键边界和自己的初始假设。',
+  },
+  {
+    id: 'read',
+    index: '01',
+    title: '阅读机制路径',
+    shortTitle: '阅读',
+    description: '沿实验的关键入口、核心数据结构和调用链阅读实现。',
+    goal: '区分机制边界，找到真正决定行为的代码路径。',
+    evidence: '能口述一条完整机制链',
+    checkpoint: '我能从入口追到核心实现，并说明每一层的职责。',
+  },
+  {
+    id: 'run',
+    index: '02',
+    title: '运行验证实验',
+    shortTitle: '验证',
+    description: '先预测关键输出，再运行当前 Lab，对照实际差异。',
+    goal: '把模型回答变成可以被 QEMU 输出检验的假设。',
+    evidence: 'QEMU 关键输出或失败片段',
+    checkpoint: '我记录了至少一次运行结果，而不是只相信导师解释。',
+  },
+  {
+    id: 'debug',
+    index: '03',
+    title: '解释异常现象',
+    shortTitle: '排错',
+    description: '用“现象、假设、最小实验”组织排错。',
+    goal: '让调试从猜 patch 变成构造证据链。',
+    evidence: '现象、假设、验证三件套',
+    checkpoint: '我能给出一个会证伪当前假设的最小实验。',
+  },
+  {
+    id: 'reflect',
+    index: '04',
+    title: '完成复盘报告',
+    shortTitle: '复盘',
+    description: '区分独立判断、AI 帮助与客观验证。',
+    goal: '形成答辩时可展示的学习过程证据。',
+    evidence: '三句话复盘与导出记录',
+    checkpoint: '我能说明 AI 帮了哪里，以及我自己验证了哪里。',
+  },
+]
+
+export const tutorLabs: TutorLab[] = [
+  {
+    id: 'lab1',
+    label: 'Lab1',
+    title: '裸机启动与 SBI',
+    shortTitle: 'Bare Metal',
+    systemLayer: '启动底座',
+    buildOutcome: '让内核从固件接管机器，完成启动、输出与关机。',
+    bridge: '从一台只有固件的 RISC-V 机器开始。',
+    focus: '理解从固件进入内核、链接脚本、入口汇编与 SBI 输出之间的启动链路。',
+    documentRoute: '/labs/lab1-bare-metal',
+    initialQuestion: '从机器上电到内核打印第一行文字，中间至少经过哪些环节？先写下你的判断，我们再沿入口和链接地址逐层验证。',
+    verificationCommand: 'cargo run -p kernel --features lab1 --release',
+    resources: {
+      orient: { paths: ['labs/lab1-bare-metal.md', 'kernel/src/entry.asm'], docs: [{ title: 'Lab1 实验指导', description: '建立裸机启动、SBI 与内核入口的整体认识', href: '/labs/lab1-bare-metal' }, { title: '实验知识地图', description: '查看五个 Lab 的递进关系', href: '/labs/overview' }] },
+      read: { paths: ['kernel/linker.ld', 'kernel/src/entry.asm', 'kernel/src/main.rs'], docs: [{ title: 'Lab1 启动链路', description: '沿链接地址、入口汇编与 Rust 主函数阅读', href: '/labs/lab1-bare-metal' }, { title: '系统架构', description: '理解工作区中各模块的职责边界', href: '/project/architecture' }] },
+      run: { paths: ['kernel/src/main.rs', 'kernel/src/console.rs'], docs: [{ title: '快速验证', description: '检查环境、启动 QEMU 并观察输出', href: '/guide/verify' }, { title: 'Lab1 文字习题', description: '检查对启动机制的理解', href: '/exercises/lab1-exercises' }] },
+      debug: { paths: ['kernel/linker.ld', 'kernel/src/entry.asm', 'kernel/src/console.rs'], docs: [{ title: 'Lab1 常见问题', description: '对照启动地址、栈和 SBI 输出排查异常', href: '/labs/lab1-bare-metal' }, { title: '验证方法', description: '用最小观察点缩小故障范围', href: '/guide/verify' }] },
+      reflect: { paths: ['project/ai-collaboration.md', 'answers/lab1-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理判断、提示与验证证据', href: '/project/ai-collaboration' }, { title: 'Lab1 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab1-answers' }] },
+    },
+  },
+  {
+    id: 'lab2',
+    label: 'Lab2',
+    title: 'Trap 与任务切换',
+    shortTitle: 'Trap & Task',
+    systemLayer: '执行与切换',
+    buildOutcome: '让用户程序进入内核、返回用户态，并在多个任务间协作切换。',
+    bridge: '复用 Lab1 的启动入口、内核栈和控制台，为用户态执行建立边界。',
+    focus: '理解用户态到内核态的 Trap 控制流、上下文保存恢复与协作式任务切换。',
+    documentRoute: '/labs/lab2-trap-and-task',
+    initialQuestion: '用户程序为什么不能直接调用内核里的普通函数？先写下你的理解，我会继续追问，并帮你把它落到代码路径和可验证实验上。',
+    verificationCommand: 'cargo run -p kernel --features lab2 --release',
+    resources: {
+      orient: { paths: ['labs/lab2-trap-and-task.md', 'kernel/src/trap.rs'], docs: [{ title: 'Lab2 实验指导', description: '理解 Trap、系统调用与任务切换的整体目标', href: '/labs/lab2-trap-and-task' }, { title: '实验知识地图', description: '查看五个 Lab 的递进关系', href: '/labs/overview' }] },
+      read: { paths: ['os-context/src/trap.asm', 'kernel/src/trap.rs', 'os-context/src/lib.rs'], docs: [{ title: 'Lab2 机制说明', description: '沿 ecall、TrapContext 和 sret 阅读控制流', href: '/labs/lab2-trap-and-task' }, { title: '系统架构', description: '理解 kernel 与 os-context 的职责边界', href: '/project/architecture' }] },
+      run: { paths: ['kernel/src/main.rs', 'user/src/bin/yield.rs'], docs: [{ title: '快速验证', description: '查看环境启动和 QEMU 验证方式', href: '/guide/verify' }, { title: 'Lab2 文字习题', description: '用问题检查机制理解是否完整', href: '/exercises/lab2-exercises' }] },
+      debug: { paths: ['kernel/src/trap.rs', 'kernel/src/task.rs', 'kernel/src/console.rs'], docs: [{ title: 'Lab2 常见现象', description: '回到实验正文对照异常与观察点', href: '/labs/lab2-trap-and-task' }, { title: '验证命令', description: '用最小实验区分 Trap 与调度问题', href: '/guide/verify' }] },
+      reflect: { paths: ['project/ai-collaboration.md', 'answers/lab2-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理独立判断、AI 帮助和验证证据', href: '/project/ai-collaboration' }, { title: 'Lab2 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab2-answers' }] },
+    },
+  },
+  {
+    id: 'lab3',
+    label: 'Lab3',
+    title: '内存与虚拟内存',
+    shortTitle: 'Memory',
+    systemLayer: '地址空间',
+    buildOutcome: '为任务建立隔离的虚拟地址空间，并让页表管理真实物理内存。',
+    bridge: '承接 Lab2 的 Trap 与任务上下文，为每个执行流补上受保护的地址空间。',
+    focus: '理解物理页分配、页表映射、地址转换与内核内存管理的边界。',
+    documentRoute: '/labs/lab3-memory',
+    initialQuestion: '虚拟地址为什么不能直接当作物理地址使用？先画出你理解中的地址转换链路，再用代码和运行结果检查它。',
+    verificationCommand: 'cargo run -p kernel --features lab3 --release',
+    resources: {
+      orient: { paths: ['labs/lab3-memory.md', 'kernel/src/mm.rs'], docs: [{ title: 'Lab3 实验指导', description: '建立物理内存、页表与地址空间的整体模型', href: '/labs/lab3-memory' }, { title: '实验知识地图', description: '查看内存机制与前后 Lab 的关系', href: '/labs/overview' }] },
+      read: { paths: ['kernel/src/mm.rs', 'kernel/src/config.rs', 'kernel/src/riscv.rs'], docs: [{ title: 'Lab3 机制说明', description: '沿页分配、映射与地址转换阅读代码', href: '/labs/lab3-memory' }, { title: '系统架构', description: '定位内存模块在内核中的职责', href: '/project/architecture' }] },
+      run: { paths: ['kernel/src/mm.rs', 'kernel/src/main.rs'], docs: [{ title: '快速验证', description: '运行内存测试并记录关键映射输出', href: '/guide/verify' }, { title: 'Lab3 文字习题', description: '检查对页表和地址转换的理解', href: '/exercises/lab3-exercises' }] },
+      debug: { paths: ['kernel/src/mm.rs', 'kernel/src/loader.rs', 'kernel/src/trap.rs'], docs: [{ title: 'Lab3 常见问题', description: '从映射权限、页号和生命周期定位异常', href: '/labs/lab3-memory' }, { title: '验证方法', description: '用最小映射实验验证假设', href: '/guide/verify' }] },
+      reflect: { paths: ['project/ai-collaboration.md', 'answers/lab3-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理地址转换的证据链', href: '/project/ai-collaboration' }, { title: 'Lab3 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab3-answers' }] },
+    },
+  },
+  {
+    id: 'lab4',
+    label: 'Lab4',
+    title: '进程管理',
+    shortTitle: 'Process',
+    systemLayer: '进程能力',
+    buildOutcome: '让程序能够 fork、exec、wait，形成可创建、替换和回收的进程生命周期。',
+    bridge: '复用 Lab3 的地址空间与 Lab2 的上下文切换，把任务提升为完整进程。',
+    focus: '理解进程创建、地址空间复制、调度状态与 fork/exec 生命周期。',
+    documentRoute: '/labs/lab4-process',
+    initialQuestion: '一个正在运行的程序与一个进程控制块有什么区别？先列出进程必须拥有的状态，再沿 fork 或 exec 验证。',
+    verificationCommand: 'cargo run -p kernel --features lab4 --release',
+    resources: {
+      orient: { paths: ['labs/lab4-process.md', 'kernel/src/process.rs'], docs: [{ title: 'Lab4 实验指导', description: '建立进程生命周期和调度状态模型', href: '/labs/lab4-process' }, { title: '实验知识地图', description: '查看进程与内存、文件系统的关系', href: '/labs/overview' }] },
+      read: { paths: ['kernel/src/process.rs', 'kernel/src/task.rs', 'kernel/src/loader.rs'], docs: [{ title: 'Lab4 机制说明', description: '沿创建、装载、切换和回收阅读实现', href: '/labs/lab4-process' }, { title: '系统架构', description: '理解进程模块与其他子系统的边界', href: '/project/architecture' }] },
+      run: { paths: ['user/src/bin/fork_test.rs', 'user/src/bin/exec_test.rs'], docs: [{ title: '快速验证', description: '运行 fork/exec 测试并记录进程行为', href: '/guide/verify' }, { title: 'Lab4 文字习题', description: '检查对生命周期和资源继承的理解', href: '/exercises/lab4-exercises' }] },
+      debug: { paths: ['kernel/src/process.rs', 'kernel/src/task.rs', 'kernel/src/trap.rs'], docs: [{ title: 'Lab4 常见问题', description: '从状态转换、上下文和资源回收定位异常', href: '/labs/lab4-process' }, { title: '验证方法', description: '用最小进程测试区分故障环节', href: '/guide/verify' }] },
+      reflect: { paths: ['project/ai-collaboration.md', 'answers/lab4-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理进程行为与代码证据', href: '/project/ai-collaboration' }, { title: 'Lab4 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab4-answers' }] },
+    },
+  },
+  {
+    id: 'lab5',
+    label: 'Lab5',
+    title: '文件系统与并发',
+    shortTitle: 'FS & Sync',
+    systemLayer: '文件与并发',
+    buildOutcome: '让进程通过文件和管道交换数据，并用同步机制保护共享状态。',
+    bridge: '承接 Lab4 的进程与资源生命周期，补齐持久数据、进程通信和并发安全。',
+    focus: '理解文件抽象、管道、共享状态与同步原语如何保证并发访问的一致性。',
+    documentRoute: '/labs/lab5-fs-and-sync',
+    initialQuestion: '两个执行流同时访问同一份内核状态时，错误最可能出现在哪里？先描述一个竞态场景，再寻找可观察证据。',
+    verificationCommand: 'cargo run -p kernel --features lab5 --release',
+    resources: {
+      orient: { paths: ['labs/lab5-fs-and-sync.md', 'kernel/src/fs.rs'], docs: [{ title: 'Lab5 实验指导', description: '建立文件、管道和同步机制的整体认识', href: '/labs/lab5-fs-and-sync' }, { title: '实验知识地图', description: '查看完整实验能力链', href: '/labs/overview' }] },
+      read: { paths: ['kernel/src/fs.rs', 'kernel/src/sync.rs', 'kernel/src/cell.rs'], docs: [{ title: 'Lab5 机制说明', description: '沿文件操作、共享状态和同步路径阅读', href: '/labs/lab5-fs-and-sync' }, { title: '系统架构', description: '理解文件系统与进程模块的接口', href: '/project/architecture' }] },
+      run: { paths: ['user/src/bin/fs_test.rs', 'user/src/bin/pipe_test.rs'], docs: [{ title: '快速验证', description: '运行文件与管道测试并记录并发行为', href: '/guide/verify' }, { title: 'Lab5 文字习题', description: '检查对一致性和同步的理解', href: '/exercises/lab5-exercises' }] },
+      debug: { paths: ['kernel/src/fs.rs', 'kernel/src/sync.rs', 'kernel/src/process.rs'], docs: [{ title: 'Lab5 常见问题', description: '从共享状态、锁和资源生命周期定位异常', href: '/labs/lab5-fs-and-sync' }, { title: '验证方法', description: '用重复运行和最小并发场景检验假设', href: '/guide/verify' }] },
+      reflect: { paths: ['project/ai-collaboration.md', 'answers/lab5-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理并发问题的证据链', href: '/project/ai-collaboration' }, { title: 'Lab5 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab5-answers' }] },
+    },
+  },
+]
+
+export const tutorLabIds = new Set<TutorLabId>(tutorLabs.map((lab) => lab.id))
+
+export function getTutorLab(labId: TutorLabId) {
+  return tutorLabs.find((lab) => lab.id === labId) || tutorLabs[0]
+}
+
+/* --------------------------------------------------------------------------
+   阶段 ↔ 手册章节
+   五个 Lab 正文的 H2 结构完全一致（零、开始之前 / 一、问题场景 / 二、背景知识 /
+   三、实验任务 / 四、验证 / 五、AI 提问模板 / 六、思考题与参考答案），
+   因此映射用序号前缀即可，不需要逐 Lab 配置。按前缀而非全称匹配，
+   是为了容忍正文标题措辞的小改动。
+   -------------------------------------------------------------------------- */
+
+export interface ManualSectionTarget {
+  prefix: string
+  label: string
+}
+
+export const stageManualSection: Record<TutorStageId, ManualSectionTarget> = {
+  orient: { prefix: '一、', label: '问题场景' },
+  read: { prefix: '二、', label: '背景知识' },
+  run: { prefix: '三、', label: '实验任务' },
+  debug: { prefix: '四、', label: '验证' },
+  reflect: { prefix: '六、', label: '思考题与参考答案' },
+}
+
+/** 「五、AI 提问模板」的内容已经是导师栏的快捷提问按钮，手册里默认折叠。 */
+export const collapsedSectionPrefix = '五、'
+
+/** 取标题的序号前缀，如「二、背景知识」→「二、」；无序号返回空串。 */
+export function sectionPrefixOf(title: string): string {
+  return /^([零一二三四五六七八九十]+、)/.exec(title.trim())?.[1] || ''
+}
+
+/** 哪些阶段需要在手册底部就地收集证据。 */
+export function evidenceKindFor(stage: TutorStageId): 'verification' | 'reflection' | null {
+  if (stage === 'run' || stage === 'debug') return 'verification'
+  if (stage === 'reflect') return 'reflection'
+  return null
+}
+
+/* --------------------------------------------------------------------------
+   系统构建路径：逐层解锁的成长档案
+   -------------------------------------------------------------------------- */
+
+export interface LabJourneyItem {
+  lab: TutorLab
+  index: number
+  started: boolean
+  passedVerification: boolean
+  reflected: boolean
+  evidenceCount: number
+  sessions: number
+  unlocked: boolean
+  completed: boolean
+  current: boolean
+  status: string
+  /** 未解锁时给学生看的常驻文字说明，替代旧版一闪而过的 toast。 */
+  lockReason: string
+}
+
+export function buildLabJourney(
+  events: LearningEvent[],
+  activeLabId?: TutorLabId,
+): LabJourneyItem[] {
+  const stats = tutorLabs.map((lab) => {
+    const labEvents = events.filter((event) => event.labId === lab.id)
+    return {
+      lab,
+      started: labEvents.some((event) => event.type === 'session_start'),
+      passedVerification: labEvents.some(
+        (event) => event.type === 'verification_attempt' && event.metadata?.passed === true,
+      ),
+      reflected: labEvents.some((event) => event.type === 'reflection_submitted'),
+      sessions: new Set(labEvents.map((event) => event.sessionId)).size,
+      evidenceCount: labEvents.filter((event) =>
+        ['student_message', 'verification_attempt', 'reflection_submitted'].includes(event.type),
+      ).length,
+    }
+  })
+
+  let previousCompleted = true
+  return stats.map((item, index) => {
+    const unlocked = index === 0 || previousCompleted
+    const completed = unlocked && item.passedVerification && item.reflected
+    previousCompleted = completed
+    const previousLab = tutorLabs[index - 1]
+    return {
+      ...item,
+      index,
+      unlocked,
+      completed,
+      current: item.lab.id === activeLabId,
+      status: completed
+        ? '已构建'
+        : item.started && unlocked
+          ? '学习中'
+          : unlocked
+            ? '可开始'
+            : item.started
+              ? '有记录 · 待解锁'
+              : '待解锁',
+      lockReason: unlocked
+        ? ''
+        : `完成 ${previousLab.label} 的一次通过验证和一次学习复盘后解锁`,
+    }
+  })
+}
+
+/** 下一个该进入的 Lab：优先未完成的在学层，其次第一个可开始的层。 */
+export function recommendedLabId(events: LearningEvent[]): TutorLabId {
+  const journey = buildLabJourney(events)
+  const inProgress = journey.find((item) => item.started && item.unlocked && !item.completed)
+  if (inProgress) return inProgress.lab.id
+  return journey.find((item) => item.unlocked && !item.completed)?.lab.id
+    || tutorLabs[tutorLabs.length - 1].id
+}
+
+/** 学习记录导出为 JSONL。scope=growth 导全部 Lab，scope=session 只导当前会话。 */
+export function exportEventsAsJsonl(events: LearningEvent[], filename: string) {
+  const body = events.map((event) => JSON.stringify(event)).join('\n')
+  const url = URL.createObjectURL(new Blob([body], { type: 'application/jsonl;charset=utf-8' }))
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+export function tutorPromptsFor(lab: TutorLab, stage: TutorStageId): TutorPrompt[] {
+  const prompts: Record<TutorStageId, Array<Omit<TutorPrompt, 'id' | 'stage'>>> = {
+    orient: [
+      { category: 'concept', label: '先说我的判断', text: `关于${lab.title}，我当前的判断是：……。请先追问我判断依据，不要直接给结论。` },
+      { category: 'comparison', label: '划清机制边界', text: `请引导我区分“${lab.focus}”中由不同模块负责的部分，并让我先说出边界。` },
+    ],
+    read: [
+      { category: 'concept', label: '追踪代码路径', text: `请从一个入口开始追问我，让我沿代码路径解释 ${lab.title} 的核心机制；不要直接替我总结。` },
+      { category: 'cause', label: '检查关键假设', text: '请让我先提出一个可能错误的实现，再用数据结构、控制流和可观察后果检查它。' },
+    ],
+    run: [
+      { category: 'exploration', label: '设计最小实验', text: `我想用 ${lab.verificationCommand} 验证当前判断。请只给观察点、预期差异和恢复方法。` },
+      { category: 'phenomenon', label: '对照运行结果', text: '请先让我写出预期输出，再引导我用实际输出中的差异定位需要继续阅读的代码。' },
+    ],
+    debug: [
+      { category: 'phenomenon', label: '整理失败现象', text: `我在 ${lab.label} 遇到了异常。请按“精确现象、当前假设、最小验证”三步追问我。` },
+      { category: 'cause', label: '寻找根因证据', text: '请不要猜修复方案，先引导我找到能证伪当前假设的一个日志、状态或代码路径。' },
+    ],
+    reflect: [
+      { category: 'exploration', label: '整理答辩证据', text: '请追问我三个问题，帮我分别写清独立判断、AI 提醒和实际验证证据。' },
+      { category: 'comparison', label: '复盘前后变化', text: `请引导我比较学习 ${lab.label} 前后的理解变化，并指出还缺少哪条可验证证据。` },
+    ],
+  }
+  return prompts[stage].map((prompt, index) => ({
+    ...prompt,
+    id: `${lab.id}-${stage}-${index}`,
+    stage,
+  }))
+}
+
+const STORAGE_KEY = 'os-lab-tutor-events-v3'
+
+export function createId(prefix: string) {
+  const random =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2)
+  return `${prefix}-${random}`
+}
+
+export function loadEvents(): LearningEvent[] {
+  if (typeof localStorage === 'undefined') return []
+  try {
+    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+    return Array.isArray(value)
+      ? value.filter(
+          (event) =>
+            event?.version === 1 &&
+            tutorLabIds.has(event?.labId) &&
+            typeof event?.sessionId === 'string' &&
+            typeof event?.timestamp === 'string',
+        )
+      : []
+  } catch {
+    return []
+  }
+}
+
+export function saveEvents(events: LearningEvent[]) {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(events))
+}
+
+export function appendEvent(
+  events: LearningEvent[],
+  input: Omit<LearningEvent, 'version' | 'id' | 'timestamp'>,
+) {
+  const event: LearningEvent = {
+    version: 1,
+    id: createId('event'),
+    timestamp: new Date().toISOString(),
+    ...input,
+  }
+  const next = [...events, event]
+  saveEvents(next)
+  return { event, next }
+}
+
+export function scoreEvents(events: LearningEvent[]): TutorScore {
+  const studentMessages = events.filter((event) => event.type === 'student_message')
+  const guardrails = events.filter((event) => event.type === 'guardrail_triggered').length
+  const verificationEvents = events.filter((event) => event.type === 'verification_attempt')
+  const reflectionEvents = events.filter((event) => event.type === 'reflection_submitted')
+  const stages = new Set(
+    events.filter((event) => event.type === 'stage_enter').map((event) => event.stage),
+  )
+  const evidenceLedMessages = studentMessages.filter((event) =>
+    /(我认为|我猜|我观察|我尝试|我验证|我的假设|输出|代码路径)/.test(event.content || ''),
+  ).length
+  const thinking = studentMessages.length
+    ? clamp(
+        (stages.has('orient') ? 20 : 0) +
+          (stages.has('read') ? 20 : 0) +
+          (studentMessages[0].category !== 'direct_answer' ? 25 : 0) +
+          evidenceLedMessages * 18,
+      )
+    : 0
+  const qualityWeights: Record<QuestionCategory, number> = {
+    concept: 0.8,
+    phenomenon: 0.75,
+    cause: 1,
+    comparison: 1,
+    exploration: 1,
+    direct_answer: 0,
+  }
+  const qualityTotal = studentMessages.reduce(
+    (total, event) => total + qualityWeights[event.category || 'concept'],
+    0,
+  )
+  const questionQuality = studentMessages.length
+    ? clamp(Math.round((qualityTotal / studentMessages.length) * 100))
+    : 0
+  const distinctStagesWithQuestions = new Set(studentMessages.map((event) => event.stage)).size
+  const depth = studentMessages.length
+    ? clamp(20 + Math.max(0, studentMessages.length - 1) * 22 + distinctStagesWithQuestions * 10)
+    : 0
+  const passedVerifications = verificationEvents.filter(
+    (event) => event.metadata?.passed === true,
+  ).length
+  const verification = clamp(verificationEvents.length * 42 + passedVerifications * 16)
+  const reflectionText = reflectionEvents.map((event) => event.content || '').join('\n')
+  const reflectionSignals = [
+    /(独立|自己|我的判断|我理解)/.test(reflectionText),
+    /(AI|导师|提醒|帮助)/i.test(reflectionText),
+    /(验证|QEMU|输出|测试|代码路径)/i.test(reflectionText),
+  ].filter(Boolean).length
+  const reflection = reflectionEvents.length ? clamp(25 + reflectionSignals * 25) : 0
+  const result = passedVerifications > 0 ? 100 : verificationEvents.length > 0 ? 35 : 0
+  const guardrailPenalty = Math.min(25, guardrails * 5)
+  const process = clamp(
+    Math.round(thinking * 0.25 + questionQuality * 0.25 + depth * 0.2 + verification * 0.3 - guardrailPenalty),
+  )
+  const total = clamp(Math.round(process * 0.45 + result * 0.35 + reflection * 0.2))
+
+  const summary =
+    !studentMessages.length
+      ? '先写下一条自己的判断，评分才会开始形成。'
+      : !verificationEvents.length
+        ? '已有提问记录；补一次 QEMU 验证，把回答变成可检验证据。'
+        : !reflectionEvents.length
+          ? '验证已经记录；完成三句话复盘即可闭合学习证据链。'
+          : guardrails > 0
+            ? '证据链已形成；减少索要完整答案，过程分会更准确。'
+            : total >= 80
+              ? '判断、验证和复盘已经形成完整证据链。'
+              : '闭环已完成；继续用更具体的现象和假设提高追问质量。'
+
+  return {
+    total,
+    process,
+    result,
+    thinking,
+    questionQuality,
+    depth,
+    verification,
+    reflection,
+    guardrailPenalty,
+    summary,
+  }
+}
+
+export function isDirectAnswerRequest(text: string) {
+  return /(完整代码|直接.*答案|帮我写完|全部实现|可复制.*代码|不要解释.*代码|直接给.*patch|替我改完|把.*代码.*给我)/i.test(text)
+}
+
+export function inferCategory(text: string): QuestionCategory {
+  if (isDirectAnswerRequest(text)) return 'direct_answer'
+  if (/(区别|对比|相比|迁移|类似)/.test(text)) return 'comparison'
+  if (/(现象|乱码|报错|失败|崩溃|panic|卡住|输出)/i.test(text)) return 'phenomenon'
+  if (/(为什么|原因|必须|导致|根因|怎么会)/.test(text)) return 'cause'
+  if (/(实验|验证|尝试|观察|运行|QEMU|cargo)/i.test(text)) return 'exploration'
+  return 'concept'
+}
+
+export function offlineTutorReply(
+  text: string,
+  stage: TutorStageId,
+  guarded: boolean,
+  lab: TutorLab,
+) {
+  if (guarded) {
+    return `我不能交付可直接粘贴的完整实现。先把 ${lab.label} 的任务缩小到一个机制或函数，并写出你已经确认的一条事实；我会继续用代码路径和验证问题引导你。`
+  }
+
+  if (lab.id === 'lab2' && /(sepc|ecall)/i.test(text)) {
+    return '沿控制流想：trap 发生后 sepc 指向哪条指令？如果 sret 回到同一地址，CPU 下一步又会做什么？先回答这两个问题，再定位 advance_sepc 的调用位置。'
+  }
+
+  if (lab.id === 'lab2' && /(sscratch|csrrw|栈|sp)/i.test(text)) {
+    return '设想不用 sscratch：trap 刚发生时 sp 仍属于谁？在保存任何通用寄存器前，你还能借用哪个寄存器而不破坏用户现场？先用这两个问题检查栈交换的必要性。'
+  }
+
+  const stageReplies: Record<TutorStageId, string> = {
+    orient: `先不急着看实现。围绕“${lab.focus}”，写下你认为最关键的一个系统边界，以及这个判断的依据。`,
+    read: `从右侧建议路径任选一个入口，沿调用或数据流追到核心实现。每经过一层，分别写下输入、状态变化和输出。`,
+    run: `先写下你预测的三个关键输出，再运行 ${lab.verificationCommand}。完成后只贴与预测不同的部分，我们用差异定位环节。`,
+    debug: '把排错拆成证据链：精确现象、当前假设、能证伪它的最小实验。先补齐这三项，我再给下一层提示。',
+    reflect: `用三句话收束 ${lab.label}：你能独立解释什么？AI 提醒了哪个关键点？你用哪条运行结果或代码路径验证了它？`,
+  }
+  return stageReplies[stage]
+}
+
+function clamp(value: number, min = 0, max = 100) {
+  return Math.max(min, Math.min(max, value))
+}

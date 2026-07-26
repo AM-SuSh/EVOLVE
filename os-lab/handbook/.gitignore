@@ -2,7 +2,11 @@ node_modules/
 .vitepress/dist/
 .vitepress/cache/
 labs/
+learn/
 exercises/
 answers/
 project/
 setup/
+public/downloads/
+.tutor-server.*.log
+.vitepress-dev.*.log

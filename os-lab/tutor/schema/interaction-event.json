@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://os-lab.local/schema/interaction-event-v1.json",
+  "title": "os-lab learning interaction event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "id", "sessionId", "labId", "timestamp", "type", "stage"],
+  "properties": {
+    "version": { "const": 1 },
+    "id": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "sessionId": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "labId": { "enum": ["lab1", "lab2", "lab3", "lab4", "lab5"] },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "type": {
+      "enum": [
+        "session_start",
+        "stage_enter",
+        "template_used",
+        "student_message",
+        "ai_response",
+        "guardrail_triggered",
+        "verification_attempt",
+        "reflection_submitted",
+        "manual_note"
+      ]
+    },
+    "stage": { "enum": ["orient", "read", "run", "debug", "reflect"] },
+    "category": {
+      "enum": ["concept", "phenomenon", "cause", "comparison", "exploration", "direct_answer"]
+    },
+    "content": { "type": "string", "maxLength": 8000 },
+    "metadata": { "type": "object" }
+  }
+}

@@ -1,0 +1,227 @@
+/* ============================================================================
+   普通文档页样式：首页、Lab 正文、习题、答案、学习进度。
+   工作台样式不在这里，见 workspace.css 与各 SFC 的 <style scoped>。
+   ============================================================================ */
+
+.VPHome .VPHero .name {
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+/* -- mermaid ---------------------------------------------------------------
+   正文里的知识地图与控制流图。旧版没装插件，这些图曾以源码形式暴露给学生。 */
+.vp-doc .mermaid {
+  display: flex;
+  justify-content: center;
+  margin: var(--ws-space-6) 0;
+  padding: var(--ws-space-4);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-soft);
+  overflow-x: auto;
+}
+
+.vp-doc .mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* -- CopyCommand ----------------------------------------------------------- */
+.copy-command {
+  position: relative;
+  margin: var(--ws-space-4) 0;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-soft);
+  overflow: hidden;
+}
+
+.copy-command pre {
+  margin: 0;
+  padding: var(--ws-space-3) var(--ws-space-4);
+  overflow-x: auto;
+  font-size: var(--ws-text-sm);
+  line-height: var(--ws-leading-normal);
+}
+
+.copy-command .copy-btn,
+.progress-actions button {
+  min-height: var(--ws-control-sm);
+  padding: var(--ws-space-1) var(--ws-space-3);
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-surface);
+  font-size: var(--ws-text-xs);
+  cursor: pointer;
+}
+
+.copy-command .copy-btn {
+  position: absolute;
+  top: var(--ws-space-2);
+  right: var(--ws-space-2);
+}
+
+.copy-command .copy-btn:hover,
+.progress-actions button:hover {
+  color: var(--ws-accent);
+  border-color: var(--ws-accent);
+}
+
+.copy-command .copy-btn.copied {
+  color: var(--ws-ok);
+  border-color: var(--ws-ok);
+}
+
+/* -- LabProgress ----------------------------------------------------------- */
+.lab-progress {
+  max-width: 960px;
+  margin: var(--ws-space-8) auto;
+  padding: 0 var(--ws-space-4);
+}
+
+.progress-bar-wrap {
+  height: 8px;
+  margin: var(--ws-space-2) 0 var(--ws-space-6);
+  border-radius: var(--ws-radius-full);
+  background: var(--ws-surface-soft);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ws-accent);
+  transition: width 0.3s ease;
+}
+
+.lab-card {
+  margin-bottom: var(--ws-space-4);
+  padding: var(--ws-space-4) var(--ws-space-5);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
+}
+
+.lab-card-header,
+.progress-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ws-space-2) var(--ws-space-4);
+}
+
+.lab-card-header {
+  margin-bottom: var(--ws-space-3);
+}
+
+.lab-card-header h3 {
+  margin: 0;
+  font-size: var(--ws-text-lg);
+}
+
+.lab-card-subtitle {
+  color: var(--ws-ink-faint);
+  font-size: var(--ws-text-sm);
+}
+
+.lab-card-count {
+  margin-left: auto;
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-sm);
+}
+
+.lab-badge {
+  padding: 2px var(--ws-space-2);
+  color: var(--ws-accent);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-accent-soft);
+  font-family: var(--ws-font-mono);
+  font-size: var(--ws-text-xs);
+}
+
+.lab-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ws-space-2);
+  margin: var(--ws-space-3) 0;
+}
+
+.lab-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ws-space-1);
+  min-height: var(--ws-control-sm);
+  padding: var(--ws-space-1) var(--ws-space-3);
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  font-size: var(--ws-text-sm);
+  text-decoration: none;
+}
+
+.lab-links a:hover {
+  color: var(--ws-accent);
+  border-color: var(--ws-accent);
+}
+
+.lab-links a.primary {
+  color: var(--ws-accent-contrast);
+  border-color: var(--ws-accent);
+  background: var(--ws-accent);
+}
+
+.lab-links a.primary:hover {
+  background: var(--ws-accent-hover);
+}
+
+.checklist {
+  margin: var(--ws-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checklist li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ws-space-2);
+  padding: var(--ws-space-1) 0;
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-base);
+}
+
+.checklist input[type='checkbox'] {
+  margin-top: 4px;
+  accent-color: var(--ws-accent);
+}
+
+.checklist li.done {
+  color: var(--ws-ink-faint);
+  text-decoration: line-through;
+}
+
+.expected-output {
+  margin-top: var(--ws-space-2);
+  color: var(--ws-ink-faint);
+  font-size: var(--ws-text-sm);
+}
+
+.expected-output code {
+  font-size: var(--ws-text-xs);
+}
+
+.progress-summary {
+  margin-bottom: var(--ws-space-1);
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-base);
+}
+
+@media (max-width: 640px) {
+  .copy-command .copy-btn {
+    position: static;
+    display: block;
+    width: fit-content;
+    margin: 0 var(--ws-space-2) var(--ws-space-2) auto;
+  }
+}

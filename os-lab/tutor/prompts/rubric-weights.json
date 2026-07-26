@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "total": {
+    "process": 0.45,
+    "result": 0.35,
+    "reflection": 0.2
+  },
+  "process": {
+    "thinking": 0.25,
+    "questionQuality": 0.25,
+    "depth": 0.2,
+    "verification": 0.3
+  },
+  "guardrailPenalty": 5,
+  "guardrailPenaltyCap": 25
+}

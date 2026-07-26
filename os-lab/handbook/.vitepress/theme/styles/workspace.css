@@ -1,0 +1,104 @@
+/* ============================================================================
+   学习工作台的全局外壳。
+   ----------------------------------------------------------------------------
+   工作台走自有 Layout，不复用 VPNav / VPContent，因此旧版
+   `--vp-nav-height` / `height:100vh` / `overflow:hidden` 三方互相打架的问题
+   在这里不存在。本文件只负责组件内 scoped 样式管不到的东西：
+   页面级滚动锁、手册正文在窄栏下的排版微调、打印。
+   ============================================================================ */
+
+/* 工作台自己撑满视口并在内部滚动，页面级滚动条必须关掉，
+   否则 iOS Safari 会出现整页与内部两层滚动。 */
+html.ws-lock,
+html.ws-lock body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* -- 手册正文在工作台窄栏内的排版 -------------------------------------------
+   复用 VitePress 的 .vp-doc 排版，只调整为窄栏阅读所需的尺度。 */
+.ws-manual-doc.vp-doc {
+  max-width: var(--ws-reading-measure);
+  margin: 0 auto;
+}
+
+.ws-manual-doc.vp-doc h1 {
+  margin: 0 0 var(--ws-space-4);
+  font-size: 26px;
+  line-height: var(--ws-leading-tight);
+}
+
+.ws-manual-doc.vp-doc h2 {
+  margin: var(--ws-space-8) 0 var(--ws-space-4);
+  padding-top: var(--ws-space-5);
+  font-size: var(--ws-text-xl);
+  line-height: var(--ws-leading-tight);
+}
+
+.ws-manual-doc.vp-doc h3 {
+  margin: var(--ws-space-6) 0 var(--ws-space-3);
+  font-size: var(--ws-text-lg);
+}
+
+.ws-manual-doc.vp-doc h1:first-child,
+.ws-manual-doc.vp-doc h2:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* VitePress 在窄屏让代码块出血到 ±24px 外（假设正文有 24px 内边距）。
+   工作台左栏的内边距比这小，照搬会顶出横向溢出，这里收回边距。 */
+.ws-manual-doc.vp-doc div[class*='language-'] {
+  margin-inline: 0;
+  border-radius: var(--ws-radius-md);
+}
+
+/* 长命令、宽表格在窄栏内部横向滚动，不撑破布局。 */
+.ws-manual-doc.vp-doc :where(pre, table, .copy-command pre) {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* 阶段切换时滚动到的目标章节短暂高亮，让学生知道视线该落在哪。 */
+.ws-manual-doc .ws-section-flash {
+  border-radius: var(--ws-radius-sm);
+  animation: ws-section-flash 1.6s ease-out;
+}
+
+@keyframes ws-section-flash {
+  0%,
+  35% {
+    background: var(--ws-accent-soft);
+    box-shadow: 0 0 0 6px var(--ws-accent-soft);
+  }
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+/* 「五、AI 提问模板」的内容已经变成导师栏的快捷提问按钮，
+   在手册里默认折叠，避免学生重复读一遍。 */
+.ws-manual-doc .ws-section-collapsed {
+  display: none;
+}
+
+/* -- 打印 ------------------------------------------------------------------- */
+@media print {
+  .ws-topbar,
+  .ws-tutor-pane,
+  .ws-manual-toolbar,
+  .ws-manual-footer,
+  .ws-evidence {
+    display: none !important;
+  }
+
+  .ws-workspace,
+  .ws-manual-pane {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+}

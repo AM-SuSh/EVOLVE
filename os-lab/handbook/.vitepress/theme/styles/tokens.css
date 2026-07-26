@@ -1,0 +1,130 @@
+/* ============================================================================
+   os-lab 手册 · 唯一设计变量层
+   ----------------------------------------------------------------------------
+   规则：
+   1. 颜色一律派生自 VitePress 的 --vp-c-*，暗色模式因此自动继承 .dark，
+      不再像旧版那样维护 --tutor-* / --ai-* / --teacher-* 三套调色板。
+   2. 字号只允许取本文件定义的五档，下限 12px。禁止再出现 9/10/11px。
+   3. 圆角、间距、控件高度同样只取这里的档位。
+   任何组件都不应该再写死颜色或字号。
+   ============================================================================ */
+
+:root {
+  /* -- 品牌色 ------------------------------------------------------------- */
+  --vp-c-brand-1: #126a73;
+  --vp-c-brand-2: #1f7b82;
+  --vp-c-brand-3: #4ca4a8;
+  --vp-c-brand-soft: rgba(31, 123, 130, 0.14);
+}
+
+/* 旧版只在 :root 覆盖了品牌色，暗色模式下深青色落在深色背景上几乎不可读。 */
+.dark {
+  --vp-c-brand-1: #63c3bd;
+  --vp-c-brand-2: #4bb0aa;
+  --vp-c-brand-3: #2c807e;
+  --vp-c-brand-soft: rgba(75, 176, 170, 0.16);
+}
+
+:root {
+  /* -- 字号（五档，下限 12px）--------------------------------------------- */
+  --ws-text-xs: 12px; /* meta、角标、图例 */
+  --ws-text-sm: 13px; /* 控件、次要说明 */
+  --ws-text-base: 15px; /* 对话与表单正文 */
+  --ws-text-lg: 17px; /* 区块标题 */
+  --ws-text-xl: 21px; /* 页面与弹窗标题 */
+
+  --ws-leading-tight: 1.4;
+  --ws-leading-normal: 1.6;
+  --ws-leading-relaxed: 1.75;
+
+  --ws-weight-medium: 500;
+  --ws-weight-semibold: 600;
+  --ws-weight-bold: 700;
+
+  /* -- 间距 ---------------------------------------------------------------- */
+  --ws-space-1: 4px;
+  --ws-space-2: 8px;
+  --ws-space-3: 12px;
+  --ws-space-4: 16px;
+  --ws-space-5: 20px;
+  --ws-space-6: 24px;
+  --ws-space-8: 32px;
+
+  /* -- 圆角（旧版在 5/6/7/8/10/12px 之间随机取值）-------------------------- */
+  --ws-radius-sm: 6px;
+  --ws-radius-md: 10px;
+  --ws-radius-lg: 14px;
+  --ws-radius-full: 999px;
+
+  /* -- 表面与描边 ---------------------------------------------------------- */
+  --ws-surface: var(--vp-c-bg);
+  --ws-surface-soft: var(--vp-c-bg-soft);
+  --ws-surface-alt: var(--vp-c-bg-alt);
+  --ws-surface-raised: var(--vp-c-bg-elv);
+  --ws-line: var(--vp-c-divider);
+  --ws-line-strong: var(--vp-c-border);
+
+  /* -- 文字 ---------------------------------------------------------------- */
+  --ws-ink: var(--vp-c-text-1);
+  --ws-ink-muted: var(--vp-c-text-2);
+  --ws-ink-faint: var(--vp-c-text-3);
+
+  /* -- 强调 ---------------------------------------------------------------- */
+  --ws-accent: var(--vp-c-brand-1);
+  --ws-accent-hover: var(--vp-c-brand-2);
+  --ws-accent-soft: var(--vp-c-brand-soft);
+  --ws-accent-contrast: #ffffff;
+
+  /* -- 语义状态 ------------------------------------------------------------ */
+  --ws-ok: var(--vp-c-green-1);
+  --ws-ok-soft: var(--vp-c-green-soft);
+  --ws-warn: var(--vp-c-yellow-1);
+  --ws-warn-soft: var(--vp-c-yellow-soft);
+  --ws-danger: var(--vp-c-red-1);
+  --ws-danger-soft: var(--vp-c-red-soft);
+
+  /* -- 控件 ---------------------------------------------------------------- */
+  --ws-control-sm: 28px;
+  --ws-control-md: 34px;
+  --ws-control-lg: 40px;
+
+  /* -- 阴影 ---------------------------------------------------------------- */
+  --ws-shadow-1: 0 1px 2px rgba(16, 28, 32, 0.06);
+  --ws-shadow-2: 0 4px 16px rgba(16, 28, 32, 0.09);
+  --ws-shadow-3: 0 16px 48px rgba(16, 28, 32, 0.18);
+
+  /* -- 工作台布局 ---------------------------------------------------------- */
+  --ws-topbar-height: 56px;
+  --ws-pane-gap: 1px;
+  --ws-reading-measure: 74ch;
+
+  /* -- 层级 ---------------------------------------------------------------- */
+  --ws-z-sticky: 10;
+  --ws-z-drawer: 40;
+  --ws-z-backdrop: 50;
+  --ws-z-dialog: 60;
+  --ws-z-toast: 70;
+
+  /* -- 字体 ---------------------------------------------------------------- */
+  --ws-font-mono: var(--vp-font-family-mono);
+}
+
+.dark {
+  /* 浅青强调色上放白字对比度不足，暗色下改用底色作反色。 */
+  --ws-accent-contrast: #0b1416;
+
+  --ws-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --ws-shadow-2: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --ws-shadow-3: 0 16px 48px rgba(0, 0, 0, 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

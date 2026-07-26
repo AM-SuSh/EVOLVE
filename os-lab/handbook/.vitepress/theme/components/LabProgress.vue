@@ -101,13 +101,14 @@ watch(checked, save, { deep: true })
       <div class="lab-card-header">
         <h3>{{ lab.title }}</h3>
         <span class="lab-badge">feature: {{ lab.feature }}</span>
-        <span style="font-size: 0.85rem; color: var(--vp-c-text-3)">{{ lab.subtitle }}</span>
-        <span style="margin-left: auto; font-size: 0.85rem; color: var(--vp-c-text-2)">
+        <span class="lab-card-subtitle">{{ lab.subtitle }}</span>
+        <span class="lab-card-count">
           {{ labProgress(lab).done }}/{{ labProgress(lab).total }}
         </span>
       </div>
 
       <div class="lab-links">
+        <a class="primary" :href="`/learn/${lab.id}`">引导式学习</a>
         <a :href="lab.guide">实验指导</a>
         <a :href="lab.exercises">文字习题</a>
         <a :href="lab.answers">参考答案</a>

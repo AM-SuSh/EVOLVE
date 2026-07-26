@@ -1,0 +1,20 @@
+version: 1
+rules:
+  - id: direct-answer
+    event: blocked_direct_answer
+    patterns:
+      - 完整代码
+      - 直接给答案
+      - 帮我写完
+      - 全部实现
+      - 可复制代码
+      - 直接给 patch
+      - 替我改完
+    response: 我不能交付可直接提交的完整实现。先把问题缩小到一个机制、函数或可观察现象，并写出你已经确认的一条事实。
+  - id: unverified-completion
+    event: verification_required
+    patterns:
+      - 已经完成
+      - 已经修好
+      - 跑通了
+    response: 先补一条可复现证据：运行 Lab2 验证命令，并贴出能证明结论的关键输出。之后我们再判断是否真的闭环。

@@ -12,7 +12,7 @@ const HANDBOOK_ROOT = path.resolve(__dirname, '..')
 const OS_LAB_ROOT = path.resolve(HANDBOOK_ROOT, '..')
 const REPO_ROOT = path.resolve(OS_LAB_ROOT, '..')
 
-const SYNC_DIRS = ['labs', 'exercises', 'answers', 'project', 'setup']
+const SYNC_DIRS = ['labs', 'exercises', 'answers', 'project', 'setup', 'learn']
 
 const COPY_JOBS = [
   { from: path.join(OS_LAB_ROOT, 'labs'), to: path.join(HANDBOOK_ROOT, 'labs'), filter: (f) => f.endsWith('.md') },
@@ -24,6 +24,9 @@ const COPY_JOBS = [
 const SINGLE_FILES = [
   { from: path.join(REPO_ROOT, 'docs', 'environment_setup.md'), to: path.join(HANDBOOK_ROOT, 'setup', 'environment.md') },
   { from: path.join(REPO_ROOT, 'docs', 'os-lab.md'), to: path.join(HANDBOOK_ROOT, 'setup', 'verify-full.md') },
+  { from: path.join(REPO_ROOT, 'docs', 'reference-report.md'), to: path.join(HANDBOOK_ROOT, 'project', 'reference-report.md') },
+  { from: path.join(REPO_ROOT, '赛题.md'), to: path.join(HANDBOOK_ROOT, 'project', 'competition.md') },
+  { from: path.join(REPO_ROOT, 'scripts', 'activate-os-env.ps1'), to: path.join(HANDBOOK_ROOT, 'public', 'downloads', 'activate-os-env.ps1'), raw: true },
 ]
 
 function rewriteLinks(text) {
@@ -36,6 +39,12 @@ function rewriteLinks(text) {
       .replace(/\]\(\.\/environment_setup\.md\)/g, '](/setup/environment)')
       .replace(/\]\(\.\/os-lab\.md(?:#[^)]*)?\)/g, '](/setup/verify-full)')
       .replace(/\]\(\.\/os-lab_verify\.md(?:#[^)]*)?\)/g, '](/setup/verify-full)')
+      .replace(/\]\(\.\.\/(?:Task|赛题)\.md\)/g, '](/project/competition)')
+      .replace(/\]\(\.\.\/scripts\/activate-os-env\.ps1\)/g, '](/downloads/activate-os-env.ps1)')
+      .replace(/\]\(reference-report\.md\)/g, '](/project/reference-report)')
+      .replace(/\]\(\.\.\/reference-patches\/(?:README\.md)?\)/g, '](/project/reference-report)')
+      .replace(/\]\(\.\.\/项目总报告\.md(?:#[^)]*)?\)/g, '](/project/design-report)')
+      .replace(/\]\(\.\.\/README\.md(?:#[^)]*)?\)/g, '](/)')
       // os-lab 内部
       .replace(/\]\(\.\.\/docs\/([^)]+)\)/g, '](/project/$1)')
       .replace(/\]\(\.\.\/os-lab\/docs\/([^)]+)\)/g, '](/project/$1)')
@@ -112,6 +121,74 @@ function copyFile(src, dest) {
   fs.writeFileSync(dest, banner + body, 'utf8')
 }
 
+function copySingleFile(job) {
+  if (!fs.existsSync(job.from)) {
+    console.warn(`skip missing: ${job.from}`)
+    return
+  }
+  if (!job.raw) {
+    copyFile(job.from, job.to)
+    return
+  }
+  fs.mkdirSync(path.dirname(job.to), { recursive: true })
+  fs.copyFileSync(job.from, job.to)
+}
+
+/**
+ * 学习工作台壳页：/learn/labN 与 /labs/labN-* 共用同一份正文。
+ * 用 VitePress 的 @include 在构建期并入，正文因此走完整 markdown 管线
+ * （shiki 高亮、mermaid、容器、锚点），工作台不需要重复实现渲染。
+ */
+const WORKSPACE_LAYERS = {
+  lab1: '启动底座',
+  lab2: '执行与切换',
+  lab3: '地址空间',
+  lab4: '进程能力',
+  lab5: '文件与并发',
+}
+
+function writeWorkspacePages() {
+  const dataPath = path.join(HANDBOOK_ROOT, 'data', 'labs.json')
+  if (!fs.existsSync(dataPath)) {
+    console.warn(`skip missing: ${dataPath}`)
+    return 0
+  }
+  const { labs } = JSON.parse(fs.readFileSync(dataPath, 'utf8'))
+  const outDir = path.join(HANDBOOK_ROOT, 'learn')
+  fs.mkdirSync(outDir, { recursive: true })
+  let count = 0
+  for (const lab of labs) {
+    const source = `${lab.guide.replace(/^\/labs\//, '')}.md`
+    if (!fs.existsSync(path.join(HANDBOOK_ROOT, 'labs', source))) {
+      console.warn(`skip workspace page, missing manual: labs/${source}`)
+      continue
+    }
+    const layer = WORKSPACE_LAYERS[lab.id] || lab.subtitle
+    // frontmatter 必须位于文件最开头，说明性 banner 只能放在其后。
+    const body = [
+      '---',
+      'layout: page',
+      'workspace: true',
+      `labId: ${lab.id}`,
+      `title: ${lab.id.toUpperCase()} ${layer} · 引导式学习`,
+      `description: 在实验手册与 AI 导师并排的工作台中学习「${lab.title}」`,
+      'sidebar: false',
+      'aside: false',
+      'editLink: false',
+      'lastUpdated: false',
+      '---',
+      '',
+      '<!-- 由 scripts/sync-content.mjs 生成，请勿直接编辑 -->',
+      '',
+      `<!--@include: ../labs/${source}-->`,
+      '',
+    ].join('\n')
+    fs.writeFileSync(path.join(outDir, `${lab.id}.md`), body, 'utf8')
+    count++
+  }
+  return count
+}
+
 function rmSyncDirs() {
   for (const dir of SYNC_DIRS) {
     const p = path.join(HANDBOOK_ROOT, dir)
@@ -127,8 +204,11 @@ for (const job of COPY_JOBS) {
   total += copyDir(job.from, job.to, job.filter)
 }
 for (const job of SINGLE_FILES) {
-  copyFile(job.from, job.to)
+  copySingleFile(job)
   total++
 }
 
-console.log(`synced ${total} markdown files`)
+const workspacePages = writeWorkspacePages()
+total += workspacePages
+
+console.log(`synced ${total} markdown files (${workspacePages} workspace pages)`)
