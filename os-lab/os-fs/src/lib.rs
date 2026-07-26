@@ -1,9 +1,15 @@
-//! Embedded read-only file system for the OS teaching lab (lab5).
+//! Embedded and disk-oriented file system helpers for the OS teaching lab.
 //!
-//! This crate provides a **host-testable** static file table. The kernel fd layer
-//! in `kernel/src/fs.rs` delegates to [`EmbeddedFs::default_fs()`] for open/read.
+//! - [`EmbeddedFs`] (lab5): compile-time static file table, host-testable.
+//! - [`disk`] (lab6+): directory entry / inode metadata types and [`MockBlockDevice`].
 
 #![no_std]
+
+mod disk;
+mod fd_kind;
+
+pub use disk::{DirEntry, InodeMeta, MockBlockDevice, BLOCK_SZ, DIR_NAME_LEN};
+pub use fd_kind::{FdKind, FdOp};
 
 /// Index into the static file table.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]

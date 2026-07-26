@@ -16,6 +16,7 @@ const SYNC_DIRS = ['labs', 'exercises', 'answers', 'project', 'setup', 'learn']
 
 const COPY_JOBS = [
   { from: path.join(OS_LAB_ROOT, 'labs'), to: path.join(HANDBOOK_ROOT, 'labs'), filter: (f) => f.endsWith('.md') },
+  // Lab1–5 的文字习题已并入各实验文档的【任务二】；exercises/ 现在只承载 Lab6–8。
   { from: path.join(OS_LAB_ROOT, 'labs', 'exercises'), to: path.join(HANDBOOK_ROOT, 'exercises'), filter: (f) => f.endsWith('.md') },
   { from: path.join(OS_LAB_ROOT, 'labs', 'answers'), to: path.join(HANDBOOK_ROOT, 'answers'), filter: (f) => f.endsWith('.md') },
   { from: path.join(OS_LAB_ROOT, 'docs'), to: path.join(HANDBOOK_ROOT, 'project'), filter: (f) => f.endsWith('.md') },
@@ -49,7 +50,7 @@ function rewriteLinks(text) {
       .replace(/\]\(\.\.\/docs\/([^)]+)\)/g, '](/project/$1)')
       .replace(/\]\(\.\.\/os-lab\/docs\/([^)]+)\)/g, '](/project/$1)')
       .replace(/\]\(\.\.\/os-lab\/labs\/([^)]+)\)/g, '](/labs/$1)')
-      .replace(/\]\(\.\.\/os-lab\/README\.md\)/g, '](/guide/quick-start)')
+      .replace(/\]\(\.\.\/os-lab\/README\.md\)/g, '](/guide/start)')
       .replace(/\]\(\.\.\/os-lab\/tests\/README\.md\)/g, '](/guide/verify)')
       .replace(/\]\(\.\.\/labs\/([^)]+)\)/g, '](/labs/$1)')
       .replace(/\]\(\.\.\/lab(\d)[^)]*\)/g, (_, n) => {
@@ -59,10 +60,12 @@ function rewriteLinks(text) {
           3: '/labs/lab3-memory',
           4: '/labs/lab4-process',
           5: '/labs/lab5-fs-and-sync',
+          6: '/labs/lab6-disk-fs',
+          7: '/labs/lab7-ipc-signal',
+          8: '/labs/lab8-thread-sync',
         }
         return `](${map[n] || '/labs/overview'})`
       })
-      .replace(/\]\(\.\.\/exercises\/([^)]+)\)/g, '](/exercises/$1)')
       .replace(/\]\(\.\.\/answers\/([^)]+)\)/g, '](/answers/$1)')
       .replace(/\]\(lab(\d)-[^)]*\.md\)/g, (_, n) => {
         const map = {
@@ -71,23 +74,25 @@ function rewriteLinks(text) {
           3: '/labs/lab3-memory',
           4: '/labs/lab4-process',
           5: '/labs/lab5-fs-and-sync',
+          6: '/labs/lab6-disk-fs',
+          7: '/labs/lab7-ipc-signal',
+          8: '/labs/lab8-thread-sync',
         }
         return `](${map[n]})`
       })
-      .replace(/\]\(exercises\/\)/g, '](/exercises/README)')
-      .replace(/\]\(answers\/\)/g, '](/answers/lab1-answers)')
+      .replace(/\]\(answers\/\)/g, '](/answers/README)')
+      // labs/labN-*.md 里的相对习题链接（如 exercises/lab6-exercises.md）
+      .replace(/\]\((?:\.\.\/)?exercises\/([^)]+)\.md\)/g, '](/exercises/$1)')
+      .replace(/\]\((?:\.\.\/)?answers\/([^)]+)\.md\)/g, '](/answers/$1)')
       .replace(/\]\(environment_setup\)/g, '](/setup/environment)')
       .replace(/\]\(environment_setup\.md\)/g, '](/setup/environment)')
       .replace(/\]\(os-lab\)/g, '](/setup/verify-full)')
       .replace(/\]\(os-lab\.md(?:#[^)]*)?\)/g, '](/setup/verify-full)')
-      .replace(/\]\(\.\/exercises\/\)/g, '](/exercises/README)')
-      .replace(/\]\(\.\/exercises\/index\)/g, '](/exercises/README)')
-      .replace(/\]\(\.\/answers\/\)/g, '](/answers/lab1-answers)')
-      .replace(/\]\(\.\/answers\/index\)/g, '](/answers/lab1-answers)')
+      .replace(/\]\(\.\/answers\/\)/g, '](/answers/README)')
+      .replace(/\]\(\.\/answers\/index\)/g, '](/answers/README)')
       .replace(/\]\(overview\.md\)/g, '](/labs/overview)')
       // 已是站点内绝对路径的 lab 链接（去掉 .md）
       .replace(/\]\(\/labs\/([^)]+)\.md\)/g, '](/labs/$1)')
-      .replace(/\]\(\/exercises\/([^)]+)\.md\)/g, '](/exercises/$1)')
       .replace(/\]\(\/answers\/([^)]+)\.md\)/g, '](/answers/$1)')
   )
 }
@@ -145,6 +150,9 @@ const WORKSPACE_LAYERS = {
   lab3: '地址空间',
   lab4: '进程能力',
   lab5: '文件与并发',
+  lab6: '磁盘文件系统',
+  lab7: 'IPC 与信号',
+  lab8: '线程与同步',
 }
 
 function writeWorkspacePages() {

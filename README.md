@@ -60,8 +60,7 @@
 | --- | --- |
 | 总览 | [os-lab/labs/overview.md](os-lab/labs/overview.md) |
 | **Web 学习手册** | [docs/os-lab.md](docs/os-lab.md) → `os-lab/handbook/` |
-| 指导 lab1–5 | `os-lab/labs/lab*-*.md` |
-| 习题 | [os-lab/labs/exercises/](os-lab/labs/exercises/) |
+| 指导 lab1–5 | `os-lab/labs/lab*-*.md`（【任务二】为阅读理解题） |
 | 参考答案 | [os-lab/labs/answers/](os-lab/labs/answers/) |
 | 测试说明 | [os-lab/tests/README.md](os-lab/tests/README.md) |
 

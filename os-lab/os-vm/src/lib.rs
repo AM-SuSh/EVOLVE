@@ -284,6 +284,30 @@ impl MapArea {
         }
     }
 
+    pub fn vpn_start(&self) -> VirtPageNum {
+        self.vpn_start
+    }
+
+    pub fn vpn_end(&self) -> VirtPageNum {
+        self.vpn_end
+    }
+
+    pub fn overlaps(&self, start: VirtPageNum, end: VirtPageNum) -> bool {
+        self.vpn_start < end && start < self.vpn_end
+    }
+
+    pub fn contains_vpn(&self, vpn: VirtPageNum) -> bool {
+        self.vpn_start <= vpn && vpn < self.vpn_end
+    }
+
+    pub fn contained_in(&self, start: VirtPageNum, end: VirtPageNum) -> bool {
+        self.vpn_start >= start && self.vpn_end <= end
+    }
+
+    pub fn permission(&self) -> MapPermission {
+        self.perm
+    }
+
     pub fn with_data(mut self, data: &'static [u8], offset: usize) -> Self {
         self.data = data;
         self.data_offset = offset;
@@ -291,14 +315,33 @@ impl MapArea {
     }
 
     pub fn map(&self, page_table: &mut PageTable) {
-        let seg_start = self.vpn_start.addr() + self.data_offset;
-        for vpn in self.vpn_start.0..self.vpn_end.0 {
+        Self::map_data(
+            page_table,
+            self.vpn_start,
+            self.vpn_end,
+            self.perm,
+            self.data,
+            self.data_offset,
+        );
+    }
+
+    /// Map PT_LOAD bytes from `data` into `page_table` (ELF buffer may be freed after this).
+    pub fn map_data(
+        page_table: &mut PageTable,
+        vpn_start: VirtPageNum,
+        vpn_end: VirtPageNum,
+        perm: MapPermission,
+        data: &[u8],
+        data_offset: usize,
+    ) {
+        let seg_start = vpn_start.addr() + data_offset;
+        for vpn in vpn_start.0..vpn_end.0 {
             let vpn = VirtPageNum(vpn);
             let page_vaddr = vpn.addr();
 
             let ppn = if let Some(pte) = page_table.translate(vpn) {
                 if pte.is_valid() {
-                    let merged = pte.permission().union(self.perm);
+                    let merged = pte.permission().union(perm);
                     let ppn = pte.ppn();
                     page_table.remap(vpn, ppn, merged);
                     ppn
@@ -308,7 +351,7 @@ impl MapArea {
                     unsafe {
                         core::ptr::write_bytes(dst, 0, PAGE_SIZE);
                     }
-                    page_table.map(vpn, ppn, self.perm);
+                    page_table.map(vpn, ppn, perm);
                     ppn
                 }
             } else {
@@ -317,11 +360,11 @@ impl MapArea {
                 unsafe {
                     core::ptr::write_bytes(dst, 0, PAGE_SIZE);
                 }
-                page_table.map(vpn, ppn, self.perm);
+                page_table.map(vpn, ppn, perm);
                 ppn
             };
 
-            if self.data.is_empty() || page_vaddr + PAGE_SIZE <= seg_start {
+            if data.is_empty() || page_vaddr + PAGE_SIZE <= seg_start {
                 continue;
             }
             let (copy_start_in_page, src_start) = if page_vaddr < seg_start {
@@ -329,11 +372,11 @@ impl MapArea {
             } else {
                 (0, page_vaddr - seg_start)
             };
-            if src_start < self.data.len() {
-                let copy_len = (self.data.len() - src_start).min(PAGE_SIZE - copy_start_in_page);
+            if src_start < data.len() {
+                let copy_len = (data.len() - src_start).min(PAGE_SIZE - copy_start_in_page);
                 unsafe {
                     core::ptr::copy_nonoverlapping(
-                        self.data.as_ptr().add(src_start),
+                        data.as_ptr().add(src_start),
                         (ppn.addr() as *mut u8).add(copy_start_in_page),
                         copy_len,
                     );
@@ -382,6 +425,57 @@ impl MemorySet {
         self.push_area(area);
     }
 
+    /// Map ELF64 PT_LOAD segments from `elf`, copying bytes into user pages.
+    /// The `elf` buffer is only needed during this call and may be freed afterward.
+    pub fn map_elf_pt_load(&mut self, elf: &[u8], user_base: usize) {
+        assert!(elf.len() >= 64, "ELF too small");
+        let e_phoff = usize::from_le_bytes(elf[32..40].try_into().unwrap());
+        let e_phentsize = u16::from_le_bytes(elf[54..56].try_into().unwrap()) as usize;
+        let e_phnum = u16::from_le_bytes(elf[56..58].try_into().unwrap()) as usize;
+
+        for i in 0..e_phnum {
+            let off = e_phoff + i * e_phentsize;
+            assert!(off + 48 <= elf.len(), "program header out of range");
+            let ph = &elf[off..off + e_phentsize];
+            let p_type = u32::from_le_bytes(ph[0..4].try_into().unwrap());
+            if p_type != 1 {
+                continue;
+            }
+            let p_flags = u32::from_le_bytes(ph[4..8].try_into().unwrap());
+            let p_offset = usize::from_le_bytes(ph[8..16].try_into().unwrap());
+            let p_vaddr = usize::from_le_bytes(ph[16..24].try_into().unwrap());
+            let p_filesz = usize::from_le_bytes(ph[32..40].try_into().unwrap());
+            let p_memsz = usize::from_le_bytes(ph[40..48].try_into().unwrap());
+
+            let mut perm = MapPermission::U;
+            if p_flags & 4 != 0 {
+                perm = perm.union(MapPermission::R);
+            }
+            if p_flags & 2 != 0 {
+                perm = perm.union(MapPermission::W);
+            }
+            if p_flags & 1 != 0 {
+                perm = perm.union(MapPermission::X);
+            }
+
+            let start = user_base + p_vaddr;
+            let end = start + p_memsz;
+            let vpn_start = VirtAddr(start).floor();
+            let vpn_end = VirtAddr(end).ceil();
+            let data = &elf[p_offset..p_offset + p_filesz];
+            let data_offset = start - vpn_start.addr();
+            MapArea::map_data(
+                &mut self.page_table,
+                vpn_start,
+                vpn_end,
+                perm,
+                data,
+                data_offset,
+            );
+            self.push_area(MapArea::new(vpn_start, vpn_end, perm));
+        }
+    }
+
     pub fn token(&self) -> usize {
         self.page_table.token()
     }
@@ -414,6 +508,70 @@ impl MemorySet {
 
     pub fn page_table(&self) -> &PageTable {
         &self.page_table
+    }
+
+    /// Whether `[start, end)` overlaps any mapped VPN range.
+    pub fn range_overlaps(&self, start: usize, end: usize) -> bool {
+        let vpn_start = VirtAddr(start).floor();
+        let vpn_end = VirtAddr(end).ceil();
+        self.areas[..self.area_count]
+            .iter()
+            .flatten()
+            .any(|area| area.overlaps(vpn_start, vpn_end))
+    }
+
+    /// Whether every VPN in `[start, end)` is covered by a mapped area.
+    pub fn range_fully_mapped(&self, start: usize, end: usize) -> bool {
+        let vpn_start = VirtAddr(start).floor();
+        let vpn_end = VirtAddr(end).ceil();
+        let mut vpn = vpn_start;
+        while vpn < vpn_end {
+            let covered = self.areas[..self.area_count]
+                .iter()
+                .flatten()
+                .any(|area| area.contains_vpn(vpn));
+            if !covered {
+                return false;
+            }
+            vpn = VirtPageNum(vpn.0 + 1);
+        }
+        true
+    }
+
+    /// Map anonymous zero-filled pages in `[start, end)` with `perm`.
+    pub fn map_anonymous(&mut self, start: usize, end: usize, perm: MapPermission) -> bool {
+        if self.range_overlaps(start, end) {
+            return false;
+        }
+        let vpn_start = VirtAddr(start).floor();
+        let vpn_end = VirtAddr(end).ceil();
+        self.map_area(MapArea::new(vpn_start, vpn_end, perm));
+        true
+    }
+
+    /// Unmap `[start, end)` and release backing frames.
+    pub fn unmap_range(&mut self, start: usize, end: usize) -> bool {
+        if !self.range_fully_mapped(start, end) {
+            return false;
+        }
+        let vpn_start = VirtAddr(start).floor();
+        let vpn_end = VirtAddr(end).ceil();
+        let mut write = 0;
+        for read in 0..self.area_count {
+            if let Some(area) = self.areas[read].take() {
+                if area.contained_in(vpn_start, vpn_end) {
+                    area.unmap(&mut self.page_table);
+                } else {
+                    self.areas[write] = Some(area);
+                    write += 1;
+                }
+            }
+        }
+        for i in write..self.area_count {
+            self.areas[i] = None;
+        }
+        self.area_count = write;
+        true
     }
 
     /// Map VPN to the same-numbered PPN (identity map) without copying data.

@@ -1,4 +1,4 @@
-//! File system integration: fd table, embedded read-only files, pipe fds (lab5).
+//! Lab5 embedded read-only file system (see original `fs.rs`).
 
 use crate::config::{MAX_FD, MAX_PROCESS_NUM};
 use crate::mm;
@@ -6,10 +6,7 @@ use crate::process::current_slot;
 use crate::sync;
 use os_fs::{EmbeddedFs, FileId};
 
-/// Single read-only file table (shared with `os-fs` crate host tests).
 static FS: EmbeddedFs = EmbeddedFs::default_fs();
-
-/// Max bytes copied per `read` syscall (kernel stack buffer).
 const MAX_READ_CHUNK: usize = 256;
 
 #[derive(Clone, Copy)]

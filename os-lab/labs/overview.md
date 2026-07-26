@@ -29,7 +29,7 @@ Visual Studio C++ Build Tools（仅 Windows 原生编译需要）
 
 ## 三、知识点地图
 
-下图展示了 5 个实验覆盖的操作系统核心知识点及其先后依赖关系。建议按从上到下的顺序学习，每一层都建立在前一层之上。
+下图展示了 8 个实验覆盖的操作系统核心知识点及其先后依赖关系。建议按从上到下的顺序学习，每一层都建立在前一层之上。Lab6–8 二期总览见 [docs/lab6-8.md](../../docs/lab6-8.md)。
 
 ```mermaid
 graph TD
@@ -38,35 +38,47 @@ graph TD
     Lab3["Lab3 内存管理与虚存"]
     Lab4["Lab4 进程管理"]
     Lab5["Lab5 文件系统与并发"]
+    Lab6["Lab6 磁盘文件系统"]
+    Lab7["Lab7 IPC与信号"]
+    Lab8["Lab8 线程与同步"]
 
     Lab1 --> Lab2
     Lab2 --> Lab3
     Lab3 --> Lab4
     Lab4 --> Lab5
+    Lab5 --> Lab6
+    Lab6 --> Lab7
+    Lab7 --> Lab8
 
     Lab1 -.-> K1["RISC-V 启动流程<br/>SBI 调用<br/>链接脚本<br/>裸机输出"]
     Lab2 -.-> K2["Trap 机制<br/>上下文切换<br/>系统调用<br/>时间片调度"]
     Lab3 -.-> K3["物理页帧分配<br/>多级页表<br/>地址空间隔离<br/>ELF 加载"]
-    Lab4 -.-> K4["fork/exec/wait<br/>进程树<br/>调度策略"]
     Lab5 -.-> K5["内嵌只读文件抽象<br/>管道<br/>自旋锁"]
+    Lab6 -.-> K6["VirtIO 块设备<br/>easy-fs<br/>硬链接/fstat"]
+    Lab7 -.-> K7["统一 fd 抽象<br/>信号机制<br/>dup/重定向"]
+    Lab8 -.-> K8["用户态线程<br/>阻塞同步原语<br/>死锁检测"]
 
     classDef lab fill:#e1f5ff,stroke:#0288d1,stroke-width:2px;
+    classDef labPending fill:#f5f5f5,stroke:#9e9e9e,stroke-width:2px,stroke-dasharray: 5 5;
     classDef knowledge fill:#fff3e0,stroke:#ef6c00,stroke-width:1px;
-    class Lab1,Lab2,Lab3,Lab4,Lab5 lab;
-    class K1,K2,K3,K4,K5 knowledge;
+    class Lab1,Lab2,Lab3,Lab4,Lab5,Lab6,Lab7,Lab8 lab;
+    class K1,K2,K3,K4,K5,K6,K7,K8 knowledge;
 ```
 
 ## 四、实验列表与渐进式 Feature
 
 本环境用 Cargo feature 控制内核功能的启用层级。feature 之间是严格递进的：`lab5` 依赖 `lab4`，`lab4` 依赖 `lab3`，以此类推。学生通过切换 feature 感受内核功能逐步"长出来"。
 
-| 实验 | 主题 | Feature | 对应文档 | 参考环境对应 |
-|------|------|---------|----------|-------------|
-| Lab1 | 裸机启动与最小内核 | `lab1` | [lab1-bare-metal.md](lab1-bare-metal.md) | ch1 + ch2 合并 |
-| Lab2 | 中断处理与多任务 | `lab2` | [lab2-trap-and-task.md](lab2-trap-and-task.md) | ch2 + ch3 合并 |
-| Lab3 | 内存管理与虚存 | `lab3` | [lab3-memory.md](lab3-memory.md) | ch4 |
-| Lab4 | 进程管理 | `lab4` | [lab4-process.md](lab4-process.md) | ch5 |
-| Lab5 | 文件系统与并发 | `lab5` | [lab5-fs-and-sync.md](lab5-fs-and-sync.md) | ch6 + ch8 合并 |
+| 实验 | 主题 | Feature | 对应文档 | 参考环境对应 | 状态 |
+|------|------|---------|----------|-------------|------|
+| Lab1 | 裸机启动与最小内核 | `lab1` | [lab1-bare-metal.md](lab1-bare-metal.md) | ch1 + ch2 合并 | ✅ 已交付 |
+| Lab2 | 中断处理与多任务 | `lab2` | [lab2-trap-and-task.md](lab2-trap-and-task.md) | ch2 + ch3 合并 | ✅ 已交付 |
+| Lab3 | 内存管理与虚存 | `lab3` | [lab3-memory.md](lab3-memory.md) | ch4 | ✅ 已交付 |
+| Lab4 | 进程管理 | `lab4` | [lab4-process.md](lab4-process.md) | ch5 base | ✅ 已交付 |
+| Lab5 | 文件系统与并发（入门） | `lab5` | [lab5-fs-and-sync.md](lab5-fs-and-sync.md) | ch6/ch7 简化版 | ✅ 已交付 |
+| Lab6 | 磁盘文件系统 | `lab6` | [lab6-disk-fs.md](lab6-disk-fs.md) | ch6 | ✅ 已交付 |
+| Lab7 | IPC 与信号 | `lab7` | [lab7-ipc-signal.md](lab7-ipc-signal.md) | ch7 | ✅ 已交付 |
+| Lab8 | 线程与同步 | `lab8` | [lab8-thread-sync.md](lab8-thread-sync.md) | ch8 | ✅ 已交付 |
 
 feature 层级定义在 `kernel/Cargo.toml`：
 
@@ -78,7 +90,12 @@ lab2 = ["lab1", "dep:os-context", "dep:os-syscall"]
 lab3 = ["lab2", "dep:os-alloc", "dep:os-vm"]
 lab4 = ["lab3"]
 lab5 = ["lab4", "dep:os-fs"]
+lab6 = ["lab5", "dep:easy-fs", "dep:virtio-drivers", "dep:spin"]
+lab7 = ["lab6", "dep:os-signal"]
+lab8 = ["lab7", "dep:os-sync"]
 ```
+
+Lab6–8 依赖、分工、验收与进度见 [docs/lab6-8.md](../../docs/lab6-8.md)。
 
 ## 五、组件 Crate 依赖关系
 
@@ -100,8 +117,11 @@ graph LR
     kernel -->|"lab3 起"| alloc
     kernel -->|"lab3 起"| vm
     kernel -->|"lab5 起"| fs
+    kernel -->|"lab7 起"| sig["os-signal"]
+    kernel -->|"lab8 起"| sync["os-sync"]
     vm --> alloc
     fs --> alloc
+    sync --> alloc
 ```
 
 对比参考环境 `tg-rcore-tutorial` 的 23 个 crate、4 层依赖，本环境只有 `kernel` + 6 个 `os-*`（另加 `user`）、约 2 层依赖，认知负担显著降低。
@@ -121,6 +141,15 @@ cargo run -p kernel --features lab1
 # 切换到某个 Lab 运行
 make run FEATURE=lab2
 
+# Lab6 须带 VirtIO 块设备（勿用裸 cargo run）
+make test-lab6
+
+# Lab7：dup + 信号 + 管道回归（同样须 VirtIO）
+make test-lab7
+
+# Lab8：线程 + 阻塞同步 + 死锁（须先编 user 再编 kernel）
+make test-lab8
+
 # 检查全部 feature 是否都能编译通过
 make check
 
@@ -132,8 +161,8 @@ make test-lab1
 
 ## 七、学习路径建议
 
-1. **先读 overview（本文档）**，建立对 5 个实验和知识体系的整体认知。
+1. **先读 overview（本文档）**，建立对 8 个实验和知识体系的整体认知。
 2. **按 Lab 顺序逐个完成**，每个 Lab 先读文档的"问题场景"理解动机，再看"实验任务"动手编码，最后用文档给的命令验证。
 3. **善用 AI 协作**：每个 Lab 文档末尾都提供「AI 提问模板」，给出与 AI 交互的推荐切入点，帮助你自主探索而非被动接受答案。
-4. **做完习题自查**：每个 Lab 配有 3-5 道文字类习题（见 [exercises/](exercises/) 目录），做完后对照各 Lab 文档末尾的"思考题与参考答案"节，以及 [answers/](answers/) 目录里的代码解读与习题答案，用于巩固概念理解。
+4. **完成【任务二】后自查**：阅读理解与思考题写在各 Lab 实验文档的【任务二】中；做完后对照 [answers/](answers/)（代码解读 + 任务二参考答案）。
 5. **遇到阻塞**：优先检查 feature 是否选对、环境是否激活（`rustc --version`、`qemu-system-riscv64 --version` 能输出版本）。

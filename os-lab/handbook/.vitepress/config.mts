@@ -19,6 +19,7 @@ export default withMermaid(defineConfig({
     logo: '/logo.svg',
     nav: [
       { text: '首页', link: '/' },
+      { text: '开始学习', link: '/guide/start' },
       { text: '引导式学习', link: '/guide/ai-tutor' },
       { text: '实验总览', link: '/labs/overview' },
       { text: '学习进度', link: '/guide/progress' },
@@ -30,7 +31,7 @@ export default withMermaid(defineConfig({
         {
           text: '入门',
           items: [
-            { text: '5 分钟上手', link: '/guide/quick-start' },
+            { text: '认识 os-lab', link: '/guide/start' },
             { text: '引导式学习', link: '/guide/ai-tutor' },
             { text: '学习进度', link: '/guide/progress' },
             { text: '验证命令', link: '/guide/verify' },
@@ -46,6 +47,9 @@ export default withMermaid(defineConfig({
             { text: 'Lab3 地址空间', link: '/learn/lab3' },
             { text: 'Lab4 进程能力', link: '/learn/lab4' },
             { text: 'Lab5 文件与并发', link: '/learn/lab5' },
+            { text: 'Lab6 磁盘文件系统', link: '/learn/lab6' },
+            { text: 'Lab7 IPC 与信号', link: '/learn/lab7' },
+            { text: 'Lab8 线程与同步', link: '/learn/lab8' },
           ],
         },
       ],
@@ -53,12 +57,16 @@ export default withMermaid(defineConfig({
         {
           text: '实验指导',
           items: [
+            { text: '材料说明', link: '/labs/README' },
             { text: '总览与知识地图', link: '/labs/overview' },
             { text: 'Lab1 裸机启动', link: '/labs/lab1-bare-metal' },
             { text: 'Lab2 中断与多任务', link: '/labs/lab2-trap-and-task' },
             { text: 'Lab3 内存与虚存', link: '/labs/lab3-memory' },
             { text: 'Lab4 进程管理', link: '/labs/lab4-process' },
             { text: 'Lab5 文件系统与并发', link: '/labs/lab5-fs-and-sync' },
+            { text: 'Lab6 磁盘文件系统', link: '/labs/lab6-disk-fs' },
+            { text: 'Lab7 IPC 与信号', link: '/labs/lab7-ipc-signal' },
+            { text: 'Lab8 线程与同步', link: '/labs/lab8-thread-sync' },
           ],
         },
         {
@@ -70,14 +78,12 @@ export default withMermaid(defineConfig({
       ],
       '/exercises/': [
         {
-          text: '文字习题',
+          text: '文字习题（Lab6–8）',
           items: [
             { text: '习题说明', link: '/exercises/README' },
-            { text: 'Lab1 习题', link: '/exercises/lab1-exercises' },
-            { text: 'Lab2 习题', link: '/exercises/lab2-exercises' },
-            { text: 'Lab3 习题', link: '/exercises/lab3-exercises' },
-            { text: 'Lab4 习题', link: '/exercises/lab4-exercises' },
-            { text: 'Lab5 习题', link: '/exercises/lab5-exercises' },
+            { text: 'Lab6 习题', link: '/exercises/lab6-exercises' },
+            { text: 'Lab7 习题', link: '/exercises/lab7-exercises' },
+            { text: 'Lab8 习题', link: '/exercises/lab8-exercises' },
           ],
         },
       ],
@@ -85,11 +91,15 @@ export default withMermaid(defineConfig({
         {
           text: '参考答案',
           items: [
+            { text: '答案说明', link: '/answers/README' },
             { text: 'Lab1 答案', link: '/answers/lab1-answers' },
             { text: 'Lab2 答案', link: '/answers/lab2-answers' },
             { text: 'Lab3 答案', link: '/answers/lab3-answers' },
             { text: 'Lab4 答案', link: '/answers/lab4-answers' },
             { text: 'Lab5 答案', link: '/answers/lab5-answers' },
+            { text: 'Lab6 答案', link: '/answers/lab6-answers' },
+            { text: 'Lab7 答案', link: '/answers/lab7-answers' },
+            { text: 'Lab8 答案', link: '/answers/lab8-answers' },
           ],
         },
       ],

@@ -1,7 +1,8 @@
 # Lab4 参考答案与代码解读
 
-> 本文件是 [lab4-process.md](../lab4-process.md) 的配套答案，含完整代码逐行解读和阅读理解题答案。
-> **使用建议**：先独立完成 lab4 的【任务二：阅读理解】，再来对答案。
+> 配套实验指导：[lab4-process.md](../lab4-process.md)  
+> 对应内容：【任务二：阅读理解与思考题（必做）】参考答案 + 代码解读  
+> **使用建议**：先独立完成实验文档【任务二】，再来对答案。
 
 ## 一、完整代码逐行解读
 
@@ -141,27 +142,83 @@ pub fn sys_exit(exit_code: i32) -> ! {
 
 开机时 `process::init()` 创建第一个进程 `initproc`（PID 1），它没有父进程（`parent_slot: None`）。initproc 跑 `fork_test`，fork 出子进程演示进程创建。所有进程都是 initproc 的后代，形成进程树。
 
-## 二、阅读理解题参考答案
+## 二、任务二：阅读理解与思考题参考答案
 
-### 任务二第 1 题：fork 怎么返回两次 / 为什么子进程返回 0
+### 第 1 题：fork 如何实现「一次调用返回两次」？为何子进程 a0 要设为 0？
 
-fork 复制父进程 TrapContext 给子进程，然后把子进程的 a0（返回值寄存器）设成 0（`set_return_value(0)`）。父进程的 a0 是 sys_fork 返回的子 PID。这样父子从同一调用点恢复，但读到不同的 a0，实现"一次调用返回两次"。子进程返回 0 是 Unix 约定，让程序用 `if pid == 0` 简洁区分父子分支。
+fork 的精髓在 `sys_fork` 里复制父进程 TrapContext 给子进程，然后**单独修改子进程的返回值**：
 
-### 任务二第 2 题：子进程从哪开始执行
+```rust
+let mut child_trap_cx = *cx;           // 复制父进程的 TrapContext
+child_trap_cx.set_return_value(0);     // 子进程 a0 = 0
+// ...
+child_pid as isize                     // 父进程返回子 PID
+```
 
-子进程从**父进程调用 fork 的下一条指令**开始，不是 main 开头。因为子进程 TrapContext 的 sepc 是父进程 sepc 的副本（`spawn(..., cx.sepc, ...)`）。如果从 main 跑，子进程会重复父进程的所有初始化，那就不是"复制"而是"重跑"。
+- **父进程**：`sys_fork` 正常返回，a0 = 子进程 PID。
+- **子进程**：TrapContext 是父进程的副本，`sepc` 相同，被调度后从同一 `fork` 调用点继续，但 a0 = 0。
 
-### 任务二第 3 题：exec 后原代码为什么跑不到
+双方从同一调用点恢复，读到不同的 a0，实现教材里的「调用一次、返回两次」。用户代码用 `if (pid == 0) { ... } else { ... }` 区分分支。
 
-exec 用 `*cx = trap_cx_init(entry, ...)` 整个覆盖 TrapContext，sepc 设成新程序入口、sp 设成新栈顶。原程序的返回地址、寄存器全丢。CPU 从新 entry 开始跑，再也不可能回到 exec 之后的代码——那条代码的地址已经不在 TrapContext 里了。这就是"换身不换魂"。
+**子进程 a0 设为 0 是 Unix 约定**：0 表示「我是子进程」，非 0 表示「我是父进程，这是子 PID」。若子进程也返回 PID，程序就无法简洁区分身份。
 
-### 任务二第 4 题：`After exec` 会不会执行
+> 一句话：复制 TrapContext + 子进程 a0=0 + 父进程返回 PID = 一次调用返回两次。
 
-不会。exec 把地址空间整个替换成 hello 的，exec_test 的代码（含 `After exec`）要么被覆盖、要么不再映射。即便内存还在，sepc 也指向 hello 入口而非 `After exec`，CPU 永远执行不到那行。exec 成功后，原程序后续代码全部"消失"。
+### 第 2 题：子进程从哪里开始执行？`cx.sepc` 传给 `spawn` 意味着什么？
 
-### 任务二第 5 题：wait 的"找不到就让出"叫什么
+子进程从**父进程调用 fork 的下一条指令**开始，**不是**从 `main` 开头。
 
-叫**阻塞（block/sleep）**。父进程 wait 时子进程可能还没退出，父进程不空转，而是保存上下文、把状态设为 Ready、`run_next_process()` 让出 CPU。下次调度回来再 loop 检查。这种"条件不满足就 sleep、被唤醒再试"是操作系统的核心同步机制，信号量、条件变量都基于它。代码 `loop { 检查; 让出 }` 就是阻塞等待。
+`spawn(..., cx.sepc, ...)` 把父进程当前的 `sepc`（程序计数器）传给子进程。子进程 TrapContext 是副本，`sepc` 指向 fork 调用点——调度到子进程时，CPU 从同一位置继续执行。
+
+如果从 `main` 重跑，子进程会重复父进程所有初始化，那就不是「复制当前状态」而是「重跑程序」，违背 fork 语义。
+
+> 一句话：子进程 = 父进程在 fork 调用点的快照；`cx.sepc` 决定快照恢复后从哪条指令继续。
+
+### 第 3 题：exec 如何改地址空间与 TrapContext？为何 exec 之后的原代码跑不到？
+
+`sys_execve` 做两件事：
+
+1. **换地址空间**：`mm::replace_user_space(space_id, elf)` 销毁旧用户空间，为新 ELF 建映射（代码/数据/栈）。
+2. **换 TrapContext**：`*cx = trap_cx_init(entry, user_sp, kstack_top)` **整体覆盖** TrapContext——`sepc` 指向新程序入口，`sp` 指向新栈顶，原寄存器全丢。
+
+PID、父子关系不变（没创建新进程），但 CPU 从新 entry 开始跑。原 `exec()` 之后的指令地址已不在 TrapContext 里，不可能作为返回目标——这就是「换身不换魂」。
+
+> 一句话：exec = 替换地址空间 + 重置 TrapContext；原程序后续代码在语义上「消失」。
+
+### 第 4 题：`exec("hello")` 后的 `After exec` 会执行吗？
+
+**不会。**
+
+两层原因：
+
+1. **地址空间**：exec 把用户空间整个换成 hello 的 ELF 映射，`exec_test` 的代码（含 `After exec`）不再被映射或已被覆盖。
+2. **TrapContext**：即使旧页偶存，`sepc` 也指向 hello 入口而非 `After exec` 那条 `println`，CPU 不会从那里继续。
+
+`exec_test.rs` 里 `exec("hello")` 成功返回 -1 或 0 的分支都跑不到——成功时 TrapContext 已被重置，原程序后续代码全部失效。这正是教材 exec 语义：成功后原程序「不复存在」。
+
+### 第 5 题：wait 时父进程如何「等」？`loop` + `run_next_process` 是什么模式？
+
+`sys_wait4` 的核心逻辑：
+
+```rust
+loop {
+    if let Some((pid, code)) = reap_zombie_child(...) {
+        write_user_i32(status_ptr, code);
+        return pid as isize;          // 找到僵尸，回收并返回
+    }
+    if want_pid >= 0 && !has_child { return -1; }  // 没有符合条件的子进程
+    sync_current_trap_cx(cx);
+    mark_current_ready();
+    run_next_process();               // 让出 CPU，下次调度回来再 loop
+}
+```
+
+- 子进程还没 exit → 没有 Zombie → `reap_zombie_child` 找不到 → 父进程不空转，保存上下文、标记 Ready、`run_next_process()` 让出 CPU。
+- 子进程后来 exit 变 Zombie → 父进程再次被调度 → loop 重新检查 → 找到并回收。
+
+这种 **`loop { 检查条件; 不满足就让出 }`** 的模式叫**阻塞（block/sleep）**：条件不满足时不占 CPU，被唤醒后再试。是信号量、条件变量等同步机制的基础形态。
+
+> 一句话：wait = 循环查僵尸 + 没有就让出 CPU；「找不到就让出」= 阻塞等待。
 
 ## 三、任务三动手修改的现象参考
 

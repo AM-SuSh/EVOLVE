@@ -1,7 +1,8 @@
 # Lab5 参考答案与代码解读
 
-> 本文件是 [lab5-fs-and-sync.md](../lab5-fs-and-sync.md) 的配套答案，含完整代码逐行解读和阅读理解题答案。
-> **使用建议**：先独立完成 lab5 的【任务二：阅读理解】，再来对答案。
+> 配套实验指导：[lab5-fs-and-sync.md](../lab5-fs-and-sync.md)  
+> 对应内容：【任务二：阅读理解与思考题（必做）】参考答案 + 代码解读  
+> **使用建议**：先独立完成实验文档【任务二】，再来对答案。
 
 ## 一、完整代码逐行解读
 
@@ -155,27 +156,101 @@ pub fn sys_pipe(fds: *mut i32) -> isize {
 
 用户调 `pipe(&mut fds)`，内核返回两个 fd（`fds[0]`=读端、`fds[1]`=写端），进程 fork 后各拿一端通信。
 
-## 二、阅读理解题参考答案
+## 二、任务二：阅读理解与思考题参考答案
 
-### 任务二第 1 题：fd 表设计 + offset 必要性
+### 第 1 题：fd 表如何设计？为什么 `Regular` 要记 `offset`？
 
-每进程一张数组 `FdTable`，fd 是下标。槽位存 `FdType` 枚举区分普通文件/管道读写端。Regular 记 offset 是因为顺序 read 要从上次位置继续——不记 offset 每次从头读，没法读完整个文件。
+每进程一张 `FdTable`，fd 是数组下标（0, 1, 2, …）。`openat` 时 `alloc` 找第一个空槽位，返回的下标就是 fd。槽位存 `FdType` 枚举，区分三种打开对象：
 
-### 任务二第 2 题：read 按 fd 类型分发
+```rust
+enum FdType {
+    Regular { file_id: FileId, offset: usize },
+    PipeRead(usize),
+    PipeWrite(usize),
+}
+```
 
-fd 是统一抽象，fd=3 可能是普通文件也可能是管道读端，"读"的实现完全不同（文件从字节切片按 offset 拷贝；管道从环形缓冲按 read_pos 拿）。必须查 FdType 后 `match` 分发到对应逻辑。这是"一切皆文件"统一接口的代价。
+**`Regular` 记 `offset` 的原因**：顺序 `read` 要从上次位置继续。第一次 read 从 offset=0 拷贝，读完后 offset 前移；下次 read 从新 offset 继续，才能读完整个文件。不记 offset 则每次从头读，无法顺序消费文件内容。
 
-### 任务二第 3 题：为什么 CAS + Acquire/Release
+管道读写端用 `PipeRead`/`PipeWrite` 区分，不需要 offset——数据从环形缓冲按 `read_pos` 取。
 
-普通赋值非原子（读-改-写可能被打断），两进程可能同时进临界区。`compare_exchange_weak` 是硬件原子 CAS，保证"测试并设置"不被打断。Acquire（加锁）防临界区读重排到加锁前；Release（解锁）防临界区写重排到解锁后——这两个内存屏障保证临界区操作不被 CPU 乱序优化破坏。
+> 一句话：fd = 数组下标 → 查 `FdType` 得真实对象；Regular 的 offset 记住「读到哪了」。
 
-### 任务二第 4 题：管道满 break 的后果
+### 第 2 题：`sys_read` 为什么要按 fd 类型分发？
 
-满了 break 防止覆盖未读数据，但写不完大数据——读端不消费时写端只能停。真实系统会阻塞等待（sleep 到读端腾空间），本实验简化为"满就返回"，调用方需自己分批写。
+「一切皆文件」的统一接口背后，实现完全不同：
 
-### 任务二第 5 题：fork 继承 fd + 管道引用计数
+```rust
+match get_fd(slot, fd)? {
+    FdType::PipeRead(id) => sync::pipe_read(id, buf, len),
+    FdType::Regular { file_id, offset } => {
+        // FS.read_at(file_id, offset, ...) 拷贝到用户 buf，offset 前移
+    }
+    FdType::PipeWrite(_) => -1,   // 写端不能读
+}
+```
 
-fd 继承是 shell 管道的基础（`ls|grep` 靠 fork 后子进程各拿管道一端）。管道要引用计数是因为读写端可能被多个进程持有（fork 复制），只有所有引用关闭才能释放缓冲区。普通文件不用计数，因为它是只读静态数据，没有"释放"概念。
+- **普通文件**：从 `DEFAULT_FILES` 内嵌字节切片按 `offset` 拷贝。
+- **管道读端**：从内核环形缓冲按 `read_pos` 取数，可能空（返回 -1）或 EOF（写端关闭且 count=0）。
+
+同一 `read(fd, buf, len)` 接口，fd=3 可能是文件也可能是管道——必须先查 `FdType` 再 `match` 分发。这是统一抽象的代价。
+
+> 一句话：fd 是统一入口，实现按类型分叉——文件读切片，管道读环形缓冲。
+
+### 第 3 题：自旋锁为何必须用 CAS？`Acquire`/`Release` 做什么？
+
+**为什么不能用普通赋值**：`lock = true` 展开成读–改–写，两进程/两 trap 可能同时读到 `false`、都写 `true`，同时进临界区——数据竞争。
+
+**CAS（compare_exchange_weak）**：硬件原子指令，「若 lock 为 false 则改为 true，否则失败」——测试与设置不被打断。
+
+**为什么用 weak**：允许偶发虚假失败（spurious failure），自旋循环里可接受且往往比 strong 更快。
+
+**Acquire / Release 内存序**：
+
+- `Acquire`（加锁成功时）：防止临界区内的读被 CPU 重排到加锁之前。
+- `Release`（解锁时）：防止临界区内的写被重排到解锁之后。
+
+两者保证临界区操作不会被乱序优化「泄漏」到锁外。管道的 `pipe_read`/`pipe_write` 全程持锁，就是为此。
+
+> 一句话：CAS 保证互斥；Acquire/Release 保证临界区内存可见性。
+
+### 第 4 题：管道写满为何 `break`？与阻塞等待差在哪？
+
+管道缓冲有上限 `PIPE_BUFFER_SIZE`。写满后再写会**覆盖未读数据**，所以：
+
+```rust
+if inner.count >= PIPE_BUFFER_SIZE { break; }
+```
+
+写满就停，返回已写字节数——调用方需分批写。
+
+**与真实系统的差异**：
+
+| 本实验 | 真实系统 |
+|--------|----------|
+| 写满 → break 返回 | 写满 → 阻塞（sleep），等读端消费 |
+| 读空且写端未关 → 返回 -1 | 读空 → 阻塞，等写端写入 |
+| 调用方自己 yield/重试 | 内核负责唤醒 |
+
+本实验简化为「满了/空了就直接返回」，由用户程序处理（所以 pipe_test 可能看到 `pipe write failed`）。真实阻塞式 I/O 更高效，但要处理「何时唤醒读/写端」的同步问题——任务三修改 3 可体验这一雏形。
+
+> 一句话：break 防覆盖；真实系统用阻塞等待读端腾空间。
+
+### 第 5 题：fork 后为何要继承 fd？管道为何要引用计数？
+
+**继承 fd 表**（`clone_fd_table`）：
+
+```rust
+FD_TABLES[child_slot] = FD_TABLES[parent_slot];   // 整表复制
+```
+
+shell 管道 `ls | grep` 的基础：父进程 `pipe()` 得读写 fd，fork 后子进程继承同一张 fd 表，各拿管道一端通信。不继承则 fork 出的子进程看不到父进程打开的文件/管道。
+
+**管道引用计数**：
+
+fork 复制 fd 表时，管道读写端的引用 +1（`pipe_add_refs`）。多个进程可能同时持有同一管道的读端或写端——只有**所有引用都 close** 后才释放环形缓冲。普通内嵌只读文件是静态字节切片，没有「释放缓冲区」的生命周期问题，故不必计数。
+
+> 一句话：继承 fd = shell 管道的前提；管道引用计数 = 多进程共享时的安全回收。
 
 ## 三、任务三动手修改的现象参考
 

@@ -1,22 +1,22 @@
-﻿# Three-way comparison raw data (collected Day3, for Day6 comparison.md)
+﻿# Three-way comparison raw data (updated Week 4, Lab1–8)
 
-Collected: 2026-06-23 13:39
-Method: script counts (crates incl workspace members, LOC incl .rs/.asm, tests = #[test] count, target excluded)
+Collected: 2026-07-25  
+Method: PowerShell file count (`.rs`/`.asm`, exclude `target/`), line count, `#[test]` grep, `cargo test` on host triple `x86_64-pc-windows-msvc`
 
 ## Self-developed os-lab
-- Crates: 8 (workspace root + kernel + 5 component crates + user)
-- Source files: 27 (.rs + .asm)
-- Lines of code: 1882
-- Unit tests: 9
-- Labs: 5 (lab1-lab5, mapping to ch1+ch2 / ch2+ch3 / ch4 / ch5 / ch6+ch8)
-- Architecture: single kernel + feature gate progressive (6 crates, 2 dependency layers)
+- Crates: 11 (workspace root + kernel + user + 8 component crates: os-context, os-syscall, os-sbi, os-alloc, os-vm, os-fs, os-signal, os-sync)
+- Source files: 70 (.rs + .asm)
+- Lines of code: 8353
+- Host unit tests: 40 (integration + `#[cfg(test)]`)
+- Labs: 8 (lab1–lab8, mapping to ch1+ch2 / ch2+ch3 / ch4 / ch5 / ch6 / ch7 / ch8)
+- Architecture: single kernel + feature gate progressive (8 component crates, 2 dependency layers)
 
 ## Reference tg-rcore-tutorial
 - Crates: 29
 - Source files: 548
 - Lines of code: 36455
 - Unit tests: 0
-- Labs: 5 (ch3/ch4/ch5/ch6/ch8 base tests)
+- Labs: 8 chapters (ch1–ch8; exercise checker per chapter)
 - Architecture: 8 independent kernels + 23 component crates, 4 dependency layers
 
 ## Local university environment（xv6-riscv / MIT 6.S081）
@@ -53,21 +53,22 @@ Method: script counts (crates incl workspace members, LOC incl .rs/.asm, tests =
 - **与自研环境的差异点（对比重点）**：
   - 语言：自研 Rust（内存安全），xv6 C（需手动管理，易错）
   - 架构：自研单内核+feature gate 渐进式，xv6 单一源码树（无 feature 切换，每 lab 改同一份代码）
-  - 组件化：自研 6 crate/2 层依赖（模块边界清晰），xv6 无 crate（C 文件直接编译进内核）
-  - 测试：自研内嵌 `#[cfg(test)]` 单元测试，xv6 用外部 grade 脚本
+  - 组件化：自研 8 crate/2 层依赖（模块边界清晰），xv6 无 crate（C 文件直接编译进内核）
+  - 测试：自研内嵌 `#[cfg(test)]` + integration tests（40 项 host 测），xv6 用外部 grade 脚本
   - 实验引导：自研用"问题驱动+先想再对照"，xv6 偏"步骤式任务清单"
-  - 实验数：自研 5 个（聚焦核心），xv6 11 个（覆盖更广含网络/fs 深入）
+  - 实验数：自研 8 个（Lab1–8 一条线），xv6 11 个（覆盖更广含网络/fs 深入）
 
-### 三方对比速览（定量，供 Day6 comparison.md 用）
+### 三方对比速览（定量，供 comparison.md 用）
 
 | 维度 | 自研 os-lab | 参考 tg-rcore-tutorial | 本校 xv6-riscv |
 |------|------------|----------------------|---------------|
 | 语言 | Rust | Rust | C |
 | 架构 | 单内核+feature gate | 8 独立内核 | 单一源码树 |
-| 组件化 | 6 crate/2 层依赖 | 23 crate/4 层依赖 | 无 crate |
-| 代码行数 | 1882 | 36455 | ~6000-8000（内核） |
-| 单元测试 | 9 个（内嵌） | 0 | 外部 grade 脚本 |
-| 实验数 | 5 | 5 | 11 |
+| 组件化 | 8 crate/2 层依赖 | 23 crate/4 层依赖 | 无 crate |
+| 代码行数 | 8353 | 36455 | ~6000-8000（内核） |
+| 源码文件数 | 70 | 548 | ~100+ |
+| 单元测试 | 40 个（host） | 0 | 外部 grade 脚本 |
+| 实验数 | 8 | 8（ch1–ch8） | 11 |
 | 实验引导 | 问题驱动+先想再对照 | 实现导向 | 步骤式任务清单 |
 
 ### 待成员 C 向本校核实的【本校特有】项
@@ -78,3 +79,10 @@ Method: script counts (crates incl workspace members, LOC incl .rs/.asm, tests =
 4. 本校用 xv6 的哪个版本年（6.S081 历年有微调）
 
 > 注：xv6-riscv 是成熟的世界级教学内核，本校选用它说明教学水平高。三方对比的定位应是"差异化互补"而非"谁替代谁"——自研环境的优势在 Rust 内存安全、精简架构、问题驱动引导，可与 xv6 形成互补。
+
+## 变更记录
+
+| 日期 | 变更 |
+|------|------|
+| 2026-06-23 | 初版（Lab1–5，1882 行，9 测） |
+| 2026-07-25 | 二期 Lab6–8 合入后更新：8 lab、8353 行、40 host 测、8 组件 crate |

@@ -2,16 +2,25 @@
 
 use os_context::TrapContext;
 
+#[cfg(feature = "lab8")]
+use alloc::{sync::Arc, vec::Vec};
+#[cfg(feature = "lab8")]
+use os_sync::{Condvar, MutexBlocking, Semaphore};
+
 use crate::cell::SyncUnsafeCell;
 use crate::config::{
     APP_BASE_ADDRESS, APP_REGION_SIZE, INITPROC_APP_ID, KERNEL_STACK_SIZE, MAX_CHILDREN,
     MAX_PROCESS_NUM,
 };
 use crate::loader::{get_app_elf, get_app_elf_by_name, get_app_entry};
-use crate::mm::{self, elf_entry_point};
+use crate::mm;
 use crate::trap::{run_user_task, trap_cx_init};
 #[cfg(feature = "lab5")]
 use crate::fs;
+#[cfg(feature = "lab8")]
+use crate::deadlock::DeadlockState;
+#[cfg(feature = "lab8")]
+use crate::processor;
 use crate::{print, println};
 
 #[derive(Copy, Clone, PartialEq)]
@@ -30,8 +39,31 @@ pub struct ProcessControlBlock {
     pub child_count: usize,
     pub exit_code: i32,
     pub status: ProcessStatus,
+    #[cfg(not(feature = "lab8"))]
     pub trap_cx: TrapContext,
     pub space_id: usize,
+    #[cfg(feature = "lab6")]
+    pub priority: usize,
+    #[cfg(feature = "lab6")]
+    pub stride: u128,
+    #[cfg(feature = "lab7")]
+    pub signal: os_signal::SignalState,
+    #[cfg(feature = "lab7")]
+    pub saved_trap_cx: Option<TrapContext>,
+    #[cfg(feature = "lab7")]
+    pub in_signal_handler: bool,
+    #[cfg(feature = "lab8")]
+    pub alive_threads: usize,
+    #[cfg(feature = "lab8")]
+    pub mutex: Option<MutexBlocking>,
+    #[cfg(feature = "lab8")]
+    pub semaphore_list: Vec<Option<Arc<Semaphore>>>,
+    #[cfg(feature = "lab8")]
+    pub condvar: Option<Condvar>,
+    #[cfg(feature = "lab8")]
+    pub pending_condvar_wake: Option<usize>,
+    #[cfg(feature = "lab8")]
+    pub deadlock: DeadlockState,
 }
 
 static mut KERNEL_STACKS: [[u8; KERNEL_STACK_SIZE]; MAX_PROCESS_NUM] =
@@ -87,16 +119,43 @@ impl ProcessManager {
         if self.process_count == 0 {
             return None;
         }
-        for offset in 1..=MAX_PROCESS_NUM {
-            let idx = (self.current + offset) % MAX_PROCESS_NUM;
-            if let Some(pcb) = self.slots[idx].as_ref() {
-                if pcb.status == ProcessStatus::Ready {
-                    self.current = idx;
-                    return Some(idx);
+        #[cfg(not(feature = "lab6"))]
+        {
+            for offset in 1..=MAX_PROCESS_NUM {
+                let idx = (self.current + offset) % MAX_PROCESS_NUM;
+                if let Some(pcb) = self.slots[idx].as_ref() {
+                    if pcb.status == ProcessStatus::Ready {
+                        self.current = idx;
+                        return Some(idx);
+                    }
                 }
             }
+            None
         }
-        None
+        #[cfg(feature = "lab6")]
+        {
+            let mut best: Option<(usize, u128, usize)> = None;
+            for idx in 0..MAX_PROCESS_NUM {
+                let Some(pcb) = self.slots[idx].as_ref() else {
+                    continue;
+                };
+                if pcb.status != ProcessStatus::Ready {
+                    continue;
+                }
+                match best {
+                    Some((_, best_stride, best_pid))
+                        if pcb.stride > best_stride
+                            || (pcb.stride == best_stride && pcb.pid > best_pid) => {}
+                    _ => best = Some((idx, pcb.stride, pcb.pid)),
+                }
+            }
+            let (slot, _, _) = best?;
+            self.current = slot;
+            if let Some(pcb) = self.slots[slot].as_mut() {
+                pcb.advance_stride();
+            }
+            Some(slot)
+        }
     }
 
     fn all_done(&self) -> bool {
@@ -113,9 +172,8 @@ impl ProcessManager {
         let pid = self.next_pid;
         self.next_pid += 1;
 
-        let user_sp = APP_BASE_ADDRESS + APP_REGION_SIZE - 16;
-        let kstack_top = kernel_stack_top(slot);
-        let trap_cx = trap_cx_init(entry, user_sp, kstack_top);
+        #[cfg(feature = "lab8")]
+        let _ = entry;
 
         self.slots[slot] = Some(ProcessControlBlock {
             pid,
@@ -124,8 +182,31 @@ impl ProcessManager {
             child_count: 0,
             exit_code: 0,
             status: ProcessStatus::Ready,
-            trap_cx,
+            #[cfg(not(feature = "lab8"))]
+            trap_cx: trap_cx_init(entry, APP_BASE_ADDRESS + APP_REGION_SIZE - 16, kernel_stack_top(slot)),
             space_id,
+            #[cfg(feature = "lab6")]
+            priority: 16,
+            #[cfg(feature = "lab6")]
+            stride: 0,
+            #[cfg(feature = "lab7")]
+            signal: os_signal::SignalState::new(),
+            #[cfg(feature = "lab7")]
+            saved_trap_cx: None,
+            #[cfg(feature = "lab7")]
+            in_signal_handler: false,
+            #[cfg(feature = "lab8")]
+            alive_threads: 0,
+            #[cfg(feature = "lab8")]
+            mutex: None,
+            #[cfg(feature = "lab8")]
+            semaphore_list: Vec::with_capacity(8),
+            #[cfg(feature = "lab8")]
+            condvar: None,
+            #[cfg(feature = "lab8")]
+            pending_condvar_wake: None,
+            #[cfg(feature = "lab8")]
+            deadlock: DeadlockState::default(),
         });
 
         if let Some(parent) = parent_slot {
@@ -142,18 +223,33 @@ impl ProcessManager {
         self.process_count += 1;
         pid
     }
+
+    #[cfg(feature = "lab8")]
+    fn spawn_process(
+        &mut self,
+        slot: usize,
+        space_id: usize,
+        parent_slot: Option<usize>,
+    ) -> usize {
+        self.spawn(slot, space_id, 0, parent_slot)
+    }
 }
 
 static PROCESS_MANAGER: SyncUnsafeCell<ProcessManager> =
     SyncUnsafeCell::new(ProcessManager::new());
 
 pub fn current_slot() -> usize {
+    #[cfg(feature = "lab8")]
+    {
+        return processor::current_process_slot();
+    }
+    #[cfg(not(feature = "lab8"))]
     PROCESS_MANAGER.with(|pm| pm.current)
 }
 
 pub fn current_space_id() -> usize {
-    PROCESS_MANAGER.with(|pm| {
-        pm.slots[pm.current]
+    PROCESS_MANAGER.with_ref(|pm| {
+        pm.slots[current_slot()]
             .as_ref()
             .expect("no current process")
             .space_id
@@ -161,27 +257,103 @@ pub fn current_space_id() -> usize {
 }
 
 pub fn current_pid() -> usize {
-    PROCESS_MANAGER.with(|pm| {
-        pm.slots[pm.current]
+    PROCESS_MANAGER.with_ref(|pm| {
+        pm.slots[current_slot()]
             .as_ref()
             .expect("no current process")
             .pid
     })
 }
 
+#[cfg(feature = "lab7")]
+pub fn find_slot_by_pid(pid: usize) -> Option<usize> {
+    PROCESS_MANAGER.with_ref(|pm| {
+        for (idx, slot) in pm.slots.iter().enumerate() {
+            if slot.as_ref().is_some_and(|pcb| pcb.pid == pid) {
+                return Some(idx);
+            }
+        }
+        None
+    })
+}
+
+#[cfg(any(feature = "lab7", feature = "lab8"))]
+pub fn with_pcb_slot<R>(slot: usize, f: impl FnOnce(&mut ProcessControlBlock) -> R) -> R {
+    PROCESS_MANAGER.with(|pm| f(pm.slots[slot].as_mut().expect("invalid pcb slot")))
+}
+
+#[cfg(any(feature = "lab7", feature = "lab8"))]
+pub fn with_pcb_ref<R>(slot: usize, f: impl FnOnce(&ProcessControlBlock) -> R) -> R {
+    PROCESS_MANAGER.with_ref(|pm| f(pm.slots[slot].as_ref().expect("invalid pcb slot")))
+}
+
+#[cfg(feature = "lab7")]
+pub fn with_current_pcb<R>(f: impl FnOnce(&mut ProcessControlBlock) -> R) -> R {
+    PROCESS_MANAGER.with(|pm| {
+        let slot = pm.current;
+        f(pm.slots[slot].as_mut().expect("no current process"))
+    })
+}
+
+#[cfg(feature = "lab7")]
+pub fn current_in_signal_handler() -> bool {
+    with_current_pcb(|pcb| pcb.in_signal_handler)
+}
+
+#[cfg(any(feature = "lab6", feature = "lab8"))]
+impl ProcessControlBlock {
+    const BIG_STRIDE: u128 = 1u128 << 63;
+
+    fn pass(&self) -> u128 {
+        Self::BIG_STRIDE / self.priority as u128
+    }
+
+    pub fn advance_stride(&mut self) {
+        self.stride = self.stride.saturating_add(self.pass());
+    }
+}
+
 pub fn init() {
     PROCESS_MANAGER.with(|pm| {
         let slot = pm.alloc_slot();
         let space_id = pm.alloc_space_id();
-        let elf = get_app_elf(INITPROC_APP_ID);
-        mm::create_user_space(space_id, elf);
-        let entry = get_app_entry(INITPROC_APP_ID);
-        pm.spawn(slot, space_id, entry, None);
-        pm.current = slot;
+        #[cfg(feature = "lab6")]
+        let entry = if let Some(elf) = fs::read_file_all("initproc") {
+            let entry = mm::elf_entry_point(&elf);
+            mm::create_user_space_from_elf(space_id, elf);
+            entry
+        } else {
+            let elf = get_app_elf(INITPROC_APP_ID);
+            mm::create_user_space(space_id, elf);
+            get_app_entry(INITPROC_APP_ID)
+        };
+        #[cfg(not(feature = "lab6"))]
+        let entry = {
+            let elf = get_app_elf(INITPROC_APP_ID);
+            mm::create_user_space(space_id, elf);
+            get_app_entry(INITPROC_APP_ID)
+        };
+        #[cfg(feature = "lab8")]
+        {
+            pm.spawn_process(slot, space_id, None);
+            pm.current = slot;
+            let user_sp = APP_BASE_ADDRESS + APP_REGION_SIZE - 16;
+            processor::spawn_main_thread(slot, entry, user_sp);
+        }
+        #[cfg(all(not(feature = "lab8"), any(feature = "lab4", feature = "lab5", feature = "lab6", feature = "lab7")))]
+        {
+            pm.spawn(slot, space_id, entry, None);
+            pm.current = slot;
+        }
     });
 }
 
 pub fn run_initproc() -> ! {
+    #[cfg(feature = "lab8")]
+    {
+        processor::run_init_thread();
+    }
+    #[cfg(not(feature = "lab8"))]
     PROCESS_MANAGER.with(|pm| {
         let slot = pm.current;
         pm.slots[slot].as_mut().unwrap().status = ProcessStatus::Running;
@@ -191,6 +363,12 @@ pub fn run_initproc() -> ! {
 }
 
 pub fn mark_current_ready() {
+    #[cfg(feature = "lab8")]
+    {
+        processor::mark_current_ready();
+        return;
+    }
+    #[cfg(not(feature = "lab8"))]
     PROCESS_MANAGER.with(|pm| {
         let slot = pm.current;
         let pcb = pm.slots[slot].as_mut().unwrap();
@@ -199,6 +377,12 @@ pub fn mark_current_ready() {
 }
 
 pub fn sync_current_trap_cx(cx: &TrapContext) {
+    #[cfg(feature = "lab8")]
+    {
+        processor::sync_current_trap_cx(cx);
+        return;
+    }
+    #[cfg(not(feature = "lab8"))]
     PROCESS_MANAGER.with(|pm| {
         let slot = pm.current;
         if let Some(pcb) = pm.slots[slot].as_mut() {
@@ -208,6 +392,11 @@ pub fn sync_current_trap_cx(cx: &TrapContext) {
 }
 
 pub fn run_next_process() -> ! {
+    #[cfg(feature = "lab8")]
+    {
+        processor::run_next_thread();
+    }
+    #[cfg(not(feature = "lab8"))]
     PROCESS_MANAGER.with(|pm| {
         if pm.all_done() {
             println!("All processes exited.");
@@ -229,8 +418,8 @@ pub fn sys_getpid() -> isize {
 }
 
 pub fn sys_fork(cx: &mut TrapContext) -> isize {
+    let parent_slot = current_slot();
     PROCESS_MANAGER.with(|pm| {
-        let parent_slot = pm.current;
         let parent = pm.slots[parent_slot]
             .as_ref()
             .expect("fork without current process");
@@ -243,13 +432,57 @@ pub fn sys_fork(cx: &mut TrapContext) -> isize {
         let mut child_trap_cx = *cx;
         child_trap_cx.set_return_value(0);
 
+        #[cfg(feature = "lab8")]
+        let child_pid = pm.spawn_process(child_slot, child_space, Some(parent_slot));
+        #[cfg(not(feature = "lab8"))]
         let child_pid = pm.spawn(child_slot, child_space, cx.sepc, Some(parent_slot));
-        let child_pcb = pm.slots[child_slot].as_mut().unwrap();
-        child_pcb.trap_cx = child_trap_cx;
-        child_pcb.trap_cx.kernel_sp = kernel_stack_top(child_slot);
-        child_pcb.status = ProcessStatus::Ready;
 
-        child_pid as isize
+        #[cfg(feature = "lab6")]
+        let (parent_priority, parent_stride) = {
+            let parent_pcb = pm.slots[parent_slot].as_ref().unwrap();
+            (parent_pcb.priority, parent_pcb.stride)
+        };
+        #[cfg(feature = "lab7")]
+        let parent_signal = pm.slots[parent_slot].as_ref().unwrap().signal.clone();
+
+        #[cfg(feature = "lab8")]
+        {
+            let child_pcb = pm.slots[child_slot].as_mut().unwrap();
+            #[cfg(feature = "lab6")]
+            {
+                child_pcb.priority = parent_priority;
+                child_pcb.stride = parent_stride;
+            }
+            #[cfg(feature = "lab7")]
+            {
+                child_pcb.signal = parent_signal.from_fork();
+                child_pcb.saved_trap_cx = None;
+                child_pcb.in_signal_handler = false;
+            }
+            child_pcb.status = ProcessStatus::Ready;
+            processor::fork_thread(parent_slot, child_slot, child_trap_cx);
+            return child_pid as isize;
+        }
+
+        #[cfg(not(feature = "lab8"))]
+        {
+            let child_pcb = pm.slots[child_slot].as_mut().unwrap();
+            child_pcb.trap_cx = child_trap_cx;
+            child_pcb.trap_cx.kernel_sp = kernel_stack_top(child_slot);
+            #[cfg(feature = "lab6")]
+            {
+                child_pcb.priority = parent_priority;
+                child_pcb.stride = parent_stride;
+            }
+            #[cfg(feature = "lab7")]
+            {
+                child_pcb.signal = parent_signal.from_fork();
+                child_pcb.saved_trap_cx = None;
+                child_pcb.in_signal_handler = false;
+            }
+            child_pcb.status = ProcessStatus::Ready;
+            child_pid as isize
+        }
     })
 }
 
@@ -275,10 +508,6 @@ pub fn sys_execve(cx: &mut TrapContext, path: *const u8, path_len: usize, _envp:
         Ok(s) => s,
         Err(_) => return -1,
     };
-    let elf = match get_app_elf_by_name(name) {
-        Some(e) => e,
-        None => return -1,
-    };
 
     let slot = current_slot();
     let space_id = PROCESS_MANAGER.with(|pm| {
@@ -288,12 +517,101 @@ pub fn sys_execve(cx: &mut TrapContext, path: *const u8, path_len: usize, _envp:
             .space_id
     });
 
-    mm::replace_user_space(space_id, elf);
-    let entry = elf_entry_point(elf);
-    let user_sp = APP_BASE_ADDRESS + APP_REGION_SIZE - 16;
-    let kstack_top = kernel_stack_top(slot);
-    *cx = trap_cx_init(entry, user_sp, kstack_top);
-    run_user_task(cx);
+    #[cfg(feature = "lab8")]
+    {
+        processor::reset_process_for_exec(slot);
+        with_pcb_slot(slot, |pcb| {
+            pcb.mutex = None;
+            pcb.semaphore_list.clear();
+            pcb.condvar = None;
+            pcb.pending_condvar_wake = None;
+            pcb.deadlock = DeadlockState::default();
+            pcb.alive_threads = 1;
+        });
+    }
+
+    #[cfg(feature = "lab6")]
+    {
+        let entry = if let Some(elf) = get_app_elf_by_name(name) {
+            let entry = mm::elf_entry_point(elf);
+            mm::replace_user_space_from_static(space_id, elf);
+            entry
+        } else if cfg!(not(feature = "lab8")) {
+            if let Some(elf) = fs::read_file_all(name) {
+                let entry = mm::elf_entry_point(&elf);
+                mm::replace_user_space_from_elf(space_id, elf);
+                entry
+            } else {
+                return -1;
+            }
+        } else {
+            return -1;
+        };
+        let user_sp = APP_BASE_ADDRESS + APP_REGION_SIZE - 16;
+        #[cfg(not(feature = "lab8"))]
+        let kstack_top = kernel_stack_top(slot);
+        #[cfg(feature = "lab8")]
+        let kstack_top = cx.kernel_sp;
+        *cx = trap_cx_init(entry, user_sp, kstack_top);
+        #[cfg(feature = "lab8")]
+        {
+            processor::reset_current_thread_after_exec(slot, entry, user_sp, kstack_top);
+        }
+        run_user_task(cx);
+    }
+    #[cfg(not(feature = "lab6"))]
+    {
+        let elf = match get_app_elf_by_name(name) {
+            Some(e) => e,
+            None => return -1,
+        };
+        mm::replace_user_space(space_id, elf);
+        let entry = mm::elf_entry_point(elf);
+        let user_sp = APP_BASE_ADDRESS + APP_REGION_SIZE - 16;
+        let kstack_top = kernel_stack_top(slot);
+        *cx = trap_cx_init(entry, user_sp, kstack_top);
+        run_user_task(cx);
+    }
+}
+
+#[cfg(feature = "lab6")]
+pub fn sys_spawn(path: *const u8, path_len: usize) -> isize {
+    let name_buf = match read_user_str(path, path_len) {
+        Some(b) => b,
+        None => return -1,
+    };
+    let name = match core::str::from_utf8(&name_buf[..path_len]) {
+        Ok(s) => s,
+        Err(_) => return -1,
+    };
+    let elf = match fs::read_file_all(name) {
+        Some(e) => e,
+        None => return -1,
+    };
+    PROCESS_MANAGER.with(|pm| {
+        let parent_slot = pm.current;
+        let child_slot = pm.alloc_slot();
+        let child_space = pm.alloc_space_id();
+        let entry = mm::elf_entry_point(&elf);
+        mm::create_user_space_from_elf(child_space, elf);
+        let child_pid = pm.spawn(child_slot, child_space, entry, Some(parent_slot));
+        let child_pcb = pm.slots[child_slot].as_mut().unwrap();
+        child_pcb.status = ProcessStatus::Ready;
+        child_pid as isize
+    })
+}
+
+#[cfg(feature = "lab6")]
+pub fn sys_set_priority(prio: isize) -> isize {
+    if prio < 2 {
+        return -1;
+    }
+    PROCESS_MANAGER.with(|pm| {
+        let slot = pm.current;
+        let pcb = pm.slots[slot].as_mut().expect("set_priority without process");
+        pcb.priority = prio as usize;
+        prio
+    })
 }
 
 fn write_user_i32(ptr: *mut i32, value: i32) -> bool {
@@ -367,6 +685,11 @@ pub fn sys_wait4(cx: &mut TrapContext, want_pid: isize, status_ptr: *mut i32) ->
 }
 
 pub fn sys_exit(exit_code: i32) -> ! {
+    #[cfg(feature = "lab8")]
+    {
+        processor::thread_exit(exit_code);
+    }
+    #[cfg(not(feature = "lab8"))]
     PROCESS_MANAGER.with(|pm| {
         let slot = pm.current;
         let pid = pm.slots[slot].as_ref().unwrap().pid;

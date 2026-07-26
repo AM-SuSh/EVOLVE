@@ -14,7 +14,7 @@
 | 架构与 feature 设计 | [os-lab/docs/architecture.md](../os-lab/docs/architecture.md)                                                     |
 | AI 协作记录        | [os-lab/docs/ai-collaboration.md](../os-lab/docs/ai-collaboration.md)                                             |
 | 实验指导（lab1–5）   | [os-lab/labs/overview.md](../os-lab/labs/overview.md)                                                             |
-| 习题与参考答案        | `os-lab/labs/exercises/`、`os-lab/labs/answers/`                                                                   |
+| 参考答案（对应【任务二】） | [os-lab/labs/answers/](../os-lab/labs/answers/)                                                                   |
 | Web 学习手册源码     | `os-lab/handbook/`                                                                                                |
 | 源码 workspace   | [os-lab/README.md](../os-lab/README.md)                                                                           |
 
@@ -394,14 +394,14 @@ Linux/macOS 仅需将 `cargo test` 的 `--target` 改成对应 host triple；`os
 
 ## 6. Web 学习手册
 
-`os-lab/handbook/` 是基于 VitePress 的静态学习门户，用于聚合实验指导、习题、答案与设计报告。
+`os-lab/handbook/` 是基于 VitePress 的静态学习门户，用于聚合实验指导、参考答案与设计报告。
 
 ### 6.1 主要功能
 
 
 | 功能      | 说明                                              |
 | ------- | ----------------------------------------------- |
-| 文档聚合    | 实验指导、习题、参考答案、设计报告等统一浏览                          |
+| 文档聚合    | 实验指导、参考答案、设计报告等统一浏览                          |
 | Mermaid | 知识地图等图表原样渲染                                     |
 | 学习进度    | 首页与“学习进度”页可勾选 Lab1–Lab5 步骤（浏览器 localStorage 保存） |
 | 命令复制    | 各 Lab 验证命令、环境激活命令一键复制                           |

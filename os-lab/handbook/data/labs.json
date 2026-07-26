@@ -6,15 +6,14 @@
       "title": "裸机启动与最小内核",
       "subtitle": "RISC-V 启动、SBI、链接脚本",
       "guide": "/labs/lab1-bare-metal",
-      "exercises": "/exercises/lab1-exercises",
       "answers": "/answers/lab1-answers",
       "verifyCmd": "cargo run -p kernel --features lab1 --release",
       "expected": ["Hello, OS!", "os-lab kernel lab1 is running on QEMU virt."],
       "checklist": [
         { "id": "read", "label": "阅读实验指导（问题场景 + 背景知识）" },
         { "id": "run", "label": "在 QEMU 中跑通 lab1" },
-        { "id": "exercise", "label": "完成文字习题" },
-        { "id": "review", "label": "对照参考答案自查" }
+        { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
+        { "id": "review", "label": "对照 labs/answers/lab1-answers.md 自查" }
       ]
     },
     {
@@ -23,15 +22,14 @@
       "title": "中断处理与多任务",
       "subtitle": "Trap、上下文切换、系统调用、调度",
       "guide": "/labs/lab2-trap-and-task",
-      "exercises": "/exercises/lab2-exercises",
       "answers": "/answers/lab2-answers",
       "verifyCmd": "cargo run -p kernel --features lab2 --release",
       "expected": ["409684505", "Yield round"],
       "checklist": [
         { "id": "read", "label": "理解 trap 入口与返回路径" },
         { "id": "run", "label": "跑通 lab2 用户态测例" },
-        { "id": "exercise", "label": "完成文字习题" },
-        { "id": "review", "label": "对照参考答案自查" }
+        { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
+        { "id": "review", "label": "对照 labs/answers/lab2-answers.md 自查" }
       ]
     },
     {
@@ -40,15 +38,14 @@
       "title": "内存管理与虚存",
       "subtitle": "页帧分配、Sv39 页表、地址空间",
       "guide": "/labs/lab3-memory",
-      "exercises": "/exercises/lab3-exercises",
       "answers": "/answers/lab3-answers",
       "verifyCmd": "cargo run -p kernel --features lab3 --release",
       "expected": ["lab3"],
       "checklist": [
         { "id": "read", "label": "理解物理页与页表映射" },
         { "id": "run", "label": "跑通 lab3 QEMU 输出" },
-        { "id": "exercise", "label": "完成文字习题" },
-        { "id": "review", "label": "对照参考答案自查" }
+        { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
+        { "id": "review", "label": "对照 labs/answers/lab3-answers.md 自查" }
       ]
     },
     {
@@ -57,15 +54,14 @@
       "title": "进程管理",
       "subtitle": "fork、exec、wait、进程树",
       "guide": "/labs/lab4-process",
-      "exercises": "/exercises/lab4-exercises",
       "answers": "/answers/lab4-answers",
       "verifyCmd": "cargo run -p kernel --features lab4 --release",
       "expected": ["fork_test pass"],
       "checklist": [
         { "id": "read", "label": "理解 fork/exec/wait 语义" },
         { "id": "run", "label": "跑通 fork_test" },
-        { "id": "exercise", "label": "完成文字习题" },
-        { "id": "review", "label": "对照参考答案自查" }
+        { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
+        { "id": "review", "label": "对照 labs/answers/lab4-answers.md 自查" }
       ]
     },
     {
@@ -74,19 +70,95 @@
       "title": "文件系统与并发",
       "subtitle": "块设备、管道、自旋锁",
       "guide": "/labs/lab5-fs-and-sync",
-      "exercises": "/exercises/lab5-exercises",
       "answers": "/answers/lab5-answers",
       "verifyCmd": "cargo run -p kernel --features lab5 --release",
       "expected": ["fs_test pass", "pipe_test pass"],
       "checklist": [
         { "id": "read", "label": "理解 fd 与管道机制" },
         { "id": "run", "label": "跑通 fs_test 与 pipe_test" },
-        { "id": "exercise", "label": "完成文字习题" },
+        { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
         { "id": "exercise-unit", "label": "（可选）跑通 24 项 host 单测" },
+        { "id": "review", "label": "对照 labs/answers/lab5-answers.md 自查" }
+      ]
+    },
+    {
+      "id": "lab6",
+      "feature": "lab6",
+      "title": "磁盘文件系统",
+      "subtitle": "VirtIO、easy-fs、硬链接与 fstat",
+      "guide": "/labs/lab6-disk-fs",
+      "exercises": "/exercises/lab6-exercises",
+      "answers": "/answers/lab6-answers",
+      "verifyCmd": "make test-lab6",
+      "expected": [
+        "file_test pass",
+        "Test link OK!",
+        "mass open/unlink OK!",
+        "mmap_test pass",
+        "spawn_test pass",
+        "stride_test pass",
+        "fs_test pass",
+        "pipe_test pass"
+      ],
+      "checklist": [
+        { "id": "read", "label": "理解 VirtIO 块设备与 easy-fs 布局" },
+        { "id": "run", "label": "跑通 lab6_usertest 全链（须带 VirtIO 的 make test-lab6）" },
+        { "id": "exercise", "label": "完成 link/fstat 习题" },
+        { "id": "exercise-unit", "label": "（可选）跑通 os-fs 块设备 mock 单测" },
+        { "id": "review", "label": "对照参考答案自查" }
+      ]
+    },
+    {
+      "id": "lab7",
+      "feature": "lab7",
+      "title": "IPC 与信号",
+      "subtitle": "统一 fd、dup、kill/sigaction",
+      "guide": "/labs/lab7-ipc-signal",
+      "exercises": "/exercises/lab7-exercises",
+      "answers": "/answers/lab7-answers",
+      "verifyCmd": "make test-lab7",
+      "expected": [
+        "dup_test pass",
+        "signal_test pass",
+        "signal_mask_test pass",
+        "pipe_test pass"
+      ],
+      "checklist": [
+        { "id": "read", "label": "理解统一 fd 与信号投递时机" },
+        { "id": "run", "label": "跑通 lab7_usertest 全链（make test-lab7）" },
+        { "id": "exercise", "label": "完成信号/管道习题" },
+        { "id": "exercise-unit", "label": "（可选）跑通 os-fs fd_kind + os-signal host 单测" },
+        { "id": "review", "label": "对照参考答案自查" }
+      ]
+    },
+    {
+      "id": "lab8",
+      "feature": "lab8",
+      "title": "线程与同步",
+      "subtitle": "线程、阻塞 mutex/semaphore/condvar、死锁检测",
+      "guide": "/labs/lab8-thread-sync",
+      "exercises": "/exercises/lab8-exercises",
+      "answers": "/answers/lab8-answers",
+      "verifyCmd": "make test-lab8",
+      "expected": [
+        "threads_test pass",
+        "threads_arg_test pass",
+        "mutex_test pass",
+        "condvar_test pass",
+        "pipetest passed!",
+        "deadlock test mutex 1 OK!",
+        "deadlock test semaphore 1 OK!",
+        "pipe_test pass"
+      ],
+      "checklist": [
+        { "id": "read", "label": "理解进程/线程双层与阻塞 syscall 语义" },
+        { "id": "run", "label": "跑通 lab8_integration_test 全链（make test-lab8）" },
+        { "id": "exercise", "label": "完成线程/同步/死锁习题" },
+        { "id": "exercise-unit", "label": "（可选）跑通 os-sync host 单测" },
         { "id": "review", "label": "对照参考答案自查" }
       ]
     }
   ],
   "envActivate": ". ..\\scripts\\activate-os-env.ps1\ncd os-lab",
-  "unitTestCmd": "cargo test -p os-context -p os-syscall -p os-sbi -p os-fs --target x86_64-pc-windows-msvc"
+  "unitTestCmd": "cargo test -p os-context -p os-syscall -p os-sbi -p os-fs -p os-signal -p os-sync --target x86_64-pc-windows-msvc"
 }

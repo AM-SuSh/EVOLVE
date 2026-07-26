@@ -96,6 +96,24 @@ pub fn get_app_elf_by_name(name: &str) -> Option<&'static [u8]> {
                 2
             }
         })),
+        #[cfg(feature = "lab8")]
+        "threads_test" => Some(include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/threads_test"))),
+        #[cfg(feature = "lab8")]
+        "threads_arg_test" => Some(include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/threads_arg_test"))),
+        #[cfg(feature = "lab8")]
+        "mutex_test" => Some(include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/mutex_test"))),
+        #[cfg(feature = "lab8")]
+        "condvar_test" => Some(include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/condvar_test"))),
+        #[cfg(feature = "lab8")]
+        "pipetest" => Some(include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/pipetest"))),
+        #[cfg(feature = "lab8")]
+        "deadlock_mutex_test" => {
+            Some(include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/deadlock_mutex_test")))
+        }
+        #[cfg(feature = "lab8")]
+        "deadlock_sem_test" => Some(include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/deadlock_sem_test"))),
+        #[cfg(feature = "lab8")]
+        "pipe_test" => Some(include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/pipe_test"))),
         _ => None,
     }
 }

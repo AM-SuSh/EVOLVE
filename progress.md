@@ -144,6 +144,292 @@
 - 尚待完成：报告雷达图和时间线、Lab1/3/4/5 专用阶段提示词、样本会话与提示词 CHANGELOG、`ai-learning-environment.md` 设计文档。
 - 回滚时只需移除上述 AI 导师组件、代理与 `os-lab/tutor/` 新增内容，并删除本条进度记录；不要回滚仓库内其他并行修改。
 
+## 2026-07-25 - Task: 规范 labs 文档结构并移除 exercises/
+
+### What was done
+
+- 删除独立 `labs/exercises/`：阅读理解题以各 Lab【任务二】为准，答案只保留在 `labs/answers/`。
+- 统一 answers 文件头与「任务二」章节标题；新增 `labs/README.md`、`labs/answers/README.md` 说明目录职责。
+- 清理 handbook 侧栏/同步脚本/`labs.json`/`LabProgress` 及 README、overview、start 等入口中的文字习题引用。
+
+### Testing
+
+- `git rm -r os-lab/labs/exercises` 后索引中无 exercises 路径。
+- 在 `os-lab/handbook` 执行 `node scripts/sync-content.mjs`：同步 20 个 Markdown，`handbook/exercises` 已不存在。
+- 检索确认 handbook 源文件与 `labs/` 活跃入口不再指向 `/exercises/`。
+
+### Notes
+
+- `os-lab/labs/exercises/*`：已从仓库移除。
+- `os-lab/labs/README.md`、`os-lab/labs/answers/README.md`：新增材料说明。
+- `os-lab/labs/answers/lab1`–`lab5-answers.md`：统一文件头与任务二节标题。
+- `os-lab/labs/lab3-memory.md`、`lab4-process.md`：任务二标题补「（必做）」。
+- `os-lab/labs/overview.md`、`os-lab/README.md`、根 `README.md`、`docs/os-lab.md`：入口改为指导 + 答案。
+- `os-lab/handbook/`（config、sync、labs.json、LabProgress、guide、index、README、gitignore）：去掉 exercises 同步与导航。
+- `os-lab/docs/architecture.md`、`comparison.md`、`design-report.md`：去掉失效 exercises 表述。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout --` 上述改动路径；exercises 可用历史提交恢复。
+
+## 2026-07-25 - Task: 改写 Lab3 背景知识为直接叙述
+
+### What was done
+
+- 重写 `lab3-memory.md`「二、背景知识」：去掉「先想 / 答案」问答体，改为面向初学者的直接叙述，保留原 2.1–2.5 结构与 mermaid 图。
+
+### Testing
+
+- 人工确认各小节仍覆盖分页、Sv39、PTE、页帧分配器、MemorySet，并衔接到「三、实验任务」。
+
+### Notes
+
+- `os-lab/labs/lab3-memory.md`：仅改背景知识叙述方式。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab3-memory.md progress.md`。
+
+## 2026-07-25 - Task: 扩写 Lab3–5 问题场景
+
+### What was done
+
+- 仅扩写 `lab3-memory.md`、`lab4-process.md`、`lab5-fs-and-sync.md` 的「一、问题场景」：承接上一 Lab、对接《操作系统导论》对应主题，把痛点与本实验要落地的机制写得更具体。
+
+### Testing
+
+- 人工核对三节均仍衔接到各自「二、背景知识」；未改任务命令与预期输出。
+
+### Notes
+
+- `os-lab/labs/lab3-memory.md`：内存虚拟化问题场景加细。
+- `os-lab/labs/lab4-process.md`：进程 API 问题场景加细。
+- `os-lab/labs/lab5-fs-and-sync.md`：持久性 + 并发问题场景加细。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout --` 上述三个 lab 文件与 `progress.md`。
+
+## 2026-07-25 - Task: 合并任务二与思考题，答案统一进 answers/
+
+### What was done
+
+- Lab1–5 实验文档：将原「任务二」与「六、思考题与参考答案」合并为「任务二：阅读理解与思考题（必做）」（仅保留题目）；删除文末思考题节。
+- 全部参考答案写入并充实 `labs/answers/lab1`–`lab5-answers.md`；同步修正 `exercises/`、`overview.md`、手册 `labs.json` 中的旧链接表述。
+
+### Testing
+
+- 检索确认 lab1–5 正文已无「## 六、思考题」与文内「参考答案：」题解块；answers 中均有对应「第 N 题」。
+
+### Notes
+
+- `os-lab/labs/lab1`–`lab5-*.md`：合并题目、去掉文末答案节。
+- `os-lab/labs/answers/lab1`–`lab5-answers.md`：统一任务二答案。
+- `os-lab/labs/exercises/*`、`overview.md`、`handbook/data/labs.json`：引用更新。
+- `progress.md`：追加本轮记录。
+- 回滚方式：对上述路径 `git checkout --` 恢复。
+
+## 2026-07-25 - Task: 扩充 Lab2 背景知识（面向初学者）
+
+### What was done
+
+- 扩写 `lab2-trap-and-task.md` §二：补充主线总览、受限直接执行、CSR 表、上下文与 `advance_sepc`、双栈与 `sscratch` 步骤、系统调用走读示例、TCB/调度与已知限制；保持 2.1–2.5 结构与后文任务不变。
+
+### Testing
+
+- 人工核对扩写后仍衔接到「三、实验任务」；未改验证命令与预期输出。
+
+### Notes
+
+- `os-lab/labs/lab2-trap-and-task.md`：仅扩充背景知识。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab2-trap-and-task.md progress.md`。
+
+## 2026-07-25 - Task: 改写 Lab2「CPU 虚拟化」导语
+
+### What was done
+
+- 将难懂的「怎样让程序以为自己独占 CPU…」改写为教材式表述：多程序共享 CPU + 低特权不能直碰硬件，并点出「直接执行但受限」。
+
+### Testing
+
+- 人工核对与后文三个问题（系统调用 / 保存上下文 / 调度）衔接自然。
+
+### Notes
+
+- `os-lab/labs/lab2-trap-and-task.md`：仅改问题场景开篇一句。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab2-trap-and-task.md progress.md`。
+
+## 2026-07-25 - Task: 补全 Lab2 系统调用导语断句
+
+### What was done
+
+- 补全问题场景中「而是需要通过…」一句为「通过请求内核代劳」，衔接到系统调用概念。
+
+### Testing
+
+- 人工核对句子通顺且与后文提问衔接；未改实验任务。
+
+### Notes
+
+- `os-lab/labs/lab2-trap-and-task.md`：补全一处断句。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab2-trap-and-task.md progress.md`。
+
+## 2026-07-25 - Task: 润色 Lab2 开篇导语
+
+### What was done
+
+- 润色 `lab2-trap-and-task.md` 开篇：承接 Lab1、点明「能干活」目标，并对应教材 CPU 虚拟化。
+
+### Testing
+
+- 人工核对开篇语义与后文问题场景一致；未改任务与验证标准。
+
+### Notes
+
+- `os-lab/labs/lab2-trap-and-task.md`：仅调整文首导语。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab2-trap-and-task.md progress.md`。
+
+## 2026-07-25 - Task: 按 Lab1 风格改写 Lab2–5 实验指导
+
+### What was done
+
+- 按已定调的 Lab1 学生向文风，重写 `lab2`–`lab5` 四份实验指导：对接《操作系统导论》三大主题用语，保留原章节框架、命令、预期输出、习题要点与关键技术细节。
+
+### Testing
+
+- 人工核对四份文档仍含原验证命令与关键期望串（如 lab2 `409684505`、lab4 `fork_test pass`、lab5 `fs_test pass`/`pipe_test pass`）；未改内核代码，未重跑 QEMU。
+
+### Notes
+
+- `os-lab/labs/lab2-trap-and-task.md`：CPU 虚拟化 / trap / 调度叙事对齐教材。
+- `os-lab/labs/lab3-memory.md`：内存虚拟化 / 页表叙事对齐教材。
+- `os-lab/labs/lab4-process.md`：进程 API 叙事对齐教材。
+- `os-lab/labs/lab5-fs-and-sync.md`：持久性 + 并发叙事对齐教材。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab2-trap-and-task.md os-lab/labs/lab3-memory.md os-lab/labs/lab4-process.md os-lab/labs/lab5-fs-and-sync.md progress.md`。
+
+## 2026-07-25 - Task: 扩写 Lab1「RISC-V 启动层级」小节
+
+### What was done
+
+- 仅改写 `lab1-bare-metal.md` 的 §2.1：补充 M/S/U 与教材对照、启动三步时序、`0x80200000` 约定，以及 SBI 与系统调用类比。
+
+### Testing
+
+- 对照 `linker.ld` 的 `BASE_ADDRESS` 与 `os-sbi` 的 `ecall` 用法，确认扩写内容与实现一致；未改动其他章节。
+
+### Notes
+
+- `os-lab/labs/lab1-bare-metal.md`：仅更新 §2.1。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab1-bare-metal.md progress.md`。
+
+## 2026-07-25 - Task: 对齐《操作系统导论》(OSTEP) 理论表述
+
+### What was done
+
+- 改写 `guide/start.md`：点明教材为《操作系统导论》，按虚拟化 / 并发 / 持久性对照 Lab1–5，并在导读中使用抽象、系统调用、地址空间、进程 API 等书中用语。
+- 同步调整 `labs/lab1-bare-metal.md` 问题场景与背景知识，将泛化的「课上/课本」表述改为与教材概念对接。
+
+### Testing
+
+- 人工核对 start 中 Lab↔OSTEP 映射表与设计报告三大主题划分一致；Lab1 文内不再残留含糊的「课上说」主叙述。
+
+### Notes
+
+- `os-lab/handbook/guide/start.md`：教材对齐与 Lab 映射。
+- `os-lab/labs/lab1-bare-metal.md`：理论表述对接 OSTEP。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout --` 上述文件（`start.md` 若仍为未跟踪则需自行备份）。
+
+## 2026-07-25 - Task: 恢复完整的 guide/start.md
+
+### What was done
+
+- 重写恢复 `os-lab/handbook/guide/start.md`：保留已润色开篇，补回「第一次动手」完整步骤与「推荐阅读顺序」表格，修正重复章节号与断裂内容。
+
+### Testing
+
+- 人工核对六节齐全：认识 → 是什么 → Lab 列表 → 导读 → 学习方式 → 动手 → 阅读顺序；Lab 链接均无 `.md` 后缀。
+
+### Notes
+
+- `os-lab/handbook/guide/start.md`：全文恢复为完整学生入门页。
+- `progress.md`：追加本轮记录。
+- 回滚方式：用编辑器本地历史或重新按本记录内容覆盖该文件。
+
+## 2026-07-25 - Task: 润色 start 开篇并设为手册首要入口
+
+### What was done
+
+- 润色 `guide/start.md` 开篇：保留虚拟化 / 并发 / 持久性主线，明确「第一次打开请从本页开始」。
+- 将首页主按钮、顶栏、侧栏、进度页与同步脚本中的入门链接统一指向 `/guide/start`（替代已失效的 `/guide/introduction`）。
+
+### Testing
+
+- 人工核对首页、`config.mts` 侧栏/导航、`progress.md`、`sync-content.mjs`、`handbook/README.md` 均指向 `/guide/start`。
+- 本轮未重启 VitePress；刷新本地站点后即可验证。
+
+### Notes
+
+- `os-lab/handbook/guide/start.md`：润色第一段介绍。
+- `os-lab/handbook/index.md`、`.vitepress/config.mts`、`guide/progress.md`、`scripts/sync-content.mjs`、`README.md`：入口改为 start。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout --` 上述文件。
+
+## 2026-07-25 - Task: 修复 introduction 文末 Lab1 链接
+
+### What was done
+
+- 将 `guide/introduction.md` 文末 Lab1 链接从 `/labs/lab1-bare-metal.md` 改为 `/labs/lab1-bare-metal`，与 VitePress `cleanUrls` 及其他站内链接一致。
+- 执行 `npm run sync`，确认 `handbook/labs/lab1-bare-metal.md` 已生成。
+
+### Testing
+
+- 核对文内全部 Lab 链接均无 `.md` 后缀；同步后 lab1 页面文件存在。
+
+### Notes
+
+- `os-lab/handbook/guide/introduction.md`：修正文末死链。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/handbook/guide/introduction.md progress.md`。
+
+## 2026-07-25 - Task: handbook 新增「认识 os-lab」并替代 quick-start
+
+### What was done
+
+- 新增 `os-lab/handbook/guide/introduction.md`：面向学生介绍 os-lab、Lab1–8 学习路径（Lab6–8 占位）、各 Lab 导读与推荐学习方式。
+- 删除 `guide/quick-start.md`，并将其在首页、侧栏、进度页、同步脚本中的入口统一改到 `introduction`。
+
+### Testing
+
+- 全仓库检索 `quick-start`，确认活跃手册入口已无残留链接。
+- 本轮未启动 VitePress 构建（仅文档与配置入口调整）。
+
+### Notes
+
+- `os-lab/handbook/guide/introduction.md`：新建学生向入门文档。
+- `os-lab/handbook/guide/quick-start.md`：删除（由 introduction 替代）。
+- `os-lab/handbook/.vitepress/config.mts`、`index.md`、`guide/progress.md`、`scripts/sync-content.mjs`、`README.md`：入口与说明同步。
+- `progress.md`：追加本轮记录。
+- 回滚方式：从 git 恢复上述文件；`introduction.md` 可直接删除。
+
+## 2026-07-25 - Task: 以初学者视角改写 Lab1 实验指导
+
+### What was done
+
+- 在保持原有章节框架（零～六、任务一/二/三、提交清单、验证、AI 提问、习题）不变的前提下，重写 `lab1-bare-metal.md` 叙述。
+- 用「课上刚学过的基础 OS 概念 → 本实验对应物」的方式串联启动、特权级、无标准库、BSS 初始化与 SBI 输出，降低入门阅读门槛。
+
+### Testing
+
+- 人工核对改写后文档仍包含原命令（`cargo run -p kernel --features lab1` / `make run`）、预期输出、`0x80200000`/`0x88000000` 修改实验、三道习题要点与原 mermaid 图结构。
+- 本轮仅修改 Markdown 实验指导，未重新跑 QEMU。
+
+### Notes
+
+- `os-lab/labs/lab1-bare-metal.md`：按初学者视角重写问题场景与背景知识表述，实验任务与验证标准保持一致。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab1-bare-metal.md progress.md`。
+
 ## 2026-06-30 - Task: 同步文档引用至汇总后的 docs 结构
 
 ### What was done

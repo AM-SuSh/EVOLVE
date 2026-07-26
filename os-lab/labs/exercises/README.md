@@ -18,5 +18,8 @@
 | Lab3 内存与虚存 | [lab3-exercises.md](lab3-exercises.md) | 分页、Sv39、PTE、地址空间 |
 | Lab4 进程管理 | [lab4-exercises.md](lab4-exercises.md) | fork、exec、wait、僵尸进程 |
 | Lab5 文件系统与并发 | [lab5-exercises.md](lab5-exercises.md) | fd、管道、自旋锁、数据竞争 |
+| Lab6 磁盘文件系统 | [lab6-exercises.md](lab6-exercises.md) | VirtIO、easy-fs、硬链接、fstat、unlink 死锁 |
+| Lab7 IPC 与信号 | [lab7-exercises.md](lab7-exercises.md) | 统一 fd、信号、dup、管道 vs 信号 |
+| Lab8 线程与同步 | [lab8-exercises.md](lab8-exercises.md) | 线程、阻塞同步、死锁检测、自旋锁对比 |
 
-> 答案分布：lab1/lab2 的习题答案在各 lab 文档的"思考题与参考答案"节；lab3-5 的部分答案在 `labs/answers/` 里。鼓励先独立思考再对答案。
+> 答案分布：lab1/lab2 的习题答案在各 lab 文档的"思考题与参考答案"节；lab3–8 的部分答案在 `labs/answers/` 里。鼓励先独立思考再对答案。

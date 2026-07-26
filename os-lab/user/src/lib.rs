@@ -4,7 +4,15 @@
 
 mod syscall;
 
-pub use syscall::{close, exec, exit, fork, getpid, open, pipe, read, waitpid, write, yield_};
+pub use os_syscall::{SignalAction, Stat, StatMode};
+pub use syscall::{
+    close, condvar_create, condvar_signal, condvar_wait, dup, enable_deadlock_detect, exec, exit,
+    fork, fstat, getpid, gettid, kill, linkat, mmap, munmap, mutex_create, mutex_lock,
+    mutex_unlock, open, openat, pipe, read, semaphore_create, semaphore_down, semaphore_up,
+    set_priority, sigaction, sigprocmask, sigreturn, spawn, thread_create, unlinkat, waitpid,
+    waittid, write, yield_, DEADLOCK_DETECTED, O_CREATE, O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY,
+    PAGE_SIZE, PROT_READ, PROT_WRITE, SIGINT, SIGKILL, SIGUSR1,
+};
 
 pub fn print(s: &str) {
     let _ = write(1, s.as_bytes());

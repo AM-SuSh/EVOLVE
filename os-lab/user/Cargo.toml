@@ -41,3 +41,87 @@ path = "src/bin/fs_test.rs"
 [[bin]]
 name = "pipe_test"
 path = "src/bin/pipe_test.rs"
+
+[[bin]]
+name = "file_test"
+path = "src/bin/file_test.rs"
+
+[[bin]]
+name = "link_test"
+path = "src/bin/link_test.rs"
+
+[[bin]]
+name = "mass_unlink_test"
+path = "src/bin/mass_unlink_test.rs"
+
+[[bin]]
+name = "mmap_test"
+path = "src/bin/mmap_test.rs"
+
+[[bin]]
+name = "spawn_test"
+path = "src/bin/spawn_test.rs"
+
+[[bin]]
+name = "stride_test"
+path = "src/bin/stride_test.rs"
+
+[[bin]]
+name = "lab6_usertest"
+path = "src/bin/lab6_usertest.rs"
+
+[[bin]]
+name = "lab7_usertest"
+path = "src/bin/lab7_usertest.rs"
+
+[[bin]]
+name = "dup_test"
+path = "src/bin/dup_test.rs"
+
+[[bin]]
+name = "signal_child"
+path = "src/bin/signal_child.rs"
+
+[[bin]]
+name = "signal_test"
+path = "src/bin/signal_test.rs"
+
+[[bin]]
+name = "signal_mask_test"
+path = "src/bin/signal_mask_test.rs"
+
+[[bin]]
+name = "lab8_integration_test"
+path = "src/bin/lab8_integration_test.rs"
+
+[[bin]]
+name = "lab8_usertest"
+path = "src/bin/lab8_usertest.rs"
+
+[[bin]]
+name = "threads_test"
+path = "src/bin/threads_test.rs"
+
+[[bin]]
+name = "threads_arg_test"
+path = "src/bin/threads_arg_test.rs"
+
+[[bin]]
+name = "mutex_test"
+path = "src/bin/mutex_test.rs"
+
+[[bin]]
+name = "condvar_test"
+path = "src/bin/condvar_test.rs"
+
+[[bin]]
+name = "pipetest"
+path = "src/bin/pipetest.rs"
+
+[[bin]]
+name = "deadlock_mutex_test"
+path = "src/bin/deadlock_mutex_test.rs"
+
+[[bin]]
+name = "deadlock_sem_test"
+path = "src/bin/deadlock_sem_test.rs"

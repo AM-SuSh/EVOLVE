@@ -313,3 +313,43 @@ Linux/macOS：将 `cargo test` 的 `--target` 换为对应 host triple；`os-vm`
 - [ ] `cargo check -p kernel --features lab1`…`lab5` 均可编译
 
 **说明**：全 workspace 与各 lab feature 的 `cargo clippy -- -D warnings` 均已通过（2026-06-27 终验）。详见 [`docs/os-lab.md` §5.11](../../docs/os-lab.md#511-完整验证) 与 [仓库总览](../../README.md)。
+
+## 二期 / Lab6 验证（成员 B，2026-07-25）
+
+Lab6 须 VirtIO 块设备，验收命令与一期不同：
+
+```powershell
+cd os-lab
+. ..\scripts\activate-os-env.ps1   # 仓库根目录执行
+cargo build -p user --target riscv64gc-unknown-none-elf --release --bins
+cargo build -p kernel --features lab6 --release
+make test-lab6
+cargo test -p os-fs --target x86_64-pc-windows-msvc
+```
+
+### 成功标准
+
+QEMU 输出应包含（顺序大致如下，OpenSBI 日志可忽略）：
+
+```text
+os-lab kernel lab6: VirtIO disk filesystem.
+file_test pass
+Test link OK!
+mass open/unlink OK!
+mmap_test pass
+spawn_test pass
+stride_test pass
+fs_test pass
+pipe_test pass
+All processes exited.
+```
+
+### Lab6 验收勾选清单
+
+- [ ] `cargo check -p kernel --features lab6` 无 error
+- [ ] `cargo test -p os-fs` 8 项全部 `ok`
+- [ ] `make check-fs-img` 通过
+- [ ] `make test-lab6` 输出含上表全部关键行
+- [ ] 阅读 `labs/lab6-disk-fs.md` 并完成 `exercises/lab6-exercises.md`
+
+专项进度见 [docs/lab6-8.md](../../docs/lab6-8.md)。
