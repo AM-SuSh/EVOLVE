@@ -1,6 +1,6 @@
 # Lab3 参考答案与代码解读
 
-> 配套实验指导：[lab3-memory.md](../lab3-memory.md)  
+> 配套实验指导：[lab3-memory.md](/labs/lab3-memory)  
 > 对应内容：【任务二：阅读理解（必做）】参考答案 + 代码解读  
 > **使用建议**：先独立完成实验文档【任务二】，再来对答案。
 
@@ -242,7 +242,7 @@ kernel_space.map_identical_region(stext, FRAME_POOL_START, kperm);
 
 这就是 Sv39 **按需分配** 的精髓——没用到的虚拟地址不占页表内存。一张 512³ 的扁平大表根本放不下；多级 + 按需才可行。
 
-### 第 5 题：lab3 的 trap 入口比 lab2 多了什么？
+### 第 5 题：开分页后 trap 要不要切 `satp`？Lab3 在 Rust 层比 Lab2 多了什么？
 
 要分两层看：
 

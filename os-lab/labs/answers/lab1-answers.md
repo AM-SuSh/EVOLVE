@@ -1,6 +1,6 @@
 # Lab1 参考答案与代码解读
 
-> 配套实验指导：[lab1-bare-metal.md](../lab1-bare-metal.md)  
+> 配套实验指导：[lab1-bare-metal.md](/labs/lab1-bare-metal)  
 > 对应内容：【任务二：阅读理解（必做）】参考答案 + 代码解读  
 > **使用建议**：先独立完成实验文档【任务二】，再来对答案。
 

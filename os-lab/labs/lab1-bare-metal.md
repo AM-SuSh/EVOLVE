@@ -8,7 +8,7 @@
 
 在开始完成你的最小内核之前，请确认已完成以下准备：
 
-1. **本机环境已就绪**：按仓库根目录 `docs/environment_setup.md` 装好 Rust（含 `riscv64gc-unknown-none-elf` target）、QEMU、（Windows 还需 MSVC Build Tools）。
+1. **本机环境已就绪**：按 [环境搭建指南](/setup/environment) 装好 Rust（含 `riscv64gc-unknown-none-elf` target）、QEMU、（Windows 还需 MSVC Build Tools）。
 2. **进入工作目录**：在本仓库根目录下，进入自研实验环境目录：
   ```powershell
    cd os-lab
@@ -24,7 +24,7 @@
    qemu-system-riscv64 --version   # 预期：QEMU emulator version 11.0.50 ...
   ```
 
-> 如果上面任何一步报"找不到命令"，回到 `docs/environment_setup.md` 检查安装。
+> 如果上面任何一步报"找不到命令"，回到 [环境搭建指南](/setup/environment) 检查安装。
 
 5. **建议先读书**：OSTEP 第一部分（导论）+ 第 6 章开头（受限的直接执行，为 Lab2 铺垫）。Lab1 的启动发生在教材「已有 OS」假设之前。
 
@@ -141,7 +141,7 @@ Rust 假定静态变量初值合法。BSS 未清零就读，可能乱码、死�
 | `kernel/src/console.rs` | `println!` 包装 |
 | `kernel/linker.ld` | 链接地址 `0x80200000` |
 
-> 完整逐行解读见 [answers/lab1-answers.md](answers/lab1-answers.md)。
+> 完整逐行解读见 [lab1 参考答案](/answers/lab1-answers)。
 
 ### 任务一：跑通内核
 
@@ -174,7 +174,7 @@ os-lab kernel lab1 is running on QEMU virt.
 
 ### 任务二：阅读理解（必做）
 
-参考答案见 [answers/lab1-answers.md](answers/lab1-answers.md)。
+参考答案见 [lab1 参考答案](/answers/lab1-answers)。
 
 1. `_start` 为什么要先设 `sp` 再 `call rust_main`？
 2. `rust_main` 为何返回 `-> !`？`clear_bss()` 为何必须在 `println!` 之前？
@@ -247,7 +247,7 @@ println!("Hello, OS! 我学号是 xxx");
 
 ## 六、思考题与参考答案
 
-完整答案与代码走读见 [answers/lab1-answers.md](answers/lab1-answers.md)。
+完整答案与代码走读见 [lab1 参考答案](/answers/lab1-answers)。
 
 ### 习题 1（链接地址）
 

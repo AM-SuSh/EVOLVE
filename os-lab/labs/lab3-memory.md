@@ -6,7 +6,7 @@
 
 ## 零、开始之前
 
-1. **已完成 Lab2**：理解了 trap、系统调用、上下文切换、任务调度（见 [lab2-trap-and-task.md](lab2-trap-and-task.md)）。
+1. **已完成 Lab2**：理解了 trap、系统调用、上下文切换、任务调度（见 [Lab2 中断与任务](/labs/lab2-trap-and-task)）。
 2. **激活环境（可选）**：如果你使用了新的终端，请在仓库根目录执行 `. .\scripts\activate-os-env.ps1` 。
 3. **进入工作目录**： `cd os-lab`
 4. **自检**：`rustc --version` 与 `qemu-system-riscv64 --version` 能输出版本。
@@ -107,7 +107,7 @@ Lab3 相对 Lab2 的主要变化是**地址空间隔离**（独立页表、`U` �
 | `kernel/src/trap.rs` | Lab3 trap 层 `satp` 切换 |
 | `kernel/src/task.rs` | 每任务独立用户映射 |
 
-> 完整走读见 [answers/lab3-answers.md](answers/lab3-answers.md)。
+> 完整走读见 [lab3 参考答案](/answers/lab3-answers)。
 
 ### 任务一：跑通 lab3
 
@@ -140,7 +140,7 @@ All user apps exited.
 
 ### 任务二：阅读理解（必做）
 
-参考答案见 [answers/lab3-answers.md](answers/lab3-answers.md)。
+参考答案见 [lab3 参考答案](/answers/lab3-answers)。
 
 1. Sv39 的 39 位虚拟地址如何拆成 3×9 + 12？`0x1ff` 代表什么？
 2. PTE 里物理帧号为何左移 10 位而不是 12 位？
@@ -192,7 +192,7 @@ All user apps exited.
 
 ## 六、思考题与参考答案
 
-完整答案与代码走读见 [answers/lab3-answers.md](answers/lab3-answers.md)。
+完整答案与代码走读见 [lab3 参考答案](/answers/lab3-answers)。
 
 ### 习题 1（PTE 帧号移位）
 

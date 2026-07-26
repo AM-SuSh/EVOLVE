@@ -6,7 +6,7 @@
 
 ## 零、开始之前
 
-1. **已完成 Lab3**：理解了虚存、页表、地址空间隔离（见 [lab3-memory.md](lab3-memory.md)）。
+1. **已完成 Lab3**：理解了虚存、页表、地址空间隔离（见 [Lab3 内存管理](/labs/lab3-memory)）。
 2. **进入工作目录**：`cd os-lab`，如果启用了新的终端需要先 `. .\scripts\activate-os-env.ps1` 激活环境。
 3. **自检**：`rustc --version` 与 `qemu-system-riscv64 --version` 能输出版本。
 4. **建议先读书**：OSTEP 第 5 章（Process API）。动手前务必理解 fork「调用一次、返回两次」。
@@ -102,7 +102,7 @@ OSTEP 5.2：`exec()` 在当前进程内**替换**程序镜像，**PID 不变**�
 | `user/src/bin/exec_test.rs` | exec 测例 |
 | `user/src/syscall.rs` | 用户态 syscall 封装 |
 
-> 完整走读见 [answers/lab4-answers.md](answers/lab4-answers.md)。
+> 完整走读见 [lab4 参考答案](/answers/lab4-answers)。
 
 
 
@@ -132,7 +132,7 @@ All processes exited.
 
 ### 任务二：阅读理解（必做）
 
-参考答案见 [answers/lab4-answers.md](answers/lab4-answers.md)。
+参考答案见 [lab4 参考答案](/answers/lab4-answers)。
 
 1. fork 如何实现「一次调用返回两次」？子进程 `a0` 为何设为 0？
 2. 子进程从哪里开始执行？`cx.sepc` 传给 spawn 意味着什么？
@@ -180,7 +180,7 @@ All processes exited.
 
 ## 六、思考题与参考答案
 
-完整答案与代码走读见 [answers/lab4-answers.md](answers/lab4-answers.md)。
+完整答案与代码走读见 [lab4 参考答案](/answers/lab4-answers)。
 
 ### 习题 1（fork 返回两次）
 

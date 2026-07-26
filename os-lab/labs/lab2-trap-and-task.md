@@ -8,7 +8,7 @@ Lab1 让内核在裸机上活了下来；接下来，我们要让它从「只会
 
 ## 零、开始之前
 
-1. **已完成 Lab1**：理解了裸机启动、SBI 调用、`#![no_std]` 等基础（见 [lab1-bare-metal.md](lab1-bare-metal.md)）。
+1. **已完成 Lab1**：理解了裸机启动、SBI 调用、`#![no_std]` 等基础（见 [Lab1 裸机启动](/labs/lab1-bare-metal)）。
 2. **激活环境（可选）**：如果你使用了新的终端，请在仓库根目录执行 `. .\scripts\activate-os-env.ps1` 。
 3. **进入工作目录**： `cd os-lab`
 4. **自检**：`rustc --version` 与 `qemu-system-riscv64 --version` 能输出版本。
@@ -153,7 +153,7 @@ OSTEP 第 7 章：多程序「同时运行」靠**快速切换 CPU** 制造幻�
 | `kernel/src/loader.rs` | 用户程序加载 |
 | `user/src/lib.rs`、`bin/*.rs` | 用户程序与 syscall 封装 |
 
-> 完整走读见 [answers/lab2-answers.md](answers/lab2-answers.md)。
+> 完整走读见 [lab2 参考答案](/answers/lab2-answers)。
 
 
 
@@ -186,7 +186,7 @@ All user apps exited.                   ← 全部退出，关机
 
 ### 任务二：阅读理解（必做）
 
-参考答案见 [answers/lab2-answers.md](answers/lab2-answers.md)。
+参考答案见 [lab2 参考答案](/answers/lab2-answers)。
 
 1. `__alltraps` 里 `csrrw sp, sscratch, sp` 为什么必须在最前面？
 2. `TrapContext` 要保存哪些内容？漏保存 `sepc` 会怎样？
@@ -249,7 +249,7 @@ println("Hello again from user!");
 
 ## 六、思考题与参考答案
 
-完整答案与代码走读见 [answers/lab2-answers.md](answers/lab2-answers.md)。
+完整答案与代码走读见 [lab2 参考答案](/answers/lab2-answers)。
 
 ### 习题 1（双栈切换）
 
