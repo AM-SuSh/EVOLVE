@@ -125,6 +125,31 @@ sequenceDiagram
 
 Rust 假定静态变量初值合法。BSS 未清零就读，可能乱码、死循环或 panic。`println!` 的实现可能间接用到 BSS 中的静态状态，因此 `rust_main` 第一件事是 `clear_bss()`——把 `[sbss, ebss)` 逐字节写 0，等价于加载器在进程启动时做的初始化。
 
+### 2.5 把启动链与后续系统调用对照起来
+
+本地版手册曾用“空地盖第一栋楼”解释裸机启动：普通应用入住的是已经有加载器、标准库和系统调用的环境；内核启动时这些设施还不存在，所以必须先自己建立栈、运行时初始状态和最小 I/O。这个类比可以和远端复核版的精确调用链放在一起理解：
+
+```mermaid
+flowchart LR
+    A["OpenSBI 加载镜像"] --> B["_start 设置 sp"]
+    B --> C["rust_main 清零 BSS"]
+    C --> D["println! 格式化输出"]
+    D --> E["console_putchar"]
+    E --> F["ecall 进入 OpenSBI"]
+    F --> G["UART 显示字符"]
+    C --> H["shutdown ecall"]
+    H --> I["QEMU 退出"]
+```
+
+这里有两条以后会反复出现的“向更高特权级请求服务”路径：
+
+| 阶段 | 请求者 | 服务者 | `ecall` 中携带的内容 |
+| --- | --- | --- | --- |
+| Lab1 SBI 调用 | S-mode 内核 | M-mode OpenSBI | SBI 功能号与字符/关机参数 |
+| Lab2+ 系统调用 | U-mode 用户程序 | S-mode 内核 | syscall 编号与参数 |
+
+因此 Lab1 不只是“打印一句话”：它建立了入口地址、栈、BSS、特权级切换和寄存器传参这些约定。后续系统调用只是把同一种机制移到 U-mode 与 S-mode 之间。
+
 
 
 ## 三、实验任务
@@ -133,13 +158,13 @@ Rust 假定静态变量初值合法。BSS 未清零就读，可能乱码、死�
 
 主要文件（路径相对 `os-lab/`）：
 
-| 文件 | 角色 |
-| --- | --- |
-| `kernel/src/entry.asm` | 汇编入口：设栈、`call rust_main` |
-| `kernel/src/main.rs` | `#![no_std]` / `clear_bss` / `rust_main` |
-| `os-sbi/src/lib.rs` | SBI `ecall` 封装（输出、关机） |
-| `kernel/src/console.rs` | `println!` 包装 |
-| `kernel/linker.ld` | 链接地址 `0x80200000` |
+| 文件 | 角色 | 阅读时重点确认 |
+| --- | --- | --- |
+| `kernel/src/entry.asm` | 汇编入口：设栈、`call rust_main` | 第一条指令为何不能直接进入 Rust |
+| `kernel/src/main.rs` | `#![no_std]` / `clear_bss` / `rust_main` | BSS 初始化为何早于任何格式化输出 |
+| `os-sbi/src/lib.rs` | SBI `ecall` 封装（输出、关机） | `a7` 与 `a0` 如何表达功能号和参数 |
+| `kernel/src/console.rs` | `println!` 包装 | 如何把格式化文本拆成逐字符输出 |
+| `kernel/linker.ld` | 链接地址 `0x80200000` | 链接地址如何与固件跳转地址一致 |
 
 > 完整逐行解读见 [lab1 参考答案](/answers/lab1-answers)。
 
@@ -176,12 +201,12 @@ os-lab kernel lab1 is running on QEMU virt.
 
 参考答案见 [lab1 参考答案](/answers/lab1-answers)。
 
-1. `_start` 为什么要先设 `sp` 再 `call rust_main`？
-2. `rust_main` 为何返回 `-> !`？`clear_bss()` 为何必须在 `println!` 之前？
-3. SBI 输出字符时 `a7`/`a0` 各放什么？关机和输出是否同一条 `ecall`？
-4. `BASE_ADDRESS = 0x80200000` 从哪来？改成 `0x88000000` 会怎样？
-5. OpenSBI 在启动阶段与运行阶段分别做什么？
-6. `#![no_std]` 与 `#![no_main]` 各解决什么问题？
+1. `_start` 为什么要先 `la sp, boot_stack_top` 再 `call rust_main`？如果没有合法栈，函数调用会先破坏什么？
+2. `rust_main` 为何返回 `-> !`？对照 `main.rs`，解释 `clear_bss()` 为何必须在 `println!` 之前。
+3. 对照 `os-sbi/src/lib.rs`：输出字符时 `a7`/`a0` 各放什么？关机是否复用同一条 `ecall` 指令？
+4. 对照 `linker.ld` 与 OpenSBI 日志：`BASE_ADDRESS = 0x80200000` 从哪来？改成 `0x88000000` 会怎样？
+5. OpenSBI 在启动阶段与运行阶段分别做什么？哪些职责在未来会被内核驱动取代？
+6. `#![no_std]` 与 `#![no_main]` 各解决什么问题？去掉其中任意一个时，编译或启动链会在哪里断开？
 
 
 

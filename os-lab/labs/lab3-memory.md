@@ -93,19 +93,47 @@ PTE 中帧号左移 **10** 位（腾出权限位）；拼物理地址时帧号�
 
 Lab3 相对 Lab2 的主要变化是**地址空间隔离**（独立页表、`U` 位），不是 yield 轮次——两者均可稳定输出 5 轮 `Yield round`。
 
+### 2.6 从一个虚拟地址走到物理内存
+
+本地版手册分别画出了页、三级页表和 MemorySet；远端复核版补充了实际内存边界、`satp` 切换与 Lab2/Lab3 的正确对比。把这些内容串起来，一次用户态访存可以沿下面的路径检查：
+
+```mermaid
+flowchart LR
+    A["39 位虚拟地址"] --> B["VPN2 / VPN1 / VPN0 / Offset"]
+    B --> C["satp 指向根页表"]
+    C --> D["三级索引，按需分配中间页表"]
+    D --> E["叶子 PTE：PPN + V/R/W/X/U"]
+    E -->|"权限允许"| F["PPN << 12 + Offset"]
+    E -->|"未映射或无权限"| G["页错误，trap 进入内核"]
+    F --> H["访问物理帧"]
+```
+
+地址空间不是“只有一张页表”，而是若干映射区共同组成的内存视图：
+
+```mermaid
+flowchart TD
+    M["MemorySet"] --> K["内核恒等映射：无 U 位"]
+    M --> T["trap 所需区域"]
+    M --> E["ELF PT_LOAD 段：按段权限"]
+    M --> S["用户栈：U | R | W"]
+    M --> P["根页表物理页：写入 satp"]
+```
+
+这也解释了三个容易混淆的数字：页内偏移是 **12 位**；每级索引是 **9 位**，所以掩码为 `0x1ff`；PTE 给标志位预留 **10 位**，所以写入 PPN 时左移 10，形成物理地址时才左移 12。切换页表后执行 `sfence.vma`，是为了避免 TLB 继续使用上一地址空间的旧翻译。
+
 ## 三、实验任务
 
 > **本实验怎么学**：先 `cargo run --features lab3` 看输出，再按【2.2】【2.3】理解 Sv39 与 PTE，对照 `os-vm`、`mm.rs`、`trap.rs` 读代码。
 
 主要文件（路径相对 `os-lab/`）：
 
-| 文件 | 角色 |
-| --- | --- |
-| `os-alloc/src/lib.rs` | 页帧分配器 |
-| `os-vm/src/lib.rs` | Sv39 页表 + MemorySet |
-| `kernel/src/mm.rs` | 内核与用户地址空间布局 |
-| `kernel/src/trap.rs` | Lab3 trap 层 `satp` 切换 |
-| `kernel/src/task.rs` | 每任务独立用户映射 |
+| 文件 | 角色 | 阅读时重点确认 |
+| --- | --- | --- |
+| `os-alloc/src/lib.rs` | 页帧分配器 | `[current, end)` 如何分配与回收 |
+| `os-vm/src/lib.rs` | Sv39 页表 + MemorySet | VPN 拆分、PTE 布局、中间页表按需创建 |
+| `kernel/src/mm.rs` | 内核与用户地址空间布局 | 恒等映射、用户 ELF 段和 U 位如何建立 |
+| `kernel/src/trap.rs` | Lab3 trap 层 `satp` 切换 | 何时进入内核页表、何时恢复用户页表 |
+| `kernel/src/task.rs` | 每任务独立用户映射 | 每个任务如何绑定自己的根页表 |
 
 > 完整走读见 [lab3 参考答案](/answers/lab3-answers)。
 
@@ -142,11 +170,11 @@ All user apps exited.
 
 参考答案见 [lab3 参考答案](/answers/lab3-answers)。
 
-1. Sv39 的 39 位虚拟地址如何拆成 3×9 + 12？`0x1ff` 代表什么？
-2. PTE 里物理帧号为何左移 10 位而不是 12 位？
-3. 开分页后内核为何还能跑？恒等映射在何处建立？
-4. 三级页表查找时中间表项为空怎么办？`find_pte` 的 `alloc` 参数含义？
-5. 开分页后 trap 进内核时要不要切 `satp`？Lab3 在 Rust 层比 Lab2 多了什么？
+1. 对照 `VirtPageNum::indexes`：Sv39 的 39 位虚拟地址如何拆成 3×9 + 12？`0x1ff` 为什么刚好取出一级索引？
+2. 对照 `PageTableEntry::new_ppn`：PTE 里物理帧号为何左移 10 位而不是 12 位？这和形成物理地址时的移位有何区别？
+3. 对照 `mm::init`：开分页后内核为何还能继续执行原地址附近的代码？恒等映射覆盖了哪些区域？
+4. 三级页表查找时中间表项为空怎么办？`find_pte` 的 `alloc` 参数分别对应“查询”和“建立映射”中的哪种行为？
+5. 开分页后 trap 进内核时要不要切 `satp`？沿 `activate_kernel` / `restore_to_user_paged` 说明 Lab3 在 Rust 层比 Lab2 多了什么。
 
 ### 任务三：动手小修改
 

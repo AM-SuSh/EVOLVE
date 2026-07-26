@@ -87,20 +87,50 @@ OSTEP 5.2：`exec()` 在当前进程内**替换**程序镜像，**PID 不变**�
 
 内核栈不在 PCB 内，而是模块级 `KERNEL_STACKS[slot]`，fork 时写入子进程的 `trap_cx.kernel_sp`。`ProcessManager` 用槽位数组管理进程，`next_pid` 递增分配 PID。
 
+### 2.6 把 fork、exec、exit、wait 连成进程生命周期
+
+远端复核版给出了每个 API 的精确定义，本地版则更强调它们为什么必须组合使用。shell 的典型路径是：自身先 `fork`，子进程再 `exec` 目标程序，父进程用 `wait` 取得退出码并回收资源。这样既保留 shell 本身，又让子进程获得全新的程序镜像。
+
+```mermaid
+sequenceDiagram
+    participant P as 父进程
+    participant K as 内核
+    participant C as 子进程
+    P->>K: fork()
+    K->>K: 新 PID / 新槽位 / 深拷贝地址空间
+    K->>K: 复制 TrapContext，子 a0 = 0
+    K-->>P: 父 a0 = 子 PID
+    K-->>C: 从 fork 后一条指令恢复
+    C->>K: exec(new_elf)
+    K->>K: 替换用户映射，重建 TrapContext
+    K-->>C: 从新 ELF entry 开始
+    C->>K: exit(code)
+    K->>K: 标记 Zombie，保留退出码
+    P->>K: wait(child)
+    K-->>P: 返回退出码并释放 PCB/地址空间
+```
+
+其中有两条不变式：
+
+1. **fork 后身份分开、执行点相同**：父子 PID、地址空间和 TrapContext 已独立，但二者都从 `ecall` 后一条指令继续，只靠 `a0` 返回值分支。
+2. **exec 后身份不变、执行内容全换**：PID、父子关系仍属于同一进程，但旧用户映射与旧入口不再存在，所以成功的 `exec` 不会返回原程序继续执行。
+
+Zombie 不是仍在运行的进程，而是“等待父进程领取结果”的最小记录。若父进程先结束，init 负责收养并回收孤儿；若长期没人 wait，进程表槽位和退出信息会持续占用。
+
 ## 三、实验任务
 
 > **本实验怎么学**：先 `cargo run --features lab4` 看 `fork_test` 输出，再对照 OSTEP 第 5 章读 `process.rs`、`mm.rs` 中 fork/exec/wait 实现。
 
 主要文件（路径相对 `os-lab/`）：
 
-| 文件 | 角色 |
-| --- | --- |
-| `kernel/src/process.rs` | 进程管理、fork / wait |
-| `kernel/src/mm.rs` | fork 深拷贝、exec 替换地址空间 |
-| `kernel/src/trap.rs` | fork / exec / wait / getpid 分发 |
-| `user/src/bin/fork_test.rs` | fork + wait 测例 |
-| `user/src/bin/exec_test.rs` | exec 测例 |
-| `user/src/syscall.rs` | 用户态 syscall 封装 |
+| 文件 | 角色 | 阅读时重点确认 |
+| --- | --- | --- |
+| `kernel/src/process.rs` | 进程管理、fork / wait | PCB、父子槽位、Zombie 与退出码何时保留/释放 |
+| `kernel/src/mm.rs` | fork 深拷贝、exec 替换地址空间 | `fork_user_space` 与 `replace_user_space` 的边界 |
+| `kernel/src/trap.rs` | fork / exec / wait / getpid 分发 | 父子 `a0`、`sepc` 与调度的先后关系 |
+| `user/src/bin/fork_test.rs` | fork + wait 测例 | 用户态如何用返回值区分父子 |
+| `user/src/bin/exec_test.rs` | exec 测例 | 为什么 `After exec` 不应出现 |
+| `user/src/syscall.rs` | 用户态 syscall 封装 | 参数与返回值如何遵循 syscall ABI |
 
 > 完整走读见 [lab4 参考答案](/answers/lab4-answers)。
 
@@ -134,11 +164,11 @@ All processes exited.
 
 参考答案见 [lab4 参考答案](/answers/lab4-answers)。
 
-1. fork 如何实现「一次调用返回两次」？子进程 `a0` 为何设为 0？
-2. 子进程从哪里开始执行？`cx.sepc` 传给 spawn 意味着什么？
-3. exec 如何改地址空间与 TrapContext？为何 exec 之后的原代码跑不到？
-4. `exec_test.rs` 里 `exec("hello")` 后的 `println("After exec")` 会执行吗？
-5. wait 时子进程未结束，父进程如何阻塞等待？
+1. 对照 `sys_fork` 与 `set_return_value(0)`：fork 如何实现「调用一次、返回两次」？子进程 `a0` 为何必须设为 0？
+2. 子进程从哪里开始执行？`cx.sepc` 传给 spawn 意味着什么？它和 syscall 前的 `advance_sepc()` 有何关系？
+3. 对照 `sys_execve` 与 `trap_cx_init`：exec 如何替换地址空间和 TrapContext？哪些进程身份仍然保留？
+4. `exec_test.rs` 里 `exec("hello")` 后的 `println("After exec")` 会执行吗？分别解释 exec 成功和失败两种情况。
+5. wait 时子进程未结束，父进程如何阻塞等待？说明“保存上下文 → 让出 CPU → 被唤醒后重试”与忙等的区别。
 
 
 

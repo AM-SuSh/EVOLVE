@@ -135,6 +135,25 @@ OSTEP 第 7 章：多程序「同时运行」靠**快速切换 CPU** 制造幻�
 
 `user/src/bin/yield.rs` 循环 5 次 `sys_yield`，预期 5 行 `Yield round`。若只有 1 行，检查 `trap.asm` 双栈切换和 `SYS_YIELD` 分发。
 
+### 2.6 把 trap 与调度放进同一条时间线
+
+本地版的两张图分别强调“现场保存”和“换下一个任务”，远端复核版补充了精确的寄存器槽位。合在一起看，trap 并不必然发生任务切换：普通 `sys_write` 处理后恢复当前任务；只有 `yield`、`exit` 或未来的时钟中断才会让调度器选择另一个 Ready 任务。
+
+```mermaid
+flowchart TD
+    A["U-mode 执行"] -->|"ecall / 异常 / 中断"| B["csrrw 切到内核栈"]
+    B --> C["__alltraps 保存 TrapContext"]
+    C --> D["trap_handler 读取 scause 与 a7"]
+    D -->|"普通 syscall"| E["结果写回 a0，sepc += 4"]
+    D -->|"yield / exit"| F["更新 TCB 状态，选择 Ready 任务"]
+    E --> G["__restore 恢复原任务"]
+    F --> H["恢复被选任务的 TrapContext"]
+    G --> I["sret 回 U-mode"]
+    H --> I
+```
+
+要区分两种“上下文”：**TrapContext** 是一次用户态陷入的寄存器快照；**TCB** 是任务长期存在的档案，除 TrapContext 外还记录状态、栈和后续 Lab 使用的地址空间。保存现场解决“回来时接着算”，调度解决“现在轮到谁算”。
+
 
 
 ## 三、实验任务
@@ -143,15 +162,15 @@ OSTEP 第 7 章：多程序「同时运行」靠**快速切换 CPU** 制造幻�
 
 主要文件（路径相对 `os-lab/`）：
 
-| 文件 | 角色 |
-| --- | --- |
-| `os-context/src/lib.rs` | TrapContext 定义 |
-| `os-context/src/trap.asm` | 保存 / 恢复汇编（双栈、`sscratch`） |
-| `os-syscall/src/lib.rs` | syscall 编号 |
-| `kernel/src/trap.rs` | trap 分发 |
-| `kernel/src/task.rs` | 任务管理与调度 |
-| `kernel/src/loader.rs` | 用户程序加载 |
-| `user/src/lib.rs`、`bin/*.rs` | 用户程序与 syscall 封装 |
+| 文件 | 角色 | 阅读时重点确认 |
+| --- | --- | --- |
+| `os-context/src/lib.rs` | TrapContext 定义 | GPR、CSR 与 `kernel_sp` 的布局 |
+| `os-context/src/trap.asm` | 保存 / 恢复汇编（双栈、`sscratch`） | 保存和恢复槽位是否严格对称 |
+| `os-syscall/src/lib.rs` | syscall 编号 | 用户态与内核是否共享同一编号约定 |
+| `kernel/src/trap.rs` | trap 分发 | `scause`、`a7`、`advance_sepc()` 的先后关系 |
+| `kernel/src/task.rs` | 任务管理与调度 | Ready / Running / Exited 如何转换 |
+| `kernel/src/loader.rs` | 用户程序加载 | 程序字节、入口和两套栈从何而来 |
+| `user/src/lib.rs`、`bin/*.rs` | 用户程序与 syscall 封装 | 参数如何进入 `a0`–`a7` |
 
 > 完整走读见 [lab2 参考答案](/answers/lab2-answers)。
 
@@ -188,11 +207,11 @@ All user apps exited.                   ← 全部退出，关机
 
 参考答案见 [lab2 参考答案](/answers/lab2-answers)。
 
-1. `__alltraps` 里 `csrrw sp, sscratch, sp` 为什么必须在最前面？
-2. `TrapContext` 要保存哪些内容？漏保存 `sepc` 会怎样？
-3. 处理 `sys_write` 返回用户态时 PC 应指向哪里？为什么要 `advance_sepc()`？
-4. 用户态 `sys_write` 的参数如何传到内核？按 RISC-V ABI 走一遍 `a7`/`a0`/`a1`/`a2`。
-5. 一个 TCB 要记录哪些状态？用户栈与内核栈为何分开？
+1. `__alltraps` 里 `csrrw sp, sscratch, sp` 为什么必须在最前面？对照 2.3 说明此时两个位置各保存哪一个栈指针。
+2. `TrapContext` 要保存哪些内容？漏保存 `sepc` 会怎样？漏保存普通 GPR 又会出现哪类“偶发错误”？
+3. 处理 `sys_write` 返回用户态时 PC 应指向哪里？为什么必须在恢复前 `advance_sepc()`？
+4. 从 `user/src/syscall.rs` 到 `kernel/src/trap.rs`，按 RISC-V ABI 走一遍 `a7`/`a0`/`a1`/`a2` 的传递链。
+5. 一个 TCB 要记录哪些状态？用户栈与内核栈为何分开？再说明 TrapContext 与 TCB 各解决什么问题。
 
 
 
