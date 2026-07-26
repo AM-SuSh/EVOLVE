@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useData, useRouter, withBase } from 'vitepress'
-import { BookOpen, Home, Moon, MessagesSquare, Settings, Sun } from 'lucide-vue-next'
+import { Blocks, BookOpen, Home, Maximize2, MessagesSquare, Minimize2, Moon, Settings, Sun } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
 import TutorPane from './TutorPane.vue'
+import TerminalPanel from './TerminalPanel.vue'
+import ReportPanel from './ReportPanel.vue'
+import CodePanel from './CodePanel.vue'
 import JourneyRail from './JourneyRail.vue'
 import {
   appendEvent,
@@ -47,11 +50,96 @@ const modelName = ref('')
 const notice = ref('')
 const currentSection = ref({ h2: '', h3: '' })
 const mobileView = ref<'manual' | 'tutor'>('manual')
+/** 右栏下半区页签：实验报告为主，代码查看与 AI 导师按需切换。 */
+const rightTab = ref<'report' | 'code' | 'tutor'>('report')
+/** 代码页签首次打开后保持挂载，切换页签不丢浏览状态。 */
+const codeVisited = ref(false)
+watch(rightTab, (tab) => {
+  if (tab === 'code') codeVisited.value = true
+})
+/** 终端 → 报告「过程记录」的插入载荷（id 递增触发）。 */
+const reportInsert = ref<{ id: number; text: string } | null>(null)
+/** 面板最大化：终端或下半区可放大到整个工作台。 */
+const maximized = ref<'none' | 'terminal' | 'bottom'>('none')
+function toggleMax(target: 'terminal' | 'bottom') {
+  maximized.value = maximized.value === target ? 'none' : target
+}
+
+/* -- 我的系统（渐进式脚手架） ------------------------------------------------ */
+
+interface ScaffoldStatus {
+  exists: boolean
+  applied: string[]
+  current: string | null
+  next: string | null
+  nextSummary: string | null
+  extraBins: string[]
+}
+
+const scaffold = ref<ScaffoldStatus | null>(null)
+const showScaffold = ref(false)
+const scaffoldBusy = ref(false)
+const scaffoldLog = ref<string[]>([])
+const newBinName = ref('')
+
+const scaffoldLabel = computed(() => {
+  if (!scaffold.value) return '我的系统'
+  if (!scaffold.value.exists) return '我的系统 · 未初始化'
+  return `我的系统 · ${scaffold.value.current}`
+})
+
+async function refreshScaffold() {
+  try {
+    const response = await fetch(`${endpoint}/scaffold/status`)
+    if (response.ok) scaffold.value = await response.json()
+  } catch {
+    scaffold.value = null
+  }
+}
+
+async function scaffoldUpgrade() {
+  if (scaffoldBusy.value) return
+  scaffoldBusy.value = true
+  try {
+    const response = await fetch(`${endpoint}/scaffold/upgrade`, { method: 'POST' })
+    const payload = await response.json()
+    scaffoldLog.value = payload.log || [payload.error || '操作失败']
+    if (payload.status) scaffold.value = payload.status
+    if (response.ok) toast(`已发放 ${payload.lab}，去终端跑一跑它。`)
+  } catch {
+    scaffoldLog.value = ['无法连接导师服务：先在 os-lab/handbook 运行 npm run tutor']
+  } finally {
+    scaffoldBusy.value = false
+  }
+}
+
+async function scaffoldAddBin() {
+  const name = newBinName.value.trim()
+  if (!name || scaffoldBusy.value) return
+  scaffoldBusy.value = true
+  try {
+    const response = await fetch(`${endpoint}/scaffold/add-bin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    const payload = await response.json()
+    scaffoldLog.value = payload.log || [payload.error || '操作失败']
+    if (payload.status) scaffold.value = payload.status
+    if (response.ok) newBinName.value = ''
+  } catch {
+    scaffoldLog.value = ['无法连接导师服务：先在 os-lab/handbook 运行 npm run tutor']
+  } finally {
+    scaffoldBusy.value = false
+  }
+}
 
 /* 模型接入配置：前端填写、存浏览器本地，按请求发给 tutor-server。 */
 const llmConfig = ref<LlmConfig>(loadLlmConfig())
 const llmDraft = ref<LlmConfig>({ ...llmConfig.value })
 const showLlmSettings = ref(false)
+/** 连不上时的具体原因：区分「导师服务没启动」和「上游模型连不通」。 */
+const connectionDetail = ref('')
 
 let noticeTimer = 0
 
@@ -60,14 +148,6 @@ const journey = computed(() => buildLabJourney(events.value, props.labId))
 const journeyItem = computed(() => journey.value.find((item) => item.lab.id === props.labId))
 const sessionEvents = computed(() =>
   events.value.filter((event) => event.sessionId === sessionId.value),
-)
-const completedStages = computed(
-  () =>
-    new Set(
-      sessionEvents.value
-        .filter((event) => event.type === 'stage_enter')
-        .map((event) => event.stage),
-    ),
 )
 const activeStageData = computed(
   () => tutorStages.find((stage) => stage.id === activeStage.value) || tutorStages[0],
@@ -157,12 +237,19 @@ async function checkConnection() {
         })
       : await fetch(`${endpoint}/health`)
     if (!response.ok) throw new Error(`health ${response.status}`)
-    const payload = (await response.json()) as { connected?: boolean; model?: string }
+    const payload = (await response.json()) as {
+      connected?: boolean
+      model?: string
+      detail?: string
+    }
     connection.value = payload.connected ? 'remote' : 'offline'
     modelName.value = payload.model || ''
+    connectionDetail.value = payload.connected ? '' : payload.detail || '上游模型未连接'
   } catch {
     connection.value = 'offline'
     modelName.value = ''
+    connectionDetail.value =
+      '导师服务未启动：先在 os-lab/handbook 目录运行 npm run tutor，再重新探测。'
   }
 }
 
@@ -176,10 +263,15 @@ function openLlmSettings() {
 async function saveLlmSettings() {
   llmConfig.value = { ...llmDraft.value }
   saveLlmConfig(llmConfig.value)
-  showLlmSettings.value = false
   toast('模型设置已保存，正在重新探测连接…')
   await checkConnection()
-  toast(connection.value === 'remote' ? `已连接：${modelName.value}` : '未连上模型，导师将使用离线引导。')
+  if (connection.value === 'remote') {
+    showLlmSettings.value = false
+    toast(`已连接：${modelName.value}`)
+  } else {
+    // 保持弹窗打开，让学生看到具体原因后就地修改。
+    toast(`未连上模型：${connectionDetail.value}`, 6000)
+  }
 }
 
 async function resetLlmSettings() {
@@ -366,62 +458,6 @@ async function sendMessage(text: string) {
   }
 }
 
-/* -- 阶段 ------------------------------------------------------------------- */
-
-async function chooseStage(stage: TutorStageId) {
-  if (stage === activeStage.value) return
-  activeStage.value = stage
-  record('stage_enter', { metadata: { title: activeStageData.value.title } })
-
-  const hasIntro = messages.value.some(
-    (message) =>
-      message.role === 'assistant' && message.stage === stage && message.kind === 'stage_intro',
-  )
-  if (hasIntro) return
-
-  const introId = createId('message')
-  let content = offlineTutorReply('', stage, false, lab.value)
-  if (connection.value === 'remote') {
-    const request = `进入阶段：${activeStageData.value.title}。${activeStageData.value.description}`
-    try {
-      const outcome = await requestReply(request, (partial) => {
-        const existing = messages.value.find((item) => item.id === introId)
-        if (existing) {
-          existing.content = partial
-          return
-        }
-        streamingId.value = introId
-        messages.value.push({
-          id: introId,
-          role: 'assistant',
-          stage,
-          kind: 'stage_intro',
-          content: partial,
-          timestamp: new Date().toISOString(),
-        })
-      })
-      if (outcome?.reply) content = outcome.reply
-    } catch {
-      // 保留本地阶段引导。
-    } finally {
-      streamingId.value = ''
-    }
-  }
-
-  const existing = messages.value.find((item) => item.id === introId)
-  if (existing) existing.content = content
-  else {
-    messages.value.push({
-      id: introId,
-      role: 'assistant',
-      stage,
-      kind: 'stage_intro',
-      content,
-      timestamp: new Date().toISOString(),
-    })
-  }
-}
-
 function usePrompt(prompt: TutorPrompt) {
   record('template_used', {
     category: prompt.category,
@@ -443,14 +479,28 @@ function announceUnlock(wasCompleted: boolean) {
   )
 }
 
-function recordVerification({ content, passed }: { content: string; passed: boolean }) {
+/** 终端每次运行结束自动记录为验证证据（真实输出，不再靠学生自报）。 */
+function onRunFinished({ content, passed }: { content: string; passed: boolean }) {
   const wasCompleted = Boolean(journeyItem.value?.completed)
-  record('verification_attempt', {
-    content,
-    metadata: { passed, command: lab.value.verificationCommand },
-  })
-  toast(passed ? '验证结果已记录。' : '失败现象已记录，带着它进入排错阶段。')
+  record('verification_attempt', { content, metadata: { passed, source: 'terminal' } })
   announceUnlock(wasCompleted)
+}
+
+/** 终端输出插入实验报告的「过程记录」。 */
+function onInsertReport(text: string) {
+  reportInsert.value = { id: (reportInsert.value?.id ?? 0) + 1, text }
+  rightTab.value = 'report'
+  toast('输出已插入实验报告。')
+}
+
+/** 报告面板请导师点评：切到对话页签并把报告作为提问发送。 */
+function reviewReport(content: string) {
+  rightTab.value = 'tutor'
+  if (sending.value) {
+    toast('导师正在回复上一条消息，稍后再试。')
+    return
+  }
+  void sendMessage(`这是我目前的实验报告，请指出记录不完整或理解有偏差的地方，并追问我一个能检验理解的问题：\n\n${content}`)
 }
 
 function submitReflection(content: string) {
@@ -489,6 +539,7 @@ onMounted(async () => {
   events.value = loadEvents()
   await checkConnection()
   startSession()
+  void refreshScaffold()
 })
 
 onBeforeUnmount(() => {
@@ -509,6 +560,14 @@ onBeforeUnmount(() => {
       </a>
 
       <div class="ws-topbar-actions">
+        <button
+          class="ws-topbar-link ws-scaffold-chip"
+          type="button"
+          :title="scaffold?.exists ? '查看/升级我的系统' : '初始化属于你自己的系统代码'"
+          @click="showScaffold = true; scaffoldLog = []; void refreshScaffold()"
+        >
+          <Blocks :size="15" aria-hidden="true" /><span>{{ scaffoldLabel }}</span>
+        </button>
         <JourneyRail :journey="journey" @enter-lab="enterLab" @export-growth="exportGrowth" />
         <a class="ws-topbar-link" :href="withBase('/labs/overview')">
           <Home :size="15" aria-hidden="true" /><span>返回手册</span>
@@ -552,7 +611,7 @@ onBeforeUnmount(() => {
         :class="{ active: mobileView === 'tutor' }"
         @click="mobileView = 'tutor'"
       >
-        <MessagesSquare :size="15" aria-hidden="true" />AI 导师
+        <MessagesSquare :size="15" aria-hidden="true" />实践区
       </button>
     </div>
 
@@ -560,35 +619,161 @@ onBeforeUnmount(() => {
       <ManualPane
         :class="{ 'ws-mobile-hidden': mobileView !== 'manual' }"
         :lab="lab"
-        :active-stage="activeStage"
-        :journey-item="journeyItem"
         @section-change="currentSection = $event"
-        @record-verification="recordVerification"
-        @submit-reflection="submitReflection"
       >
         <slot />
       </ManualPane>
 
-      <TutorPane
-        :class="{ 'ws-mobile-hidden': mobileView !== 'tutor' }"
-        :lab="lab"
-        :active-stage="activeStage"
-        :messages="messages"
-        :completed-stages="completedStages"
-        :sending="sending"
-        :streaming-id="streamingId"
-        :connection="connection"
-        :connection-label="connectionLabel"
-        :current-section="currentSection"
-        @send="sendMessage"
-        @choose-stage="chooseStage"
-        @new-session="startSession"
-        @check-connection="checkConnection"
-        @use-prompt="usePrompt"
-      />
+      <div class="ws-right" :class="{ 'ws-mobile-hidden': mobileView !== 'tutor' }">
+        <div class="ws-panel-wrap" :class="{ 'ws-max': maximized === 'terminal' }">
+          <TerminalPanel
+            :lab="lab"
+            :endpoint="endpoint"
+            :maximized="maximized === 'terminal'"
+            @run-finished="onRunFinished"
+            @insert-report="onInsertReport"
+            @toggle-max="toggleMax('terminal')"
+          />
+        </div>
+
+        <div class="ws-bottom" :class="{ 'ws-max': maximized === 'bottom' }">
+          <div class="ws-right-tabs" role="tablist" aria-label="实践区视图">
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="rightTab === 'report'"
+              :class="{ active: rightTab === 'report' }"
+              @click="rightTab = 'report'"
+            >
+              实验报告
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="rightTab === 'code'"
+              :class="{ active: rightTab === 'code' }"
+              @click="rightTab = 'code'"
+            >
+              代码
+            </button>
+            <button
+              type="button"
+              role="tab"
+              :aria-selected="rightTab === 'tutor'"
+              :class="{ active: rightTab === 'tutor' }"
+              @click="rightTab = 'tutor'"
+            >
+              AI 导师
+            </button>
+            <button
+              type="button"
+              class="ws-tab-max"
+              :title="maximized === 'bottom' ? '恢复布局' : '放大到整页'"
+              :aria-label="maximized === 'bottom' ? '恢复布局' : '放大到整页'"
+              @click="toggleMax('bottom')"
+            >
+              <Minimize2 v-if="maximized === 'bottom'" :size="14" aria-hidden="true" />
+              <Maximize2 v-else :size="14" aria-hidden="true" />
+            </button>
+          </div>
+
+          <ReportPanel
+            v-show="rightTab === 'report'"
+            :lab="lab"
+            :insert-payload="reportInsert"
+            @reflect="submitReflection"
+            @review="reviewReport"
+            @notice="toast"
+          />
+          <CodePanel
+            v-if="codeVisited"
+            v-show="rightTab === 'code'"
+            :lab="lab"
+            :endpoint="endpoint"
+          />
+          <TutorPane
+            v-show="rightTab === 'tutor'"
+            :lab="lab"
+            :messages="messages"
+            :sending="sending"
+            :streaming-id="streamingId"
+            :connection="connection"
+            :connection-label="connectionLabel"
+            @send="sendMessage"
+            @new-session="startSession"
+            @check-connection="checkConnection"
+            @use-prompt="usePrompt"
+          />
+        </div>
+      </div>
     </main>
 
     <p v-if="notice" class="ws-toast" role="status">{{ notice }}</p>
+
+    <div
+      v-if="showScaffold"
+      class="ws-modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="我的系统"
+      @click.self="showScaffold = false"
+    >
+      <div class="ws-modal">
+        <h2>我的系统</h2>
+        <p class="ws-modal-hint">
+          你的操作系统从 Lab1 的最小骨架开始，随每个 Lab「升级」长出新能力——升级只补必需的新文件，
+          <strong>你已有的代码和自建程序永远不会被覆盖</strong>，每个人的系统都是自己的。
+        </p>
+
+        <p v-if="!scaffold" class="ws-modal-status" data-state="offline">
+          无法获取状态：确认导师服务已启动（npm run tutor）。
+        </p>
+        <template v-else>
+          <p class="ws-modal-status" :data-state="scaffold.exists ? 'remote' : undefined">
+            <template v-if="!scaffold.exists">尚未初始化。点击下方按钮领取 Lab1 起步代码。</template>
+            <template v-else-if="scaffold.next">
+              当前进度：{{ scaffold.applied.join(' → ') }}；下一步 {{ scaffold.next }}（{{ scaffold.nextSummary }}）。
+            </template>
+            <template v-else>八个 Lab 已全部发放，继续自由完善你的系统吧。</template>
+          </p>
+
+          <div class="ws-modal-actions">
+            <button
+              v-if="scaffold.next"
+              type="button"
+              class="ws-modal-primary"
+              :disabled="scaffoldBusy"
+              @click="scaffoldUpgrade"
+            >
+              {{ scaffoldBusy ? '发放中…' : scaffold.exists ? `升级到 ${scaffold.next}` : '初始化我的系统（Lab1）' }}
+            </button>
+          </div>
+
+          <div v-if="scaffold.exists" class="ws-modal-field ws-scaffold-bin">
+            <span>登记一个自己的用户程序（个性化扩展：小游戏、工具随你）</span>
+            <div>
+              <input
+                v-model="newBinName"
+                type="text"
+                placeholder="例如 my_snake"
+                spellcheck="false"
+                @keydown.enter.prevent="scaffoldAddBin"
+              />
+              <button type="button" class="ws-modal-secondary" :disabled="scaffoldBusy" @click="scaffoldAddBin">
+                创建
+              </button>
+            </div>
+          </div>
+        </template>
+
+        <pre v-if="scaffoldLog.length" class="ws-scaffold-log">{{ scaffoldLog.join('\n') }}</pre>
+
+        <div class="ws-modal-actions">
+          <span class="ws-modal-spacer" aria-hidden="true"></span>
+          <button type="button" class="ws-modal-secondary" @click="showScaffold = false">关闭</button>
+        </div>
+      </div>
+    </div>
 
     <div
       v-if="showLlmSettings"
@@ -603,6 +788,11 @@ onBeforeUnmount(() => {
         <p class="ws-modal-hint">
           配置只保存在本机浏览器，随每次提问发给本地导师服务；全部留空表示使用默认的本机
           Ollama（qwen2.5:7b）。换设备需要重新填写。
+        </p>
+        <p class="ws-modal-status" :data-state="connection">
+          <template v-if="connection === 'checking'">正在探测连接…</template>
+          <template v-else-if="connection === 'remote'">已连接：{{ modelName }}</template>
+          <template v-else>未连接{{ connectionDetail ? `：${connectionDetail}` : '' }}</template>
         </p>
         <label class="ws-modal-field">
           <span>接口地址（OpenAI 兼容 base URL）</span>
@@ -759,6 +949,92 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
+/* 右栏：终端在上，下半区在「实验报告 / 代码 / AI 导师」间切换。 */
+.ws-right {
+  display: grid;
+  grid-template-rows: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--ws-line);
+}
+
+.ws-panel-wrap {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+}
+
+.ws-bottom {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 最大化：铺满顶栏以下的整个工作台。 */
+.ws-max {
+  position: fixed;
+  top: var(--ws-topbar-height);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  background: var(--ws-surface);
+  box-shadow: var(--ws-shadow-3);
+}
+
+.ws-right-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--ws-space-1);
+  padding: var(--ws-space-1) var(--ws-space-3) 0;
+  border-bottom: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
+}
+
+.ws-tab-max {
+  display: grid;
+  width: var(--ws-control-sm);
+  height: var(--ws-control-sm);
+  margin-left: auto;
+  margin-bottom: var(--ws-space-1);
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
+  place-items: center;
+  cursor: pointer;
+}
+
+.ws-tab-max:hover {
+  color: var(--ws-accent);
+  border-color: var(--ws-accent);
+}
+
+.ws-right-tabs button {
+  min-height: var(--ws-control-md);
+  padding: var(--ws-space-1) var(--ws-space-4);
+  color: var(--ws-ink-muted);
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--ws-radius-md) var(--ws-radius-md) 0 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-semibold);
+  cursor: pointer;
+}
+
+.ws-right-tabs button:hover {
+  color: var(--ws-accent);
+}
+
+.ws-right-tabs button.active {
+  color: var(--ws-accent);
+  border-color: var(--ws-line);
+  background: var(--ws-surface);
+}
+
 .ws-mobile-switch {
   display: none;
 }
@@ -796,9 +1072,66 @@ onBeforeUnmount(() => {
   line-height: var(--ws-leading-normal);
 }
 
+.ws-modal-status {
+  margin: 0 0 var(--ws-space-4);
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+  font-size: var(--ws-text-sm);
+  line-height: var(--ws-leading-normal);
+}
+
+.ws-modal-status[data-state='remote'] {
+  color: var(--ws-accent);
+}
+
+.ws-modal-status[data-state='offline'] {
+  color: var(--ws-danger, #c0392b);
+}
+
 .ws-modal-field {
   display: block;
   margin-bottom: var(--ws-space-3);
+}
+
+.ws-scaffold-chip span {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-scaffold-bin > div {
+  display: flex;
+  gap: var(--ws-space-2);
+}
+
+.ws-scaffold-bin input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--ws-control-md);
+  padding: var(--ws-space-1) var(--ws-space-3);
+  color: var(--ws-ink);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+  font-family: var(--ws-font-mono);
+  font-size: var(--ws-text-sm);
+}
+
+.ws-scaffold-log {
+  max-height: 180px;
+  margin: 0 0 var(--ws-space-3);
+  padding: var(--ws-space-2) var(--ws-space-3);
+  overflow: auto;
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+  font-family: var(--ws-font-mono);
+  font-size: var(--ws-text-xs);
+  line-height: 1.6;
+  white-space: pre-wrap;
 }
 
 .ws-modal-field span {

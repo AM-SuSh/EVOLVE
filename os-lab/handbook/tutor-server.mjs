@@ -1,12 +1,26 @@
 import http from 'node:http'
 import path from 'node:path'
-import { appendFile, mkdir, readFile } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
+import { appendFile, mkdir, readFile, readdir, stat } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { parse as parseYaml } from 'yaml'
 import { scoreLearningEvents } from '../learning/rubric.mjs'
+import { STUDENT_ROOT, addUserBin, applyNext, scaffoldStatus } from '../scripts/scaffold.mjs'
 
 const handbookRoot = path.dirname(fileURLToPath(import.meta.url))
 const promptRoot = path.resolve(handbookRoot, '..', 'tutor', 'prompts')
+const osLabRoot = path.resolve(handbookRoot, '..')
+
+/**
+ * 学生初始化过 student-lab 后，终端与代码查看都指向他自己的系统；
+ * 否则退回参考实现 os-lab（教师/评委演示模式）。
+ */
+async function resolveWorkRoot() {
+  const status = await scaffoldStatus()
+  return status.exists
+    ? { root: STUDENT_ROOT, name: 'student-lab' }
+    : { root: osLabRoot, name: 'os-lab' }
+}
 
 /**
  * 模型接入（baseUrl/model/apiKey）由前端工作台的设置界面按请求传入（body.llm）；
@@ -124,7 +138,9 @@ function readBody(request) {
 
 function resolveOrigin(origin) {
   if (!origin) return Array.from(allowedOrigins)[0]
-  return allowedOrigins.has(origin) ? origin : null
+  if (allowedOrigins.has(origin)) return origin
+  // 本机开发端口不固定（vite 端口被占用会自动 5173 → 5174…），默认放行所有本机来源。
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ? origin : null
 }
 
 function matchGuardrail(message) {
@@ -183,17 +199,32 @@ function frameworkFor(labId, stage, reading) {
   }
 }
 
+/** 探测上游，返回 { connected, detail }——detail 给前端设置弹窗解释连不上的原因。 */
 async function checkUpstream(llm) {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 2_500)
+  const timer = setTimeout(() => controller.abort(), 6_000)
   try {
     const response = await fetch(`${llm.upstream}/models`, {
       headers: llm.apiKey ? { Authorization: `Bearer ${llm.apiKey}` } : {},
       signal: controller.signal,
     })
-    return response.ok
-  } catch {
-    return false
+    if (response.ok) return { connected: true, detail: '' }
+    const hint =
+      response.status === 401 || response.status === 403
+        ? 'API Key 可能不正确'
+        : response.status === 404
+          ? '接口地址可能不完整（OpenAI 兼容地址一般以 /v1 结尾）'
+          : ''
+    return {
+      connected: false,
+      detail: `上游返回 ${response.status}${hint ? `：${hint}` : ''}`,
+    }
+  } catch (error) {
+    const aborted = error?.name === 'AbortError' || String(error?.message || '').includes('abort')
+    return {
+      connected: false,
+      detail: aborted ? '连接上游超时（6 秒），检查网络或地址' : '无法连接上游地址（服务未启动或地址写错）',
+    }
   } finally {
     clearTimeout(timer)
   }
@@ -387,6 +418,268 @@ async function handleChat(body, request, response, origin) {
   }
 }
 
+/* -- 本机终端：代跑各 Lab 的验证命令 ---------------------------------------- */
+
+/**
+ * 前端只传 labId，命令由服务端预置——不接受任意命令串，避免把本机变成
+ * 任意命令执行入口。QEMU 的 lab6-8 挂盘参数与 Makefile 保持一致。
+ */
+function runRecipe(labId) {
+  const kernelElf = 'target/riscv64gc-unknown-none-elf/release/kernel'
+  const fsImg = 'target/riscv64gc-unknown-none-elf/release/fs.img'
+  if (labId === 'lab6' || labId === 'lab7' || labId === 'lab8') {
+    return [
+      {
+        title: `cargo build -p kernel --features ${labId} --release`,
+        cmd: 'cargo',
+        args: ['build', '-p', 'kernel', '--features', labId, '--release'],
+      },
+      {
+        title: 'qemu-system-riscv64（VirtIO 磁盘）',
+        cmd: 'qemu-system-riscv64',
+        args: [
+          '-machine', 'virt', '-nographic', '-bios', 'default',
+          '-drive', `file=${fsImg},if=none,format=raw,id=x0`,
+          '-device', 'virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0',
+          '-kernel', kernelElf,
+        ],
+      },
+    ]
+  }
+  return [
+    {
+      title: `cargo run -p kernel --features ${labId} --release`,
+      cmd: 'cargo',
+      args: ['run', '-p', 'kernel', '--features', labId, '--release'],
+    },
+  ]
+}
+
+/**
+ * 学生可以在终端输入/粘贴自定义命令，但仍不给 shell：
+ * 只允许白名单内的可执行程序，禁止链式、重定向、子 shell 与引号，
+ * 用 spawn(argv) 直接执行。多行粘贴按行作为多个步骤顺序执行。
+ */
+const RUN_ALLOWED_BINS = new Set([
+  'cargo',
+  'make',
+  'qemu-system-riscv64',
+  'rustc',
+  'rustup',
+  'rust-objcopy',
+])
+
+function parseCommandLine(line) {
+  const trimmed = line.trim()
+  if (!trimmed) return null
+  if (/[;&|<>`$'"]/.test(trimmed)) {
+    return { error: `不支持 shell 语法（; & | < > \` $ 引号）：${trimmed}` }
+  }
+  const tokens = trimmed.split(/\s+/)
+  if (!RUN_ALLOWED_BINS.has(tokens[0])) {
+    return { error: `仅允许运行：${[...RUN_ALLOWED_BINS].join(' / ')}（收到 ${tokens[0]}）` }
+  }
+  return { title: trimmed, cmd: tokens[0], args: tokens.slice(1) }
+}
+
+function parseCommandInput(command) {
+  const steps = []
+  for (const line of String(command).split(/\r?\n/)) {
+    const parsed = parseCommandLine(line)
+    if (!parsed) continue
+    if (parsed.error) return { error: parsed.error }
+    steps.push(parsed)
+  }
+  return steps.length ? { steps } : { error: '命令为空' }
+}
+
+/** 同一时间只允许一个运行中的命令；QEMU 卡死由整体超时兜底。 */
+let activeRun = null
+const RUN_TIMEOUT_MS = 300_000
+const RUN_OUTPUT_CAP = 262_144
+
+function killActiveRun(reason) {
+  const run = activeRun
+  if (!run) return false
+  run.stopped = reason || 'stopped'
+  try {
+    if (process.platform === 'win32') {
+      spawn('taskkill', ['/T', '/F', '/PID', String(run.child.pid)])
+    } else {
+      run.child.kill('SIGKILL')
+    }
+  } catch {
+    // 进程可能已经退出。
+  }
+  return true
+}
+
+function runStep(step, response, run, cwd) {
+  return new Promise((resolve) => {
+    sendFrame(response, { type: 'step', title: step.title })
+    const child = spawn(step.cmd, step.args, { cwd, env: process.env })
+    run.child = child
+    let emitted = 0
+    const forward = (chunk) => {
+      if (emitted >= RUN_OUTPUT_CAP) return
+      const text = chunk.toString('utf8')
+      emitted += text.length
+      sendFrame(response, { type: 'output', text })
+      if (emitted >= RUN_OUTPUT_CAP) {
+        sendFrame(response, { type: 'output', text: '\n[输出过长，已截断……]\n' })
+      }
+    }
+    child.stdout.on('data', forward)
+    child.stderr.on('data', forward)
+    child.on('error', (error) => {
+      sendFrame(response, { type: 'output', text: `无法启动 ${step.cmd}：${error.message}\n` })
+      resolve(-1)
+    })
+    child.on('close', (code) => resolve(code ?? -1))
+  })
+}
+
+async function handleRun(body, request, response, origin) {
+  const labId = String(body.labId || '')
+  if (!labIds.has(labId)) {
+    json(response, 400, { error: 'labId 必须是 lab1 到 lab8 之一' }, origin)
+    return
+  }
+  // 自定义命令优先；为空则退回该 Lab 预置的验证命令序列。
+  let steps = runRecipe(labId)
+  if (typeof body.command === 'string' && body.command.trim()) {
+    const parsed = parseCommandInput(body.command)
+    if (parsed.error) {
+      json(response, 400, { error: parsed.error }, origin)
+      return
+    }
+    steps = parsed.steps
+  }
+  if (activeRun) {
+    json(response, 409, { error: '已有命令在运行，先停止它或等它结束' }, origin)
+    return
+  }
+
+  const workRoot = await resolveWorkRoot()
+  const run = { child: null, stopped: '' }
+  activeRun = run
+  openEventStream(response, origin)
+  sendFrame(response, { type: 'output', text: `# 工作目录：${workRoot.name}/\n` })
+  const timer = setTimeout(() => {
+    sendFrame(response, { type: 'output', text: `\n[超过 ${RUN_TIMEOUT_MS / 1000} 秒，已终止]\n` })
+    killActiveRun('timeout')
+  }, RUN_TIMEOUT_MS)
+  // 学生关掉页面时终止子进程，不留孤儿 QEMU。
+  request.on('close', () => {
+    if (activeRun === run && !run.done) killActiveRun('client-closed')
+  })
+
+  try {
+    let code = 0
+    for (const step of steps) {
+      code = await runStep(step, response, run, workRoot.root)
+      if (run.stopped || code !== 0) break
+    }
+    run.done = true
+    sendFrame(response, {
+      type: 'exit',
+      code,
+      ok: !run.stopped && code === 0,
+      stopped: run.stopped || undefined,
+    })
+  } finally {
+    clearTimeout(timer)
+    if (activeRun === run) activeRun = null
+    response.end()
+  }
+}
+
+/* -- 只读代码浏览：让学生在工作台里看自己系统的源码 -------------------------- */
+
+/** 只展示学生系统的代码本体；构建产物、站点与教学基建不属于「他的系统」。 */
+const FS_EXCLUDED = new Set([
+  'target',
+  'node_modules',
+  '.git',
+  'handbook',
+  'tutor',
+  'learning',
+  'docs',
+  'labs',
+  'tests',
+  'scripts',
+])
+const FS_TEXT_EXT = new Set(['.rs', '.toml', '.md', '.asm', '.ld', '.json', '.yaml', '.lock'])
+const FS_TEXT_NAMES = new Set(['Makefile', 'Dockerfile', '.gitignore'])
+const FS_MAX_ENTRIES = 2000
+const FS_MAX_FILE_BYTES = 262_144
+
+function isViewableFile(name) {
+  return FS_TEXT_NAMES.has(name) || FS_TEXT_EXT.has(path.extname(name).toLowerCase())
+}
+
+async function buildFsTree(dir, relative, depth, counter) {
+  if (depth > 6 || counter.count > FS_MAX_ENTRIES) return []
+  const entries = await readdir(dir, { withFileTypes: true })
+  const nodes = []
+  for (const entry of entries) {
+    if (counter.count > FS_MAX_ENTRIES) break
+    if (entry.name.startsWith('.') && entry.name !== '.gitignore') continue
+    if (relative === '' && FS_EXCLUDED.has(entry.name)) continue
+    const childRelative = relative ? `${relative}/${entry.name}` : entry.name
+    if (entry.isDirectory()) {
+      counter.count += 1
+      nodes.push({
+        name: entry.name,
+        path: childRelative,
+        type: 'dir',
+        children: await buildFsTree(path.join(dir, entry.name), childRelative, depth + 1, counter),
+      })
+    } else if (entry.isFile() && isViewableFile(entry.name)) {
+      counter.count += 1
+      nodes.push({ name: entry.name, path: childRelative, type: 'file' })
+    }
+  }
+  // 目录在前、文件在后，各自按名称排序，浏览起来接近 IDE 习惯。
+  nodes.sort((a, b) =>
+    a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1,
+  )
+  return nodes
+}
+
+/** 把用户传来的相对路径钉死在工作区根内，拒绝任何逃逸。 */
+function resolveFsPath(rootDir, relative) {
+  const normalized = String(relative || '').replace(/\\/g, '/')
+  if (!normalized || normalized.includes('..') || path.isAbsolute(normalized)) return null
+  const top = normalized.split('/')[0]
+  if (FS_EXCLUDED.has(top)) return null
+  const full = path.resolve(rootDir, normalized)
+  if (!full.startsWith(rootDir + path.sep)) return null
+  return full
+}
+
+async function handleFsFile(rootDir, relative, response, origin) {
+  const full = resolveFsPath(rootDir, relative)
+  if (!full || !isViewableFile(path.basename(full))) {
+    json(response, 400, { error: '路径不可用' }, origin)
+    return
+  }
+  try {
+    const info = await stat(full)
+    if (!info.isFile()) throw new Error('not a file')
+    const truncated = info.size > FS_MAX_FILE_BYTES
+    const content = await readFile(full, 'utf8')
+    json(response, 200, {
+      path: String(relative).replace(/\\/g, '/'),
+      size: info.size,
+      truncated,
+      content: truncated ? content.slice(0, FS_MAX_FILE_BYTES) : content,
+    }, origin)
+  } catch {
+    json(response, 404, { error: '文件不存在或不可读' }, origin)
+  }
+}
+
 const server = http.createServer(async (request, response) => {
   const origin = resolveOrigin(request.headers.origin)
   if (!origin) {
@@ -403,10 +696,11 @@ const server = http.createServer(async (request, response) => {
     // GET 探测默认上游；POST 带 body.llm 时探测前端设置界面指定的上游。
     if (pathname === '/health' && (request.method === 'GET' || request.method === 'POST')) {
       const llm = resolveLlm(request.method === 'POST' ? (await readBody(request)).llm : undefined)
-      const connected = await checkUpstream(llm)
+      const { connected, detail } = await checkUpstream(llm)
       json(response, 200, {
         ok: true,
         connected,
+        detail,
         mode: connected ? 'remote' : 'offline',
         model: llm.model,
         frameworkVersion: 'multi-lab-v2.1',
@@ -416,6 +710,53 @@ const server = http.createServer(async (request, response) => {
 
     if (request.method === 'POST' && pathname === '/chat') {
       await handleChat(await readBody(request), request, response, origin)
+      return
+    }
+
+    if (request.method === 'POST' && pathname === '/run') {
+      await handleRun(await readBody(request), request, response, origin)
+      return
+    }
+
+    if (request.method === 'POST' && pathname === '/run/stop') {
+      json(response, 200, { stopped: killActiveRun('user-stop') }, origin)
+      return
+    }
+
+    if (request.method === 'GET' && pathname === '/fs/tree') {
+      const workRoot = await resolveWorkRoot()
+      const counter = { count: 0 }
+      const tree = await buildFsTree(workRoot.root, '', 0, counter)
+      json(response, 200, { root: workRoot.name, tree, truncated: counter.count > FS_MAX_ENTRIES }, origin)
+      return
+    }
+
+    if (request.method === 'GET' && pathname === '/fs/file') {
+      const workRoot = await resolveWorkRoot()
+      const relative = new URL(request.url || '/', 'http://localhost').searchParams.get('path')
+      await handleFsFile(workRoot.root, relative, response, origin)
+      return
+    }
+
+    if (request.method === 'GET' && pathname === '/scaffold/status') {
+      json(response, 200, await scaffoldStatus(), origin)
+      return
+    }
+
+    if (request.method === 'POST' && pathname === '/scaffold/upgrade') {
+      if (activeRun) {
+        json(response, 409, { error: '有命令正在运行，先停止再升级' }, origin)
+        return
+      }
+      const result = await applyNext()
+      json(response, result.ok ? 200 : 400, { ...result, status: await scaffoldStatus() }, origin)
+      return
+    }
+
+    if (request.method === 'POST' && pathname === '/scaffold/add-bin') {
+      const body = await readBody(request)
+      const result = await addUserBin(String(body.name || ''))
+      json(response, result.ok ? 200 : 400, { ...result, status: await scaffoldStatus() }, origin)
       return
     }
 
@@ -451,7 +792,7 @@ const server = http.createServer(async (request, response) => {
       return
     }
 
-    json(response, 404, { error: '可用接口：GET /health，POST /chat、/events、/report' }, origin)
+    json(response, 404, { error: '可用接口：GET|POST /health，POST /chat、/run、/run/stop、/events、/report' }, origin)
   } catch (error) {
     const message = error instanceof Error ? error.message : '导师服务发生未知错误'
     json(response, message.includes('aborted') ? 504 : 500, { error: message }, origin)

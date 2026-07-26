@@ -1,41 +1,29 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  FileCode2,
-  Plus,
-  RefreshCw,
-  Send,
-  Server,
-  Target,
-} from 'lucide-vue-next'
+import { Plus, RefreshCw, Send, Server } from 'lucide-vue-next'
 import TutorMessage from './TutorMessage.vue'
 import {
   tutorPromptsFor,
-  tutorStages,
   type TutorLab,
   type TutorMessage as TutorMessageType,
   type TutorPrompt,
-  type TutorStageId,
 } from '../tutor-model'
 
+/**
+ * AI 导师对话栏。阶段机制退到数据层（事件仍带 stage 字段），
+ * 界面上只保留对话本身：学生写实验报告或排错时按需展开提问。
+ */
 const props = defineProps<{
   lab: TutorLab
-  activeStage: TutorStageId
   messages: TutorMessageType[]
-  completedStages: Set<TutorStageId>
   sending: boolean
   streamingId: string
   connection: 'checking' | 'remote' | 'offline'
   connectionLabel: string
-  currentSection: { h2: string; h3: string }
 }>()
 
 const emit = defineEmits<{
   (event: 'send', text: string): void
-  (event: 'choose-stage', stage: TutorStageId): void
   (event: 'new-session'): void
   (event: 'check-connection'): void
   (event: 'use-prompt', prompt: TutorPrompt): void
@@ -44,18 +32,14 @@ const emit = defineEmits<{
 const draft = ref('')
 const composer = ref<HTMLTextAreaElement>()
 const messageList = ref<HTMLElement>()
-const resourcesOpen = ref(false)
 
-const activeStageData = computed(
-  () => tutorStages.find((stage) => stage.id === props.activeStage) || tutorStages[0],
-)
-const stagePrompts = computed(() => tutorPromptsFor(props.lab, props.activeStage))
-const resources = computed(() => props.lab.resources[props.activeStage])
-const readingHint = computed(() => {
-  const { h2, h3 } = props.currentSection
-  if (!h2) return ''
-  return h3 ? `${h2} › ${h3}` : h2
-})
+/** 快捷提问取自不同学习环节的代表性模板：判断 / 排错 / 复盘。 */
+const quickPrompts = computed(() => [
+  tutorPromptsFor(props.lab, 'orient')[0],
+  tutorPromptsFor(props.lab, 'debug')[0],
+  tutorPromptsFor(props.lab, 'debug')[1],
+  tutorPromptsFor(props.lab, 'reflect')[0],
+])
 
 function submit() {
   const text = draft.value.trim()
@@ -100,75 +84,28 @@ defineExpose({ scrollToLatest })
 
 <template>
   <section class="ws-tutor-pane" aria-label="AI 引导导师">
-    <nav class="ws-stage-strip" aria-label="学习阶段">
-      <button
-        v-for="stage in tutorStages"
-        :key="stage.id"
-        type="button"
-        :class="{ active: activeStage === stage.id, done: completedStages.has(stage.id) }"
-        :aria-current="activeStage === stage.id ? 'step' : undefined"
-        @click="emit('choose-stage', stage.id)"
-      >
-        <Check v-if="completedStages.has(stage.id) && activeStage !== stage.id" :size="13" aria-hidden="true" />
-        <span>{{ stage.shortTitle }}</span>
-      </button>
-    </nav>
-
-    <header class="ws-stage-brief">
-      <div class="ws-stage-brief-head">
-        <div>
-          <span>阶段 {{ activeStageData.index }} · {{ activeStageData.shortTitle }}</span>
-          <h2>{{ activeStageData.title }}</h2>
-        </div>
-        <div class="ws-tutor-actions">
-          <button
-            class="ws-connection"
-            :class="connection"
-            type="button"
-            :title="`重新检查模型连接（当前：${connectionLabel}）`"
-            @click="emit('check-connection')"
-          >
-            <Server :size="14" aria-hidden="true" />
-            <span>{{ connectionLabel }}</span>
-            <RefreshCw :size="12" aria-hidden="true" />
-          </button>
-          <button
-            class="ws-new-session"
-            type="button"
-            title="开始一次新的学习对话"
-            @click="emit('new-session')"
-          >
-            <Plus :size="15" aria-hidden="true" /><span>新对话</span>
-          </button>
-        </div>
-      </div>
-
-      <p class="ws-stage-goal"><Target :size="14" aria-hidden="true" />{{ activeStageData.goal }}</p>
-      <p class="ws-stage-checkpoint">
-        过关标准：{{ activeStageData.checkpoint }}（留下{{ activeStageData.evidence }}）
-      </p>
-      <p v-if="readingHint" class="ws-stage-reading">导师已知道你在读：{{ readingHint }}</p>
-
-      <div class="ws-resources" :class="{ open: resourcesOpen }">
-        <button type="button" :aria-expanded="resourcesOpen" @click="resourcesOpen = !resourcesOpen">
-          <FileCode2 :size="14" aria-hidden="true" />
-          本阶段该看的代码与资料
-          <ChevronDown v-if="resourcesOpen" :size="15" aria-hidden="true" />
-          <ChevronRight v-else :size="15" aria-hidden="true" />
+    <header class="ws-tutor-head">
+      <strong>AI 导师</strong>
+      <div class="ws-tutor-actions">
+        <button
+          class="ws-connection"
+          :class="connection"
+          type="button"
+          :title="`重新检查模型连接（当前：${connectionLabel}）`"
+          @click="emit('check-connection')"
+        >
+          <Server :size="14" aria-hidden="true" />
+          <span>{{ connectionLabel }}</span>
+          <RefreshCw :size="12" aria-hidden="true" />
         </button>
-        <div v-if="resourcesOpen" class="ws-resources-body">
-          <ul class="ws-resource-paths">
-            <li v-for="path in resources.paths" :key="path"><code>{{ path }}</code></li>
-          </ul>
-          <ul class="ws-resource-docs">
-            <li v-for="doc in resources.docs" :key="doc.href">
-              <a :href="doc.href" target="_blank" rel="noopener">
-                <strong>{{ doc.title }}</strong>
-                <small>{{ doc.description }}</small>
-              </a>
-            </li>
-          </ul>
-        </div>
+        <button
+          class="ws-new-session"
+          type="button"
+          title="开始一次新的学习对话"
+          @click="emit('new-session')"
+        >
+          <Plus :size="15" aria-hidden="true" /><span>新对话</span>
+        </button>
       </div>
     </header>
 
@@ -190,7 +127,7 @@ defineExpose({ scrollToLatest })
 
     <div class="ws-composer-dock">
       <div class="ws-prompt-row" aria-label="快捷提问">
-        <button v-for="prompt in stagePrompts" :key="prompt.id" type="button" @click="usePrompt(prompt)">
+        <button v-for="prompt in quickPrompts" :key="prompt.id" type="button" @click="usePrompt(prompt)">
           {{ prompt.label }}
         </button>
       </div>
@@ -201,7 +138,7 @@ defineExpose({ scrollToLatest })
           ref="composer"
           v-model="draft"
           rows="3"
-          :placeholder="`说说你在「${activeStageData.shortTitle}」阶段的判断、现象或假设…`"
+          placeholder="写下你的判断、观察到的现象或卡住的地方…（导师只引导，不代写）"
           @keydown="onKeydown"
         />
         <div class="ws-composer-foot">
@@ -218,7 +155,7 @@ defineExpose({ scrollToLatest })
 <style scoped>
 .ws-tutor-pane {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
   background: var(--ws-surface);
@@ -233,113 +170,19 @@ defineExpose({ scrollToLatest })
   white-space: nowrap;
 }
 
-/* -- 阶段条 ---------------------------------------------------------------- */
-.ws-stage-strip {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: var(--ws-space-1);
-  padding: var(--ws-space-2) var(--ws-space-3);
+/* -- 顶栏 ------------------------------------------------------------------ */
+.ws-tutor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ws-space-3);
+  padding: var(--ws-space-2) var(--ws-space-4);
   border-bottom: 1px solid var(--ws-line);
   background: var(--ws-surface-alt);
 }
 
-.ws-stage-strip button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--ws-space-1);
-  min-width: 0;
-  min-height: var(--ws-control-md);
-  padding: var(--ws-space-1) var(--ws-space-2);
-  color: var(--ws-ink-muted);
-  border: 1px solid transparent;
-  border-radius: var(--ws-radius-md);
-  background: transparent;
-  font: inherit;
+.ws-tutor-head > strong {
   font-size: var(--ws-text-sm);
-  font-weight: var(--ws-weight-semibold);
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.ws-stage-strip button:hover {
-  color: var(--ws-ink);
-  background: var(--ws-surface);
-}
-
-.ws-stage-strip button.done {
-  color: var(--ws-ok);
-}
-
-.ws-stage-strip button.active {
-  color: var(--ws-accent-contrast);
-  border-color: var(--ws-accent);
-  background: var(--ws-accent);
-}
-
-/* -- 阶段说明 -------------------------------------------------------------- */
-.ws-stage-brief {
-  padding: var(--ws-space-3) var(--ws-space-4);
-  border-bottom: 1px solid var(--ws-line);
-}
-
-.ws-stage-brief-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ws-space-3);
-}
-
-.ws-stage-brief-head > div:first-child {
-  min-width: 0;
-}
-
-.ws-stage-brief span {
-  color: var(--ws-accent);
-  font-size: var(--ws-text-xs);
-  font-weight: var(--ws-weight-bold);
-}
-
-.ws-stage-brief h2 {
-  margin: 2px 0 0;
-  color: var(--ws-ink);
-  font-size: var(--ws-text-lg);
-  line-height: var(--ws-leading-tight);
-}
-
-.ws-stage-brief p {
-  margin: var(--ws-space-2) 0 0;
-  color: var(--ws-ink-muted);
-  font-size: var(--ws-text-sm);
-  line-height: var(--ws-leading-normal);
-}
-
-.ws-stage-goal {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--ws-space-2);
-  color: var(--ws-ink) !important;
-}
-
-.ws-stage-goal svg {
-  flex: 0 0 auto;
-  margin-top: 3px;
-  color: var(--ws-accent);
-}
-
-.ws-stage-checkpoint {
-  font-size: var(--ws-text-xs) !important;
-}
-
-.ws-stage-reading {
-  padding: var(--ws-space-1) var(--ws-space-2);
-  color: var(--ws-accent) !important;
-  border-radius: var(--ws-radius-sm);
-  background: var(--ws-accent-soft);
-  font-size: var(--ws-text-xs) !important;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .ws-tutor-actions {
@@ -382,87 +225,6 @@ defineExpose({ scrollToLatest })
   border-color: var(--ws-accent);
 }
 
-/* -- 资料 ------------------------------------------------------------------ */
-.ws-resources {
-  margin-top: var(--ws-space-3);
-}
-
-.ws-resources > button {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ws-space-1);
-  min-height: var(--ws-control-sm);
-  padding: var(--ws-space-1) var(--ws-space-2);
-  color: var(--ws-ink-muted);
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-md);
-  background: var(--ws-surface);
-  font: inherit;
-  font-size: var(--ws-text-xs);
-  cursor: pointer;
-}
-
-.ws-resources > button:hover {
-  color: var(--ws-accent);
-  border-color: var(--ws-accent);
-}
-
-.ws-resources-body {
-  margin-top: var(--ws-space-2);
-  padding: var(--ws-space-3);
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-md);
-  background: var(--ws-surface-soft);
-}
-
-.ws-resource-paths,
-.ws-resource-docs {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ws-resource-paths {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ws-space-1);
-  margin-bottom: var(--ws-space-3);
-}
-
-.ws-resource-paths code {
-  padding: 2px var(--ws-space-2);
-  color: var(--ws-ink);
-  border-radius: var(--ws-radius-sm);
-  background: var(--ws-surface);
-  font-family: var(--ws-font-mono);
-  font-size: var(--ws-text-xs);
-}
-
-.ws-resource-docs a {
-  display: block;
-  padding: var(--ws-space-2);
-  border-radius: var(--ws-radius-sm);
-  text-decoration: none;
-}
-
-.ws-resource-docs a:hover {
-  background: var(--ws-surface);
-}
-
-.ws-resource-docs strong {
-  display: block;
-  color: var(--ws-accent);
-  font-size: var(--ws-text-sm);
-}
-
-.ws-resource-docs small {
-  display: block;
-  margin-top: 2px;
-  color: var(--ws-ink-muted);
-  font-size: var(--ws-text-xs);
-  line-height: var(--ws-leading-normal);
-}
-
 /* -- 消息 ------------------------------------------------------------------ */
 .ws-message-list {
   min-height: 0;
@@ -471,7 +233,7 @@ defineExpose({ scrollToLatest })
 }
 
 .ws-message-inner {
-  padding: var(--ws-space-6) var(--ws-space-5) var(--ws-space-4);
+  padding: var(--ws-space-4) var(--ws-space-5) var(--ws-space-4);
 }
 
 .ws-thinking {
@@ -576,7 +338,7 @@ defineExpose({ scrollToLatest })
 .ws-composer textarea {
   display: block;
   width: 100%;
-  min-height: 60px;
+  min-height: 52px;
   color: var(--ws-ink);
   border: 0;
   outline: 0;

@@ -57,6 +57,66 @@
 
 > AI 工具使用声明、成果归属与交互记录见 [项目总报告.md §8](项目总报告.md#8-开发时使用-ai-工具的成果) 与 `os-lab/docs/ai-collaboration.md`。
 
+## 2026-07-26 - Task: 渐进式个性化学生工作区（scaffold 机制）
+
+### What was done
+
+- 新增 `os-lab/scripts/scaffold.mjs`：把完整参考实现按 Lab 渐进发放到 `student-lab/` 学生工作区。`init` 发放 Lab1 最小可运行骨架；`upgrade` 逐层注入必要新文件（组件 crate、feature 门控的 kernel 模块、用户程序）；三个 Cargo.toml（根/kernel/user）按进度自动生成；**升级永不覆盖学生已有文件**——学生的补全、修改与自建程序全部保留，系统个性化生长。
+- 挖空任务机制：`scaffold/exercises/<labN>/<路径>` 存在同名文件时替代参考实现发放。完成 Lab2 示例：`kernel/src/task.rs` 的 `find_next_task` 挖空为带思路提示的 TODO（`todo!()` 保证可编译）。
+- `add-bin <名字>`：学生登记个性化用户程序（生成基于 user_lib 的模板并写入 Cargo.toml），bonus 扩展入口。
+- tutor-server 新增 `GET /scaffold/status`、`POST /scaffold/upgrade`、`POST /scaffold/add-bin`；`/run` 与 `/fs/*` 在 student-lab 存在时自动切到学生工作区（终端输出首行标注工作目录），否则回落 os-lab 参考实现。
+- 工作台顶栏新增「我的系统 · labN/未初始化」入口与弹窗：初始化/升级、进度展示、个性化程序登记、操作日志；代码页签标题随工作区显示「你的系统/参考实现」。
+- `student-lab/` 加入 .gitignore；新增根文档《渐进式个性化系统设计.md》（机制说明 + 团队挖空内容设计指引 + bonus 方向建议）。
+
+### Testing
+
+- `node scripts/scaffold.mjs init` → student-lab Lab1 从零 `cargo run --features lab1` QEMU 跑通（Hello, OS!）。
+- `upgrade` 到 lab2：挖空 task.rs 就位且 `cargo check --features lab2` 通过；连续升级到 lab8：全部文件清单正确，`cargo check --features lab8` 通过（6.96s）。
+- `add-bin my_snake`：模板生成并交叉编译通过（修正了首版模板与 user_lib 实际 API 不符的问题）。
+- 服务端冒烟：/scaffold/status 正确返回进度与 extraBins；/fs/tree root=student-lab；/run 首行输出 `# 工作目录：student-lab/`。
+- handbook `npm run build` 通过；测试用 student-lab 已清除，用户可从工作台全新体验。
+
+### Notes
+
+- 主要文件：`os-lab/scripts/scaffold.mjs`、`os-lab/scaffold/exercises/lab2/kernel/src/task.rs`、`tutor-server.mjs`、`LabWorkspace.vue`、`CodePanel.vue`、`.gitignore`、《渐进式个性化系统设计.md》。
+- 待办（内容工作）：Lab3-8 挖空任务与 bonus 挑战设计（EXERCISES 表 + exercises 目录，方法见设计文档第 3 节）；挖空点与实验文档任务、answers 对应梳理。
+- 回滚方式：删除 scaffold.mjs、scaffold/ 目录与本条记录，还原 tutor-server/LabWorkspace/CodePanel。
+
+## 2026-07-26 - Task: 工作台改版：终端交互化、实验报告面板、代码查看器与全屏
+
+### What was done
+
+**第一轮（连接诊断与本机终端接入）**
+
+- 修复配置了 API 仍显示离线的两处缺陷：CORS 只放行 5173 端口（vite 自动换端口后被 403）→ 改为放行所有本机来源；健康探测超时 2.5s 且无原因提示 → 超时加到 6s，`/health` 返回具体失败原因（401/404/超时等），模型设置弹窗实时显示，未连上时弹窗保持打开。
+- tutor-server 新增 `/run`、`/run/stop`：由导师服务在本机代跑实验命令，SSE 流式回传输出；同一时间仅一个运行、5 分钟超时、Windows 按进程树终止、页面关闭自动杀进程。
+- 删除「导师已知道你在读」提示行（阅读位置仍随提问送给模型，仅去掉界面显示）。
+
+**第二轮（右栏重构：报告为主）**
+
+- 终端命令改为可编辑输入框：默认填当前 Lab 验证命令，可改可粘贴，多行按顺序执行；服务端只允许 `cargo/make/qemu-system-riscv64/rustc/rustup/rust-objcopy` 白名单程序，拒绝 shell 语法（`&& | ; > <` 引号等），spawn(argv) 直接执行不给 shell。
+- 运行结束自动按退出码记录 `verification_attempt`（passed=退出码 0），移除费解的手动「记录通过/不通过」按钮；新增「把输出插入实验报告」。
+- 撤下五阶段条（定界/阅读/验证/排错/复盘退到事件数据层），右栏下半区改为「实验报告 | AI 导师」页签。实验报告为固定五段模板（目标与准备/过程记录/问题与解决/思考题与发现/收获与反思），按 Lab 自动存 localStorage，可导出 Markdown、可「请导师点评」（发给 AI 追问）；「收获与反思」保存即记 `reflection_submitted`。解锁条件变为：一次成功运行 + 一次带反思的报告保存。
+- 删除 EvidencePanel 组件与手册底部证据坞。
+
+**第三轮（本轮：目录、全屏与代码查看器）**
+
+- 手册目录并入顶栏一行：与当前小节标题同行的「目录」按钮，点开为下拉面板（H2/H3 缩进、当前节高亮、点击跳转后自动收起），去掉此前突兀的左侧独立窄列；删除底部「上一节/下一节」翻页，纯滚动阅读。
+- 终端与下半区（报告/代码/导师）各加「放大到整页/恢复布局」按钮，fixed 覆盖顶栏以下整个工作台。
+- 新增只读代码查看器（「代码」页签）：tutor-server 增加 `/fs/tree`、`/fs/file`，目录树 + 带行号源码视图 + 「本 Lab 相关文件」快捷入口 + 命令执行目录提示（`os-lab/`）。安全边界：路径钉死在 os-lab 根内拒绝 `..` 逃逸，排除 target/handbook/tutor/learning 等非学生系统目录，仅白名单文本扩展名，单文件 256KB 截断。
+
+### Testing
+
+- `npm run build` 三轮均通过（0 死链）；`node --check tutor-server.mjs` 通过。
+- `/run`：lab1 QEMU 实跑流式输出+exit ok；`cargo --version` 自定义命令执行；`rm -rf /` 被白名单拒绝；`cargo run && echo pwned` 被 shell 语法检查拒绝；并发第二个运行返回 409；`/run/stop` 正常终止。
+- `/fs/tree` 返回 kernel/os-*/user 与根构建文件，排除目录生效；`/fs/file` 读取 `kernel/src/main.rs` 正常；`../progress.md` 与 `handbook/tutor-server.mjs` 均被拒绝。
+
+### Notes
+
+- 主要文件：`tutor-server.mjs`（/run、/fs、健康诊断）、`components/`（TerminalPanel、ReportPanel、CodePanel 新增；ManualPane、TutorPane、LabWorkspace 重构；EvidencePanel 删除）、`tutor-model.ts`（LlmConfig）、`guide/ai-tutor.md`。
+- 五阶段与旧评分启发式仍在数据层兼容运行；按新「报告为主」流程重校 rubric（报告各节质量、运行-排错轨迹）列入后续 P1。
+- 回滚方式：恢复上述文件并删除本条记录。
+
 ## 2026-07-26 - Task: 合并后一致性收口、构建死锁修复与 AI 配置前端化
 
 ### What was done
