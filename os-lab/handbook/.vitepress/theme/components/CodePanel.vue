@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ChevronDown, ChevronRight, FileCode2, Folder, FolderOpen, RefreshCw } from 'lucide-vue-next'
-import type { TutorLab } from '../tutor-model'
+import { authHeaders, type TutorLab } from '../tutor-model'
 
 /**
  * 只读代码查看器：让学生看到自己正在构建的系统长什么样——
  * 目录结构、每个文件的源码，以及命令是在哪个目录下执行的。
  */
-const props = defineProps<{ lab: TutorLab; endpoint: string }>()
+const props = defineProps<{ lab: TutorLab; endpoint: string; student?: string }>()
+
+/** 带上学生身份：服务端据此返回/写入该生自己的工作区。 */
+function apiUrl(pathname: string) {
+  if (!props.student) return `${props.endpoint}${pathname}`
+  return `${props.endpoint}${pathname}${pathname.includes('?') ? '&' : '?'}user=${encodeURIComponent(props.student)}`
+}
 
 interface FsNode {
   name: string
@@ -25,6 +31,11 @@ const activePath = ref('')
 const fileContent = ref('')
 const fileTruncated = ref(false)
 const fileLoading = ref(false)
+/** 学生工作区可编辑；参考实现保持只读。 */
+const editing = ref(false)
+const draft = ref('')
+const saving = ref(false)
+const saveNote = ref('')
 
 /** 本 Lab 各阶段推荐阅读的代码文件（去重，仅保留仓库代码路径）。 */
 const labFiles = computed(() => {
@@ -43,7 +54,7 @@ async function loadTree() {
   loading.value = true
   error.value = ''
   try {
-    const response = await fetch(`${props.endpoint}/fs/tree`)
+    const response = await fetch(apiUrl(`/fs/tree`), { headers: authHeaders() })
     if (!response.ok) throw new Error(`导师服务返回 ${response.status}`)
     const payload = await response.json()
     tree.value = payload.tree || []
@@ -72,8 +83,10 @@ async function openFile(relative: string) {
   fileLoading.value = true
   fileContent.value = ''
   fileTruncated.value = false
+  editing.value = false
+  saveNote.value = ''
   try {
-    const response = await fetch(`${props.endpoint}/fs/file?path=${encodeURIComponent(relative)}`)
+    const response = await fetch(apiUrl(`/fs/file?path=${encodeURIComponent(relative)}`), { headers: authHeaders() })
     const payload = await response.json()
     if (!response.ok) throw new Error(payload?.error || `导师服务返回 ${response.status}`)
     fileContent.value = payload.content || ''
@@ -93,6 +106,33 @@ async function openFile(relative: string) {
   }
 }
 
+function startEdit() {
+  draft.value = fileContent.value
+  editing.value = true
+  saveNote.value = ''
+}
+
+async function saveEdit() {
+  if (saving.value) return
+  saving.value = true
+  try {
+    const response = await fetch(apiUrl(`/fs/save`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ path: activePath.value, content: draft.value }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload?.error || `导师服务返回 ${response.status}`)
+    fileContent.value = draft.value
+    editing.value = false
+    saveNote.value = '已保存。去终端重新运行验证你的修改。'
+  } catch (err) {
+    saveNote.value = err instanceof Error ? err.message : '保存失败'
+  } finally {
+    saving.value = false
+  }
+}
+
 onMounted(loadTree)
 </script>
 
@@ -100,7 +140,7 @@ onMounted(loadTree)
   <section class="ws-code" aria-label="系统代码">
     <header class="ws-code-head">
       <div class="ws-code-cwd">
-        <strong>{{ rootName === 'student-lab' ? '你的系统 · 只读源码' : '参考实现 · 只读源码' }}</strong>
+        <strong>{{ rootName.startsWith('student-labs') ? `你的系统 · ${rootName.split('/')[1] || ''}` : '参考实现 · 只读' }}</strong>
         <small>命令执行目录：<code>{{ rootName }}/</code>（下面就是它的内容）</small>
       </div>
       <button type="button" title="重新加载目录" @click="loadTree">
@@ -147,8 +187,25 @@ onMounted(loadTree)
           <p class="ws-code-file">
             <FileCode2 :size="14" aria-hidden="true" /><code>{{ rootName }}/{{ activePath }}</code>
             <em v-if="fileTruncated">（文件过大，已截断显示）</em>
+            <span class="ws-code-file-actions">
+              <template v-if="rootName.startsWith('student-labs') && !fileTruncated">
+                <button v-if="!editing" type="button" @click="startEdit">编辑</button>
+                <template v-else>
+                  <button type="button" :disabled="saving" @click="saveEdit">{{ saving ? '保存中…' : '保存' }}</button>
+                  <button type="button" @click="editing = false">取消</button>
+                </template>
+              </template>
+              <em v-else-if="!rootName.startsWith('student-labs')" class="readonly">只读</em>
+            </span>
           </p>
+          <p v-if="saveNote" class="ws-code-note" :class="{ ok: saveNote.startsWith('已保存') }">{{ saveNote }}</p>
           <p v-if="fileLoading" class="ws-code-note">读取中…</p>
+          <textarea
+            v-else-if="editing"
+            v-model="draft"
+            class="ws-code-editor"
+            spellcheck="false"
+          />
           <div v-else class="ws-code-source">
             <div v-for="(line, index) in lines" :key="index" class="ws-code-line">
               <span>{{ index + 1 }}</span>
@@ -400,6 +457,51 @@ export default { components: { CodeTreeNode } }
 .ws-code-file em {
   color: var(--ws-warn, #b7791f);
   font-style: normal;
+}
+
+.ws-code-file-actions {
+  display: inline-flex;
+  gap: var(--ws-space-1);
+  margin-left: auto;
+}
+
+.ws-code-file-actions button {
+  padding: 2px var(--ws-space-2);
+  color: var(--ws-accent);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-surface);
+  font: inherit;
+  font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-semibold);
+  cursor: pointer;
+}
+
+.ws-code-file-actions button:hover:not(:disabled) {
+  border-color: var(--ws-accent);
+}
+
+.ws-code-file-actions .readonly {
+  color: var(--ws-ink-faint);
+}
+
+.ws-code-note.ok {
+  color: var(--ws-ok, #1a7f37);
+}
+
+.ws-code-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--ws-space-2) var(--ws-space-3);
+  color: var(--ws-ink);
+  border: 0;
+  outline: none;
+  background: var(--ws-surface-soft, var(--ws-surface-alt));
+  resize: none;
+  font-family: var(--ws-font-mono);
+  font-size: var(--ws-text-xs);
+  line-height: 1.6;
+  white-space: pre;
 }
 
 .ws-code-note {

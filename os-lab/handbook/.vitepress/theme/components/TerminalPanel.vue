@@ -1,9 +1,15 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { FilePlus2, Maximize2, Minimize2, Play, RotateCcw, Square } from 'lucide-vue-next'
-import type { TutorLab } from '../tutor-model'
+import { authHeaders, type TutorLab } from '../tutor-model'
 
-const props = defineProps<{ lab: TutorLab; endpoint: string; maximized?: boolean }>()
+const props = defineProps<{ lab: TutorLab; endpoint: string; student?: string; maximized?: boolean }>()
+
+/** 带上学生身份：服务端据此在该生自己的工作区里执行命令。 */
+function apiUrl(pathname: string) {
+  if (!props.student) return `${props.endpoint}${pathname}`
+  return `${props.endpoint}${pathname}?user=${encodeURIComponent(props.student)}`
+}
 
 const emit = defineEmits<{
   /** 每次运行结束自动上报（passed = 全部步骤退出码 0），作为验证证据。 */
@@ -71,9 +77,9 @@ async function run() {
   stepTitle.value = ''
 
   try {
-    const response = await fetch(`${props.endpoint}/run`, {
+    const response = await fetch(apiUrl(`/run`), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...authHeaders() },
       body: JSON.stringify({ labId: props.lab.id, command: command.value }),
     })
     if (!response.ok || !response.body) {
@@ -126,7 +132,7 @@ async function run() {
 
 async function stop() {
   try {
-    await fetch(`${props.endpoint}/run/stop`, { method: 'POST' })
+    await fetch(apiUrl(`/run/stop`), { method: 'POST', headers: authHeaders() })
   } catch {
     // 服务不在时无事可停。
   }

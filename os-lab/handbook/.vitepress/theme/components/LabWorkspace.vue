@@ -1,25 +1,30 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useData, useRouter, withBase } from 'vitepress'
-import { Blocks, BookOpen, Home, Maximize2, MessagesSquare, Minimize2, Moon, Settings, Sun } from 'lucide-vue-next'
+import { Blocks, BookOpen, ClipboardCheck, Home, Maximize2, MessagesSquare, Minimize2, Moon, Settings, Sun, UserRound } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
 import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
 import ReportPanel from './ReportPanel.vue'
 import CodePanel from './CodePanel.vue'
 import JourneyRail from './JourneyRail.vue'
+import TeacherDocPanel from './TeacherDocPanel.vue'
+import TeacherPublishPanel from './TeacherPublishPanel.vue'
 import {
   appendEvent,
   buildLabJourney,
   createId,
   exportEventsAsJsonl,
   getTutorLab,
+  authHeaders,
   hasCustomLlmConfig,
   inferCategory,
   isDirectAnswerRequest,
+  loadAuth,
   loadEvents,
   loadLlmConfig,
   offlineTutorReply,
+  saveAuth,
   saveLlmConfig,
   tutorStages,
   type LearningEvent,
@@ -36,6 +41,94 @@ const endpoint = String(
   import.meta.env.VITE_OS_LAB_TUTOR_ENDPOINT || 'http://127.0.0.1:8787',
 ).replace(/\/$/, '')
 
+/* -- 账号：注册/登录，工作区、终端、代码、报告提交都凭会话鉴权 --------------- */
+const auth = ref(loadAuth())
+const studentId = computed(() => auth.value?.username || '')
+/**
+ * 教师进工作台=备课模式：左栏是指导书渲染效果（点「编辑手册」整栏切换为
+ * Markdown 编辑器增补知识点）；右栏整栏是作业发布面板（任务类型 × 目标班级）。
+ * 教师不运行代码，因此没有终端/代码/AI 导师区。
+ */
+const isTeacherRole = computed(() => auth.value?.role === 'teacher')
+/** 教师左栏是否处于「编辑手册」模式。 */
+const teacherEditing = ref(false)
+const showIdentity = ref(false)
+const authMode = ref<'login' | 'register'>('login')
+const authForm = ref({ username: '', password: '', className: '' })
+const authBusy = ref(false)
+const authError = ref('')
+
+function apiUrl(pathname: string) {
+  return `${endpoint}${pathname}`
+}
+
+async function submitAuth() {
+  if (authBusy.value) return
+  authBusy.value = true
+  authError.value = ''
+  try {
+    const response = await fetch(
+      `${endpoint}/auth/${authMode.value === 'login' ? 'login' : 'register'}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(authForm.value),
+      },
+    )
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok || !payload.token) throw new Error(payload?.error || `服务返回 ${response.status}`)
+    auth.value = { token: payload.token, username: payload.username, role: payload.role }
+    saveAuth(auth.value)
+    showIdentity.value = false
+    authForm.value = { username: '', password: '', className: '' }
+    toast(`欢迎，${payload.username}${payload.role === 'teacher' ? '（教师）' : ''}。`)
+    void refreshScaffold()
+  } catch (err) {
+    authError.value =
+      err instanceof Error && err.message
+        ? err.message
+        : '无法连接导师服务：先在 os-lab/handbook 运行 npm run tutor'
+  } finally {
+    authBusy.value = false
+  }
+}
+
+const pwForm = ref({ oldPassword: '', newPassword: '' })
+
+async function changeMyPassword() {
+  if (authBusy.value) return
+  authBusy.value = true
+  authError.value = ''
+  try {
+    const response = await fetch(`${endpoint}/auth/password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(pwForm.value),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload?.error || `服务返回 ${response.status}`)
+    pwForm.value = { oldPassword: '', newPassword: '' }
+    toast('密码已修改。')
+  } catch (err) {
+    authError.value = err instanceof Error ? err.message : '修改失败'
+  } finally {
+    authBusy.value = false
+  }
+}
+
+async function doLogout() {
+  try {
+    await fetch(`${endpoint}/auth/logout`, { method: 'POST', headers: authHeaders() })
+  } catch {
+    /* 服务不在也允许本地退出 */
+  }
+  auth.value = null
+  saveAuth(null)
+  scaffold.value = null
+  showIdentity.value = false
+  toast('已退出登录（游客只读）。')
+}
+
 const { isDark } = useData()
 const router = useRouter()
 
@@ -50,7 +143,7 @@ const modelName = ref('')
 const notice = ref('')
 const currentSection = ref({ h2: '', h3: '' })
 const mobileView = ref<'manual' | 'tutor'>('manual')
-/** 右栏下半区页签：实验报告为主，代码查看与 AI 导师按需切换。 */
+/** 右栏下半区页签（仅学生）：报告 / 代码 / AI 导师。 */
 const rightTab = ref<'report' | 'code' | 'tutor'>('report')
 /** 代码页签首次打开后保持挂载，切换页签不丢浏览状态。 */
 const codeVisited = ref(false)
@@ -68,12 +161,18 @@ function toggleMax(target: 'terminal' | 'bottom') {
 /* -- 我的系统（渐进式脚手架） ------------------------------------------------ */
 
 interface ScaffoldStatus {
+  ok: boolean
+  error?: string
+  user?: string
   exists: boolean
   applied: string[]
   current: string | null
   next: string | null
   nextSummary: string | null
+  nextAllowed: boolean
+  openLab: string
   extraBins: string[]
+  variants: Record<string, string>
 }
 
 const scaffold = ref<ScaffoldStatus | null>(null)
@@ -83,14 +182,31 @@ const scaffoldLog = ref<string[]>([])
 const newBinName = ref('')
 
 const scaffoldLabel = computed(() => {
-  if (!scaffold.value) return '我的系统'
-  if (!scaffold.value.exists) return '我的系统 · 未初始化'
+  if (!studentId.value) return '我的系统 · 未登录'
+  if (!scaffold.value?.ok) return `我的系统 · ${studentId.value}`
+  if (!scaffold.value.exists) return `我的系统 · 未初始化`
   return `我的系统 · ${scaffold.value.current}`
 })
 
+/** 老师在教师端发布的作业/公告，展示在工作台横幅。 */
+const teacherNotice = computed(() => (scaffold.value as { notice?: string } | null)?.notice || '')
+const noticeDismissed = ref(false)
+
 async function refreshScaffold() {
+  if (!studentId.value) {
+    scaffold.value = null
+    return
+  }
   try {
-    const response = await fetch(`${endpoint}/scaffold/status`)
+    const response = await fetch(apiUrl('/scaffold/status'), { headers: authHeaders() })
+    if (response.status === 401) {
+      // 会话过期：清掉本地登录态，引导重新登录。
+      auth.value = null
+      saveAuth(null)
+      scaffold.value = null
+      showIdentity.value = true
+      return
+    }
     if (response.ok) scaffold.value = await response.json()
   } catch {
     scaffold.value = null
@@ -101,10 +217,13 @@ async function scaffoldUpgrade() {
   if (scaffoldBusy.value) return
   scaffoldBusy.value = true
   try {
-    const response = await fetch(`${endpoint}/scaffold/upgrade`, { method: 'POST' })
+    const response = await fetch(apiUrl('/scaffold/upgrade'), {
+      method: 'POST',
+      headers: authHeaders(),
+    })
     const payload = await response.json()
     scaffoldLog.value = payload.log || [payload.error || '操作失败']
-    if (payload.status) scaffold.value = payload.status
+    if (payload.status) scaffold.value = { ...scaffold.value, ...payload.status }
     if (response.ok) toast(`已发放 ${payload.lab}，去终端跑一跑它。`)
   } catch {
     scaffoldLog.value = ['无法连接导师服务：先在 os-lab/handbook 运行 npm run tutor']
@@ -118,14 +237,14 @@ async function scaffoldAddBin() {
   if (!name || scaffoldBusy.value) return
   scaffoldBusy.value = true
   try {
-    const response = await fetch(`${endpoint}/scaffold/add-bin`, {
+    const response = await fetch(apiUrl('/scaffold/add-bin'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ name }),
     })
     const payload = await response.json()
     scaffoldLog.value = payload.log || [payload.error || '操作失败']
-    if (payload.status) scaffold.value = payload.status
+    if (payload.status) scaffold.value = { ...scaffold.value, ...payload.status }
     if (response.ok) newBinName.value = ''
   } catch {
     scaffoldLog.value = ['无法连接导师服务：先在 os-lab/handbook 运行 npm run tutor']
@@ -134,10 +253,49 @@ async function scaffoldAddBin() {
   }
 }
 
+/** 老师对本 Lab 报告的批语（学生在报告面板看到）。 */
+const teacherFeedback = ref('')
+
+async function loadMyFeedback() {
+  if (!auth.value || isTeacherRole.value) return
+  try {
+    const response = await fetch(apiUrl('/reports/mine'), { headers: authHeaders() })
+    if (!response.ok) return
+    const payload = await response.json()
+    const mine = (payload.mine || []).find((r: { labId: string }) => r.labId === props.labId)
+    teacherFeedback.value = mine?.feedback || ''
+  } catch {
+    /* 静默 */
+  }
+}
+
+/** 报告面板「提交给老师」：入库，教师端可见。 */
+async function submitReportToTeacher(content: string) {
+  if (!auth.value) {
+    toast('先登录再提交报告。')
+    showIdentity.value = true
+    return
+  }
+  try {
+    const response = await fetch(apiUrl('/reports'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ labId: props.labId, content }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload?.error || `服务返回 ${response.status}`)
+    toast('报告已提交给老师（重复提交会覆盖旧版本）。')
+  } catch (err) {
+    toast(err instanceof Error ? err.message : '提交失败，稍后再试。')
+  }
+}
+
 /* 模型接入配置：前端填写、存浏览器本地，按请求发给 tutor-server。 */
 const llmConfig = ref<LlmConfig>(loadLlmConfig())
 const llmDraft = ref<LlmConfig>({ ...llmConfig.value })
 const showLlmSettings = ref(false)
+/** 教师可在控制台统一配模型并关闭学生自配；此标志来自 /health。 */
+const studentLlmAllowed = ref(true)
 /** 连不上时的具体原因：区分「导师服务没启动」和「上游模型连不通」。 */
 const connectionDetail = ref('')
 
@@ -241,9 +399,11 @@ async function checkConnection() {
       connected?: boolean
       model?: string
       detail?: string
+      studentLlmAllowed?: boolean
     }
     connection.value = payload.connected ? 'remote' : 'offline'
     modelName.value = payload.model || ''
+    studentLlmAllowed.value = payload.studentLlmAllowed !== false
     connectionDetail.value = payload.connected ? '' : payload.detail || '上游模型未连接'
   } catch {
     connection.value = 'offline'
@@ -437,9 +597,15 @@ async function sendMessage(text: string) {
       content: reply,
       metadata: { guarded: guarded || serverGuardrail, mode: connection.value },
     })
-  } catch {
-    connection.value = 'offline'
-    const reply = `模型连接中断，已切换到离线引导。\n\n${offlineTutorReply(text, activeStage.value, guarded, lab.value)}`
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? error.message : '未知错误'
+    // 单次失败（超时/限流/网络抖动）不该把整个会话打成离线：
+    // 重探一次连接，还活着就提示重发，确实断了才降级到离线引导。
+    await checkConnection()
+    const reply =
+      connection.value === 'remote'
+        ? `这条回复失败了：${detail}\n\n连接正常，直接重发这条消息即可。`
+        : `模型连接中断（${detail}），已切换到离线引导。\n\n${offlineTutorReply(text, activeStage.value, guarded, lab.value)}`
     const existing = messages.value.find((item) => item.id === replyId)
     if (existing) existing.content = reply
     else {
@@ -451,7 +617,7 @@ async function sendMessage(text: string) {
         timestamp: new Date().toISOString(),
       })
     }
-    record('ai_response', { category, content: reply, metadata: { mode: 'fallback' } })
+    record('ai_response', { category, content: reply, metadata: { mode: 'fallback', error: detail } })
   } finally {
     sending.value = false
     streamingId.value = ''
@@ -537,9 +703,11 @@ function exportGrowth() {
 onMounted(async () => {
   document.documentElement.classList.add('ws-lock')
   events.value = loadEvents()
+  if (!studentId.value) showIdentity.value = true
   await checkConnection()
   startSession()
   void refreshScaffold()
+  void loadMyFeedback()
 })
 
 onBeforeUnmount(() => {
@@ -554,13 +722,27 @@ onBeforeUnmount(() => {
       <a class="ws-brand" :href="withBase('/')">
         <span class="ws-brand-mark" aria-hidden="true">OS</span>
         <span class="ws-brand-text">
-          <strong>os-lab 学习工作台</strong>
+          <strong>os-lab 引导式学习</strong>
           <small>{{ lab.label }} · {{ lab.systemLayer }}</small>
         </span>
       </a>
 
       <div class="ws-topbar-actions">
         <button
+          class="ws-topbar-link"
+          type="button"
+          :title="studentId ? '账号与退出' : '注册/登录，开始维护你自己的系统'"
+          @click="authError = ''; showIdentity = true"
+        >
+          <UserRound :size="15" aria-hidden="true" /><span>{{ studentId || '登录' }}</span>
+        </button>
+        <template v-if="isTeacherRole">
+          <a class="ws-topbar-link" :href="withBase('/teacher-review')">
+            <ClipboardCheck :size="15" aria-hidden="true" /><span>实验验收</span>
+          </a>
+        </template>
+        <button
+          v-else
           class="ws-topbar-link ws-scaffold-chip"
           type="button"
           :title="scaffold?.exists ? '查看/升级我的系统' : '初始化属于你自己的系统代码'"
@@ -611,24 +793,49 @@ onBeforeUnmount(() => {
         :class="{ active: mobileView === 'tutor' }"
         @click="mobileView = 'tutor'"
       >
-        <MessagesSquare :size="15" aria-hidden="true" />实践区
+        <MessagesSquare :size="15" aria-hidden="true" />{{ isTeacherRole ? '教学安排' : '实践区' }}
       </button>
     </div>
 
     <main class="ws-panes">
+      <!-- 左栏：指导书渲染效果；教师点「编辑手册」后整栏切换为 Markdown 编辑器 -->
       <ManualPane
+        v-show="!(isTeacherRole && teacherEditing)"
         :class="{ 'ws-mobile-hidden': mobileView !== 'manual' }"
         :lab="lab"
+        :editable="isTeacherRole"
+        @edit="teacherEditing = true"
         @section-change="currentSection = $event"
       >
         <slot />
       </ManualPane>
+      <TeacherDocPanel
+        v-if="isTeacherRole && teacherEditing"
+        class="ws-left-editor"
+        :class="{ 'ws-mobile-hidden': mobileView !== 'manual' }"
+        :lab="lab"
+        :endpoint="endpoint"
+        @notice="toast"
+        @close="teacherEditing = false"
+      />
 
-      <div class="ws-right" :class="{ 'ws-mobile-hidden': mobileView !== 'tutor' }">
+      <!-- 右栏（教师）：整栏就是作业发布面板，没有终端/代码 -->
+      <div
+        v-if="isTeacherRole"
+        class="ws-right ws-right-teacher"
+        :class="{ 'ws-mobile-hidden': mobileView !== 'tutor' }"
+      >
+        <TeacherPublishPanel :lab="lab" :endpoint="endpoint" @notice="toast" />
+      </div>
+
+      <!-- 右栏（学生）：终端在上，下半区在「实验报告 / 代码 / AI 导师」间切换 -->
+      <div v-else class="ws-right" :class="{ 'ws-mobile-hidden': mobileView !== 'tutor' }">
         <div class="ws-panel-wrap" :class="{ 'ws-max': maximized === 'terminal' }">
           <TerminalPanel
+            :key="`terminal-${studentId}`"
             :lab="lab"
             :endpoint="endpoint"
+            :student="studentId"
             :maximized="maximized === 'terminal'"
             @run-finished="onRunFinished"
             @insert-report="onInsertReport"
@@ -681,15 +888,19 @@ onBeforeUnmount(() => {
             v-show="rightTab === 'report'"
             :lab="lab"
             :insert-payload="reportInsert"
+            :teacher-feedback="teacherFeedback"
             @reflect="submitReflection"
             @review="reviewReport"
+            @submit-teacher="submitReportToTeacher"
             @notice="toast"
           />
           <CodePanel
             v-if="codeVisited"
             v-show="rightTab === 'code'"
+            :key="`code-${studentId}`"
             :lab="lab"
             :endpoint="endpoint"
+            :student="studentId"
           />
           <TutorPane
             v-show="rightTab === 'tutor'"
@@ -710,6 +921,91 @@ onBeforeUnmount(() => {
 
     <p v-if="notice" class="ws-toast" role="status">{{ notice }}</p>
 
+    <div v-if="teacherNotice && !noticeDismissed" class="ws-teacher-notice" role="status">
+      <span>📢 老师公告：{{ teacherNotice }}</span>
+      <button type="button" aria-label="关闭公告" @click="noticeDismissed = true">×</button>
+    </div>
+
+    <div
+      v-if="showIdentity"
+      class="ws-modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label="账号"
+      @click.self="showIdentity = false"
+    >
+      <div class="ws-modal">
+        <template v-if="auth">
+          <h2>账号</h2>
+          <p class="ws-modal-status" data-state="remote">
+            已登录：{{ auth.username }}{{ auth.role === 'teacher' ? '（教师）' : '' }}
+          </p>
+          <p class="ws-modal-hint">你的系统代码、学习进度与提交的报告都绑定这个账号。</p>
+          <label class="ws-modal-field">
+            <span>修改密码：原密码</span>
+            <input v-model="pwForm.oldPassword" type="password" autocomplete="current-password" />
+          </label>
+          <label class="ws-modal-field">
+            <span>新密码（至少 6 位）</span>
+            <input v-model="pwForm.newPassword" type="password" autocomplete="new-password" />
+          </label>
+          <p v-if="authError" class="ws-modal-status" data-state="offline">{{ authError }}</p>
+          <div class="ws-modal-actions">
+            <button type="button" class="ws-modal-secondary" @click="doLogout">退出登录</button>
+            <button
+              type="button"
+              class="ws-modal-secondary"
+              :disabled="authBusy || !pwForm.oldPassword || !pwForm.newPassword"
+              @click="changeMyPassword"
+            >
+              修改密码
+            </button>
+            <span class="ws-modal-spacer" aria-hidden="true"></span>
+            <button type="button" class="ws-modal-primary" @click="showIdentity = false">关闭</button>
+          </div>
+        </template>
+        <template v-else>
+          <h2>{{ authMode === 'login' ? '登录' : '注册' }}</h2>
+          <p class="ws-modal-hint">
+            账号保存在本机导师服务的数据库里；你的系统、进度与报告都绑定账号。
+            只想看参考实现可以直接关闭（游客只读）。
+          </p>
+          <label class="ws-modal-field">
+            <span>用户名（学号或昵称）</span>
+            <input v-model="authForm.username" type="text" spellcheck="false" autocomplete="username" />
+          </label>
+          <label class="ws-modal-field">
+            <span>密码（至少 6 位）</span>
+            <input
+              v-model="authForm.password"
+              type="password"
+              autocomplete="current-password"
+              @keydown.enter.prevent="submitAuth"
+            />
+          </label>
+          <label v-if="authMode === 'register'" class="ws-modal-field">
+            <span>班级（如 计科2301）</span>
+            <input v-model="authForm.className" type="text" spellcheck="false" autocomplete="off" />
+          </label>
+          <p v-if="authError" class="ws-modal-status" data-state="offline">{{ authError }}</p>
+          <div class="ws-modal-actions">
+            <button
+              type="button"
+              class="ws-modal-secondary"
+              @click="authMode = authMode === 'login' ? 'register' : 'login'; authError = ''"
+            >
+              {{ authMode === 'login' ? '没有账号？注册' : '已有账号？登录' }}
+            </button>
+            <span class="ws-modal-spacer" aria-hidden="true"></span>
+            <button type="button" class="ws-modal-secondary" @click="showIdentity = false">游客浏览</button>
+            <button type="button" class="ws-modal-primary" :disabled="authBusy" @click="submitAuth">
+              {{ authBusy ? '请稍候…' : authMode === 'login' ? '登录' : '注册并进入' }}
+            </button>
+          </div>
+        </template>
+      </div>
+    </div>
+
     <div
       v-if="showScaffold"
       class="ws-modal-overlay"
@@ -725,14 +1021,18 @@ onBeforeUnmount(() => {
           <strong>你已有的代码和自建程序永远不会被覆盖</strong>，每个人的系统都是自己的。
         </p>
 
-        <p v-if="!scaffold" class="ws-modal-status" data-state="offline">
+        <p v-if="!studentId" class="ws-modal-status" data-state="offline">
+          先点击顶栏「登录」填写学号/昵称——你的系统按身份保存，每个人都是自己的一份。
+        </p>
+        <p v-else-if="!scaffold?.ok" class="ws-modal-status" data-state="offline">
           无法获取状态：确认导师服务已启动（npm run tutor）。
         </p>
         <template v-else>
           <p class="ws-modal-status" :data-state="scaffold.exists ? 'remote' : undefined">
-            <template v-if="!scaffold.exists">尚未初始化。点击下方按钮领取 Lab1 起步代码。</template>
+            <template v-if="!scaffold.exists">{{ scaffold.user }}，尚未初始化。点击下方按钮领取 Lab1 起步代码。</template>
             <template v-else-if="scaffold.next">
-              当前进度：{{ scaffold.applied.join(' → ') }}；下一步 {{ scaffold.next }}（{{ scaffold.nextSummary }}）。
+              当前进度：{{ scaffold.applied.join(' → ') }}；下一步 {{ scaffold.next }}（{{ scaffold.nextSummary }}）
+              <template v-if="!scaffold.nextAllowed">——老师当前开放到 {{ scaffold.openLab }}，{{ scaffold.next }} 尚未开放。</template>
             </template>
             <template v-else>八个 Lab 已全部发放，继续自由完善你的系统吧。</template>
           </p>
@@ -742,10 +1042,10 @@ onBeforeUnmount(() => {
               v-if="scaffold.next"
               type="button"
               class="ws-modal-primary"
-              :disabled="scaffoldBusy"
+              :disabled="scaffoldBusy || (scaffold.exists && !scaffold.nextAllowed)"
               @click="scaffoldUpgrade"
             >
-              {{ scaffoldBusy ? '发放中…' : scaffold.exists ? `升级到 ${scaffold.next}` : '初始化我的系统（Lab1）' }}
+              {{ scaffoldBusy ? '发放中…' : scaffold.exists ? (scaffold.nextAllowed ? `升级到 ${scaffold.next}` : `${scaffold.next} 未开放`) : '初始化我的系统（Lab1）' }}
             </button>
           </div>
 
@@ -785,9 +1085,13 @@ onBeforeUnmount(() => {
     >
       <div class="ws-modal">
         <h2>模型设置</h2>
-        <p class="ws-modal-hint">
-          配置只保存在本机浏览器，随每次提问发给本地导师服务；全部留空表示使用默认的本机
-          Ollama（qwen2.5:7b）。换设备需要重新填写。
+        <p v-if="!studentLlmAllowed" class="ws-modal-hint">
+          <strong>当前班级由老师统一配置模型</strong>，学生自配不生效——直接关闭本窗口即可使用；
+          有疑问找老师在引导式学习工作台调整。
+        </p>
+        <p v-else class="ws-modal-hint">
+          配置只保存在本机浏览器，随每次提问发给本地导师服务；全部留空表示使用老师统一配置
+          或默认的本机 Ollama。换设备需要重新填写。
         </p>
         <p class="ws-modal-status" :data-state="connection">
           <template v-if="connection === 'checking'">正在探测连接…</template>
@@ -958,6 +1262,16 @@ onBeforeUnmount(() => {
   border-left: 1px solid var(--ws-line);
 }
 
+/* 教师右栏：整栏一个作业发布面板。 */
+.ws-right-teacher {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/* 教师「编辑手册」占据左栏整栏时，补上与 ManualPane 一致的分隔线。 */
+.ws-left-editor {
+  border-right: 1px solid var(--ws-line);
+}
+
 .ws-panel-wrap {
   display: grid;
   min-width: 0;
@@ -1037,6 +1351,44 @@ onBeforeUnmount(() => {
 
 .ws-mobile-switch {
   display: none;
+}
+
+/* -- 老师公告横幅 ----------------------------------------------------------- */
+.ws-teacher-notice {
+  position: fixed;
+  top: calc(var(--ws-topbar-height) + var(--ws-space-2));
+  left: 50%;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--ws-space-3);
+  max-width: min(720px, calc(100vw - 2 * var(--ws-space-4)));
+  padding: var(--ws-space-2) var(--ws-space-4);
+  color: var(--ws-ink);
+  border: 1px solid var(--ws-accent);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-accent-soft);
+  box-shadow: var(--ws-shadow-2);
+  font-size: var(--ws-text-sm);
+  transform: translateX(-50%);
+}
+
+.ws-teacher-notice button {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  color: var(--ws-ink-muted);
+  border: 0;
+  border-radius: var(--ws-radius-full);
+  background: transparent;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ws-teacher-notice button:hover {
+  color: var(--ws-accent);
+  background: var(--ws-surface);
 }
 
 /* -- 模型设置弹窗 ---------------------------------------------------------- */

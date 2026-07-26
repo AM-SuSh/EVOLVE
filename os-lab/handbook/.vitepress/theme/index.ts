@@ -7,6 +7,7 @@ import Layout from './Layout.vue'
 import CopyCommand from './components/CopyCommand.vue'
 import LabProgress from './components/LabProgress.vue'
 import TeacherReport from './components/TeacherReport.vue'
+import TeacherReview from './components/TeacherReview.vue'
 import TutorEntry from './components/TutorEntry.vue'
 
 export default {
@@ -16,6 +17,7 @@ export default {
     app.component('CopyCommand', CopyCommand)
     app.component('LabProgress', LabProgress)
     app.component('TeacherReport', TeacherReport)
+    app.component('TeacherReview', TeacherReview)
     app.component('TutorEntry', TutorEntry)
   },
 } satisfies Theme

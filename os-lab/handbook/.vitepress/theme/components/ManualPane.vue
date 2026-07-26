@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vitepress'
-import { BookOpen, ExternalLink, TableOfContents } from 'lucide-vue-next'
+import { BookOpen, ExternalLink, Pencil, TableOfContents } from 'lucide-vue-next'
 import { collapsedSectionPrefix, sectionPrefixOf, type TutorLab } from '../tutor-model'
 
 /**
@@ -11,10 +11,12 @@ import { collapsedSectionPrefix, sectionPrefixOf, type TutorLab } from '../tutor
  * 因此这里拿到的是完整 markdown 管线的产物：shiki 高亮、mermaid、锚点、容器全部原生可用。
  * 本组件负责两件事：观测学生读到哪一节（供导师上下文），提供左侧可折叠目录。
  */
-const props = defineProps<{ lab: TutorLab }>()
+const props = defineProps<{ lab: TutorLab; editable?: boolean }>()
 
 const emit = defineEmits<{
   (event: 'section-change', payload: { h2: string; h3: string }): void
+  /** 教师点「编辑手册」：外层把本栏切换成 Markdown 编辑器。 */
+  (event: 'edit'): void
 }>()
 
 interface ManualSection {
@@ -196,16 +198,28 @@ onBeforeUnmount(() => {
           </strong>
         </div>
       </div>
-      <a
-        class="ws-manual-open-full"
-        :href="lab.documentRoute"
-        target="_blank"
-        rel="noopener"
-        title="在新标签打开完整手册"
-      >
-        <ExternalLink :size="15" aria-hidden="true" />
-        <span>完整手册</span>
-      </a>
+      <div class="ws-manual-tools">
+        <button
+          v-if="props.editable"
+          class="ws-manual-edit"
+          type="button"
+          title="编辑本实验指导书，增补知识点"
+          @click="emit('edit')"
+        >
+          <Pencil :size="15" aria-hidden="true" />
+          <span>编辑手册</span>
+        </button>
+        <a
+          class="ws-manual-open-full"
+          :href="lab.documentRoute"
+          target="_blank"
+          rel="noopener"
+          title="在新标签打开完整手册"
+        >
+          <ExternalLink :size="15" aria-hidden="true" />
+          <span>完整手册</span>
+        </a>
+      </div>
 
       <!-- 目录下拉：挂在工具条下方，点外部关闭 -->
       <div v-if="tocOpen" class="ws-toc-backdrop" @click="tocOpen = false" />
@@ -377,6 +391,14 @@ onBeforeUnmount(() => {
   font-weight: var(--ws-weight-medium);
 }
 
+.ws-manual-tools {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--ws-space-2);
+}
+
+.ws-manual-edit,
 .ws-manual-open-full {
   display: inline-flex;
   flex: 0 0 auto;
@@ -388,8 +410,21 @@ onBeforeUnmount(() => {
   border: 1px solid var(--ws-line);
   border-radius: var(--ws-radius-md);
   background: var(--ws-surface);
+  font: inherit;
   font-size: var(--ws-text-sm);
   text-decoration: none;
+  cursor: pointer;
+}
+
+.ws-manual-edit {
+  color: var(--ws-accent-contrast);
+  border-color: var(--ws-accent);
+  background: var(--ws-accent);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-manual-edit:hover {
+  opacity: 0.9;
 }
 
 .ws-manual-open-full:hover {
@@ -410,6 +445,7 @@ onBeforeUnmount(() => {
     padding: var(--ws-space-4) var(--ws-space-4) var(--ws-space-6);
   }
 
+  .ws-manual-edit span,
   .ws-manual-open-full span {
     display: none;
   }

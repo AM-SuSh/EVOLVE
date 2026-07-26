@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Download, MessageSquareQuote, Save } from 'lucide-vue-next'
+import { Download, MessageSquareQuote, Save, Send } from 'lucide-vue-next'
 import type { TutorLab } from '../tutor-model'
 
 /**
@@ -12,11 +12,14 @@ const props = defineProps<{
   lab: TutorLab
   /** 终端要插入「过程记录」的文本；用递增 id 触发。 */
   insertPayload: { id: number; text: string } | null
+  /** 老师对本 Lab 已提交报告的批语。 */
+  teacherFeedback?: string
 }>()
 
 const emit = defineEmits<{
   (event: 'reflect', content: string): void
   (event: 'review', content: string): void
+  (event: 'submit-teacher', content: string): void
   (event: 'notice', text: string): void
 }>()
 
@@ -143,6 +146,11 @@ function askReview() {
   const content = assembleMarkdown()
   emit('review', content.length > 3200 ? `${content.slice(0, 3200)}\n…（已截断）` : content)
 }
+
+function submitToTeacher() {
+  persist(false)
+  emit('submit-teacher', assembleMarkdown())
+}
 </script>
 
 <template>
@@ -160,6 +168,9 @@ function askReview() {
         <button type="button" @click="exportMarkdown">
           <Download :size="14" aria-hidden="true" /><span>导出 md</span>
         </button>
+        <button type="button" title="提交到老师的教师端（重复提交覆盖旧版）" @click="submitToTeacher">
+          <Send :size="14" aria-hidden="true" /><span>提交给老师</span>
+        </button>
         <button type="button" class="primary" @click="save">
           <Save :size="14" aria-hidden="true" /><span>保存</span>
         </button>
@@ -167,6 +178,10 @@ function askReview() {
     </header>
 
     <div class="ws-report-body">
+      <div v-if="teacherFeedback" class="ws-report-feedback">
+        <strong>老师批语</strong>
+        <p>{{ teacherFeedback }}</p>
+      </div>
       <section v-for="meta in SECTION_META" :key="meta.key" class="ws-report-section">
         <h3>{{ meta.title }}</h3>
         <textarea
@@ -252,6 +267,29 @@ function askReview() {
   min-height: 0;
   padding: var(--ws-space-3) var(--ws-space-4) var(--ws-space-5);
   overflow-y: auto;
+}
+
+.ws-report-feedback {
+  margin-bottom: var(--ws-space-3);
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border-left: 3px solid var(--ws-accent);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-accent-soft);
+}
+
+.ws-report-feedback strong {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ws-accent);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-report-feedback p {
+  margin: 0;
+  color: var(--ws-ink);
+  font-size: var(--ws-text-sm);
+  line-height: var(--ws-leading-normal);
+  white-space: pre-wrap;
 }
 
 .ws-report-section h3 {

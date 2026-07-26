@@ -491,6 +491,38 @@ export function tutorPromptsFor(lab: TutorLab, stage: TutorStageId): TutorPrompt
 
 const STORAGE_KEY = 'os-lab-tutor-events-v3'
 const LLM_CONFIG_KEY = 'os-lab-llm-config-v1'
+const AUTH_KEY = 'os-lab-auth-v1'
+
+/** 登录会话：注册/登录后由 tutor-server 签发，工作区/报告/教师端都凭它鉴权。 */
+export interface AuthSession {
+  token: string
+  username: string
+  role: 'student' | 'teacher'
+}
+
+export function loadAuth(): AuthSession | null {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    const value = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null')
+    if (value && typeof value.token === 'string' && typeof value.username === 'string') {
+      return { token: value.token, username: value.username, role: value.role === 'teacher' ? 'teacher' : 'student' }
+    }
+  } catch {
+    /* fallthrough */
+  }
+  return null
+}
+
+export function saveAuth(session: AuthSession | null) {
+  if (typeof localStorage === 'undefined') return
+  if (session) localStorage.setItem(AUTH_KEY, JSON.stringify(session))
+  else localStorage.removeItem(AUTH_KEY)
+}
+
+export function authHeaders(): Record<string, string> {
+  const auth = loadAuth()
+  return auth ? { Authorization: `Bearer ${auth.token}` } : {}
+}
 
 /**
  * 模型接入配置在前端填写、存浏览器本地，随每次请求发给 tutor-server。

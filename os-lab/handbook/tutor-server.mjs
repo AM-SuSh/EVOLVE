@@ -1,25 +1,67 @@
 import http from 'node:http'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import { appendFile, mkdir, readFile, readdir, stat } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { parse as parseYaml } from 'yaml'
 import { scoreLearningEvents } from '../learning/rubric.mjs'
-import { STUDENT_ROOT, addUserBin, applyNext, scaffoldStatus } from '../scripts/scaffold.mjs'
+import {
+  EXERCISES,
+  LAB_ORDER,
+  addUserBin,
+  applyNext,
+  effectiveConfigFor,
+  listStudents,
+  readTeacherConfig,
+  sanitizeUser,
+  scaffoldStatus,
+  studentRootFor,
+  writeAssignment,
+  writeTeacherConfig,
+} from '../scripts/scaffold.mjs'
+import {
+  changePassword,
+  listAllReports,
+  listMyReports,
+  listUsers,
+  login,
+  logout,
+  register,
+  resolveSession,
+  setReportFeedback,
+  submitReport,
+} from '../learning/db.mjs'
 
 const handbookRoot = path.dirname(fileURLToPath(import.meta.url))
 const promptRoot = path.resolve(handbookRoot, '..', 'tutor', 'prompts')
 const osLabRoot = path.resolve(handbookRoot, '..')
 
+/** 该学生的生效教学配置（学生覆盖 > 班级覆盖 > 全局）。 */
+async function effectiveFor(session) {
+  const config = await readTeacherConfig()
+  return effectiveConfigFor(config, session?.username || '', session?.className || '')
+}
+
+/** 从请求头解析登录会话（Authorization: Bearer <token> 或 X-Auth-Token）。 */
+function sessionOf(request) {
+  const auth = String(request.headers.authorization || '')
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : String(request.headers['x-auth-token'] || '')
+  return resolveSession(token)
+}
+
 /**
- * 学生初始化过 student-lab 后，终端与代码查看都指向他自己的系统；
- * 否则退回参考实现 os-lab（教师/评委演示模式）。
+ * 账号制工作区：带 user（学号/昵称）且该生已初始化时，终端与代码读写都指向
+ * student-labs/<user>/；否则回落参考实现 os-lab（教师/游客视角，只读）。
  */
-async function resolveWorkRoot() {
-  const status = await scaffoldStatus()
-  return status.exists
-    ? { root: STUDENT_ROOT, name: 'student-lab' }
-    : { root: osLabRoot, name: 'os-lab' }
+async function resolveWorkRoot(user) {
+  const safe = sanitizeUser(user)
+  if (safe) {
+    const status = await scaffoldStatus(safe)
+    if (status.ok && status.exists) {
+      return { root: studentRootFor(safe), name: `student-labs/${safe}`, user: safe }
+    }
+  }
+  return { root: osLabRoot, name: 'os-lab', user: null }
 }
 
 /**
@@ -41,15 +83,24 @@ const allowedOrigins = new Set(
     .filter(Boolean),
 )
 
-/** 归一化前端传来的 llm 覆盖项；非法字段忽略，回落到服务端默认。 */
-function resolveLlm(llm) {
+/**
+ * 模型接入的三层解析：学生自配（教师允许时）> 教师统一配置（teacher.json）> 环境默认。
+ * 教师在控制台关闭「允许学生自配」后，学生传来的 llm 被忽略，全班统一走教师配置。
+ */
+async function resolveLlm(studentLlm) {
   const clean = (value, max) =>
     typeof value === 'string' && value.trim().length <= max ? value.trim() : ''
-  const baseUrl = clean(llm?.baseUrl, 200)
+  const pickUrl = (llm) => {
+    const baseUrl = clean(llm?.baseUrl, 200)
+    return /^https?:\/\//.test(baseUrl) ? baseUrl.replace(/\/$/, '') : ''
+  }
+  const teacher = await readTeacherConfig()
+  const student = teacher.allowStudentLlm ? studentLlm : null
   return {
-    upstream: /^https?:\/\//.test(baseUrl) ? baseUrl.replace(/\/$/, '') : defaultUpstream,
-    model: clean(llm?.model, 200) || defaultModel,
-    apiKey: clean(llm?.apiKey, 500) || defaultApiKey,
+    upstream: pickUrl(student) || pickUrl(teacher.llm) || defaultUpstream,
+    model: clean(student?.model, 200) || clean(teacher.llm?.model, 200) || defaultModel,
+    apiKey: clean(student?.apiKey, 500) || clean(teacher.llm?.apiKey, 500) || defaultApiKey,
+    studentLlmAllowed: teacher.allowStudentLlm,
   }
 }
 
@@ -106,7 +157,8 @@ function json(response, status, payload, origin) {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': origin || Array.from(allowedOrigins)[0] || '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    // Authorization 必须在预检白名单里，否则浏览器直接拦截带登录态的请求。
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Auth-Token',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Cache-Control': 'no-store',
     Vary: 'Origin',
@@ -341,10 +393,15 @@ async function handleChat(body, request, response, origin) {
     return
   }
 
-  const llm = resolveLlm(body.llm)
+  const llm = await resolveLlm(body.llm)
   const wantsStream = String(request.headers.accept || '').includes('text/event-stream')
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 60_000)
+  // 超时只用于「连不上上游」；连上后即解除——本地 7B 模型生成长回复
+  // 可能远超一分钟，不能把正常的慢当成故障掐断。
+  const timer = setTimeout(() => controller.abort(), 30_000)
+  // 学生关页/断开时同步终止上游请求（response close 在连接断开或响应结束后触发，
+  // 结束后 abort 是无害的空操作）。
+  response.on('close', () => controller.abort())
 
   const upstreamBody = JSON.stringify({
     model: llm.model,
@@ -369,9 +426,18 @@ async function handleChat(body, request, response, origin) {
       body: upstreamBody,
     })
 
+    // 连接已建立：解除超时，让长回复完整生成。
+    clearTimeout(timer)
+
     if (!upstreamResponse.ok) {
       const payload = await upstreamResponse.json().catch(() => ({}))
-      const error = payload?.error?.message || `上游模型返回 ${upstreamResponse.status}`
+      const hint =
+        upstreamResponse.status === 429
+          ? '（请求太频繁，被上游限流，稍等再发）'
+          : upstreamResponse.status === 401 || upstreamResponse.status === 403
+            ? '（API Key 可能失效）'
+            : ''
+      const error = (payload?.error?.message || `上游模型返回 ${upstreamResponse.status}`) + hint
       if (wantsStream) {
         openEventStream(response, origin)
         sendFrame(response, { type: 'error', error })
@@ -406,13 +472,15 @@ async function handleChat(body, request, response, origin) {
     else sendFrame(response, { type: 'done', reply })
     response.end()
   } catch (error) {
-    const detail = error instanceof Error ? error.message : '导师服务发生未知错误'
+    const raw = error instanceof Error ? error.message : '导师服务发生未知错误'
+    const aborted = raw.toLowerCase().includes('abort')
+    const detail = aborted ? '连接上游超时（30 秒内未建立连接），检查网络或接口地址' : raw
     if (response.headersSent) {
       sendFrame(response, { type: 'error', error: detail })
       response.end()
       return
     }
-    json(response, detail.includes('abort') ? 504 : 502, { error: detail }, origin)
+    json(response, aborted ? 504 : 502, { error: detail }, origin)
   } finally {
     clearTimeout(timer)
   }
@@ -539,7 +607,7 @@ function runStep(step, response, run, cwd) {
   })
 }
 
-async function handleRun(body, request, response, origin) {
+async function handleRun(body, request, response, origin, reqUser) {
   const labId = String(body.labId || '')
   if (!labIds.has(labId)) {
     json(response, 400, { error: 'labId 必须是 lab1 到 lab8 之一' }, origin)
@@ -560,7 +628,7 @@ async function handleRun(body, request, response, origin) {
     return
   }
 
-  const workRoot = await resolveWorkRoot()
+  const workRoot = await resolveWorkRoot(reqUser)
   const run = { child: null, stopped: '' }
   activeRun = run
   openEventStream(response, origin)
@@ -691,11 +759,86 @@ const server = http.createServer(async (request, response) => {
     return
   }
 
-  const pathname = new URL(request.url || '/', 'http://localhost').pathname
+  const requestUrl = new URL(request.url || '/', 'http://localhost')
+  const pathname = requestUrl.pathname
+  // 身份只来自登录会话（不再信任 ?user=，防止冒名）；未登录 = 游客只读。
+  const session = sessionOf(request)
+  const reqUser = session?.username || ''
   try {
+    /* -- 账号 --------------------------------------------------------------- */
+
+    if (request.method === 'POST' && pathname === '/auth/register') {
+      const body = await readBody(request)
+      const result = register(body.username, body.password, body.className)
+      json(response, result.ok ? 200 : 400, result, origin)
+      return
+    }
+
+    if (request.method === 'POST' && pathname === '/auth/password') {
+      if (!session) {
+        json(response, 401, { error: '未登录' }, origin)
+        return
+      }
+      const body = await readBody(request)
+      const result = changePassword(session.id, body.oldPassword, body.newPassword)
+      json(response, result.ok ? 200 : 400, result, origin)
+      return
+    }
+
+    if (request.method === 'POST' && pathname === '/auth/login') {
+      const body = await readBody(request)
+      const result = login(body.username, body.password)
+      json(response, result.ok ? 200 : 401, result, origin)
+      return
+    }
+
+    if (request.method === 'POST' && pathname === '/auth/logout') {
+      const auth = String(request.headers.authorization || '')
+      logout(auth.startsWith('Bearer ') ? auth.slice(7) : request.headers['x-auth-token'])
+      json(response, 200, { ok: true }, origin)
+      return
+    }
+
+    if (request.method === 'GET' && pathname === '/auth/me') {
+      if (!session) {
+        json(response, 401, { error: '未登录' }, origin)
+        return
+      }
+      json(response, 200, { ok: true, username: session.username, role: session.role, className: session.className }, origin)
+      return
+    }
+
+    /* -- 学生报告提交 -------------------------------------------------------- */
+
+    if (request.method === 'POST' && pathname === '/reports') {
+      if (!session) {
+        json(response, 401, { error: '请先登录再提交报告' }, origin)
+        return
+      }
+      const body = await readBody(request)
+      const labId = String(body.labId || '')
+      const content = typeof body.content === 'string' ? body.content : ''
+      if (!labIds.has(labId) || !content.trim() || content.length > 262_144) {
+        json(response, 400, { error: '报告内容为空或过大（上限 256 KiB）' }, origin)
+        return
+      }
+      submitReport(session.id, labId, content)
+      json(response, 200, { ok: true, mine: listMyReports(session.id) }, origin)
+      return
+    }
+
+    if (request.method === 'GET' && pathname === '/reports/mine') {
+      if (!session) {
+        json(response, 401, { error: '未登录' }, origin)
+        return
+      }
+      json(response, 200, { ok: true, mine: listMyReports(session.id) }, origin)
+      return
+    }
+
     // GET 探测默认上游；POST 带 body.llm 时探测前端设置界面指定的上游。
     if (pathname === '/health' && (request.method === 'GET' || request.method === 'POST')) {
-      const llm = resolveLlm(request.method === 'POST' ? (await readBody(request)).llm : undefined)
+      const llm = await resolveLlm(request.method === 'POST' ? (await readBody(request)).llm : undefined)
       const { connected, detail } = await checkUpstream(llm)
       json(response, 200, {
         ok: true,
@@ -703,6 +846,7 @@ const server = http.createServer(async (request, response) => {
         detail,
         mode: connected ? 'remote' : 'offline',
         model: llm.model,
+        studentLlmAllowed: llm.studentLlmAllowed,
         frameworkVersion: 'multi-lab-v2.1',
       }, origin)
       return
@@ -714,7 +858,7 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === 'POST' && pathname === '/run') {
-      await handleRun(await readBody(request), request, response, origin)
+      await handleRun(await readBody(request), request, response, origin, reqUser)
       return
     }
 
@@ -724,7 +868,7 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === 'GET' && pathname === '/fs/tree') {
-      const workRoot = await resolveWorkRoot()
+      const workRoot = await resolveWorkRoot(reqUser)
       const counter = { count: 0 }
       const tree = await buildFsTree(workRoot.root, '', 0, counter)
       json(response, 200, { root: workRoot.name, tree, truncated: counter.count > FS_MAX_ENTRIES }, origin)
@@ -732,32 +876,233 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === 'GET' && pathname === '/fs/file') {
-      const workRoot = await resolveWorkRoot()
-      const relative = new URL(request.url || '/', 'http://localhost').searchParams.get('path')
+      const workRoot = await resolveWorkRoot(reqUser)
+      const relative = requestUrl.searchParams.get('path')
       await handleFsFile(workRoot.root, relative, response, origin)
       return
     }
 
+    // 只允许写学生自己的工作区；参考实现 os-lab 永远只读。
+    if (request.method === 'POST' && pathname === '/fs/save') {
+      const workRoot = await resolveWorkRoot(reqUser)
+      if (!workRoot.user) {
+        json(response, 403, { error: '参考实现是只读的；填写学号并初始化「我的系统」后可编辑自己的代码' }, origin)
+        return
+      }
+      const body = await readBody(request)
+      const full = resolveFsPath(workRoot.root, body.path)
+      const content = typeof body.content === 'string' ? body.content : null
+      if (!full || !isViewableFile(path.basename(full)) || content === null || content.length > 524_288) {
+        json(response, 400, { error: '路径或内容不可用（单文件上限 512 KiB）' }, origin)
+        return
+      }
+      await writeFile(full, content, 'utf8')
+      json(response, 200, { saved: true, path: String(body.path).replace(/\\/g, '/') }, origin)
+      return
+    }
+
     if (request.method === 'GET' && pathname === '/scaffold/status') {
-      json(response, 200, await scaffoldStatus(), origin)
+      if (!session) {
+        json(response, 401, { error: '请先登录' }, origin)
+        return
+      }
+      const effective = await effectiveFor(session)
+      json(response, 200, { ...(await scaffoldStatus(reqUser, effective)), notice: effective.notice || '' }, origin)
       return
     }
 
     if (request.method === 'POST' && pathname === '/scaffold/upgrade') {
+      if (!session) {
+        json(response, 401, { error: '请先登录' }, origin)
+        return
+      }
       if (activeRun) {
         json(response, 409, { error: '有命令正在运行，先停止再升级' }, origin)
         return
       }
-      const result = await applyNext()
-      json(response, result.ok ? 200 : 400, { ...result, status: await scaffoldStatus() }, origin)
+      const body = await readBody(request)
+      const effective = await effectiveFor(session)
+      const result = await applyNext(reqUser, body.variant, effective)
+      json(response, result.ok ? 200 : 400, { ...result, status: await scaffoldStatus(reqUser, effective) }, origin)
       return
     }
 
     if (request.method === 'POST' && pathname === '/scaffold/add-bin') {
+      if (!session) {
+        json(response, 401, { error: '请先登录' }, origin)
+        return
+      }
       const body = await readBody(request)
-      const result = await addUserBin(String(body.name || ''))
-      json(response, result.ok ? 200 : 400, { ...result, status: await scaffoldStatus() }, origin)
+      const result = await addUserBin(reqUser, String(body.name || ''))
+      json(response, result.ok ? 200 : 400, { ...result, status: await scaffoldStatus(reqUser) }, origin)
       return
+    }
+
+    /* -- 教师端（需教师账号登录） ------------------------------------------- */
+
+    if (pathname.startsWith('/teacher/')) {
+      if (session?.role !== 'teacher') {
+        json(response, 401, { error: '需要教师账号登录（注册时填写教师码即为教师）' }, origin)
+        return
+      }
+
+      if (request.method === 'GET' && pathname === '/teacher/reports') {
+        json(response, 200, { ok: true, reports: listAllReports() }, origin)
+        return
+      }
+
+      if (request.method === 'POST' && pathname === '/teacher/report-feedback') {
+        const body = await readBody(request)
+        const result = setReportFeedback(body.user, body.labId, body.feedback)
+        json(response, result.ok ? 200 : 400, result, origin)
+        return
+      }
+      if (request.method === 'GET' && pathname === '/teacher/overview') {
+        const config = await readTeacherConfig()
+        const workspaces = await listStudents()
+        // 合并注册账号与已建工作区：注册了还没初始化的学生也要能看到。
+        const registered = listUsers().filter((u) => u.role === 'student')
+        const byUser = new Map(workspaces.map((w) => [w.user, w]))
+        const students = registered.map((u) => ({
+          className: u.className || '',
+          ...(byUser.get(u.username) || { user: u.username, applied: [], current: null, variants: {}, extraBins: [] }),
+        }))
+        for (const w of workspaces) if (!students.some((s) => s.user === w.user)) students.push({ className: '', ...w })
+        json(response, 200, {
+          config: { ...config, llm: { ...config.llm, apiKey: config.llm?.apiKey ? '（已设置）' : '' } },
+          students,
+          labs: LAB_ORDER,
+          exercises: Object.fromEntries(
+            Object.entries(EXERCISES).map(([labId, exercise]) => [
+              labId,
+              {
+                default: exercise.default,
+                variants: Object.entries(exercise.variants).map(([name, v]) => ({ name, label: v.label })),
+              },
+            ]),
+          ),
+        }, origin)
+        return
+      }
+      if (request.method === 'POST' && pathname === '/teacher/config') {
+        const body = await readBody(request)
+        const scopeType = body.scope?.type === 'class' || body.scope?.type === 'student' ? body.scope.type : 'global'
+        const scopeId = String(body.scope?.id || '').trim()
+
+        // 变体校验（各级通用）
+        if (body.assignment && typeof body.assignment === 'object') {
+          const labId = String(body.assignment.labId || '')
+          const variant = String(body.assignment.variant || '')
+          const exercise = EXERCISES[labId]
+          if (!exercise || (variant !== 'random' && !exercise.variants[variant])) {
+            json(response, 400, { error: `无效的任务分配（${labId} / ${variant}）` }, origin)
+            return
+          }
+        }
+
+        if (scopeType === 'global') {
+          const patch = {}
+          if (LAB_ORDER.includes(body.openLab)) patch.openLab = body.openLab
+          if (typeof body.allowStudentLlm === 'boolean') patch.allowStudentLlm = body.allowStudentLlm
+          if (typeof body.notice === 'string') patch.notice = body.notice.trim().slice(0, 2000)
+          if (body.llm && typeof body.llm === 'object') {
+            const current = (await readTeacherConfig()).llm || {}
+            patch.llm = {
+              baseUrl: typeof body.llm.baseUrl === 'string' ? body.llm.baseUrl.trim() : current.baseUrl || '',
+              model: typeof body.llm.model === 'string' ? body.llm.model.trim() : current.model || '',
+              // 前端传「（已设置）」占位或空表示不修改 Key。
+              apiKey:
+                typeof body.llm.apiKey === 'string' && body.llm.apiKey && body.llm.apiKey !== '（已设置）'
+                  ? body.llm.apiKey.trim()
+                  : current.apiKey || '',
+            }
+          }
+          if (body.assignment) {
+            await writeAssignment(String(body.assignment.labId), String(body.assignment.variant))
+          }
+          const config = await writeTeacherConfig(patch)
+          json(response, 200, { ok: true, config: { ...config, llm: { ...config.llm, apiKey: config.llm?.apiKey ? '（已设置）' : '' } } }, origin)
+          return
+        }
+
+        // 班级 / 学生 级覆盖
+        if (!scopeId) {
+          json(response, 400, { error: '缺少班级名/学生名' }, origin)
+          return
+        }
+        const config = await readTeacherConfig()
+        const bucket = scopeType === 'class' ? config.classes : config.students
+        const entry = bucket[scopeId] || { assignments: {} }
+        if (LAB_ORDER.includes(body.openLab)) entry.openLab = body.openLab
+        if (body.openLab === '') delete entry.openLab // 清除覆盖，回落上一级
+        if (typeof body.notice === 'string') entry.notice = body.notice.trim().slice(0, 2000)
+        if (body.assignment) {
+          entry.assignments = entry.assignments || {}
+          entry.assignments[String(body.assignment.labId)] = String(body.assignment.variant)
+        }
+        bucket[scopeId] = entry
+        const next = await writeTeacherConfig(
+          scopeType === 'class' ? { classes: config.classes } : { students: config.students },
+        )
+        json(response, 200, { ok: true, config: { ...next, llm: { ...next.llm, apiKey: next.llm?.apiKey ? '（已设置）' : '' } } }, origin)
+        return
+      }
+
+      /* -- 实验指导文档在线编辑（与时俱进补充知识） ------------------------- */
+
+      if (request.method === 'GET' && pathname === '/teacher/docs') {
+        const labsDir = path.join(osLabRoot, 'labs')
+        const files = (await readdir(labsDir)).filter((f) => f.endsWith('.md'))
+        const answers = (await readdir(path.join(labsDir, 'answers')).catch(() => []))
+          .filter((f) => f.endsWith('.md'))
+          .map((f) => `answers/${f}`)
+        json(response, 200, { ok: true, docs: [...files, ...answers] }, origin)
+        return
+      }
+
+      if (pathname === '/teacher/doc') {
+        const rel = String(
+          request.method === 'GET' ? requestUrl.searchParams.get('path') : '',
+        )
+        const readTarget = (relative) => {
+          const normalized = String(relative || '').replace(/\\/g, '/')
+          if (!normalized.endsWith('.md') || normalized.includes('..')) return null
+          const full = path.resolve(osLabRoot, 'labs', normalized)
+          if (!full.startsWith(path.join(osLabRoot, 'labs') + path.sep)) return null
+          return full
+        }
+        if (request.method === 'GET') {
+          const full = readTarget(rel)
+          if (!full) {
+            json(response, 400, { error: '路径不可用' }, origin)
+            return
+          }
+          try {
+            json(response, 200, { ok: true, path: rel, content: await readFile(full, 'utf8') }, origin)
+          } catch {
+            json(response, 404, { error: '文档不存在' }, origin)
+          }
+          return
+        }
+        if (request.method === 'POST') {
+          const body = await readBody(request)
+          const full = readTarget(body.path)
+          const content = typeof body.content === 'string' ? body.content : null
+          if (!full || content === null || content.length > 524_288) {
+            json(response, 400, { error: '路径或内容不可用（上限 512 KiB）' }, origin)
+            return
+          }
+          await writeFile(full, content, 'utf8')
+          // 保存后自动同步到站点（dev 模式热更新即可见；静态部署需重新 build）。
+          const synced = await new Promise((resolve) => {
+            const child = spawn('node', ['scripts/sync-content.mjs'], { cwd: handbookRoot })
+            child.on('close', (code) => resolve(code === 0))
+            child.on('error', () => resolve(false))
+          })
+          json(response, 200, { ok: true, synced }, origin)
+          return
+        }
+      }
     }
 
     if (request.method === 'POST' && pathname === '/events') {
@@ -802,6 +1147,6 @@ const server = http.createServer(async (request, response) => {
 server.listen(port, '127.0.0.1', () => {
   console.log(`os-lab tutor proxy: http://127.0.0.1:${port}`)
   console.log(`framework: multi-lab-v2.1 · 默认上游: ${defaultUpstream} · 默认模型: ${defaultModel}`)
-  console.log('模型接入配置在工作台右上角「模型设置」中填写（按请求生效）')
+  console.log('账号体系: 注册（学生+班级）/登录 · 预置管理员 admin/admin123（请尽快改密码）· 教师入口 /guide/ai-tutor')
   console.log(`events: ${dataDir}`)
 })

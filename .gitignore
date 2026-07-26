@@ -22,12 +22,19 @@ _handbook-build.log
 _tmp-*
 os-lab/_tmp-*
 os-lab/*.log
+.artifacts/
 
-# AI 导师学习事件数据（模型接入配置在前端界面，存浏览器本地）
+# AI 导师学习事件数据与账号数据库
 os-lab/learning/sessions/
+os-lab/learning/*.db
+os-lab/learning/*.db-journal
 
-# 学生个人工作区（由 scaffold 按 Lab 渐进生成，属于每个学生自己）
+# 学生个人工作区（账号制，由 scaffold 按 Lab 渐进生成，属于每个学生自己）
 student-lab/
+student-labs/
+# 教师本地配置（开放进度/任务分配/统一 AI，含 apiKey，每个班级自设）
+os-lab/scaffold/assignment.json
+os-lab/scaffold/teacher.json
 
 # Cargo 锁文件按 Rust 项目惯例（库不提交，二进制可按需调整）
 # 此处保持默认行为，不强制忽略 Cargo.lock

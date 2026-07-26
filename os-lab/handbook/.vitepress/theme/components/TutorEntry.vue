@@ -1,19 +1,23 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { withBase } from 'vitepress'
 import {
   ArrowRight,
+  BookOpenText,
   Check,
   CheckCircle2,
   Circle,
+  ClipboardCheck,
   Download,
   LockKeyhole,
+  PencilLine,
   Play,
 } from 'lucide-vue-next'
 import {
   buildLabJourney,
   exportEventsAsJsonl,
   getTutorLab,
+  loadAuth,
   loadEvents,
   recommendedLabId,
   tutorLabs,
@@ -26,6 +30,7 @@ import {
  */
 const events = ref<LearningEvent[]>([])
 const mounted = ref(false)
+const isTeacher = ref(false)
 
 const journey = computed(() => buildLabJourney(events.value))
 const completedCount = computed(() => journey.value.filter((item) => item.completed).length)
@@ -43,13 +48,75 @@ function exportGrowth() {
 }
 
 onMounted(() => {
+  isTeacher.value = loadAuth()?.role === 'teacher'
+  document.documentElement.classList.toggle('ws-teacher-entry-page', isTeacher.value)
   events.value = loadEvents()
   mounted.value = true
 })
+
+onBeforeUnmount(() => document.documentElement.classList.remove('ws-teacher-entry-page'))
 </script>
 
 <template>
   <div class="ws-entry">
+    <template v-if="isTeacher">
+      <section class="ws-entry-hero ws-entry-teacher-hero">
+        <div>
+          <span>教师工作区</span>
+          <h2>备课、发布与验收，围绕每个实验完成</h2>
+          <p>
+            选择一个实验进入双栏工作台：左侧预览或编辑实验手册，右侧安排开放范围、任务类型和班级公告。
+            学生提交后统一进入实验验收。
+          </p>
+          <div class="ws-entry-cta">
+            <a class="primary" :href="withBase('/learn/lab1')">
+              <PencilLine :size="16" aria-hidden="true" />进入 Lab1 工作台
+            </a>
+            <a :href="withBase('/teacher-review')">
+              <ClipboardCheck :size="16" aria-hidden="true" />实验验收
+            </a>
+          </div>
+        </div>
+
+        <div class="ws-entry-progress" role="img" aria-label="8 个实验可管理">
+          <strong>{{ tutorLabs.length }}<em> Labs</em></strong>
+          <span>手册与教学安排</span>
+          <i><b style="width: 100%" /></i>
+        </div>
+      </section>
+
+      <section class="ws-teacher-labs" aria-labelledby="teacher-labs-title">
+        <header>
+          <div>
+            <span>课程实验</span>
+            <h2 id="teacher-labs-title">选择本次要处理的实验</h2>
+          </div>
+          <a :href="withBase('/teacher-review')">
+            <ClipboardCheck :size="15" aria-hidden="true" />查看全部提交
+          </a>
+        </header>
+
+        <ol>
+          <li v-for="(teacherLab, index) in tutorLabs" :key="teacherLab.id">
+            <span class="ws-teacher-lab-index">{{ String(index + 1).padStart(2, '0') }}</span>
+            <div>
+              <strong>{{ teacherLab.label }} · {{ teacherLab.systemLayer }}</strong>
+              <p>{{ teacherLab.title }}</p>
+            </div>
+            <div class="ws-teacher-lab-actions">
+              <a :href="withBase(teacherLab.documentRoute)" title="打开只读实验手册">
+                <BookOpenText :size="15" aria-hidden="true" />手册
+              </a>
+              <a class="primary" :href="withBase(`/learn/${teacherLab.id}`)">
+                编辑与发布<ArrowRight :size="15" aria-hidden="true" />
+              </a>
+            </div>
+          </li>
+        </ol>
+      </section>
+    </template>
+
+    <template v-else>
     <section class="ws-entry-hero">
       <div>
         <span>引导式学习</span>
@@ -119,6 +186,7 @@ onMounted(() => {
         </div>
       </li>
     </ol>
+    </template>
   </div>
 </template>
 
@@ -126,6 +194,12 @@ onMounted(() => {
 .ws-entry {
   max-width: 960px;
   margin: 0 auto;
+}
+
+:global(html.ws-teacher-entry-page .vp-doc > div > .ws-entry ~ *),
+:global(html.ws-teacher-entry-page .VPDocAside),
+:global(html.ws-teacher-entry-page .VPDocFooter) {
+  display: none !important;
 }
 
 .ws-entry-hero {
@@ -250,6 +324,115 @@ onMounted(() => {
   list-style: none;
 }
 
+.ws-entry-teacher-hero {
+  border-top: 3px solid var(--ws-accent);
+}
+
+.ws-entry-teacher-hero .ws-entry-progress strong {
+  font-size: 34px;
+}
+
+.ws-entry-teacher-hero .ws-entry-progress em {
+  font-size: var(--ws-text-sm);
+  font-style: normal;
+  text-transform: uppercase;
+}
+
+.ws-teacher-labs {
+  margin-top: var(--ws-space-6);
+}
+
+.ws-teacher-labs > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--ws-space-4);
+  padding-bottom: var(--ws-space-3);
+  border-bottom: 1px solid var(--ws-line-strong);
+}
+
+.ws-teacher-labs > header span {
+  color: var(--ws-accent);
+  font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-bold);
+}
+
+.ws-teacher-labs > header h2 {
+  margin: var(--ws-space-1) 0 0;
+  padding: 0;
+  border: 0;
+  font-size: var(--ws-text-xl);
+}
+
+.ws-teacher-labs > header > a,
+.ws-teacher-lab-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ws-space-1);
+  min-height: var(--ws-control-md);
+  padding: var(--ws-space-1) var(--ws-space-3);
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
+  font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-semibold);
+  text-decoration: none;
+}
+
+.ws-teacher-labs ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ws-teacher-labs li {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--ws-space-3);
+  min-height: 76px;
+  padding: var(--ws-space-3) 0;
+  border-bottom: 1px solid var(--ws-line);
+}
+
+.ws-teacher-lab-index {
+  color: var(--ws-ink-faint);
+  font-family: var(--ws-font-mono);
+  font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-bold);
+}
+
+.ws-teacher-labs li strong {
+  display: block;
+  color: var(--ws-ink);
+  font-size: var(--ws-text-base);
+}
+
+.ws-teacher-labs li p {
+  margin: var(--ws-space-1) 0 0;
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-sm);
+}
+
+.ws-teacher-lab-actions {
+  display: flex;
+  gap: var(--ws-space-2);
+}
+
+.ws-teacher-lab-actions a.primary {
+  color: var(--ws-accent-contrast);
+  border-color: var(--ws-accent);
+  background: var(--ws-accent);
+}
+
+.ws-teacher-labs > header > a:hover,
+.ws-teacher-lab-actions a:not(.primary):hover {
+  color: var(--ws-accent);
+  border-color: var(--ws-accent);
+}
+
 .ws-entry-list li {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) auto;
@@ -354,6 +537,19 @@ onMounted(() => {
   .ws-entry-links {
     grid-column: 2;
     flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .ws-teacher-labs > header {
+    align-items: flex-start;
+  }
+
+  .ws-teacher-labs li {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .ws-teacher-lab-actions {
+    grid-column: 2;
     flex-wrap: wrap;
   }
 }

@@ -47,7 +47,7 @@ export default withMermaid(defineConfig({
           ],
         },
         {
-          text: '进入学习工作台',
+          text: '进入引导式学习',
           items: [
             { text: 'Lab1 启动底座', link: '/learn/lab1' },
             { text: 'Lab2 执行与切换', link: '/learn/lab2' },
@@ -130,8 +130,11 @@ export default withMermaid(defineConfig({
     outline: { level: [2, 3] },
     search: {
       provider: 'local',
-      // /learn/* 只是 /labs/* 正文的工作台外壳，索引两次会让搜索结果重复。
-      options: { exclude: (relativePath) => relativePath.startsWith('learn/') },
+      // /learn/* 是正文外壳（避免搜索重复）；teacher* 为教师页不进学生搜索。
+      options: {
+        exclude: (relativePath) =>
+          relativePath.startsWith('learn/') || relativePath.startsWith('teacher'),
+      },
     },
   },
   vite: {
