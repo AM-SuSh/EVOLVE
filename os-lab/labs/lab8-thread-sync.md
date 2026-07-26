@@ -1,62 +1,77 @@
 # 实验 8：线程与同步
 
-> 对应 feature：`lab8`（依赖 `lab7`）。本实验在 Lab7 进程与 IPC 能力之上，引入**用户态线程**、**阻塞同步原语**（mutex / semaphore / condvar）与**死锁检测**。参考环境对应 **ch8**；验收以本仓库自建测例为准，对照 `reference-patches/ch8-exercise.patch`。
+> 对应 feature：`lab8`（依赖 `lab7`）。这是本系列的**最后一个实验**。
+
+从 Lab1 走到这里，你已经亲手把一个最小的内核，一步步搭到了如今的样子。不妨先回头看一眼：Lab1 让内核在裸机上活下来；Lab2–4 接上陷入、虚存与进程 API，对应教材里的**虚拟化**；Lab5–6 用文件、管道与磁盘把**持久性**落到代码里；Lab7 又补上统一 fd、`dup` 与信号，让进程之间既能传字节，也能递事件。到目前为止，调度与协作的主角大多还是**进程**——各自有地址空间，靠系统调用、管道和信号往来。
+
+可很多真实程序并不满足于「一个进程一条执行流」。浏览器标签页、服务器工作线程，更希望在**同一片地址空间里**再开几条路：共享内存与打开文件，却仍能交错推进。教材把这种执行流叫做**线程**。有了线程，Lab5 那把只适合内核短临界区的**自旋锁**就显得不够用了——临界区一长，「拿不到锁就空转」会浪费 CPU；更常见的需求是**拿不到就让出 CPU，等别人唤醒再继续**。教材还会反复提醒另一种灾难：**死锁**——大家互相等待，谁也走不动，系统却可能一声不吭地挂在那里。
+
+作为收官实验，Lab8 要把并发主题再推完这关键的一截：用户态线程、阻塞式同步原语（mutex / 信号量 / 条件变量），以及可开关的死锁检测。Lab5 的自旋锁**不会被扔掉**——它仍守护内核里那些极短的路径；你新学的是面向用户线程的另一层。跑通之后，回头看整条 Lab1–8，你手里的就不只是「能启动的内核」，而是一本教材三大主题——**虚拟化、持久性、并发**——都已经留下脚印的教学操作系统。后面若再扩展，也是站在这座已搭好的架子上往上加，而不是从零开始。
 
 ## 零、开始之前
 
-1. **已完成 Lab7**：能跑通 `make test-lab7`，理解统一 fd、信号与管道回归。
-2. **进入工作目录**：`cd os-lab`，必要时 `. .\scripts\activate-os-env.ps1`。
-3. **接口文档**：syscall 编号与语义以 [lab6-8.md §十三](../../docs/lab6-8.md#十三lab8-系统调用接口) 为准（成员 A 冻结点）。
-4. **继承清单**：ch8 exercise 覆盖范围见 [lab6-8.md §十四](../../docs/lab6-8.md#十四ch8-exercise-继承项清单)（成员 B 交付）。
-5. **建议先读书**：OSTEP 第 26–28 章（并发与锁）+ 第 32 章（死锁）是本实验的理论基础。
+1. **已完成 Lab7**：能跑通 `make test-lab7`，理解统一 fd、信号与管道（见 [lab7-ipc-signal.md](lab7-ipc-signal.md)）。
+2. **进入工作目录**：`cd os-lab`；新开终端先 `. .\scripts\activate-os-env.ps1`。
+3. **自检**：`rustc --version` 与 `qemu-system-riscv64 --version` 能输出版本。
+4. **建议先翻书**：锁、条件变量、死锁相关章节。带着「线程共享什么」「阻塞和自旋差在哪」的疑问边做实验边思考。
+
+
 
 ### 环境准备（与 Lab6/7 相同）
 
-Lab8 **须带 VirtIO 块设备**访问 `fs.img`，且须**先编用户程序再编内核**以刷新磁盘镜像：
+Lab8 同样依赖 VirtIO，且须**先编用户程序再编内核**以刷新 `fs.img`：
 
 ```powershell
 cd os-lab
 cargo build -p user --bins --release --target riscv64gc-unknown-none-elf
 cargo build -p kernel --features lab8 --release
-make test-lab8
 ```
 
-`kernel/build.rs` 在 `lab8` 下将 **`lab8_integration_test`** 打包为 `initproc`，在**单进程地址空间**内串联线程、同步、死锁与管道回归测例（避免多次 `exec` 加剧内核堆压力）。
+`kernel/build.rs` 在 `lab8` 下将 **`lab8_integration_test`** 打包为 `initproc`，在**单进程地址空间**内串联线程、同步、死锁与管道回归（减轻多次 `exec` 的堆压力）。
+
+> 跑通验证请用【任务一】中的 `make test-lab8`（已封装 VirtIO）。请勿用裸 `cargo run -p kernel --features lab8`，否则访问不到 `fs.img`。
 
 ## 一、问题场景
 
-Lab4–7 以**进程**为调度单位：每个进程有独立地址空间，上下文切换成本高。真实程序（浏览器、数据库）常在**同一进程内**跑多个执行流共享内存——这就是**线程**。
+进程 API 已经能用之后，若站在「写一个多任务用户程序」的角度，仍会觉得缺工具：
 
-同时，Lab5 的自旋锁在临界区较长或竞争激烈时会**空转浪费 CPU**；多线程环境下更需要**拿不到锁就让出 CPU** 的阻塞语义。
+> 「能不能在同一个程序里再开几条执行流，一起改同一块内存？其中一条暂时拿不到锁时，是该空转，还是该让出 CPU？若加锁顺序不当，系统是静静挂死，还是能明确告诉我『这是死锁』？」
 
-本实验要回答：
+不妨先把问题摊开：
 
-1. 内核如何在**不拆散 Lab4 PCB** 的前提下，增加线程层调度（进程/线程双层）？
-2. 阻塞 `mutex_lock` / `semaphore_down` 如何通过 syscall 返回 `-1` + 线程 `Blocked` 实现？
-3. 开启死锁检测后，为何返回 `-0xDEAD` 而不是无限阻塞？
+- **线程相对进程，多了什么、少了什么？**  
+同进程内的多条执行流，通常共享哪些资源？各自又必须独立持有什么（栈、上下文、状态）？`exit` 退出的是整棵进程，还是当前这条执行流？
+- **「拿不到锁」应该怎么表现？**  
+自旋是一种答案。若改成阻塞：内核如何把当前线程标成不可运行？谁在 `unlock` 时把它唤醒？用户态看到 `-1` 之后为什么还要再试一次？
+- **除了互斥，还有哪些常见同步需求？**  
+「有 N 个同类资源」适合什么原语？「等某个条件成立再继续」为何常常要和一把 mutex 绑在一起？
+- **死锁能不能被发现，而不是被等到天荒地老？**  
+同线程对同一把锁加两次，或若干线程形成等待环时，教学内核可以返回什么特殊错误码？它和「暂时拿不到、稍后再试」的 `-1` 有何不同？
 
-学完后，你的内核应能：
-
-- `thread_create` / `gettid` / `waittid`，且 `exit` 在线程语义下回收 zombie 线程
-- 阻塞 mutex、信号量、条件变量，并在唤醒时重新入队
-- `enable_deadlock_detect(1)` 后对可检测死锁返回 `-0xDEAD`
-- Lab1–7 syscall 在 lab8 feature 下仍可回归（链末 `pipe_test`）
+本实验把教材**并发**主题再推深一层。跑通后，你应能看到线程、互斥、条件变量、死锁测例通过，并且管道回归仍在。
 
 ## 二、背景知识
 
-### 2.1 进程 / 线程双层管理
+现在我们根据
+
+### 2.1 进程之下再挂一层线程
+
+不必拆掉 Lab4 的 PCB。更自然的做法是**双层管理**：
+
+- **进程**：仍拥有地址空间、fd 表、信号状态；Lab8 再在其上挂同步原语列表与死锁检测状态。
+- **线程**：每条执行流有自己的 TCB——`tid`、trap 上下文、Ready/Running/Blocked/Zombie、独立用户栈等。
 
 ```mermaid
 graph TB
-    subgraph Process["进程 PCB（Lab4）"]
-        AS["地址空间 / fd 表 / 信号状态"]
+    subgraph Process["进程 PCB"]
+        AS["地址空间 / fd / 信号"]
+        SYNC["mutex / sem / condvar 列表"]
         DL["DeadlockState"]
-        ML["mutex_list / sem_list / condvar_list"]
     end
-    subgraph Threads["线程层 processor.rs"]
-        T0["主线程 tid=0"]
-        T1["子线程 tid=1"]
-        T2["子线程 tid=2"]
+    subgraph Threads["线程层"]
+        T0["tid=0 主线程"]
+        T1["tid=1"]
+        T2["tid=2"]
         RQ["就绪队列"]
     end
     Process --> Threads
@@ -65,114 +80,116 @@ graph TB
     T2 --> RQ
 ```
 
-- **进程**：仍由 `process.rs` 管理 PCB、地址空间、fd、信号；Lab8 在 PCB 上挂同步原语列表与 `DeadlockState`。
-- **线程**：`processor.rs` 的 TCB 保存 `trap_cx`、状态（Ready / Running / Blocked / Zombie）、独立用户栈 `user_stack_va`。
-- **`exit`**：退出**当前线程**；进程内最后一个线程退出时进程变 zombie，由 `wait4` 回收。
 
-### 2.2 阻塞 syscall 语义（与 rCore ch8 一致）
 
-| 操作 | 资源可用 | 资源不可用 |
-|------|----------|------------|
-| `mutex_lock` | 返回 `0` | 返回 `-1`，线程 `Blocked` |
-| `semaphore_down` | 返回 `0` | 返回 `-1`，线程 `Blocked` |
-| `condvar_wait` | 先释放 mutex，再阻塞 | 返回 `-1`，线程 `Blocked` |
+`thread_create` 做的事，直觉上是：分配用户栈 → 填好入口与参数 → 把新线程放进就绪队列。`waittid` 等待某条线程变成 zombie 并回收；`exit` 结束的是**当前线程**。当进程里最后一条线程也退出，进程才变成 zombie，再由父进程 `wait4` 善后。
 
-被 `unlock` / `up` / `signal` 唤醒的线程重新进入就绪队列；用户态包装在 `syscall.rs` 中对 `-1` **循环重试**（见 `mutex_lock` / `semaphore_down` / `condvar_wait`）。
+这与 Lab6 的 `spawn` 不同：`spawn` 新建的是**另一个进程**（新地址空间）；`thread_create` 则留在同一片地址空间里。
+
+### 2.2 阻塞：拿不到就让出 CPU
+
+面向用户线程的 mutex，在资源不可用时通常不会让调用者在内核里空转。本环境约定（与常见教学栈一致）：
+
+
+| 操作               | 可用时             | 不可用时                   |
+| ---------------- | --------------- | ---------------------- |
+| `mutex_lock`     | 返回 `0`          | 当前线程 `Blocked`，返回 `-1` |
+| `semaphore_down` | 返回 `0`          | 同上                     |
+| `condvar_wait`   | 先释放关联 mutex，再阻塞 | 返回 `-1`                |
+
+
+`unlock` / `up` / `signal` 负责把等待者重新 `re_enque` 进就绪队列。用户库看到 `-1` 后**循环再次发起 syscall**——因为一次陷入只表示「尝试」；被唤醒后仍要重新竞争锁。这样 trap 边界清晰，也方便在重试间隙处理 Lab7 的信号。
 
 ```mermaid
 sequenceDiagram
     participant U as 用户线程
     participant K as sync_syscall
     participant P as processor
-    U->>K: mutex_lock(id)
+    U->>K: mutex_lock
     alt 锁空闲
         K-->>U: 0
-    else 锁被占用
-        K->>P: make_current_blocked()
-        K-->>U: -1（稍后重试）
+    else 已被占用
+        K->>P: Blocked
+        K-->>U: -1
         Note over P: 调度其他线程
-        P->>U: 被 unlock 唤醒，重新入队
-        U->>K: mutex_lock(id) 重试
+        P->>U: 稍后被 unlock 唤醒
+        U->>K: mutex_lock 重试
         K-->>U: 0
     end
 ```
 
-### 2.3 Lab5 自旋锁 vs Lab8 阻塞 mutex（重点对比）
 
-| 维度 | Lab5 `SpinMutex`（`kernel/src/sync.rs`） | Lab8 `MutexBlocking`（`os-sync`） |
-|------|------------------------------------------|----------------------------------|
-| 等待方式 | `compare_exchange` 循环**自旋** | 加入 FIFO **等待队列**，返回 `false` 让调用方阻塞 |
-| 适用场景 | 内核极短临界区（如管道元数据） | 用户态可能长时间持锁的共享数据 |
-| 调度交互 | 不涉及线程调度 | 与 `processor` 协作：`Blocked` / `re_enque` |
-| 底层保护 | 原子变量 | 内部仍用 `spin::Mutex` 保护**元数据**（等待队列），临界区极短 |
-| 死锁检测 | 无 | 进程层 `DeadlockState` + 等待图 |
 
-> **设计要点**：`os-sync` 不是替换 Lab5 自旋锁，而是**新增一层**面向用户线程的阻塞原语。内核全局数据结构（VirtIO、管道表）仍可用自旋锁；用户可见的 `mutex_create(true)` 走阻塞路径。
 
-Lab5 自旋锁核心（拿不到就空转）：
 
-```rust
-while self.lock.compare_exchange_weak(false, true, ...).is_err() {}
-```
+### 2.3 和 Lab5 自旋锁并存，而不是互相取代
 
-Lab8 阻塞 mutex（拿不到就入队并返回，由内核挂起线程）：
 
-```rust
-if inner.locked {
-    inner.wait_queue.push_back(tid);
-    false  // 调用方 syscall 返回 -1
-} else {
-    inner.locked = true;
-    true
-}
-```
+| 维度   | Lab5 `SpinMutex` | Lab8 阻塞 mutex                 |
+| ---- | ---------------- | ----------------------------- |
+| 等待   | CAS 自旋           | 入等待队列并让出 CPU                  |
+| 典型用途 | 内核极短临界区（如管道元数据）  | 用户态可能较长的临界区                   |
+| 与调度  | 基本无关             | 与线程 `Blocked` / `re_enque` 协作 |
+| 死锁检测 | 无                | 可接入进程层检测                      |
+
+
+`os-sync` 提供的是**新增的一层**。内部保护等待队列本身时，仍可能用很短的自旋——那是「锁住几行元数据」，与「用户线程在业务临界区里空转」不是一回事。
 
 ### 2.4 信号量与条件变量
 
-- **信号量**：计数资源；`down` 减 1，为 0 时阻塞；`up` 加 1 并唤醒一个等待者。
-- **条件变量**：`condvar_wait(cv, mutex)` 原子地**释放 mutex 并睡眠**；`signal` 唤醒一个等待者，被唤醒线程须重新竞争 mutex。
+- **信号量**：计数型资源。`down` 试图取走一个；没有时阻塞。`up` 归还并唤醒等待者。适合「最多 N 个并发持有者」这类问题。
+- **条件变量**：表达「等某个条件成立」。`condvar_wait(cv, mutex)` 需要在持锁情况下原子地**释放 mutex 并睡眠**；否则容易和「另一线程改条件并 signal」形成 lost wakeup。被 `signal` 唤醒后，线程通常要**重新获取 mutex**，再检查条件是否仍然成立（经典写法常用 `while (!cond) wait`）。
 
-`condvar_test` 典型模式：工作线程 `condvar_wait` 等待 `FLAG`，主线程设置 `FLAG` 后 `signal`。
+测例里常见模式：工作线程 wait 某个标志，主线程改标志后 signal。
 
-### 2.5 死锁检测
+### 2.5 死锁：发现它，而不是陪它挂着
 
-`enable_deadlock_detect(1)` 后，进程层 `DeadlockState` 维护：
+开启 `enable_deadlock_detect(1)` 后，教学内核可以在加锁 / `down` 前做检查：
 
-- **信号量**：银行家算法（`Available` / `Allocation` / `Need`）
-- **互斥锁**：等待图（线程 → 等待的 mutex → 持有者）
+- **互斥锁**：维护等待图（谁持有、谁在等）；同线程重复加锁或形成环时，判定危险；
+- **信号量**：可用银行家算法一类安全性检查（Available / Allocation / Need）。
 
-若 `mutex_lock` / `semaphore_down` 可能导致死锁，返回 **`-0xDEAD`（-57005）**，**不阻塞**当前线程。用户态常量 `DEADLOCK_DETECTED` 定义在 `syscall.rs`。
+一旦认为「再走下去会永久卡住」，就返回特殊码 `-0xDEAD`**（-57005）**，并且**不要**再把当前线程送进阻塞等待。这与普通的 `-1` 不同：`-1` 表示「现在不行，但可以稍后再试」；`-0xDEAD` 表示「再试也没有意义，这是死锁」。
 
-对照 ch8 exercise：`deadlock_mutex_test`（同线程重复加锁）、`deadlock_sem_test`（信号量环路）。
+对照测例时，`deadlock_mutex_test`（重复加同一把锁）、`deadlock_sem_test`（资源请求环）就是在逼这条短路路径。
 
-### 2.6 对照 ch8 exercise
+### 2.6 测例在验证什么
 
-| ch8 / 本仓库测例 | 覆盖能力 |
-|------------------|----------|
-| `threads_test` / `threads_arg_test` | 创建、等待、参数传递 |
-| `mutex_test` | 多线程互斥计数 |
-| `condvar_test` | 条件变量 |
-| `pipetest` | fork + 管道（进程级 IPC + 线程共存） |
-| `deadlock_*` | `-0xDEAD` |
-| `pipe_test` | Lab5/7 管道回归 |
 
-未纳入一期范围：`phil_din_mutex`、`sleep`/`clock_gettime`、GPU/键盘等（见继承清单）。
+| 测例                                  | 大致覆盖       |
+| ----------------------------------- | ---------- |
+| `threads_test` / `threads_arg_test` | 创建、参数、等待   |
+| `mutex_test`                        | 多线程互斥      |
+| `condvar_test`                      | 条件变量       |
+| `pipetest`                          | 进程级管道与线程共存 |
+| `deadlock_*`                        | `-0xDEAD`  |
+| `pipe_test`                         | 既有管道回归     |
+
+
+未纳入的条目见继承清单文档，不必在一期里强求齐全。
+
+---
+
+串起来：线程让「同地址空间多执行流」成为可能；阻塞同步让等待变得可调度；死锁检测让错误可被命名。下一节用全链测例确认这三层都站得住。
 
 ## 三、实验任务
 
-> **本实验怎么学**：先 `make test-lab8` 看全链输出，再读 `processor.rs` + `sync_syscall.rs`，对照 `lab8_integration_test` 用户代码。
+> 建议先 `make test-lab8`，再读 `processor.rs` + `sync_syscall.rs`，对照 `lab8_integration_test`。
 
-主要文件：
 
-| 文件 | 角色 |
-|------|------|
-| `os-sync/src/*.rs` | 阻塞 mutex / semaphore / condvar（host 可测） |
-| `kernel/src/processor.rs` | TCB、就绪队列、`thread_create` / `waittid`、线程 `exit` |
-| `kernel/src/sync_syscall.rs` | 同步 syscall 与阻塞调度 |
-| `kernel/src/deadlock.rs` | `DeadlockState`、`-0xDEAD` |
-| `user/src/syscall.rs` | Lab8 包装 + 阻塞重试 |
-| `user/src/bin/lab8_integration_test.rs` | initproc 全链 |
-| `user/src/bin/threads_test.rs` 等 | 独立测例（可单独 exec 调试） |
+| 文件                                      | 角色                       | 先想                     |
+| --------------------------------------- | ------------------------ | ---------------------- |
+| `os-sync/src/*.rs`                      | 阻塞 mutex / sem / condvar | 拿不到锁时返回什么？             |
+| `kernel/src/processor.rs`               | TCB、线程创建/等待/退出           | 用户栈从哪来？                |
+| `kernel/src/sync_syscall.rs`            | 同步 syscall + 阻塞调度        | `-1` 与 `-0xDEAD` 如何区分？ |
+| `kernel/src/deadlock.rs`                | 死锁检测                     | 等待图在哪里短路？              |
+| `user/src/syscall.rs`                   | 阻塞重试循环                   | 为何 while 重试？           |
+| `user/src/bin/lab8_integration_test.rs` | initproc 全链              | —                      |
+
+
+> 完整解读见 `labs/answers/lab8-answers.md`。
+
+
 
 ### 任务一：跑通 lab8（必做）
 
@@ -180,7 +197,7 @@ if inner.locked {
 make test-lab8
 ```
 
-**预期输出**（OpenSBI 启动日志可忽略；以 `handbook/data/labs.json` 为准）：
+**预期输出**（OpenSBI 日志可忽略）：
 
 ```text
 threads_test pass
@@ -196,44 +213,44 @@ All processes exited.
 
 **通过标准**：出现以上全部关键行，且 QEMU 正常退出。
 
-> **联调说明**：Lab8 验收请按上文顺序先编 `lab8_integration_test` 再编 kernel 以刷新 `fs.img`。二期进度与 QEMU 预期见 [lab6-8.md](../../docs/lab6-8.md) §四–§六。
+> 请先编 user 再编 kernel，以刷新 `fs.img`。更多联调说明见 [lab6-8.md](../../docs/lab6-8.md)。
 
-### 任务二：阅读理解（必做）
 
-1. `thread_create` 如何为新线程分配用户栈？`waittid` 回收时如何 `free_thread_user_stack`？
-2. `mutex_lock` 返回 `-1` 后，内核如何把当前线程标为 `Blocked`？谁负责 `re_enque`？
-3. 对比 Lab5 `SpinMutex` 与 `MutexBlocking::lock`：为何后者更适合用户态长临界区？
+
+### 任务二：阅读理解与思考题（必做）
+
+每道题建议**先合上代码想答案，再打开对照**；**参考答案见** `labs/answers/lab8-answers.md`。
+
+1. `thread_create` 如何为新线程分配用户栈？`waittid` 回收时如何释放栈？`exit` 退出的是进程还是线程？最后一个线程退出后进程处于什么状态？
+2. `mutex_lock` 返回 `-1` 后，内核如何把当前线程标为 `Blocked`？谁负责 `re_enque`？用户态为何要 while 重试？
+3. 对比 Lab5 `SpinMutex` 与 `MutexBlocking`：为何后者更适合用户态长临界区？为何不把自旋锁直接暴露给用户态？
 4. `condvar_wait` 为何必须传入关联的 mutex id？唤醒后为何要重新 `mutex_lock`？
-5. `deadlock_mutex_test` 期望 `-0xDEAD` 而非挂死，检测逻辑在何处短路阻塞路径？
+5. `deadlock_mutex_test` 期望 `-0xDEAD` 而非挂死：检测逻辑在何处短路阻塞路径？`-0xDEAD` 与普通 `-1` 语义有何不同？
 
-> 完整走读见 [answers/lab8-answers.md](answers/lab8-answers.md)。
+> 能讲清「双层调度 + 阻塞重试 + 死锁短路」，lab8 就过关了。
 
-### 任务三：动手小修改（选做）
+
+
+### 任务三：动手小修改（选做，建议完成）
 
 **修改 1**：在 `threads_test` 中打印 `gettid()`，确认主线程与子线程 tid 不同。
 
-**修改 2**：关闭死锁检测 `enable_deadlock_detect(0)` 后运行 `deadlock_mutex_test`，观察行为差异（教学环境可能挂死，勿长时间运行）。
+**修改 2**：关闭死锁检测 `enable_deadlock_detect(0)` 后运行 `deadlock_mutex_test`，观察差异（可能挂死，勿长时间运行）。
 
-**修改 3**（进阶）：阅读 `reference-patches/ch8-exercise.patch` 中 `ThreadControlBlock` 与 `sync` 模块，列出本环境的三处简化点。
-
-### 提交清单（自查）
-
-- [ ] `make test-lab8` 全链通过（或理解当前联调阻塞项）
-- [ ] 能解释进程/线程双层与 Lab4 PCB 的关系
-- [ ] 能说明阻塞 syscall 的 `-1` 重试约定
-- [ ] 能对比 Lab5 自旋锁与 Lab8 阻塞 mutex
-- [ ] 完成 [exercises/lab8-exercises.md](exercises/lab8-exercises.md) 文字习题
+**修改 3**（进阶）：阅读 `reference-patches/ch8-exercise.patch` 中 TCB 与 sync 模块，列出本环境的三处简化点。
 
 ## 四、验证
 
-| 验证项 | 命令 | 通过标准 |
-|--------|------|----------|
-| 主编译 | `cargo check -p kernel --features lab8` | 无 error |
-| QEMU 全链 | `make test-lab8` | 见任务一预期输出 |
-| fs.img | `make check-fs-img` | `fs.img OK` |
-| host 单测（可选） | `cargo test -p os-sync --target x86_64-pc-windows-msvc` | 5 passed |
 
-Windows 默认 Rust target 为 riscv 时，host 单测**必须**显式指定宿主机 triple（见上表）。
+| 验证项         | 命令                                                      | 通过标准        |
+| ----------- | ------------------------------------------------------- | ----------- |
+| 主编译         | `cargo check -p kernel --features lab8`                 | 无 error     |
+| QEMU 全链     | `make test-lab8`                                        | 见任务一预期输出    |
+| fs.img      | `make check-fs-img`                                     | `fs.img OK` |
+| host 单测（可选） | `cargo test -p os-sync --target x86_64-pc-windows-msvc` | 相关项通过       |
+
+
+Windows 默认 Rust target 为 riscv 时，host 单测**必须**显式指定宿主机 triple。
 
 ## 五、AI 提问模板
 
@@ -243,18 +260,3 @@ Windows 默认 Rust target 为 riscv 时，host 单测**必须**显式指定宿�
 4. **对比深化型**：「自旋锁、阻塞 mutex、信号量分别适合什么临界区长度与竞争程度？」
 5. **动手探索型**：「若把 `pipetest` 改成多线程写同一管道，需要加锁吗？用哪种原语？」
 
-## 六、思考题与参考答案
-
-部分习题与 [exercises/lab8-exercises.md](exercises/lab8-exercises.md) 重叠；完整答案见 [answers/lab8-answers.md](answers/lab8-answers.md)。
-
-### 习题 1（自旋 vs 阻塞）
-
-**为何 Lab8 不直接把 Lab5 自旋锁暴露给用户态？**
-
-参考答案：用户态临界区可能很长或竞争剧烈，自旋会浪费 CPU 且单核上可能饿死持锁者。阻塞 mutex 在拿不到锁时让出 CPU，由调度器运行其他线程，吞吐量更好。内核内部极短临界区仍保留自旋锁。
-
-### 习题 2（阻塞约定）
-
-**为何内核选择「返回 -1 + 用户重试」而不是在 syscall 内阻塞直到成功？**
-
-参考答案：与 rCore ch8 教学栈一致，syscall 边界清晰：内核只负责「尝试一次 + 调度」，用户库封装重试循环。这样 trap 返回路径简单，也便于在重试间隙处理信号（Lab7 继承）。

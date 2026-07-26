@@ -350,6 +350,6 @@ All processes exited.
 - [ ] `cargo test -p os-fs` 8 项全部 `ok`
 - [ ] `make check-fs-img` 通过
 - [ ] `make test-lab6` 输出含上表全部关键行
-- [ ] 阅读 `labs/lab6-disk-fs.md` 并完成 `exercises/lab6-exercises.md`
+- [ ] 阅读 `labs/lab6-disk-fs.md` 并完成【任务二】，对照 `labs/answers/lab6-answers.md`
 
 专项进度见 [docs/lab6-8.md](../../docs/lab6-8.md)。

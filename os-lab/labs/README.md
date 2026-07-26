@@ -6,18 +6,10 @@
 labs/
 ├── README.md                 # 本说明
 ├── overview.md               # 实验总览与知识地图
-├── lab1-bare-metal.md        # Lab1 实验指导
-├── lab2-trap-and-task.md     # Lab2 实验指导
-├── lab3-memory.md            # Lab3 实验指导
-├── lab4-process.md           # Lab4 实验指导
-├── lab5-fs-and-sync.md       # Lab5 实验指导
+├── lab1-bare-metal.md … lab8-thread-sync.md
 └── answers/                  # 参考答案（对应各 Lab【任务二】）
     ├── README.md
-    ├── lab1-answers.md
-    ├── lab2-answers.md
-    ├── lab3-answers.md
-    ├── lab4-answers.md
-    └── lab5-answers.md
+    └── lab1-answers.md … lab8-answers.md
 ```
 
 ## 怎么用
@@ -27,4 +19,5 @@ labs/
 3. 【任务一】跑通验证；【任务二】先独立作答；【任务三】按需动手修改。
 4. 对照 `answers/labN-answers.md` 查看【任务二】参考答案与代码解读。
 
-> 不再单独提供 `exercises/` 文字习题目录；阅读理解题即各实验文档中的【任务二】。
+> 不再单独提供 `exercises/` 文字习题目录；阅读理解题即各实验文档中的【任务二】。  
+> Lab6–8 须使用 `make test-lab6` / `test-lab7` / `test-lab8`（带 VirtIO），详见各实验文档。

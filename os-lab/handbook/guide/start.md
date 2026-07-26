@@ -52,7 +52,7 @@ Lab1 → Lab2 → Lab3 → Lab4 → Lab5 → Lab6 → Lab7 → Lab8
 
 **请按顺序学习**：后面的 Lab 默认你已经理解前一阶段的机制。跳着做容易「命令能跑、道理对不上」。
 
-> 读实验时建议同时翻教材：先用书里的问题建立直觉，再在代码里找「机制（mechanism）」长什么样。书里强调的「策略（policy）」在后续 Lab 会逐渐出现。
+> 读实验时建议同时翻教材：先用书里的问题建立直觉，再在代码里找「机制（mechanism）」长什么样。书里强调的「策略（policy）」在 Lab6–8 会更多出现（调度优先级、死锁检测等）。
 
 ## 三、各 Lab 内容导读
 
@@ -83,27 +83,30 @@ Lab1 → Lab2 → Lab3 → Lab4 → Lab5 → Lab6 → Lab7 → Lab8
 
 ### Lab5：文件系统与并发
 
-一头接上教材的**持久性**（文件、设备与数据如何长期保存/访问），一头接上**并发**（共享数据需要锁；进程间可用管道通信）。本实验用精简实现帮你把书里的概念落到内核代码里。
+一头接上教材的**持久性**（文件、设备与数据如何访问），一头接上**并发**（共享数据需要锁；进程间可用管道通信）。本实验用精简实现帮你把书里的概念落到内核代码里。
 
 - 实验指导：[Lab5 文件系统与并发](/labs/lab5-fs-and-sync)
 
 ### Lab6：磁盘文件系统
 
-Lab5 的文件还只活在内存里；本实验对应教材**持久性**的核心：数据如何真正落盘。你将接触 VirtIO 块设备驱动、easy-fs 的磁盘布局（超级块 / 位图 / inode / 数据块），并实现硬链接与 `fstat`。
+Lab5 的文件还只活在内存里；本实验对应教材**持久性**的核心：数据如何真正落盘。你将接触 VirtIO 块设备驱动、easy-fs 的磁盘布局（超级块 / 位图 / inode / 数据块），并实现硬链接与 `fstat`。注意须用 `make test-lab6`（带 VirtIO），不要裸 `cargo run`。
 
 - 实验指导：[Lab6 磁盘文件系统](/labs/lab6-disk-fs)
+- 参考答案：[Lab6 答案](/answers/lab6-answers)
 
 ### Lab7：IPC 与信号
 
 把管道、标准流和磁盘文件统一进同一张 fd 表，支持 `dup` 重定向；再叠加**信号**——内核如何向进程投递异步事件、进程如何屏蔽与处理它们。
 
 - 实验指导：[Lab7 IPC 与信号](/labs/lab7-ipc-signal)
+- 参考答案：[Lab7 答案](/answers/lab7-answers)
 
 ### Lab8：线程与同步
 
 对应教材**并发**篇的主线：进程内多线程、真正会阻塞（而非自旋）的互斥锁/信号量/条件变量，以及银行家式死锁检测。走完本实验，你手里就是一个具备完整并发能力的内核。
 
 - 实验指导：[Lab8 线程与同步](/labs/lab8-thread-sync)
+- 参考答案：[Lab8 答案](/answers/lab8-answers)
 
 更细的知识地图与 feature 说明，可对照 [实验手册总览](/labs/overview)。
 
@@ -117,21 +120,21 @@ Lab5 的文件还只活在内存里；本实验对应教材**持久性**的核�
    看本页表格里该 Lab 对应 OSTEP 的哪一块（虚拟化 / 并发 / 持久性），用书里的问题建立动机，再打开实验文档。
 
 2. **读问题场景，对照代码**  
-   文档里的图（启动流程、trap、页表等）建议对着仓库源文件看一遍。书里的「抽象」在代码里往往对应一组具体机制。
+   文档里的图（启动流程、trap、页表、VirtIO、信号路径等）建议对着仓库源文件看一遍。
 
 3. **跑通验证**  
-   在仓库根目录激活环境后进入 `os-lab`，用对应 feature 跑内核（详见下方「第一次动手」与 [验证命令](/guide/verify)）。看到文档写的期望输出，再继续。
+   在仓库根目录激活环境后进入 `os-lab`。Lab1–5 可用 `cargo run -p kernel --features labN --release`；**Lab6–8 请用** `make test-lab6` / `test-lab7` / `test-lab8`（须 VirtIO，见各实验文档）。
 
 4. **完成【任务二】阅读理解与思考题 / 小修改**  
-   能讲清楚「为什么这样写」，比只看到 `pass` 更重要。题目在各 Lab 实验文档【任务二】，答案在 [参考答案](/answers/README)。
+   题目在各 Lab 实验文档【任务二】，答案在 [参考答案](/answers/README)。
 
 5. **留下进度**  
    在工作台学习会自动记录成长档案；纯阅读路径可在 [学习进度](/guide/progress) 页手动勾选完成项，方便下次接着做。
 
 6. **善用 AI，但先自己想**  
-   每个 Lab 文档末尾有「AI 提问模板」。提问时可以带上教材术语（如地址空间、系统调用、锁），效果通常更好。
+   每个 Lab 文档末尾有「AI 提问模板」。提问时可以带上教材术语（如地址空间、系统调用、锁、死锁），效果通常更好。
 
-遇到卡住时，优先检查三件事：环境是否激活、feature 是否选对、是否在 `os-lab` 目录下执行命令。
+遇到卡住时，优先检查：环境是否激活、feature 是否选对、是否在 `os-lab` 目录下执行；Lab6 起还要确认是否用了带 VirtIO 的 `make test-labN`。
 
 ## 五、第一次动手（最短路径）
 
@@ -160,18 +163,17 @@ Hello, OS!
 os-lab kernel lab1 is running on QEMU virt.
 ```
 
-然后按顺序体验后续 Lab：
+然后按顺序体验后续 Lab（Lab1–5 可用 cargo；Lab6–8 须用 make，需 VirtIO）：
 
 <CopyCommand command="cargo run -p kernel --features lab2 --release
 cargo run -p kernel --features lab3 --release
 cargo run -p kernel --features lab4 --release
-cargo run -p kernel --features lab5 --release" label="复制全部" />
-
-Lab6–Lab8 需要挂载 VirtIO 磁盘镜像，使用 Makefile 目标运行（QEMU 参数已封装好）：
-
-<CopyCommand command="make test-lab6
+cargo run -p kernel --features lab5 --release
+make test-lab6
 make test-lab7
 make test-lab8" label="复制全部" />
+
+> Lab6–8 须挂载 VirtIO 磁盘镜像；请先保证用户程序与 `fs.img` 已构建，详细步骤见各实验文档「环境准备」。
 
 ## 六、推荐阅读顺序
 

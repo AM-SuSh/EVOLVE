@@ -207,15 +207,15 @@ cargo test -p os-context -p os-syscall -p os-sbi -p os-fs -p os-signal -p os-syn
 
 ## 五、文档与 `labs.json` 验收
 
-### 5.1 三件套
+### 5.1 指导书 + 答案（任务二）
 
-| Lab | 指导书 | 习题 | 答案 |
-|-----|--------|------|------|
-| Lab6 | `labs/lab6-disk-fs.md` | `exercises/lab6-exercises.md` | `answers/lab6-answers.md` |
-| Lab7 | `labs/lab7-ipc-signal.md` | `exercises/lab7-exercises.md` | `answers/lab7-answers.md` |
-| Lab8 | `labs/lab8-thread-sync.md` | `exercises/lab8-exercises.md` | `answers/lab8-answers.md` |
+| Lab | 指导书（含【任务二】题目） | 参考答案 |
+|-----|---------------------------|----------|
+| Lab6 | `labs/lab6-disk-fs.md` | `answers/lab6-answers.md` |
+| Lab7 | `labs/lab7-ipc-signal.md` | `answers/lab7-answers.md` |
+| Lab8 | `labs/lab8-thread-sync.md` | `answers/lab8-answers.md` |
 
-`overview.md` 与 handbook 侧栏已含 Lab6–8 路由。
+不再单独提供 `exercises/`。`overview.md` 与 handbook 侧栏已含 Lab6–8 路由。
 
 ### 5.2 `expected` 与指导书对照
 
@@ -260,7 +260,7 @@ cargo test -p os-context -p os-syscall -p os-sbi -p os-fs -p os-signal -p os-syn
 |------|------|
 | 二期总览 + syscall 接口 | `docs/lab6-8.md`（本文档） |
 | 实验指导 | `os-lab/labs/lab6-disk-fs.md` … `lab8-thread-sync.md` |
-| 习题与答案 | `os-lab/labs/exercises/`、`answers/` |
+| 参考答案（对应【任务二】） | `os-lab/labs/answers/` |
 | 用户测例 | `os-lab/user/src/bin/` |
 | `os-signal` / `os-sync` | `os-lab/os-signal/`、`os-sync/` |
 | 手册 | `os-lab/handbook/data/labs.json` |

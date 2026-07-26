@@ -87,7 +87,6 @@
       "title": "磁盘文件系统",
       "subtitle": "VirtIO、easy-fs、硬链接与 fstat",
       "guide": "/labs/lab6-disk-fs",
-      "exercises": "/exercises/lab6-exercises",
       "answers": "/answers/lab6-answers",
       "verifyCmd": "make test-lab6",
       "expected": [
@@ -102,10 +101,10 @@
       ],
       "checklist": [
         { "id": "read", "label": "理解 VirtIO 块设备与 easy-fs 布局" },
-        { "id": "run", "label": "跑通 lab6_usertest 全链（须带 VirtIO 的 make test-lab6）" },
-        { "id": "exercise", "label": "完成 link/fstat 习题" },
-        { "id": "exercise-unit", "label": "（可选）跑通 os-fs 块设备 mock 单测" },
-        { "id": "review", "label": "对照参考答案自查" }
+        { "id": "run", "label": "跑通 lab6 全链（make test-lab6，须 VirtIO）" },
+        { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
+        { "id": "exercise-unit", "label": "（可选）跑通 os-fs host 单测" },
+        { "id": "review", "label": "对照 labs/answers/lab6-answers.md 自查" }
       ]
     },
     {
@@ -114,7 +113,6 @@
       "title": "IPC 与信号",
       "subtitle": "统一 fd、dup、kill/sigaction",
       "guide": "/labs/lab7-ipc-signal",
-      "exercises": "/exercises/lab7-exercises",
       "answers": "/answers/lab7-answers",
       "verifyCmd": "make test-lab7",
       "expected": [
@@ -125,10 +123,10 @@
       ],
       "checklist": [
         { "id": "read", "label": "理解统一 fd 与信号投递时机" },
-        { "id": "run", "label": "跑通 lab7_usertest 全链（make test-lab7）" },
-        { "id": "exercise", "label": "完成信号/管道习题" },
-        { "id": "exercise-unit", "label": "（可选）跑通 os-fs fd_kind + os-signal host 单测" },
-        { "id": "review", "label": "对照参考答案自查" }
+        { "id": "run", "label": "跑通 lab7 全链（make test-lab7）" },
+        { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
+        { "id": "exercise-unit", "label": "（可选）跑通 os-fs + os-signal host 单测" },
+        { "id": "review", "label": "对照 labs/answers/lab7-answers.md 自查" }
       ]
     },
     {
@@ -137,7 +135,6 @@
       "title": "线程与同步",
       "subtitle": "线程、阻塞 mutex/semaphore/condvar、死锁检测",
       "guide": "/labs/lab8-thread-sync",
-      "exercises": "/exercises/lab8-exercises",
       "answers": "/answers/lab8-answers",
       "verifyCmd": "make test-lab8",
       "expected": [
@@ -152,10 +149,10 @@
       ],
       "checklist": [
         { "id": "read", "label": "理解进程/线程双层与阻塞 syscall 语义" },
-        { "id": "run", "label": "跑通 lab8_integration_test 全链（make test-lab8）" },
-        { "id": "exercise", "label": "完成线程/同步/死锁习题" },
+        { "id": "run", "label": "跑通 lab8 全链（make test-lab8）" },
+        { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
         { "id": "exercise-unit", "label": "（可选）跑通 os-sync host 单测" },
-        { "id": "review", "label": "对照参考答案自查" }
+        { "id": "review", "label": "对照 labs/answers/lab8-answers.md 自查" }
       ]
     }
   ],

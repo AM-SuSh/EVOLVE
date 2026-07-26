@@ -9,6 +9,9 @@
 | [lab3-answers.md](lab3-answers.md) | [lab3-memory.md](../lab3-memory.md) |
 | [lab4-answers.md](lab4-answers.md) | [lab4-process.md](../lab4-process.md) |
 | [lab5-answers.md](lab5-answers.md) | [lab5-fs-and-sync.md](../lab5-fs-and-sync.md) |
+| [lab6-answers.md](lab6-answers.md) | [lab6-disk-fs.md](../lab6-disk-fs.md) |
+| [lab7-answers.md](lab7-answers.md) | [lab7-ipc-signal.md](../lab7-ipc-signal.md) |
+| [lab8-answers.md](lab8-answers.md) | [lab8-thread-sync.md](../lab8-thread-sync.md) |
 
 ## 统一格式
 
