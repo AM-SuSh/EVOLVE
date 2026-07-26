@@ -13,7 +13,15 @@ export default withMermaid(defineConfig({
   outDir: resolve(handbookRoot, '.vitepress/dist'),
   cleanUrls: true,
   lastUpdated: true,
-  ignoreDeadLinks: [/^\/project\//, /^\/downloads\//, /\.md$/],
+  ignoreDeadLinks: [
+    /^\/project\//,
+    /^\/downloads\//,
+    /\.md$/,
+    // docs/lab6-8.md 指向仓库根的规划文件（progress、technical-proposal 等），不在站点内
+    /\.\.\/progress$/,
+    /next-phase-roadmap/,
+    /technical-proposal/,
+  ],
   head: [['meta', { name: 'theme-color', content: '#126a73' }]],
   themeConfig: {
     logo: '/logo.svg',
@@ -47,9 +55,9 @@ export default withMermaid(defineConfig({
             { text: 'Lab3 地址空间', link: '/learn/lab3' },
             { text: 'Lab4 进程能力', link: '/learn/lab4' },
             { text: 'Lab5 文件与并发', link: '/learn/lab5' },
-            { text: 'Lab6 磁盘文件系统', link: '/learn/lab6' },
-            { text: 'Lab7 IPC 与信号', link: '/learn/lab7' },
-            { text: 'Lab8 线程与同步', link: '/learn/lab8' },
+            { text: 'Lab6 持久存储', link: '/learn/lab6' },
+            { text: 'Lab7 进程通信', link: '/learn/lab7' },
+            { text: 'Lab8 并发同步', link: '/learn/lab8' },
           ],
         },
       ],
@@ -117,6 +125,7 @@ export default withMermaid(defineConfig({
           text: '项目文档',
           items: [
             { text: '设计总结报告', link: '/project/design-report' },
+            { text: 'Lab6–8 设计说明', link: '/project/lab6-8' },
             { text: '架构说明', link: '/project/architecture' },
             { text: '三方对比', link: '/project/comparison' },
             { text: '对比数据', link: '/project/comparison-data' },

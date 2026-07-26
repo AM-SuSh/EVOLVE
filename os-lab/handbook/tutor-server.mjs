@@ -21,13 +21,16 @@ const allowedOrigins = new Set(
 )
 
 const stageIds = new Set(['orient', 'read', 'run', 'debug', 'reflect'])
-const labIds = new Set(['lab1', 'lab2', 'lab3', 'lab4', 'lab5'])
+const labIds = new Set(['lab1', 'lab2', 'lab3', 'lab4', 'lab5', 'lab6', 'lab7', 'lab8'])
 const labLabels = {
   lab1: 'Lab1 裸机启动与 SBI',
   lab2: 'Lab2 Trap 与任务切换',
   lab3: 'Lab3 内存与虚拟内存',
   lab4: 'Lab4 进程管理',
   lab5: 'Lab5 文件系统与并发',
+  lab6: 'Lab6 磁盘文件系统',
+  lab7: 'Lab7 IPC 与信号',
+  lab8: 'Lab8 线程与同步',
 }
 const promptFiles = {
   system: path.join(promptRoot, 'system.md'),

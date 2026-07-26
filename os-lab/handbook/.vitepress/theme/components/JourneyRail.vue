@@ -318,7 +318,8 @@ function enter(item: LabJourneyItem) {
 
 .ws-journey-layers {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   margin-top: var(--ws-space-2);
   color: var(--ws-ink-muted);
   font-size: var(--ws-text-xs);
@@ -610,6 +611,11 @@ function enter(item: LabJourneyItem) {
   .ws-journey-summary,
   .ws-journey-list {
     padding-inline: var(--ws-space-4);
+  }
+
+  /* 8 个层名在窄屏挤不下，进度条本身已表达进度。 */
+  .ws-journey-layers {
+    display: none;
   }
 
   .ws-journey-summary {

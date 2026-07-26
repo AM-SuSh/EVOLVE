@@ -1,6 +1,6 @@
 export type TutorStageId = 'orient' | 'read' | 'run' | 'debug' | 'reflect'
 
-export type TutorLabId = 'lab1' | 'lab2' | 'lab3' | 'lab4' | 'lab5'
+export type TutorLabId = 'lab1' | 'lab2' | 'lab3' | 'lab4' | 'lab5' | 'lab6' | 'lab7' | 'lab8'
 
 export type TutorRole = 'student' | 'assistant'
 
@@ -175,7 +175,7 @@ export const tutorLabs: TutorLab[] = [
     resources: {
       orient: { paths: ['labs/lab1-bare-metal.md', 'kernel/src/entry.asm'], docs: [{ title: 'Lab1 实验指导', description: '建立裸机启动、SBI 与内核入口的整体认识', href: '/labs/lab1-bare-metal' }, { title: '实验知识地图', description: '查看五个 Lab 的递进关系', href: '/labs/overview' }] },
       read: { paths: ['kernel/linker.ld', 'kernel/src/entry.asm', 'kernel/src/main.rs'], docs: [{ title: 'Lab1 启动链路', description: '沿链接地址、入口汇编与 Rust 主函数阅读', href: '/labs/lab1-bare-metal' }, { title: '系统架构', description: '理解工作区中各模块的职责边界', href: '/project/architecture' }] },
-      run: { paths: ['kernel/src/main.rs', 'kernel/src/console.rs'], docs: [{ title: '快速验证', description: '检查环境、启动 QEMU 并观察输出', href: '/guide/verify' }, { title: 'Lab1 文字习题', description: '检查对启动机制的理解', href: '/exercises/lab1-exercises' }] },
+      run: { paths: ['kernel/src/main.rs', 'kernel/src/console.rs'], docs: [{ title: '快速验证', description: '检查环境、启动 QEMU 并观察输出', href: '/guide/verify' }, { title: 'Lab1 阅读理解（任务二）', description: '用实验文档【任务二】自测机制理解', href: '/labs/lab1-bare-metal' }] },
       debug: { paths: ['kernel/linker.ld', 'kernel/src/entry.asm', 'kernel/src/console.rs'], docs: [{ title: 'Lab1 常见问题', description: '对照启动地址、栈和 SBI 输出排查异常', href: '/labs/lab1-bare-metal' }, { title: '验证方法', description: '用最小观察点缩小故障范围', href: '/guide/verify' }] },
       reflect: { paths: ['project/ai-collaboration.md', 'answers/lab1-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理判断、提示与验证证据', href: '/project/ai-collaboration' }, { title: 'Lab1 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab1-answers' }] },
     },
@@ -195,7 +195,7 @@ export const tutorLabs: TutorLab[] = [
     resources: {
       orient: { paths: ['labs/lab2-trap-and-task.md', 'kernel/src/trap.rs'], docs: [{ title: 'Lab2 实验指导', description: '理解 Trap、系统调用与任务切换的整体目标', href: '/labs/lab2-trap-and-task' }, { title: '实验知识地图', description: '查看五个 Lab 的递进关系', href: '/labs/overview' }] },
       read: { paths: ['os-context/src/trap.asm', 'kernel/src/trap.rs', 'os-context/src/lib.rs'], docs: [{ title: 'Lab2 机制说明', description: '沿 ecall、TrapContext 和 sret 阅读控制流', href: '/labs/lab2-trap-and-task' }, { title: '系统架构', description: '理解 kernel 与 os-context 的职责边界', href: '/project/architecture' }] },
-      run: { paths: ['kernel/src/main.rs', 'user/src/bin/yield.rs'], docs: [{ title: '快速验证', description: '查看环境启动和 QEMU 验证方式', href: '/guide/verify' }, { title: 'Lab2 文字习题', description: '用问题检查机制理解是否完整', href: '/exercises/lab2-exercises' }] },
+      run: { paths: ['kernel/src/main.rs', 'user/src/bin/yield.rs'], docs: [{ title: '快速验证', description: '查看环境启动和 QEMU 验证方式', href: '/guide/verify' }, { title: 'Lab2 阅读理解（任务二）', description: '用实验文档【任务二】自测机制理解', href: '/labs/lab2-trap-and-task' }] },
       debug: { paths: ['kernel/src/trap.rs', 'kernel/src/task.rs', 'kernel/src/console.rs'], docs: [{ title: 'Lab2 常见现象', description: '回到实验正文对照异常与观察点', href: '/labs/lab2-trap-and-task' }, { title: '验证命令', description: '用最小实验区分 Trap 与调度问题', href: '/guide/verify' }] },
       reflect: { paths: ['project/ai-collaboration.md', 'answers/lab2-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理独立判断、AI 帮助和验证证据', href: '/project/ai-collaboration' }, { title: 'Lab2 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab2-answers' }] },
     },
@@ -215,7 +215,7 @@ export const tutorLabs: TutorLab[] = [
     resources: {
       orient: { paths: ['labs/lab3-memory.md', 'kernel/src/mm.rs'], docs: [{ title: 'Lab3 实验指导', description: '建立物理内存、页表与地址空间的整体模型', href: '/labs/lab3-memory' }, { title: '实验知识地图', description: '查看内存机制与前后 Lab 的关系', href: '/labs/overview' }] },
       read: { paths: ['kernel/src/mm.rs', 'kernel/src/config.rs', 'kernel/src/riscv.rs'], docs: [{ title: 'Lab3 机制说明', description: '沿页分配、映射与地址转换阅读代码', href: '/labs/lab3-memory' }, { title: '系统架构', description: '定位内存模块在内核中的职责', href: '/project/architecture' }] },
-      run: { paths: ['kernel/src/mm.rs', 'kernel/src/main.rs'], docs: [{ title: '快速验证', description: '运行内存测试并记录关键映射输出', href: '/guide/verify' }, { title: 'Lab3 文字习题', description: '检查对页表和地址转换的理解', href: '/exercises/lab3-exercises' }] },
+      run: { paths: ['kernel/src/mm.rs', 'kernel/src/main.rs'], docs: [{ title: '快速验证', description: '运行内存测试并记录关键映射输出', href: '/guide/verify' }, { title: 'Lab3 阅读理解（任务二）', description: '用实验文档【任务二】自测机制理解', href: '/labs/lab3-memory' }] },
       debug: { paths: ['kernel/src/mm.rs', 'kernel/src/loader.rs', 'kernel/src/trap.rs'], docs: [{ title: 'Lab3 常见问题', description: '从映射权限、页号和生命周期定位异常', href: '/labs/lab3-memory' }, { title: '验证方法', description: '用最小映射实验验证假设', href: '/guide/verify' }] },
       reflect: { paths: ['project/ai-collaboration.md', 'answers/lab3-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理地址转换的证据链', href: '/project/ai-collaboration' }, { title: 'Lab3 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab3-answers' }] },
     },
@@ -235,7 +235,7 @@ export const tutorLabs: TutorLab[] = [
     resources: {
       orient: { paths: ['labs/lab4-process.md', 'kernel/src/process.rs'], docs: [{ title: 'Lab4 实验指导', description: '建立进程生命周期和调度状态模型', href: '/labs/lab4-process' }, { title: '实验知识地图', description: '查看进程与内存、文件系统的关系', href: '/labs/overview' }] },
       read: { paths: ['kernel/src/process.rs', 'kernel/src/task.rs', 'kernel/src/loader.rs'], docs: [{ title: 'Lab4 机制说明', description: '沿创建、装载、切换和回收阅读实现', href: '/labs/lab4-process' }, { title: '系统架构', description: '理解进程模块与其他子系统的边界', href: '/project/architecture' }] },
-      run: { paths: ['user/src/bin/fork_test.rs', 'user/src/bin/exec_test.rs'], docs: [{ title: '快速验证', description: '运行 fork/exec 测试并记录进程行为', href: '/guide/verify' }, { title: 'Lab4 文字习题', description: '检查对生命周期和资源继承的理解', href: '/exercises/lab4-exercises' }] },
+      run: { paths: ['user/src/bin/fork_test.rs', 'user/src/bin/exec_test.rs'], docs: [{ title: '快速验证', description: '运行 fork/exec 测试并记录进程行为', href: '/guide/verify' }, { title: 'Lab4 阅读理解（任务二）', description: '用实验文档【任务二】自测机制理解', href: '/labs/lab4-process' }] },
       debug: { paths: ['kernel/src/process.rs', 'kernel/src/task.rs', 'kernel/src/trap.rs'], docs: [{ title: 'Lab4 常见问题', description: '从状态转换、上下文和资源回收定位异常', href: '/labs/lab4-process' }, { title: '验证方法', description: '用最小进程测试区分故障环节', href: '/guide/verify' }] },
       reflect: { paths: ['project/ai-collaboration.md', 'answers/lab4-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理进程行为与代码证据', href: '/project/ai-collaboration' }, { title: 'Lab4 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab4-answers' }] },
     },
@@ -255,9 +255,69 @@ export const tutorLabs: TutorLab[] = [
     resources: {
       orient: { paths: ['labs/lab5-fs-and-sync.md', 'kernel/src/fs.rs'], docs: [{ title: 'Lab5 实验指导', description: '建立文件、管道和同步机制的整体认识', href: '/labs/lab5-fs-and-sync' }, { title: '实验知识地图', description: '查看完整实验能力链', href: '/labs/overview' }] },
       read: { paths: ['kernel/src/fs.rs', 'kernel/src/sync.rs', 'kernel/src/cell.rs'], docs: [{ title: 'Lab5 机制说明', description: '沿文件操作、共享状态和同步路径阅读', href: '/labs/lab5-fs-and-sync' }, { title: '系统架构', description: '理解文件系统与进程模块的接口', href: '/project/architecture' }] },
-      run: { paths: ['user/src/bin/fs_test.rs', 'user/src/bin/pipe_test.rs'], docs: [{ title: '快速验证', description: '运行文件与管道测试并记录并发行为', href: '/guide/verify' }, { title: 'Lab5 文字习题', description: '检查对一致性和同步的理解', href: '/exercises/lab5-exercises' }] },
+      run: { paths: ['user/src/bin/fs_test.rs', 'user/src/bin/pipe_test.rs'], docs: [{ title: '快速验证', description: '运行文件与管道测试并记录并发行为', href: '/guide/verify' }, { title: 'Lab5 阅读理解（任务二）', description: '用实验文档【任务二】自测机制理解', href: '/labs/lab5-fs-and-sync' }] },
       debug: { paths: ['kernel/src/fs.rs', 'kernel/src/sync.rs', 'kernel/src/process.rs'], docs: [{ title: 'Lab5 常见问题', description: '从共享状态、锁和资源生命周期定位异常', href: '/labs/lab5-fs-and-sync' }, { title: '验证方法', description: '用重复运行和最小并发场景检验假设', href: '/guide/verify' }] },
       reflect: { paths: ['project/ai-collaboration.md', 'answers/lab5-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理并发问题的证据链', href: '/project/ai-collaboration' }, { title: 'Lab5 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab5-answers' }] },
+    },
+  },
+  {
+    id: 'lab6',
+    label: 'Lab6',
+    title: '磁盘文件系统',
+    shortTitle: 'Disk FS',
+    systemLayer: '持久存储',
+    buildOutcome: '让文件真正落在 VirtIO 块设备上，支持硬链接、fstat 与批量创建删除。',
+    bridge: '承接 Lab5 的内嵌文件抽象，把数据从内存搬到能断电保存的磁盘布局上。',
+    focus: '理解 VirtIO 块设备驱动、easy-fs 磁盘布局、inode 与硬链接的引用计数。',
+    documentRoute: '/labs/lab6-disk-fs',
+    initialQuestion: '内存里的文件和磁盘上的文件，本质差别是什么？先写下你认为一次 write 落盘要经过哪些层，再沿块设备接口逐层验证。',
+    verificationCommand: 'make test-lab6',
+    resources: {
+      orient: { paths: ['labs/lab6-disk-fs.md', 'kernel/src/virtio_block.rs'], docs: [{ title: 'Lab6 实验指导', description: '建立块设备、磁盘布局与文件系统分层的整体认识', href: '/labs/lab6-disk-fs' }, { title: '实验知识地图', description: '查看八个 Lab 的递进关系', href: '/labs/overview' }] },
+      read: { paths: ['kernel/src/fs/disk.rs', 'os-fs/src/disk.rs', 'kernel/src/virtio_block.rs'], docs: [{ title: 'Lab6 机制说明', description: '沿块缓存、inode 和目录项阅读磁盘文件系统', href: '/labs/lab6-disk-fs' }, { title: '系统架构', description: '理解 os-fs 与内核文件层的职责边界', href: '/project/architecture' }] },
+      run: { paths: ['user/src/bin/file_test.rs', 'user/src/bin/link_test.rs'], docs: [{ title: '快速验证', description: '运行带 VirtIO 的 lab6 测试链', href: '/guide/verify' }, { title: 'Lab6 文字习题', description: '检查对磁盘布局与硬链接的理解', href: '/exercises/lab6-exercises' }] },
+      debug: { paths: ['kernel/src/fs/disk.rs', 'user/src/bin/mass_unlink_test.rs', 'scripts/check-fs-img.ps1'], docs: [{ title: 'Lab6 常见问题', description: '从块缓存一致性和引用计数定位异常', href: '/labs/lab6-disk-fs' }, { title: '验证方法', description: '用最小文件操作序列复现问题', href: '/guide/verify' }] },
+      reflect: { paths: ['project/ai-collaboration.md', 'answers/lab6-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理磁盘路径的证据链', href: '/project/ai-collaboration' }, { title: 'Lab6 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab6-answers' }] },
+    },
+  },
+  {
+    id: 'lab7',
+    label: 'Lab7',
+    title: 'IPC 与信号',
+    shortTitle: 'IPC & Signal',
+    systemLayer: '进程通信',
+    buildOutcome: '统一文件描述符抽象，支持 dup 重定向，并让进程能收发与屏蔽信号。',
+    bridge: '承接 Lab6 的文件抽象，把管道、标准流和磁盘文件统一进 fd 表，再叠加异步信号。',
+    focus: '理解统一 fd 表、dup 语义、信号的注册投递时机与屏蔽字。',
+    documentRoute: '/labs/lab7-ipc-signal',
+    initialQuestion: '内核在什么时机检查并投递信号最合适？先写下你的候选时机和理由，我们再对照 trap 返回路径验证。',
+    verificationCommand: 'make test-lab7',
+    resources: {
+      orient: { paths: ['labs/lab7-ipc-signal.md', 'kernel/src/signal.rs'], docs: [{ title: 'Lab7 实验指导', description: '建立统一 fd 与信号机制的整体认识', href: '/labs/lab7-ipc-signal' }, { title: '实验知识地图', description: '查看 IPC 在系统能力链中的位置', href: '/labs/overview' }] },
+      read: { paths: ['os-fs/src/fd_kind.rs', 'kernel/src/signal.rs', 'os-signal/src/lib.rs'], docs: [{ title: 'Lab7 机制说明', description: '沿 fd 表、dup 与信号投递路径阅读实现', href: '/labs/lab7-ipc-signal' }, { title: '系统架构', description: '理解 os-signal 组件与内核的边界', href: '/project/architecture' }] },
+      run: { paths: ['user/src/bin/dup_test.rs', 'user/src/bin/signal_test.rs'], docs: [{ title: '快速验证', description: '运行 lab7 测试链并观察信号行为', href: '/guide/verify' }, { title: 'Lab7 文字习题', description: '检查对 fd 与信号语义的理解', href: '/exercises/lab7-exercises' }] },
+      debug: { paths: ['kernel/src/signal.rs', 'kernel/src/trap.rs', 'user/src/bin/signal_mask_test.rs'], docs: [{ title: 'Lab7 常见问题', description: '从投递时机与屏蔽字定位信号异常', href: '/labs/lab7-ipc-signal' }, { title: '验证方法', description: '构造最小信号场景区分故障环节', href: '/guide/verify' }] },
+      reflect: { paths: ['project/ai-collaboration.md', 'answers/lab7-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理信号时序的证据链', href: '/project/ai-collaboration' }, { title: 'Lab7 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab7-answers' }] },
+    },
+  },
+  {
+    id: 'lab8',
+    label: 'Lab8',
+    title: '线程与同步',
+    shortTitle: 'Thread & Sync',
+    systemLayer: '并发同步',
+    buildOutcome: '在进程内支持多线程，提供阻塞式互斥锁、信号量、条件变量与死锁检测。',
+    bridge: '承接 Lab7 的进程能力，把执行流细分为线程，并让同步原语真正阻塞而非自旋。',
+    focus: '理解进程/线程双层结构、阻塞唤醒队列与银行家式死锁检测。',
+    documentRoute: '/labs/lab8-thread-sync',
+    initialQuestion: '自旋锁和阻塞锁在内核里的代价差在哪里？先描述一个线程拿不到锁之后应该发生什么，再沿 wait queue 验证。',
+    verificationCommand: 'make test-lab8',
+    resources: {
+      orient: { paths: ['labs/lab8-thread-sync.md', 'kernel/src/processor.rs'], docs: [{ title: 'Lab8 实验指导', description: '建立线程模型与同步原语的整体认识', href: '/labs/lab8-thread-sync' }, { title: '实验知识地图', description: '查看完整八层系统能力链', href: '/labs/overview' }] },
+      read: { paths: ['kernel/src/processor.rs', 'kernel/src/sync_syscall.rs', 'os-sync/src/mutex.rs'], docs: [{ title: 'Lab8 机制说明', description: '沿线程创建、阻塞唤醒与死锁检测阅读实现', href: '/labs/lab8-thread-sync' }, { title: '系统架构', description: '理解 os-sync 组件与内核调度的接口', href: '/project/architecture' }] },
+      run: { paths: ['user/src/bin/threads_test.rs', 'user/src/bin/mutex_test.rs'], docs: [{ title: '快速验证', description: '运行 lab8 集成测试链', href: '/guide/verify' }, { title: 'Lab8 文字习题', description: '检查对线程与死锁检测的理解', href: '/exercises/lab8-exercises' }] },
+      debug: { paths: ['kernel/src/deadlock.rs', 'os-sync/src/wait_queue.rs', 'user/src/bin/deadlock_mutex_test.rs'], docs: [{ title: 'Lab8 常见问题', description: '从唤醒丢失与资源计数定位并发异常', href: '/labs/lab8-thread-sync' }, { title: '验证方法', description: '用重复运行暴露时序问题', href: '/guide/verify' }] },
+      reflect: { paths: ['project/ai-collaboration.md', 'answers/lab8-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理并发证据链', href: '/project/ai-collaboration' }, { title: 'Lab8 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab8-answers' }] },
     },
   },
 ]
@@ -277,16 +337,17 @@ export function getTutorLab(labId: TutorLabId) {
    -------------------------------------------------------------------------- */
 
 export interface ManualSectionTarget {
-  prefix: string
+  /** 依次尝试的序号前缀；Lab1–5 已没有「六、思考题」，reflect 回退到「四、验证」。 */
+  prefixes: string[]
   label: string
 }
 
 export const stageManualSection: Record<TutorStageId, ManualSectionTarget> = {
-  orient: { prefix: '一、', label: '问题场景' },
-  read: { prefix: '二、', label: '背景知识' },
-  run: { prefix: '三、', label: '实验任务' },
-  debug: { prefix: '四、', label: '验证' },
-  reflect: { prefix: '六、', label: '思考题与参考答案' },
+  orient: { prefixes: ['一、'], label: '问题场景' },
+  read: { prefixes: ['二、'], label: '背景知识' },
+  run: { prefixes: ['三、'], label: '实验任务' },
+  debug: { prefixes: ['四、'], label: '验证' },
+  reflect: { prefixes: ['六、', '四、'], label: '思考题与复盘' },
 }
 
 /** 「五、AI 提问模板」的内容已经是导师栏的快捷提问按钮，手册里默认折叠。 */

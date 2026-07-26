@@ -399,7 +399,7 @@ function announceUnlock(wasCompleted: boolean) {
   toast(
     next
       ? `${lab.value.systemLayer}已构建，${next.lab.label} · ${next.lab.systemLayer} 已解锁。`
-      : '五层系统能力已经全部构建完成。',
+      : '全部系统层已经构建完成。',
     5000,
   )
 }

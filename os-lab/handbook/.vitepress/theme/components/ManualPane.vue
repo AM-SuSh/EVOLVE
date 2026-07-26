@@ -184,10 +184,15 @@ function scrollToSection(section: ManualSection | undefined, smooth = true) {
 }
 
 function scrollToStageSection(smooth = true) {
-  const target = sections.value.find(
-    (section) => section.level === 2 && section.prefix === stageTarget.value.prefix,
-  )
-  scrollToSection(target, smooth)
+  for (const prefix of stageTarget.value.prefixes) {
+    const target = sections.value.find(
+      (section) => section.level === 2 && section.prefix === prefix,
+    )
+    if (target) {
+      scrollToSection(target, smooth)
+      return
+    }
+  }
 }
 
 function step(delta: number) {

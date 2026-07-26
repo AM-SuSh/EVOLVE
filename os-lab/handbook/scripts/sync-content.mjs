@@ -26,6 +26,7 @@ const SINGLE_FILES = [
   { from: path.join(REPO_ROOT, 'docs', 'environment_setup.md'), to: path.join(HANDBOOK_ROOT, 'setup', 'environment.md') },
   { from: path.join(REPO_ROOT, 'docs', 'os-lab.md'), to: path.join(HANDBOOK_ROOT, 'setup', 'verify-full.md') },
   { from: path.join(REPO_ROOT, 'docs', 'reference-report.md'), to: path.join(HANDBOOK_ROOT, 'project', 'reference-report.md') },
+  { from: path.join(REPO_ROOT, 'docs', 'lab6-8.md'), to: path.join(HANDBOOK_ROOT, 'project', 'lab6-8.md') },
   { from: path.join(REPO_ROOT, '赛题.md'), to: path.join(HANDBOOK_ROOT, 'project', 'competition.md') },
   { from: path.join(REPO_ROOT, 'scripts', 'activate-os-env.ps1'), to: path.join(HANDBOOK_ROOT, 'public', 'downloads', 'activate-os-env.ps1'), raw: true },
 ]
@@ -35,6 +36,9 @@ function rewriteLinks(text) {
     text
       // 仓库 docs 相对路径
       .replace(/\]\(\.\.\/\.\.\/docs\/environment_setup\.md\)/g, '](/setup/environment)')
+      .replace(/\]\((?:\.\/)?(?:\.\.\/){2,3}docs\/lab6-8\.md(?:#[^)]*)?\)/g, '](/project/lab6-8)')
+      .replace(/\]\(\.\/lab6-8\.md(?:#[^)]*)?\)/g, '](/project/lab6-8)')
+      .replace(/\]\(\.\.\/handbook\/guide\/([a-z-]+)\.md\)/g, '](/guide/$1)')
       .replace(/\]\(\.\.\/\.\.\/docs\/os-lab\.md(?:#[^)]*)?\)/g, '](/setup/verify-full)')
       .replace(/\]\(\.\.\/\.\.\/docs\/os-lab_verify\.md(?:#[^)]*)?\)/g, '](/setup/verify-full)')
       .replace(/\]\(\.\/environment_setup\.md\)/g, '](/setup/environment)')
@@ -94,6 +98,8 @@ function rewriteLinks(text) {
       // 已是站点内绝对路径的 lab 链接（去掉 .md）
       .replace(/\]\(\/labs\/([^)]+)\.md\)/g, '](/labs/$1)')
       .replace(/\]\(\/answers\/([^)]+)\.md\)/g, '](/answers/$1)')
+      // 前序规则可能产出 /labs/answers/ 这类目录链接，收敛到答案说明页
+      .replace(/\]\(\/labs\/answers\/\)/g, '](/answers/README)')
   )
 }
 
@@ -150,9 +156,9 @@ const WORKSPACE_LAYERS = {
   lab3: '地址空间',
   lab4: '进程能力',
   lab5: '文件与并发',
-  lab6: '磁盘文件系统',
-  lab7: 'IPC 与信号',
-  lab8: '线程与同步',
+  lab6: '持久存储',
+  lab7: '进程通信',
+  lab8: '并发同步',
 }
 
 function writeWorkspacePages() {
