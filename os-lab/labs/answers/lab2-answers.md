@@ -1,7 +1,7 @@
 # Lab2 参考答案与代码解读
 
 > 配套实验指导：[lab2-trap-and-task.md](../lab2-trap-and-task.md)  
-> 对应内容：【任务二：阅读理解与思考题（必做）】参考答案 + 代码解读  
+> 对应内容：【任务二：阅读理解（必做）】参考答案 + 代码解读  
 > **使用建议**：先独立完成实验文档【任务二】，再来对答案。
 
 ## 一、完整代码逐行解读
@@ -58,8 +58,8 @@ __alltraps:
     csrrw sp, sscratch, sp     # ① 交换 sp 和 sscratch（用户栈↔内核栈）
     addi sp, sp, -TRAP_CTX_SIZE # ② 内核栈腾出 35*8 空间
     sd x1, 1*8(sp)             # ③ 保存 x1（ra），x0 硬件恒为 0 不用存
-    .set n, 2
-    .rept 29                   # ④ 批量保存 x2-x30（29 个）
+    .set n, 3
+    .rept 29                   # ④ 批量保存 x3-x31（29 个）
         SAVE_GP %n
         .set n, n+1
     .endr
@@ -67,36 +67,39 @@ __alltraps:
     csrr t1, sepc
     sd t0, 32*8(sp)            # ⑥ 存到 TrapContext 的 sstatus、sepc 位置
     sd t1, 33*8(sp)
-    addi t2, sp, TRAP_CTX_SIZE # ⑦ 计算原内核栈顶（用于保存到 kernel_sp）
-    sd t2, 34*8(sp)
-    mv a0, sp                  # ⑧ TrapContext 指针作为参数
-    call trap_handler          # ⑨ 进入 Rust 的 trap_handler
-    j __restore                # ⑩ 处理完，跳到恢复流程
+    csrr t2, sscratch          # ⑦ 读出暂存的用户栈指针（交换后 sscratch 里是用户 sp）
+    sd t2, 2*8(sp)             # ⑧ 写入 TrapContext 的 x[2] 槽位
+    addi t2, sp, TRAP_CTX_SIZE # ⑨ 计算原内核栈顶
+    sd t2, 34*8(sp)            # ⑩ 保存 kernel_sp
+    mv a0, sp                  # ⑪ TrapContext 指针作为参数
+    call trap_handler          # ⑫ 进入 Rust 的 trap_handler
+    j __restore                # ⑬ 处理完，跳到恢复流程
 ```
 
-**为什么是 29 个？** x0 恒为 0 不存，x1（ra）单独 `sd`（因为 `SAVE_GP` 宏里 `n*8(sp)` 对 x0 会是 `0*8(sp)`，容易和别的冲突，所以 x0、x1 特殊处理）。实际存 x1 + x2-x30 = 30 个通用寄存器，加上 sstatus/sepc/kernel_sp 共 33 个 + x0 占位 = 35 个 slot。
+**为什么是 29 个？** `x0` 恒为 0 不存；`x1`（`ra`）单独 `sd`；`x2`（用户 `sp`）在 `csrrw` 后暂存于 `sscratch`，用 `csrr` 读出后写入 `2*8(sp)`，不走 `.rept` 宏。`.rept 29` 从 `x3` 批量保存到 `x31`。加上 `sstatus`、`sepc`、`kernel_sp`，共 35 个 8 字节槽位，与 `TrapContext` 大小一致。
 
 **`__restore`（恢复上下文并返回用户态）**：
 
 ```asm
 __restore:
-    ld t0, 32*8(sp)            # 从栈读 sstatus、sepc、kernel_sp
+    ld t0, 32*8(sp)            # 从栈读 sstatus、sepc、用户 sp
     ld t1, 33*8(sp)
-    ld t2, 34*8(sp)
+    ld t2, 2*8(sp)
     csrw sstatus, t0           # 写回 CSR
     csrw sepc, t1
-    csrw sscratch, t2          # 把 kernel_sp 存进 sscratch，供下次 trap 用
+    csrw sscratch, t2          # 把用户 sp 暂存进 sscratch
     ld x1, 1*8(sp)             # 恢复 x1
-    .set n, 2
-    .rept 29                   # 批量恢复 x2-x30
+    .set n, 3
+    .rept 29                   # 批量恢复 x3-x31
         LOAD_GP %n
         .set n, n+1
     .endr
-    addi sp, sp, TRAP_CTX_SIZE # 回收栈空间
+    addi sp, sp, TRAP_CTX_SIZE # 回收 TrapContext 栈空间
+    csrrw sp, sscratch, sp     # 再次交换：sp 回到用户栈
     sret                       # 返回用户态（sstatus.SPP 决定回到 U 还是 S）
 ```
 
-注意 `__restore` 是和 `__alltraps` 共享的代码——`__alltraps` 末尾 `j __restore`，处理完直接复用恢复逻辑。
+注意 `__restore` 是和 `__alltraps` 共享的代码——`__alltraps` 末尾 `j __restore`，处理完直接复用恢复逻辑。系统调用走 `run_next_task` → `run_user_task` 时，可能不经过这里的 `__restore`，但布局与上述约定一致。
 
 ### 1.3 系统调用编号（`os-syscall/src/lib.rs`）
 
@@ -122,7 +125,7 @@ pub fn trap_handler(cx: &mut TrapContext) {
                     cx.set_return_value(ret);   // 返回值写进 a0
                 }
                 SYS_EXIT => sys_exit(cx.syscall_arg(0) as i32),
-                SYS_YIELD => { mark_current_suspended(); run_next_task(); }
+                SYS_YIELD => { mark_current_suspended(); run_next_task(); }  // 函数名带 suspended，实际把任务标为 Ready
                 id => { cx.set_return_value(-1); }   // 未知 syscall
             }
         }
@@ -170,7 +173,7 @@ pub fn write(fd: usize, buf: &[u8]) -> isize {
 
 这就是用户程序侧的 `ecall`——和内核侧的 `trap_handler` 形成完整的请求-响应闭环。
 
-## 二、任务二：阅读理解与思考题参考答案
+## 二、任务二：阅读理解参考答案
 
 ### 第 1 题：`csrrw sp, sscratch, sp` 为什么必须在最前面
 
@@ -178,7 +181,7 @@ pub fn write(fd: usize, buf: &[u8]) -> isize {
 
 ### 第 2 题：`TrapContext` 要保存什么，漏保存 `sepc` 会怎样
 
-用户程序被 trap 打断时，它的全部状态（32 个通用寄存器、`sstatus`、`sepc`）都是「正在运行中的中间结果」，必须完整保存才能精确恢复。`sepc` 记录 trap 时的用户 PC；漏保存会导致 `sret` 跳到错误地址，返回后执行不可预测的指令而崩溃。
+用户程序被 trap 打断时，它的全部状态（32 个通用寄存器、`sstatus`、`sepc`）都是「正在运行中的中间结果」，必须完整保存才能精确恢复。`sepc` 记录 trap 时的用户 PC；漏保存会导致 `sret` 跳到错误地址，返回后执行不可预测的指令而崩溃。其中 `x[2]`（用户 `sp`）在 `csrrw` 后暂存于 `sscratch`，由汇编单独写入 TrapContext，不走 `.rept` 批量保存。
 
 ### 第 3 题：处理 `sys_write` 时为什么要先 `advance_sepc()`
 

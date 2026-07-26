@@ -26,186 +26,122 @@
 
 > 如果上面任何一步报"找不到命令"，回到 `docs/environment_setup.md` 检查安装。
 
+5. **建议先读书**：OSTEP 第一部分（导论）+ 第 6 章开头（受限的直接执行，为 Lab2 铺垫）。Lab1 的启动发生在教材「已有 OS」假设之前。
+
 
 
 ## 一、问题场景
 
-《操作系统导论》里提到，普通程序能跑起来，是因为操作系统在背后提供了一组抽象：把程序装进内存、准备运行环境，并通过**系统调用**提供打印、读写文件等服务。你平时写 Rust 时 `cargo new` 再 `cargo run`，背后几乎全靠这些「看不见的帮忙」。
+OSTEP 从虚拟化、并发、持久性讲起，默认内核已经能运行。Lab1 要补更早的一步：**第一个内核程序是谁加载的、从哪条指令开始、如何在没有 OS 的情况下输出字符**。
 
-但教材讨论虚拟化、并发、持久性时，默认「操作系统已经在那里了」。本实验要先问一个更靠前的问题：
+| 平时写应用 | 裸机内核 |
+| --- | --- |
+| 加载器把程序放进内存 | OpenSBI 加载内核到 `0x80200000` |
+| 从 `main` 开始 | 从 `_start`（汇编）开始 |
+| `println!` 经 OS 写终端 | 经 SBI `ecall` 写 UART |
+| 进程结束由 OS 回收 | 内核须主动 `shutdown` |
 
-**操作系统自己第一次开机时，世界上还没有操作系统。那第一个内核程序，靠谁帮它？**
-
-我们把这个大问题拆开，就是本实验要直面的几件事：
-
-- 教材里说程序由操作系统装进内存——**内核**自己还没有「加载器」可用，那谁把它放进内存？
-- 教材里把系统调用写成程序请求 OS 服务的接口——**内核**自己就是 OS，没有人可请求，它还能往屏幕打字吗？
-- 应用程序常从 `main` 开始——那是有 OS 与标准运行时之后的约定。**裸机**上没有这套约定，CPU 从哪里开始执行？
-- 程序结束可以「正常退出」；**内核**若不善后，CPU 可能跑到非法地址，机器就会表现得很奇怪。
-
-本实验的具体目标是：在 QEMU 模拟的 RISC-V 硬件上，让一个最小内核输出 `Hello, OS!` 并正常关机。它看起来只是打一行字，却是后续所有抽象的地基——**启动（boot）与运行时初始化**：代码如何被装进内存、如何找到入口、如何在没有标准库的情况下完成最基本的输入输出。
-
-> 一句话解释本实验：先学会「让内核在裸机上活下来」，后面教材中的 CPU/内存虚拟化、并发与持久性才有地方站脚。
+本实验目标：在 QEMU RISC-V 上输出 `Hello, OS!` 并正常关机。后续 Lab2–8 的 trap、虚存、进程、文件系统都建立在这套启动与 SBI I/O 之上。
 
 
 
 ## 二、背景知识
 
-虽然理论知识读起来很无聊，但是还是希望你在真正的动手实验之前了解这些名词。当你在动手的时候有一种「原来书上那句话，在代码里长这样」，这就是我们学习理论的意义。
+本节对应《操作系统导论》（OSTEP）第二部分的铺垫：Lab1 还没有用户程序，但已经涉及**特权级**、**启动加载**和**内核如何获得最基本 I/O**——这些在后续「CPU 虚拟化」「内存虚拟化」章节里会反复出现。
 
 ### 2.1 RISC-V 的启动层级
 
-《操作系统导论》在讲 **CPU 虚拟化** 时会反复强调一件事：程序跑在**用户态**，操作系统跑在**内核态**；权限不同，所以普通程序不能直接操作硬件，只能通过系统调用“请客服”。
+OSTEP 第 6 章讲**受限的直接执行**时，默认操作系统已经在运行。Lab1 要回答更靠前的问题：内核本身是谁加载、从哪条指令开始执行的。
 
-RISC-V 把这件事写进了硬件：**特权级（privilege level）**。和教材里“用户态 / 内核态”二分法相比，RISC-V 常见会提到三档（后面实验会陆续碰到）：
+RISC-V 用硬件**特权级**区分谁能直接访问哪些资源。本实验涉及三档：
 
+| 特权级 | 名称 | 本实验里谁在用 | 与 OSTEP 概念 |
+| --- | --- | --- | --- |
+| **U-mode** | 用户模式 | 用户程序（Lab2 起） | 用户态 |
+| **S-mode** | 监督模式 | 操作系统内核 | 内核态 |
+| **M-mode** | 机器模式 | OpenSBI 固件 | 比内核更底层，教材着墨较少 |
 
-| 特权级        | 名字   | 谁在用（本实验语境）    | 和教材怎么对应            |
-| ---------- | ---- | ------------- | ------------------ |
-| **U-mode** | 用户模式 | 用户程序（Lab2 起）  | 教材里的**用户态**        |
-| **S-mode** | 监督模式 | 操作系统内核（本实验开始） | 教材里的**内核态**一侧      |
-| **M-mode** | 机器模式 | 固件 OpenSBI    | 比“内核态”更底层，教材通常着墨较少 |
-
-
-Lab1 还没有用户程序，所以你暂时主要和 **M-mode、S-mode** 打交道。更重要的是：开机时，CPU **不会**一上电就执行我们的内核，而是按层级“交班”。
+上电后 CPU 从 **M-mode** 开始执行，不会直接跳进我们的内核。QEMU `virt` 机器默认加载 **OpenSBI** 固件，启动顺序如下：
 
 ```mermaid
 graph TD
-    ROM["QEMU 复位 / 开机入口<br/>(进入 M-mode)"] --> OpenSBI["OpenSBI 固件<br/>(一直在 M-mode)"]
-    OpenSBI -->|"把内核放到 0x80200000<br/>并跳转过去"| Kernel["os-lab 内核<br/>(S-mode)"]
-    OpenSBI -.->|"之后仍可通过 SBI 调用<br/>（ecall）提供服务"| Kernel
-
-    classDef mmode fill:#ffebee,stroke:#c62828,stroke-width:2px;
-    classDef smode fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
-    class ROM,OpenSBI mmode;
-    class Kernel smode;
+    ROM["复位入口 M-mode"] --> OpenSBI["OpenSBI 固件"]
+    OpenSBI -->|"加载并跳转到 0x80200000"| Kernel["内核 S-mode"]
+    OpenSBI -.->|"SBI 调用 ecall"| Kernel
 ```
 
+1. **OpenSBI 完成启动**：初始化平台，准备好 S-mode 环境，把内核镜像放到 `0x80200000` 并跳转过去。OpenSBI 日志里的 `Domain0 Next Address : 0x0000000080200000` 就是这个约定。
+2. **内核从 `_start` 运行**：`entry.asm` 设栈后进入 `rust_main`，此时已在 **S-mode**。
+3. **运行期服务**：内核输出字符、关机仍通过 **SBI**（`ecall` + 功能号）委托 OpenSBI 完成——Lab1 尚未编写 UART 驱动。
 
+因此 `linker.ld` 里必须写 `BASE_ADDRESS = 0x80200000`：链接地址与 OpenSBI 跳转地址不一致，CPU 取到的就不是正确指令。
 
-可以按时间顺序理解这三步：
+OSTEP 里「程序由 OS 加载进内存」描述的是**已有操作系统**之后的情形；Lab1 里**加载内核的是固件**，不是另一个 OS。
 
-1. **上电，进入 M-mode**
-  CPU 复位后处于权限最高的 **机器模式（M-mode）**。可以把它想成“硬件刚醒来时的默认身份”：此时还谈不上操作系统，也谈不上用户程序。
-2. **OpenSBI（固件）先跑**
-  在 QEMU 里，我们通常用默认固件（`-bios default`），它提供的就是 **OpenSBI**。OpenSBI 跑在 **M-mode**，职责大致有两类：  
-  - **启动阶段**：做必要的硬件初始化，准备好 S-mode 的运行环境，把内核镜像放到约定地址，然后把控制权交给内核。  
-  - **运行阶段**：继续留在“更底层”，通过 **SBI（Supervisor Binary Interface）** 给内核提供少量基础服务。  
-   Lab1 里你会用到的服务包括：往控制台输出一个字符、关机。内核暂时不用自己写 UART 驱动，而是“请客服（OpenSBI）代劳”。
-3. **内核在 S-mode 开始执行**
-  OpenSBI 把我们的内核放到固定地址 `0x80200000`，并跳转到这里，CPU 进入 **S-mode（监督模式）**。从这一刻起，才轮到 `entry.asm` 里的 `_start`、以及后面的 `rust_main`。  
-   这也是为什么 `linker.ld` 里必须写：
-   两边约好“在这个门牌号见面”：OpenSBI 跳到 `0x80200000`，内核也必须按这个地址链接。约错了，CPU 取到的就不是正确指令，后面的 `Hello, OS!` 自然出不来。
-
-**和教材对照，记住两句就够：**
-
-- 书里说：“程序由操作系统加载。”——那是操作系统已经存在之后的故事。  
-- Lab1 说：“内核由更底层的**固件**加载。”——内核不是被另一个 OS 装进来的，所以启动地址必须和 OpenSBI 的约定一致。
-
-**补充：SBI 调用和系统调用长得很像**  
-后面你读 `os-sbi` 时会看到：内核在 S-mode 里执行 `ecall`，把功能号放进寄存器（例如输出字符、关机），然后陷入到 M-mode，由 OpenSBI 处理。  
-这和《操作系统导论》里“用户程序用系统调用请求内核”是同一类套路，只是：
-
-- 教材常见路径：用户态 →（系统调用）→ 内核态  
-- Lab1 这条路径：内核（S-mode）→（SBI 调用）→ 固件（M-mode）
-
-等 Lab2 有了用户程序，你才会真正走通教材里那条“用户态 ↔ 内核态”的路径。
+**SBI 与系统调用的关系**：两者都用 `ecall` 陷入更高特权级，通过寄存器传功能号/参数。Lab1 是 S-mode 内核 → M-mode 固件；Lab2 起是 U-mode 用户程序 → S-mode 内核。机制相同，方向不同。
 
 ### 2.2 为什么需要 `#![no_std]` 和 `#![no_main]`
 
-《操作系统导论》反复强调：应用程序站在操作系统提供的抽象之上。Rust 的标准库 `std` 也假设「底下有操作系统」。现在我们要写的恰恰是操作系统本身，所以不能再站在那套假设上。
+普通 Rust 程序依赖 `std`，而 `std` 假设底下已有操作系统（堆分配、文件 I/O、线程等）。写内核时这个前提不成立。
 
-```mermaid
-graph LR
-    subgraph 普通程序
-        A1["fn main()"] --> A2["Rust 标准库 std"] --> A3["操作系统的加载器/系统调用"]
-    end
-    subgraph 裸机内核
-        B1["自定义入口 _start"] --> B2["只有 core"] --> B3["直接调 SBI/硬件"]
-    end
+| | 普通程序 | 裸机内核 |
+| --- | --- | --- |
+| 入口 | `main` | `_start`（汇编） |
+| 标准库 | `std` | 仅 `core` |
+| I/O | 经 OS 系统调用 | SBI 或驱动 |
 
-    classDef normal fill:#e3f2fd,stroke:#1565c0;
-    classDef bare fill:#fff3e0,stroke:#ef6c00;
-    class A1,A2,A3 normal;
-    class B1,B2,B3 bare;
-```
-
-
-
-- `#![no_std]`：不链接依赖操作系统的标准库 `std`，只保留与 OS 无关的 `core`（基础类型、`Option`/`Result` 等）。因此没有现成的 `Vec`、`String`、`println!`，输出要自己用 SBI 拼出来（本实验在 `console.rs` 里做了这件事）。
-- `#![no_main]`：不使用「有 C 运行时和加载器时」那套默认 `main` 入口约定。改为自定义入口符号，由汇编先做好最基本的准备工作，再调用我们的 Rust 函数。
-
-> 如果把普通程序比作「住进已经装修好的宿舍」，裸机内核更像「空地盖第一栋楼」：电梯（`std`）、门禁（加载器）都还没有，得自己先把地基打好。
-
-
+- **`#![no_std]`**：不链接 `std`，只保留 `core`。没有 `Vec`/`String`/内置 `println!`，输出需在 `console.rs` 里自行实现。
+- **`#![no_main]`**：不用编译器默认的 `main` 入口；由 `entry.asm` 的 `_start` 完成栈初始化后再 `call rust_main`。
 
 ### 2.3 从上电到 `rust_main` 的执行流程
 
-教材讨论系统调用、进程之前，机器总得先把内核跑起来。下图就是「上电 → 固件 → 内核 → 输出 → 关机」在本实验代码里的完整版本。
-
 ```mermaid
 sequenceDiagram
-    participant HW as QEMU 硬件
+    participant HW as QEMU
     participant SBI as OpenSBI
-    participant ASM as entry.asm (_start)
-    participant Rust as main.rs (rust_main)
-    participant Con as console.rs (println!)
+    participant ASM as entry.asm
+    participant Rust as rust_main
+    participant Con as console
 
-    HW->>SBI: 上电，复位到 M-mode
-    SBI->>ASM: 跳转到 0x80200000 (_start)，进入 S-mode
-    ASM->>ASM: 设置栈指针 sp = boot_stack_top
+    HW->>SBI: 复位 M-mode
+    SBI->>ASM: 跳转 0x80200000 S-mode
+    ASM->>ASM: sp = boot_stack_top
     ASM->>Rust: call rust_main
-    Rust->>Rust: clear_bss() 清零 BSS 段
-    Rust->>Con: println!("Hello, OS!")
-    Con->>SBI: ecall (a7=1, a0=字符) 逐字节输出
-    SBI->>HW: 写 UART，字符显示在屏幕
-    Rust->>SBI: ecall (a7=8) 请求关机
-    SBI->>HW: 触发 poweroff，QEMU 退出
+    Rust->>Rust: clear_bss
+    Rust->>Con: println!
+    Con->>SBI: ecall 输出字符
+    Rust->>SBI: ecall 关机
 ```
 
+读代码时可对照三个问题：
 
-
-读这张图时，可以边读边问自己三个「对照教材的问题」：
-
-1. **谁把内核装进内存？** —— OpenSBI（固件），不是操作系统自己（书中「OS 加载程序」的故事，在这里还轮不到内核来演）。
-2. **没有系统调用，怎么打印？** —— 内核通过 `ecall` 发起 **SBI 调用**，请 OpenSBI 写串口（UART）。这和教材里「用户程序用系统调用请求内核」是同一类套路，只是请求对象换成了更底层的固件。
-3. **入口在哪？** —— 不是 `main`，而是 `entry.asm` 里的 `_start`：先设好栈，再 `call rust_main`。
-
-
+1. **谁加载内核？** OpenSBI，不是内核自己。
+2. **没有用户态系统调用，如何打印？** 内核经 SBI 写 UART（功能号 1）。
+3. **入口在哪？** `_start`，不是 `main`。
 
 ### 2.4 BSS 段与 `clear_bss`
 
-时序图里，`println!` 之前有一步 `clear_bss()`。教材讲进程/地址空间时，常默认「程序已被正确装入且数据区就绪」；在裸机上，**有些全局数据开机时并不会自动变成 0，得有人负责初始化**。
+`.bss` 段存放未初始化或初值为 0 的全局/静态变量。有 OS 时，加载器会在程序运行前把 BSS 清零；裸机没有加载器，这块内存开机时是未定义值。
 
-**BSS 段是什么**：未初始化、或初值就是 0 的全局/静态变量，会被链接器放进名为 `.bss` 的内存区域。在有操作系统的环境里，加载器会在程序开始前把这块区域清成 0；裸机上没有加载器，这块内存里往往是随机垃圾值。
-
-**为什么必须手动清零**：Rust 会假设静态变量一开始就是合法状态（例如「空」的 `Option`）。若 BSS 没清零，读到的是垃圾，后面的行为就不可预测——乱码、死循环、莫名崩溃都可能出现。
-
-**为什么必须在** `println!` **之前**：`println!` 的实现链路（`console.rs` → 格式化输出）可能用到位于 BSS 的静态状态。BSS 还是垃圾时就打印，输出可能错乱甚至卡住。所以 `rust_main` 的第一件事是 `clear_bss()`，把 BSS 逐字节写成 0，之后才能安全做事。
-
-> 一句话：`clear_bss()` 是裸机版的「运行时初始化第一步」，对应有 OS 时加载器偷偷帮你做的那件事。它必须赶在任何可能用到静态变量的代码之前。
+Rust 假定静态变量初值合法。BSS 未清零就读，可能乱码、死循环或 panic。`println!` 的实现可能间接用到 BSS 中的静态状态，因此 `rust_main` 第一件事是 `clear_bss()`——把 `[sbss, ebss)` 逐字节写 0，等价于加载器在进程启动时做的初始化。
 
 
 
 ## 三、实验任务
 
-> **本实验的定位**：lab1 是整个 os-lab 的**起跑线**——它是一份已经能跑通的最小内核，你不需要从零实现它。本实验的任务是：**跑通内核、把启动流程和《操作系统导论》里的基础概念对上号、做几个小修改建立裸机开发的直觉**。从 Lab2 开始，你才会在 feature gate 的指引下亲手「长出」虚拟化等能力。
+> **本实验怎么学**：先 `cargo run --features lab1` 看输出，再按【二、背景知识】对照 `entry.asm`、`main.rs`、`os-sbi` 读代码。Lab1 代码已能跑通，重点是理解启动链，不是从零实现。
 
-lab1 涉及的代码分布在以下文件（路径相对 `os-lab/`）。建议先浏览一遍，边看边想「它对应背景知识里的哪一步」：
+主要文件（路径相对 `os-lab/`）：
 
+| 文件 | 角色 |
+| --- | --- |
+| `kernel/src/entry.asm` | 汇编入口：设栈、`call rust_main` |
+| `kernel/src/main.rs` | `#![no_std]` / `clear_bss` / `rust_main` |
+| `os-sbi/src/lib.rs` | SBI `ecall` 封装（输出、关机） |
+| `kernel/src/console.rs` | `println!` 包装 |
+| `kernel/linker.ld` | 链接地址 `0x80200000` |
 
-| 文件                      | 角色               | 你要重点理解的点                                                     |
-| ----------------------- | ---------------- | ------------------------------------------------------------ |
-| `kernel/src/entry.asm`  | 汇编入口             | 第一条指令做了什么、为什么入口先用汇编（设栈）而不是直接写 Rust                           |
-| `kernel/src/main.rs`    | Rust 入口          | `#![no_std]`/`#![no_main]` 的含义、`clear_bss` 的作用、panic 时怎么办    |
-| `os-sbi/src/lib.rs`     | SBI 调用（独立 crate） | 没有设备驱动时，内核如何「委托」OpenSBI 输出字符和关机；`lab1` feature 依赖 `os-sbi`   |
-| `kernel/src/console.rs` | 控制台              | 如何把「逐字节输出」包装成你熟悉的 `println!`（内部调用 `os_sbi::console_putchar`） |
-| `kernel/linker.ld`      | 链接脚本             | 为什么内核必须链接到固定地址 `0x80200000`（和固件约定一致）                         |
-
-
-> 提示：本实验不给完整代码讲解（那样就变成抄答案了）。每个文件的「为什么这么写」，请结合上面的【背景知识】自己读代码、想明白；想不通的地方正是【五、AI 提问模板】的用武之地。完整代码的逐行解读见 `labs/answers/lab1-answers.md`，**建议先自己读完再对照答案**。
-
-本实验分为三档任务，按顺序完成：
+> 完整逐行解读见 [answers/lab1-answers.md](answers/lab1-answers.md)。
 
 ### 任务一：跑通内核
 
@@ -236,18 +172,16 @@ os-lab kernel lab1 is running on QEMU virt.
 
 
 
-### 任务二：阅读理解与思考题（必做）
+### 任务二：阅读理解（必做）
 
-带着下面的问题去读代码。每个问题请先自己用「教材语言 + 代码位置」试着回答；**参考答案见** `labs/answers/lab1-answers.md`。
+参考答案见 [answers/lab1-answers.md](answers/lab1-answers.md)。
 
-1. 在 `entry.asm` 里，`_start` 为什么要先 `la sp, boot_stack_top` 再 `call rust_main`？如果直接 `call rust_main` 会发生什么？（提示：函数调用需要栈。）
-2. 在 `main.rs` 里，`rust_main` 为什么返回类型是 `-> !`（never）？`clear_bss()` 为什么必须在 `println!` 之前调用？
-3. 在 `os-sbi/src/lib.rs` 里，输出一个字符时 `a7` 和 `a0` 寄存器分别放了什么？关机和输出字符用的是同一个指令吗？（提示：对照教材里「系统调用号 + 参数」的模式。）
-4. 在 `linker.ld` 里，`BASE_ADDRESS = 0x80200000` 这个数字从哪里来？为什么内核必须链接到这个地址？如果把它改成别的值（如任务三修改 2 中的 `0x88000000`）会发生什么？
-5. OpenSBI 在启动过程中扮演什么角色？（启动阶段与运行阶段分别做什么？）
-6. `#![no_std]` 与 `#![no_main]` 分别解决什么问题？去掉其中任意一个会怎样？
-
-> 阅读提示：对照【2.3 执行流程时序图】，把「一段字符从你的代码走到屏幕」的完整链路在脑中走一遍。能用自己的话讲清这张图，lab1 就过关了。
+1. `_start` 为什么要先设 `sp` 再 `call rust_main`？
+2. `rust_main` 为何返回 `-> !`？`clear_bss()` 为何必须在 `println!` 之前？
+3. SBI 输出字符时 `a7`/`a0` 各放什么？关机和输出是否同一条 `ecall`？
+4. `BASE_ADDRESS = 0x80200000` 从哪来？改成 `0x88000000` 会怎样？
+5. OpenSBI 在启动阶段与运行阶段分别做什么？
+6. `#![no_std]` 与 `#![no_main]` 各解决什么问题？
 
 
 
@@ -284,9 +218,22 @@ println!("Hello, OS! 我学号是 xxx");
 
 
 
+### 提交清单（自查）
+
+- [ ] `cargo run -p kernel --features lab1` 输出 `Hello, OS!` 且 QEMU 正常退出
+- [ ] 能说明 OpenSBI → `_start` → `rust_main` → SBI 输出的顺序
+- [ ] 能解释 `0x80200000` 与 `linker.ld` 的关系
+- [ ] 完成任务二 6 道阅读理解（对照答案自查）
+
 ## 四、验证
 
-本实验以【任务一】的 `cargo run -p kernel --features lab1` 能输出 `Hello, OS!` 并正常退出为主要验证标准。其余任务的验证标准见各任务说明。
+| 验证项 | 命令 | 通过标准 |
+| --- | --- | --- |
+| 主编译 | `cargo check -p kernel --features lab1` | 无 error |
+| QEMU | `cargo run -p kernel --features lab1 --release` | `Hello, OS!`、`os-lab kernel lab1 is running on QEMU virt.` |
+| 组件单测（可选） | `cargo test -p os-sbi --target x86_64-pc-windows-msvc` | 2 项通过 |
+
+手册交互清单见 handbook「Lab1 裸机启动」页（`handbook/data/labs.json`）。
 
 ## 五、AI 提问模板
 
@@ -296,5 +243,15 @@ println!("Hello, OS! 我学号是 xxx");
 2. **现象解释型**：「如果我把 `linker.ld` 里的 `BASE_ADDRESS` 从 `0x80200000` 改成 `0x80100000`，重新跑会怎样？为什么有时看起来『还能跑』？」
 3. **代码追因型**：「我的内核跑起来输出了一串乱码，但没 panic，最可能的原因是什么？提示：和 `clear_bss`、加载器初始化有关吗？」
 4. **对比深化型**：「`#![no_std]` 之后我还能用 `Option`、`Result` 吗？为什么？它们和 `std::` 里的版本有什么区别？」
-5. **动手探索型**：「我想在 `Hello, OS!` 后面再打印一个数字 `42`，用 `println!("{}", 42)` 行不行？需要满足什么前提？」
+5. **动手探索型**：「想在 `Hello, OS!` 后打印数字 `42`，需要满足什么前提？」
+
+## 六、思考题与参考答案
+
+完整答案与代码走读见 [answers/lab1-answers.md](answers/lab1-answers.md)。
+
+### 习题 1（链接地址）
+
+**为什么 OpenSBI 跳到 `0x80200000`，内核就必须链接到同一地址？**
+
+参考答案：CPU 从该物理地址取指执行。链接脚本决定符号与段在镜像中的偏移；若 `BASE_ADDRESS` 与固件跳转地址不一致，PC 指向的内容不是本内核的指令，表现为无输出或 QEMU 报错。OpenSBI 日志中 `Domain0 Next Address : 0x0000000080200000` 即这一约定。
 

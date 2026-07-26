@@ -68,11 +68,15 @@ Power check ok
 App 1 exited with code 0
 Yield test start
 Yield round
+Yield round
+Yield round
+Yield round
+Yield round
 App 2 exited with code 0
 All user apps exited.
 ```
 
-说明：当前批处理调度器在单 app 调用 `yield` 且无其他 Ready 任务时会提前关机，故 yield 测试可能只打印一行 `Yield round`；`SYS_YIELD` 路径已被触发。完整协作式轮转属成员 A 后续优化。
+说明：yield 程序循环 5 次 `sys_yield`，lab2/lab3 均应完整输出 **5 轮** `Yield round`。若只有 1 轮，说明 trap 保存/恢复或 `SYS_YIELD` 分发路径可能被改坏。
 
 ## Day 3 / Lab3 验证（成员 B Day3）
 
@@ -117,7 +121,7 @@ App 2 exited with code 0
 All user apps exited.
 ```
 
-说明：lab3 启用分页后 yield 应完整输出 **5 轮** `Yield round`（lab2 通常只有 1 轮），这是虚存与任务切换改进的可观察差异。
+说明：lab3 启用分页后 yield 同样应完整输出 **5 轮** `Yield round`（与 lab2 相同）。Lab3 的可观察差异主要在虚存隔离（独立页表、`U` 位权限），而非 yield 轮次。
 
 ## Day 4 / Lab4 验证（成员 B Day4）
 
@@ -145,6 +149,7 @@ QEMU 输出中应出现（OpenSBI 启动日志可忽略）：
 ```text
 I am parent, child_pid=2
 I am child, pid=2
+waited pid done, exit_code=0
 Process 2 exited with code 0
 fork_test pass
 Process 1 exited with code 0
@@ -240,7 +245,7 @@ Linux/macOS：将 `cargo test` 的 `--target` 换为对应 host triple；`os-vm`
 | lab5 | `Hello from testfile!`、`fs_test pass`、`pipe_test pass`、`All processes exited.` |
 | lab4 | `I am parent`、`I am child`、`fork_test pass`、`All processes exited.` |
 | lab3 | `409684505`、5 轮 `Yield round`、`All user apps exited.` |
-| lab2 | `409684505`、≥1 轮 `Yield round`、`All user apps exited.` |
+| lab2 | `409684505`、5 轮 `Yield round`、`All user apps exited.` |
 | lab1 | `Hello, OS!`、`os-lab kernel lab1 is running on QEMU virt.` |
 
 各 Lab 细则见上文 Day1–Day5 各节。

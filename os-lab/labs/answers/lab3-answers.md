@@ -1,7 +1,7 @@
 # Lab3 参考答案与代码解读
 
 > 配套实验指导：[lab3-memory.md](../lab3-memory.md)  
-> 对应内容：【任务二：阅读理解与思考题（必做）】参考答案 + 代码解读  
+> 对应内容：【任务二：阅读理解（必做）】参考答案 + 代码解读  
 > **使用建议**：先独立完成实验文档【任务二】，再来对答案。
 
 ## 一、完整代码逐行解读
@@ -178,7 +178,7 @@ pub fn init() {
 
 lab3 的 trap 入口多了 `activate_kernel` 和 `sscratch` 设置——确保分页开启后，trap 进内核时内核代码能被正确访问，返回用户态时再切回用户视角。这是分页时代 trap 必须多走的步骤。
 
-## 二、任务二：阅读理解与思考题参考答案
+## 二、任务二：阅读理解参考答案
 
 ### 第 1 题：Sv39 虚拟地址怎么拆？`0x1ff` 代表什么？
 
@@ -195,8 +195,6 @@ lab3 的 trap 入口多了 `activate_kernel` 和 `sscratch` 设置——确保�
 - `vpn & 0x1ff` 取 VPN0
 
 `0x1ff = 511 = 0b111111111` 是 9 位掩码，保证只取 9 位索引。页内偏移不在 `indexes()` 里处理，而是用 `VirtAddr::page_offset()` 取低 12 位（`& 0xfff`）。
-
-> 一句话：39 位 = 3 个 9 位 VPN + 12 位 offset；`0x1ff` 是每级索引的 9 位掩码。
 
 ### 第 2 题：PTE 里为什么物理帧号左移 10 位？
 
@@ -246,16 +244,23 @@ kernel_space.map_identical_region(stext, FRAME_POOL_START, kperm);
 
 ### 第 5 题：lab3 的 trap 入口比 lab2 多了什么？
 
-lab2 无分页，物理地址直访，trap 进内核时不管 `satp`，内核代码始终可访问。
+要分两层看：
 
-lab3 开分页后，用户程序运行在自己的页表里（含用户区映射）。trap 进内核时必须确保**内核代码和数据可访问**——否则 trap handler 自身就会页错误。
+**汇编层（`trap.asm`）**：`__alltraps` / `__restore` 与 lab2 **共用同一套代码**，仍靠 `csrrw sp, sscratch, sp` 切换用户/内核栈，寄存器保存布局不变。
 
-lab3 在 trap 入口增加了：
+**Rust 层（分页后的额外工作）**：
 
-- **`activate_kernel`**：切回内核地址空间（写内核 `satp`），保证 trap handler 在内核映射下安全运行
-- **`sscratch` 相关设置**：配合 lab2 已有的用户/内核栈切换，分页时代还需在返回用户态时恢复用户页表
+lab2 无分页，物理地址直访，`trap_handler` 不必管 `satp`，`run_user_task` 走 `restore_to_user`。
 
-完整链路：用户态运行（用户 satp）→ trap → 切内核 satp → 内核处理 → 恢复用户 satp → `sret` 回用户态。这是分页时代 trap 必经的额外步骤，lab2 不需要。
+lab3 开分页后，用户程序运行在自己的页表里。trap 进内核时必须切回内核映射，否则 trap handler 自身会页错误；返回用户态前也要切回用户 `satp`。
+
+lab3 因此增加了：
+
+- **`trap_handler` 开头 `activate_kernel`**：写内核 `satp`，保证内核代码/数据可访问
+- **`trap::init` 里 `write_sscratch(sp)`**：记录内核栈顶，配合双栈切换
+- **`run_user_task` → `restore_to_user_paged`**：恢复寄存器前切换用户 `satp`，再 `sret`
+
+完整链路：用户态运行（用户 satp）→ trap → `activate_kernel` → 内核处理 → `restore_to_user_paged` 切用户 satp → `sret` 回用户态。这是分页时代 trap 必经的额外步骤，lab2 不需要。
 
 ## 三、任务三动手修改的现象参考
 
