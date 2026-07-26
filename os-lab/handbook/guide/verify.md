@@ -15,23 +15,25 @@ cd os-lab" />
 
 <CopyCommand command="cargo run -p kernel --features lab1 --release" />
 
-期望：`Hello, OS!`
+期望：`Hello, OS!`、`os-lab kernel lab1 is running on QEMU virt.`
 
 ### Lab2
 
 <CopyCommand command="cargo run -p kernel --features lab2 --release" />
 
-期望：`409684505`、`Yield round`
+期望：`Hello from user app!`、`409684505`、5 行 `Yield round`、`All user apps exited.`
 
 ### Lab3
 
 <CopyCommand command="cargo run -p kernel --features lab3 --release" />
 
+期望：与 Lab2 相同测例输出（`Hello from user app!`、`409684505`、5 行 `Yield round`、`All user apps exited.`）
+
 ### Lab4
 
 <CopyCommand command="cargo run -p kernel --features lab4 --release" />
 
-期望：`fork_test pass`
+期望：`I am parent`、`I am child`、`waited pid done`、`fork_test pass`、`All processes exited.`
 
 ### Lab5
 

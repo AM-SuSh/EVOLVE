@@ -12,8 +12,8 @@
       "checklist": [
         { "id": "read", "label": "阅读实验指导（问题场景 + 背景知识）" },
         { "id": "run", "label": "在 QEMU 中跑通 lab1" },
-        { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
-        { "id": "review", "label": "对照 labs/answers/lab1-answers.md 自查" }
+        { "id": "exercise", "label": "完成【任务二】阅读理解" },
+        { "id": "review", "label": "对照参考答案自查" }
       ]
     },
     {
@@ -24,12 +24,12 @@
       "guide": "/labs/lab2-trap-and-task",
       "answers": "/answers/lab2-answers",
       "verifyCmd": "cargo run -p kernel --features lab2 --release",
-      "expected": ["409684505", "Yield round"],
+      "expected": ["Hello from user app!", "409684505", "Yield round", "All user apps exited."],
       "checklist": [
         { "id": "read", "label": "理解 trap 入口与返回路径" },
         { "id": "run", "label": "跑通 lab2 用户态测例" },
-        { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
-        { "id": "review", "label": "对照 labs/answers/lab2-answers.md 自查" }
+        { "id": "exercise", "label": "完成【任务二】阅读理解" },
+        { "id": "review", "label": "对照参考答案自查" }
       ]
     },
     {
@@ -40,12 +40,12 @@
       "guide": "/labs/lab3-memory",
       "answers": "/answers/lab3-answers",
       "verifyCmd": "cargo run -p kernel --features lab3 --release",
-      "expected": ["lab3"],
+      "expected": ["Hello from user app!", "409684505", "Yield round", "All user apps exited."],
       "checklist": [
         { "id": "read", "label": "理解物理页与页表映射" },
         { "id": "run", "label": "跑通 lab3 QEMU 输出" },
-        { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
-        { "id": "review", "label": "对照 labs/answers/lab3-answers.md 自查" }
+        { "id": "exercise", "label": "完成【任务二】阅读理解" },
+        { "id": "review", "label": "对照参考答案自查" }
       ]
     },
     {
@@ -56,12 +56,12 @@
       "guide": "/labs/lab4-process",
       "answers": "/answers/lab4-answers",
       "verifyCmd": "cargo run -p kernel --features lab4 --release",
-      "expected": ["fork_test pass"],
+      "expected": ["I am parent", "I am child", "waited pid done", "fork_test pass", "All processes exited."],
       "checklist": [
         { "id": "read", "label": "理解 fork/exec/wait 语义" },
         { "id": "run", "label": "跑通 fork_test" },
-        { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
-        { "id": "review", "label": "对照 labs/answers/lab4-answers.md 自查" }
+        { "id": "exercise", "label": "完成【任务二】阅读理解" },
+        { "id": "review", "label": "对照参考答案自查" }
       ]
     },
     {

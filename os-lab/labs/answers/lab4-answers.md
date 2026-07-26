@@ -1,7 +1,7 @@
 # Lab4 参考答案与代码解读
 
-> 配套实验指导：[lab4-process.md](../lab4-process.md)  
-> 对应内容：【任务二：阅读理解与思考题（必做）】参考答案 + 代码解读  
+> 配套实验指导：[lab4-process.md](/labs/lab4-process)  
+> 对应内容：【任务二：阅读理解（必做）】参考答案 + 代码解读  
 > **使用建议**：先独立完成实验文档【任务二】，再来对答案。
 
 ## 一、完整代码逐行解读
@@ -142,7 +142,7 @@ pub fn sys_exit(exit_code: i32) -> ! {
 
 开机时 `process::init()` 创建第一个进程 `initproc`（PID 1），它没有父进程（`parent_slot: None`）。initproc 跑 `fork_test`，fork 出子进程演示进程创建。所有进程都是 initproc 的后代，形成进程树。
 
-## 二、任务二：阅读理解与思考题参考答案
+## 二、任务二：阅读理解参考答案
 
 ### 第 1 题：fork 如何实现「一次调用返回两次」？为何子进程 a0 要设为 0？
 
@@ -162,8 +162,6 @@ child_pid as isize                     // 父进程返回子 PID
 
 **子进程 a0 设为 0 是 Unix 约定**：0 表示「我是子进程」，非 0 表示「我是父进程，这是子 PID」。若子进程也返回 PID，程序就无法简洁区分身份。
 
-> 一句话：复制 TrapContext + 子进程 a0=0 + 父进程返回 PID = 一次调用返回两次。
-
 ### 第 2 题：子进程从哪里开始执行？`cx.sepc` 传给 `spawn` 意味着什么？
 
 子进程从**父进程调用 fork 的下一条指令**开始，**不是**从 `main` 开头。
@@ -171,8 +169,6 @@ child_pid as isize                     // 父进程返回子 PID
 `spawn(..., cx.sepc, ...)` 把父进程当前的 `sepc`（程序计数器）传给子进程。子进程 TrapContext 是副本，`sepc` 指向 fork 调用点——调度到子进程时，CPU 从同一位置继续执行。
 
 如果从 `main` 重跑，子进程会重复父进程所有初始化，那就不是「复制当前状态」而是「重跑程序」，违背 fork 语义。
-
-> 一句话：子进程 = 父进程在 fork 调用点的快照；`cx.sepc` 决定快照恢复后从哪条指令继续。
 
 ### 第 3 题：exec 如何改地址空间与 TrapContext？为何 exec 之后的原代码跑不到？
 
@@ -183,8 +179,6 @@ child_pid as isize                     // 父进程返回子 PID
 
 PID、父子关系不变（没创建新进程），但 CPU 从新 entry 开始跑。原 `exec()` 之后的指令地址已不在 TrapContext 里，不可能作为返回目标——这就是「换身不换魂」。
 
-> 一句话：exec = 替换地址空间 + 重置 TrapContext；原程序后续代码在语义上「消失」。
-
 ### 第 4 题：`exec("hello")` 后的 `After exec` 会执行吗？
 
 **不会。**
@@ -194,7 +188,7 @@ PID、父子关系不变（没创建新进程），但 CPU 从新 entry 开始�
 1. **地址空间**：exec 把用户空间整个换成 hello 的 ELF 映射，`exec_test` 的代码（含 `After exec`）不再被映射或已被覆盖。
 2. **TrapContext**：即使旧页偶存，`sepc` 也指向 hello 入口而非 `After exec` 那条 `println`，CPU 不会从那里继续。
 
-`exec_test.rs` 里 `exec("hello")` 成功返回 -1 或 0 的分支都跑不到——成功时 TrapContext 已被重置，原程序后续代码全部失效。这正是教材 exec 语义：成功后原程序「不复存在」。
+`exec_test.rs` 里 `exec("hello")` 成功后不会回到用户态原程序——`sys_execve` 调用 `run_user_task` 直接从新入口跑 hello，原程序后续代码（含 `After exec`）在语义上全部失效。若 exec 失败返回 -1，才会继续执行 `After exec`。这正是教材 exec 语义：成功后原程序「不复存在」。
 
 ### 第 5 题：wait 时父进程如何「等」？`loop` + `run_next_process` 是什么模式？
 
@@ -217,8 +211,6 @@ loop {
 - 子进程后来 exit 变 Zombie → 父进程再次被调度 → loop 重新检查 → 找到并回收。
 
 这种 **`loop { 检查条件; 不满足就让出 }`** 的模式叫**阻塞（block/sleep）**：条件不满足时不占 CPU，被唤醒后再试。是信号量、条件变量等同步机制的基础形态。
-
-> 一句话：wait = 循环查僵尸 + 没有就让出 CPU；「找不到就让出」= 阻塞等待。
 
 ## 三、任务三动手修改的现象参考
 
