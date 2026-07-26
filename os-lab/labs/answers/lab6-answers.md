@@ -1,20 +1,21 @@
 # Lab6 参考答案与代码解读
 
-> 本文件是 [lab6-disk-fs.md](../lab6-disk-fs.md) 的配套答案，含代码走读与 [lab6-exercises.md](../exercises/lab6-exercises.md) 习题答案。  
-> **使用建议**：先独立完成实验任务二与文字习题，再对照本文件。
+> 配套实验指导：[lab6-disk-fs.md](../lab6-disk-fs.md)  
+> 对应内容：【任务二：阅读理解与思考题（必做）】参考答案 + 代码解读  
+> **使用建议**：先独立完成实验文档【任务二】，再来对答案。
 
-## 一、代码走读要点
+## 一、完整代码逐行解读
 
 ### 1.1 `kernel/build.rs`：fs.img 打包
 
-- `app_names()` 在 `CARGO_FEATURE_LAB6` 下包含 `lab6_usertest`、`file_test`、`link_test` 等全部测例 ELF。
-- `pack_fs_image()` 创建 64×2048 个块（512 B/块）的镜像，用 easy-fs 格式化后写入各 app 与 `filea`/`testfile`。
+- `app_names()` 在 `CARGO_FEATURE_LAB6` 下包含 `lab6_usertest`、`file_test`、`link_test` 等测例 ELF。
+- `pack_fs_image()` 创建镜像，用 easy-fs 格式化后写入各 app 与 `filea`/`testfile`。
 - **`initproc` 指向 `lab6_usertest`**，不再使用 Lab5 的内嵌 app 索引。
 
 ### 1.2 `kernel/src/virtio_block.rs`
 
 - MMIO 区域由 `config.rs` 的 `VIRTIO_MMIO_BASE`（`0x1000_1000`）定义，`mm::map_mmio_devices()` 映射进内核页表。
-- 实现 `easy_fs::BlockDevice`：`read_block`/`write_block` 通过 virtqueue 与 QEMU virtio-blk 交互，最终读写 `fs.img` 对应扇区。
+- 实现 `easy_fs::BlockDevice`：`read_block`/`write_block` 经 virtqueue 与 QEMU virtio-blk 交互，最终读写 `fs.img` 对应扇区。逻辑块号 × 512 = 字节偏移。
 
 ### 1.3 `kernel/src/fs/disk.rs`：FileIndex 与 unlink
 
@@ -23,60 +24,52 @@ link:  别名表 aliases[path] → Arc<FileMeta>；同一 inode 的 nlink += 1
 unlink: 从 aliases 移除路径名，nlink -= 1；路径加入 hidden，避免立即 reopen
 ```
 
-**死锁规避**：不在持有 easy-fs 全局锁的路径上调用 `inode.clear()`。删除最后一个硬链接时，仅更新内存索引；磁盘 inode 的清理由 easy-fs 在合适时机处理，或保持教学简化。这与 progress.md 中 06-27 记录的参考环境修复思路一致。
+**死锁规避**：不在持有 easy-fs 全局锁的路径上调用 `inode.clear()`。删除最后一个硬链接时，仅更新内存索引。
 
-### 1.4 管道 fd 回归修复
+### 1.4 管道 fd 与普通文件分发
 
 `sys_read`/`sys_write` 先根据 `slots[fd]` 判断 `FdType`：
 
 - `PipeRead`/`PipeWrite`：直接调用 `sync::pipe_read`/`pipe_write`，**不**要求 `files[fd]` 非空。
 - `Regular`：从 `files[fd]` 取 `OpenedFile`，经 inode 读写磁盘。
 
-Lab5 内嵌 FS 中管道与普通文件共用一套槽位逻辑；Lab6 磁盘 FS 曾误要求管道 fd 也有 `OpenedFile`，导致 `pipe write failed`，已在联调中修复。
-
 ### 1.5 `spawn` 与 stride
 
-- `sys_spawn`：`fs::read_file_all(path)` 从磁盘读 ELF → `create_user_space_from_elf` → `ProcessManager::spawn`，子进程独立地址空间。
-- `sys_set_priority`：`prio < 2` 拒绝；否则更新 PCB 的 `priority`，`find_next_ready` 按 stride 最小者调度。
+- `sys_spawn`：从磁盘读 ELF → 建用户地址空间 → `ProcessManager::spawn`。
+- `sys_set_priority`：`prio < 2` 拒绝；否则更新 PCB 优先级，按 stride 调度。
 
-## 二、文字习题答案
+## 二、任务二：阅读理解与思考题参考答案
 
-### 习题 1：内嵌表 vs 磁盘 FS
+### 第 1 题：VirtIO、MMIO 与块号
 
-**运行时创建文件**：Lab5 无法在运行时创建（表编译期固定）。Lab6 通过 `openat(..., O_CREATE|...)` 在 easy-fs 根目录下 `create` 新 inode 并写数据块。
+MMIO 基址在 `config` 中定义为 `0x1000_1000`，映射进内核页表后，对该区域的 load/store 即访问设备寄存器。`read_block(block_id, buf)` 把请求填入 virtqueue 描述符（缓冲区地址、长度、读写方向），通知设备；设备完成后内核得到 512 字节块数据——对应 `fs.img` 上该扇区。
 
-**initproc 来源**：Lab5 为内核镜像内嵌 ELF 索引；Lab6 从 `fs.img` 内文件 `initproc` 加载，必须经过块设备与文件系统路径。
+**为何不能直接打开宿主机 `fs.img` 路径**：guest 内核运行在虚拟机内，只能通过设备模型访问磁盘。`build.rs` 在宿主机**编译期**生成镜像；**运行时**内核把它当作块设备扇区读写。
 
-**无 VirtIO 时**：内核无法访问 `fs.img`，`initproc` 加载失败或磁盘 FS 初始化失败，测例无法运行。
+### 第 2 题：initproc 与 CREATE
 
-### 习题 2：VirtIO 与 MMIO
+`pack_fs_image` 把 **`lab6_usertest`** 写成镜像内的 `initproc`。Lab5 从内核内嵌 ELF 索引加载；Lab6 必须经块设备 + 文件系统路径加载，才算「真实磁盘启动」。
 
-**MMIO**：把设备寄存器映射到物理地址空间，CPU 用普通 load/store 访问设备，而非专用 I/O 指令。
+**运行时创建文件**：Lab5 静态表无法真正 create；Lab6 通过 `openat(..., O_CREATE|...)` 在 easy-fs 根目录创建新 inode 并写数据块。
 
-**描述符**：通常包含缓冲区地址、长度、读写方向；设备按描述符完成 DMA 或模拟传输后标记完成。
+### 第 3 题：FileIndex、nlink 与 unlink 死锁
 
-**512 字节**：easy-fs 与 VirtIO 块设备统一块大小，逻辑块号 × 512 = 字节偏移。
+硬链接：`nlink += 1`，两路径共享同一 inode/`ino`。`unlink` 一路径：`nlink -= 1`，另一路径仍可打开。
 
-### 习题 3：硬链接与 fstat
+**为何不 `inode.clear()`**：`fs.lock()` 已持自旋锁，若 `clear()` 内部再 `lock()`，同一执行流无法重入 → 永久自旋。`FileIndex` 只改索引与计数，规避该路径。
 
-**link 后**：两次 `fstat` 的 `ino` 相同；`nlink` 为 2（两个路径指向同一 inode 元数据）。
+### 第 4 题：管道 vs 普通文件分发
 
-**unlink 别名后**：`file0` 的 `nlink` 变为 1；`file0` 仍可打开读写。
+管道走 `PipeRead`/`PipeWrite` → `sync` 环形缓冲；普通文件走 `OpenedFile` + inode。管道没有 `OpenedFile`，若误查 `files[fd]` 会得到 `pipe write failed`——这是 Lab6 联调修过的回归点。
 
-**与复制的区别**：硬链接共享数据块与 inode，不增加磁盘数据副本；复制会创建新 inode 并拷贝内容。
+### 第 5 题：spawn / exec / mmap
 
-### 习题 4：unlink 死锁
+- **spawn**：创建**新**子进程，从磁盘路径加载 ELF，父进程继续。
+- **execve**：替换**当前**进程镜像，不新增进程。
+- **mmap 匿名页**与 ELF 段都在页表建映射；ELF 有文件 backing 与段权限，匿名 mmap 无文件、由 `map_anonymous` 分配帧。
 
-**死锁原因**：`fs.lock()` 已持有自旋锁，若 `clear()` 内部再次 `lock()`，同一线程无法重入，永远自旋。
+## 三、任务三动手修改的现象参考
 
-**本内核做法**：`FileIndex` 维护路径别名与 `nlink`，`unlink` 只改索引与计数，避免在持锁临界区调用会再次加锁的 `clear()`。
-
-**mass 回归**：快速连续 create/unlink 多文件，验证无挂死、无泄漏，锁粒度足够细。
-
-### 习题 5：mmap、spawn、stride
-
-**mmap vs ELF**：二者都在页表建立映射；ELF 段有文件 backing 与特定权限，匿名 mmap 无文件、由 `map_anonymous` 分配帧。
-
-**spawn vs exec**：`spawn` 创建子进程，父进程继续；`exec` 替换**当前**进程镜像，不新增进程。
-
-**set_priority(1)**：教学内核要求 `prio ≥ 2`；数值越大 stride 步长越大，在 stride 调度中通常获得相对更多 CPU 时间（与具体 `pass()` 实现相关，见 `process.rs`）。
+**修改 1**：预置文本进 `fs.img` 后，用户程序 `openat`+`read` 应能打印其内容。  
+**修改 2**：`linkat` 前 `nlink` 多为 1；成功后两路径 `ino` 相同、`nlink` 为 2；`unlink` 别名后原路径 `nlink` 回到 1。  
+**修改 3**：短文重点写清「教学简化 vs 参考实现」的取舍即可。

@@ -57,6 +57,85 @@
 
 > AI 工具使用声明、成果归属与交互记录见 [项目总报告.md §8](项目总报告.md#8-开发时使用-ai-工具的成果) 与 `os-lab/docs/ai-collaboration.md`。
 
+## 2026-07-26 - Task: 纠正 Lab6–8 环境准备与验证命令边界
+
+### What was done
+
+- 从 Lab6/7/8「环境准备」代码块中移除 `make test-labN`；该节只保留预构建与产出说明。
+- 在环境准备末尾用一句话指向【任务一】的 `make test-labN`，并保留勿用裸 `cargo run` 的 VirtIO 提醒。
+
+### Testing
+
+- 人工确认三份文档环境准备代码块仅含 `cargo build`；`make test-labN` 仍出现在任务一/验证节。
+
+### Notes
+
+- `os-lab/labs/lab6-disk-fs.md`、`lab7-ipc-signal.md`、`lab8-thread-sync.md`：环境准备与验证职责分离。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout --` 上述三文件与本条记录。
+
+## 2026-07-26 - Task: 按复核指南全量复核实验设计并修复偏差
+
+### What was done
+
+- 按 `Lab手册复核指南.md` 核对 Lab1–8：H2 骨架齐全（零～五、无强制六、）；任务二题数与 answers 一一对应（Lab1=6，Lab2–8=5）；tutor `context.md` 八个齐全；`labs.json` / `start.md` / `verify.md` 验证命令 Lab6–8 为 `make test-labN`。
+- 清除 exercises 入口残留：`tutor-model.ts` Lab6–8 资源卡改链到正文【任务二】；`sync-content.mjs` 不再复制 `labs/exercises/`，历史 `/exercises/` 链接改写到对应 Lab 页，并保留清理目录以免旧副本残留。
+- 补齐 Lab6 / Lab8「环境准备」：`cd os-lab`、预构建、`make test-labN` 与勿用裸 `cargo run` 提示，与 Lab7 一致。
+- 工作区已删除 `labs/exercises/*`（相对 HEAD 为删除态）；手册侧同步后无 `handbook/exercises/`。
+
+### Testing
+
+- 题数脚本：lab1 6/6，lab2–8 均为 5/5。
+- `cd os-lab/handbook && npm install && npm run build`：sync 39 个 markdown（含 8 个工作台页），VitePress build 通过（仅已有 `ld` 高亮回退提示）。
+- 检索确认 `tutor-model.ts` / `labs.json` / `start.md` 无可用 `/exercises/` 入口。
+
+### Notes
+
+- `os-lab/handbook/.vitepress/theme/tutor-model.ts`：去掉 Lab6–8 exercises 链；文案改为任务二；「五个」改为「八个」。
+- `os-lab/handbook/scripts/sync-content.mjs`：停同步 exercises，改写历史习题链接。
+- `os-lab/labs/lab6-disk-fs.md`、`lab8-thread-sync.md`：环境准备与 Lab7 对齐。
+- `os-lab/labs/exercises/*`：工作区已删（待提交时纳入）。
+- `os-lab/handbook/package-lock.json` 等：因本机缺依赖执行 `npm install` 可能有锁文件变动。
+- `progress.md`：追加本轮记录。
+- 回滚方式：还原上述文件；exercises 可用 `git checkout HEAD -- os-lab/labs/exercises`。
+- 未在本轮重跑 QEMU `make test-lab6/7/8`（验证命令文档与 `labs.json` 已一致；全链运行留给提交前抽检）。
+
+## 2026-07-26 - Task: 按当前仓库现状重写 Lab手册复核指南
+
+### What was done
+
+- 重写 `os-lab/labs/Lab手册复核指南.md`：补充「当前材料现状」（Lab1–8 全开、题目在任务二、无独立 exercises、Lab6–8 用 make）、权威源表、H2 骨架与工作台阶段映射、联动文件（含 tutor prompts / start.md）、写作注意与验收/误区清单。
+- 明确本指南权威路径在 `os-lab/labs/`，并提示 sync/tutor-model 若残留 `/exercises/` 应改链到任务二或 answers，而非恢复习题目录。
+
+### Testing
+
+- 人工核对指南含「当前材料现状」「不再维护 exercises」「make test-labN」及验收清单 6 项。
+
+### Notes
+
+- `os-lab/labs/Lab手册复核指南.md`：按拉取远程后的现状全文更新。
+- `progress.md`：追加本轮记录。
+- 回滚方式：删除或还原该指南文件，并删除本条 progress 记录。
+
+## 2026-07-26 - Task: 保留本地改动并快进合并 origin/main
+
+### What was done
+
+- `git stash -u` 暂存本地未提交改动后，对 `origin/main` 执行快进拉取（`ba8fadd` → `c404726`，含 handbook 工作台重构等 4 个远程提交）。
+- `stash pop` 后合并冲突：`progress.md` 保留远程与本地两侧进度记录；`handbook/guide/start.md` 以远程工作台入口文案为底，保留本地 Lab6–8 答案链接与 VirtIO/`make test-labN` 说明。
+- 冲突解决后取消暂存，本地手册/Lab 改动仍为工作区未提交状态，待核实后再上传。
+
+### Testing
+
+- `git status -sb`：`main` 与 `origin/main` 对齐（`0 0`）；本地 Lab 文档与 `Lab手册复核指南.md` 等改动仍在。
+- 人工确认 `start.md` / `progress.md` 无冲突标记。
+
+### Notes
+
+- `os-lab/handbook/guide/start.md`：合并远程与本地表述。
+- `progress.md`：合并双方日志并追加本条。
+- 回滚方式：已丢弃本次 pull 用 stash；若需回到拉取前，可用 `git reset --hard ba8fadd`（会丢掉已合并的远程提交，慎用）；仅撤销本条记录不影响已拉取内容。
+
 ## 2026-07-26 - Task: 合并后一致性收口、构建死锁修复与 AI 配置前端化
 
 ### What was done
@@ -171,6 +250,231 @@
 - 当前验证记录需要学生粘贴 QEMU 关键输出；自动执行/解析 QEMU 与 host test 尚未完成。
 - 尚待完成：报告雷达图和时间线、Lab1/3/4/5 专用阶段提示词、样本会话与提示词 CHANGELOG、`ai-learning-environment.md` 设计文档。
 - 回滚时只需移除上述 AI 导师组件、代理与 `os-lab/tutor/` 新增内容，并删除本条进度记录；不要回滚仓库内其他并行修改。
+
+## 2026-07-26 - Task: 修复手册高优问题并更新复核指南 exercises 表述
+
+### What was done
+
+- 修复 Lab4 问题场景中 `fork` / `exec` 加粗 Markdown 断裂。
+- 修复 Lab5 开篇 fd / 管道 / 自旋锁加粗 Markdown 断裂。
+- 补全 Lab7「环境准备」：`cd os-lab`、预构建说明、`make test-lab7` 与勿用裸 `cargo run` 提示，与任务一/Lab6–8 一致。
+- 更新 `Lab手册复核指南.md`：删除已不存在的 `labs/exercises/` 权威源条目，改为说明思考题在正文【任务二】、答案在 `answers/`。
+
+### Testing
+
+- 人工核对 Lab4/Lab5 相关句子加粗成对闭合；Lab7 环境准备代码块含 `make test-lab7`。
+- 人工核对复核指南表格不再指向 `exercises/`，并含「不再维护独立 exercises」说明。
+
+### Notes
+
+- `os-lab/labs/lab4-process.md`：修正 fork/exec 加粗。
+- `os-lab/labs/lab5-fs-and-sync.md`：修正 fd/管道/自旋锁加粗。
+- `os-lab/labs/lab7-ipc-signal.md`：补全环境准备与 VirtIO 提醒。
+- `os-lab/labs/Lab手册复核指南.md`：更新权威源表与 exercises 表述（曾为只读，已清只读后写入）。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab4-process.md os-lab/labs/lab5-fs-and-sync.md os-lab/labs/lab7-ipc-signal.md "os-lab/labs/Lab手册复核指南.md" progress.md`。
+
+## 2026-07-26 - Task: 润色 Lab8 前言首句
+
+### What was done
+
+- 将 `lab8-thread-sync.md` 开篇残句改为：「从 Lab1 走到这里，你已经亲手把一个最小的内核，一步步搭到了如今的样子。」
+
+### Testing
+
+- 人工确认与后文「不妨先回头看一眼」衔接通顺。
+
+### Notes
+
+- `os-lab/labs/lab8-thread-sync.md`：仅改开篇一句。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab8-thread-sync.md progress.md`。
+
+## 2026-07-26 - Task: 重写 Lab8 前言（收官总结 + 本实验引入）
+
+### What was done
+
+- 重写 `lab8-thread-sync.md` 标题下前言：标明为最后一 Lab；回顾 Lab1–7 与虚拟化 / 持久性 / 并发主线，再引入线程、阻塞同步与死锁；收束到「教学 OS 三大主题脚印」。
+
+### Testing
+
+- 人工确认前言衔接到「零、开始之前」与「一、问题场景」；后文任务未改。
+
+### Notes
+
+- `os-lab/labs/lab8-thread-sync.md`：仅改标题下前言。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab8-thread-sync.md progress.md`。
+
+## 2026-07-26 - Task: 扩写 Lab7 前言（更细、更易读）
+
+### What was done
+
+- 扩写 `lab7-ipc-signal.md` 标题下前言：承接 Lab6 能力，用「传字节 vs 递事件」讲清 IPC 与信号的差别，并列出本实验三件要做的事；未改问题场景与后文任务。
+
+### Testing
+
+- 人工确认前言衔接到「零、开始之前」与「一、问题场景」。
+
+### Notes
+
+- `os-lab/labs/lab7-ipc-signal.md`：仅改标题下前言。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab7-ipc-signal.md progress.md`。
+
+## 2026-07-26 - Task: 润色 Lab6 背景知识开篇过渡句
+
+### What was done
+
+- 润色 `lab6-disk-fs.md`「二、背景知识」首句，使从问题场景过渡到「先块设备、再名字与元数据」更自然。
+
+### Testing
+
+- 人工通读该句与 2.1 小节标题的衔接。
+
+### Notes
+
+- `os-lab/labs/lab6-disk-fs.md`：仅改背景知识开篇一句。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab6-disk-fs.md progress.md`。
+
+## 2026-07-26 - Task: 理顺 Lab6 前言中持久性分层表述
+
+### What was done
+
+- 调整 `lab6-disk-fs.md` 前言第二段：按「驱动层 → 文件系统层 → 用户接口」自上/下叙事，再对应到 VirtIO 与 easy-fs，逻辑更顺。
+
+### Testing
+
+- 人工通读该段，确认与前后句衔接自然。
+
+### Notes
+
+- `os-lab/labs/lab6-disk-fs.md`：仅改前言第二段。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab6-disk-fs.md progress.md`。
+
+## 2026-07-26 - Task: 扩写 Lab6 前言（更细、更流畅）
+
+### What was done
+
+- 扩写并理顺 `lab6-disk-fs.md` 标题下前言：承接 Lab5 能力与局限，自然过渡到持久性与本实验要跑通的「接盘 → 找文件 → 元数据」链路；未改问题场景与后文任务。
+
+### Testing
+
+- 人工确认前言仍衔接到「零、开始之前」与「一、问题场景」。
+
+### Notes
+
+- `os-lab/labs/lab6-disk-fs.md`：仅改标题下前言三段。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab6-disk-fs.md progress.md`。
+
+## 2026-07-26 - Task: 按 Lab5 要求改写 Lab6–8 前言/问题场景/背景知识
+
+### What was done
+
+- 按 Lab5 已定调重写 `lab6-disk-fs.md`、`lab7-ipc-signal.md`、`lab8-thread-sync.md`：学生向前言；问题场景以提问为主、不当场给完答案；背景知识加细并与问号自然衔接；任务一/二/三、验证与 AI 模板保留。
+
+### Testing
+
+- 人工确认三份文档均含「一、问题场景」问号列表与展开后的「二、背景知识」，且 `make test-labN` 命令与预期输出未改。
+
+### Notes
+
+- `os-lab/labs/lab6-disk-fs.md`、`lab7-ipc-signal.md`、`lab8-thread-sync.md`：重写零～二节叙述，三～五节结构保留。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout --` 上述三个 lab 文件与 `progress.md`。
+
+## 2026-07-26 - Task: 补全误删的 Lab5 后半部分
+
+### What was done
+
+- 恢复 `lab5-fs-and-sync.md` 被截断的「三、实验任务」后半（任务一/二/三）以及「四、验证」「五、AI 提问模板」；并修正开篇加粗标记。
+
+### Testing
+
+- 人工确认文档结构为零～五完整，任务命令与预期输出与改写前一致。
+
+### Notes
+
+- `os-lab/labs/lab5-fs-and-sync.md`：补全后半并修开篇格式。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab5-fs-and-sync.md progress.md`。
+
+## 2026-07-26 - Task: 重写 Lab5 背景知识（衔接问题场景）
+
+### What was done
+
+- 重写 `lab5-fs-and-sync.md`「二、背景知识」：按「fd → 内嵌文件 → 管道 → 数据竞争 → 自旋锁」展开，叙述加细；与问题场景中的三个问号自然呼应，但不显式点题作答。
+
+### Testing
+
+- 人工确认仍覆盖原知识点（fd 表、`FdType`、`DEFAULT_FILES`、环形缓冲、fork 继承与引用计数、CAS/RAII、data race），并衔接到「三、实验任务」。
+
+### Notes
+
+- `os-lab/labs/lab5-fs-and-sync.md`：仅改第二节背景知识。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab5-fs-and-sync.md progress.md`。
+
+## 2026-07-26 - Task: 精简 Lab5 问题场景（以提问为主）
+
+### What was done
+
+- 缩写 `lab5-fs-and-sync.md`「一、问题场景」：去掉对 fd / 管道 / 自旋锁的当场讲解与对照表，改为三个待解问题 + 跑通目标，把机制留给「二、背景知识」。
+
+### Testing
+
+- 人工确认问题场景不再展开答案；后文背景知识与任务未改。
+
+### Notes
+
+- `os-lab/labs/lab5-fs-and-sync.md`：仅改「一、问题场景」。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab5-fs-and-sync.md progress.md`。
+
+## 2026-07-26 - Task: 改写 Lab5 前言与问题场景（学生向）
+
+### What was done
+
+- 重写 `lab5-fs-and-sync.md` 开篇与「一、问题场景」：先用学生日常会卡住的三个缺口（读写数据、进程间传字节、共享结构竞争）引出文件/fd、管道、锁，再对照本实验落地；降低术语密度，保留验证目标与后文任务不变。
+
+### Testing
+
+- 人工确认后文「二、背景知识」与任务命令未改；开篇仍衔接到 Lab4，并明确 Lab6 才上真实磁盘。
+
+### Notes
+
+- `os-lab/labs/lab5-fs-and-sync.md`：仅改标题下导语、零、一节。
+- `progress.md`：追加本轮记录。
+- 回滚方式：`git checkout -- os-lab/labs/lab5-fs-and-sync.md progress.md`。
+
+## 2026-07-26 - Task: 按 Lab1–5 文风改写 Lab6–8 并更新 start.md
+
+### What was done
+
+- 按 Lab1–5 学生向文风重写 `lab6-disk-fs.md`、`lab7-ipc-signal.md`、`lab8-thread-sync.md`：OSTEP 导语、问题场景、背景知识、任务一/二/三、验证与 AI 模板；去掉文末「思考题与参考答案」与 exercises 链接，题目统一进【任务二】。
+- 同步改写 `answers/lab6`–`lab8-answers.md` 为与 Lab1–5 一致的三节格式（代码解读 / 任务二答案 / 任务三现象）。
+- 更新 `handbook/guide/start.md`：Lab6–8 标为已开放，补导读、验证命令与教材主题对照。
+- 再次移除二期残留的 `labs/exercises/`（仅含 lab6–8），并清理 handbook 侧栏与 `labs.json` 中的习题字段。
+
+### Testing
+
+- 人工核对 Lab6–8 均含「任务二：阅读理解与思考题（必做）」且无「## 六、思考题」；answers 含对应「第 N 题」。
+- `git rm -r os-lab/labs/exercises` 后索引中无 exercises 路径。
+- 检索 `start.md` 已无「待补充 / 占位」表述。
+
+### Notes
+
+- `os-lab/labs/lab6-disk-fs.md`、`lab7-ipc-signal.md`、`lab8-thread-sync.md`：全文按 Lab5 结构改写。
+- `os-lab/labs/answers/lab6`–`lab8-answers.md`、`answers/README.md`、`labs/README.md`：格式与索引对齐 Lab1–8。
+- `os-lab/handbook/guide/start.md`、`data/labs.json`、`.vitepress/config.mts`：入口与进度清单更新。
+- `os-lab/README.md`：实验列表补 Lab6–8。
+- `docs/lab6-8.md`、`os-lab/tests/README.md`：去掉 exercises 入口表述。
+- `os-lab/labs/exercises/*`：已删除（二期残留）。
+- `progress.md`：追加本轮记录。
+- 回滚方式：对上述路径 `git checkout --`；exercises 可用历史提交恢复。
 
 ## 2026-07-25 - Task: 规范 labs 文档结构并移除 exercises/
 

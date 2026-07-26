@@ -83,17 +83,6 @@ export default withMermaid(defineConfig({
           ],
         },
       ],
-      '/exercises/': [
-        {
-          text: '文字习题（Lab6–8）',
-          items: [
-            { text: '习题说明', link: '/exercises/README' },
-            { text: 'Lab6 习题', link: '/exercises/lab6-exercises' },
-            { text: 'Lab7 习题', link: '/exercises/lab7-exercises' },
-            { text: 'Lab8 习题', link: '/exercises/lab8-exercises' },
-          ],
-        },
-      ],
       '/answers/': [
         {
           text: '参考答案',

@@ -12,12 +12,11 @@ const HANDBOOK_ROOT = path.resolve(__dirname, '..')
 const OS_LAB_ROOT = path.resolve(HANDBOOK_ROOT, '..')
 const REPO_ROOT = path.resolve(OS_LAB_ROOT, '..')
 
+// exercises 保留在清理列表中，用于删掉历史同步残留；题目已并入各 Lab【任务二】，不再复制。
 const SYNC_DIRS = ['labs', 'exercises', 'answers', 'project', 'setup', 'learn']
 
 const COPY_JOBS = [
   { from: path.join(OS_LAB_ROOT, 'labs'), to: path.join(HANDBOOK_ROOT, 'labs'), filter: (f) => f.endsWith('.md') },
-  // Lab1–5 的文字习题已并入各实验文档的【任务二】；exercises/ 现在只承载 Lab6–8。
-  { from: path.join(OS_LAB_ROOT, 'labs', 'exercises'), to: path.join(HANDBOOK_ROOT, 'exercises'), filter: (f) => f.endsWith('.md') },
   { from: path.join(OS_LAB_ROOT, 'labs', 'answers'), to: path.join(HANDBOOK_ROOT, 'answers'), filter: (f) => f.endsWith('.md') },
   { from: path.join(OS_LAB_ROOT, 'docs'), to: path.join(HANDBOOK_ROOT, 'project'), filter: (f) => f.endsWith('.md') },
 ]
@@ -85,8 +84,33 @@ function rewriteLinks(text) {
         return `](${map[n]})`
       })
       .replace(/\]\(answers\/\)/g, '](/answers/README)')
-      // labs/labN-*.md 里的相对习题链接（如 exercises/lab6-exercises.md）
-      .replace(/\]\((?:\.\.\/)?exercises\/([^)]+)\.md\)/g, '](/exercises/$1)')
+      // 历史 exercises 链接改写到对应实验正文（题目已并入【任务二】）
+      .replace(/\]\((?:\.\.\/)?exercises\/lab(\d)-exercises(?:\.md)?\)/g, (_, n) => {
+        const map = {
+          1: '/labs/lab1-bare-metal',
+          2: '/labs/lab2-trap-and-task',
+          3: '/labs/lab3-memory',
+          4: '/labs/lab4-process',
+          5: '/labs/lab5-fs-and-sync',
+          6: '/labs/lab6-disk-fs',
+          7: '/labs/lab7-ipc-signal',
+          8: '/labs/lab8-thread-sync',
+        }
+        return `](${map[n] || '/labs/overview'})`
+      })
+      .replace(/\]\(\/exercises\/lab(\d)-exercises\)/g, (_, n) => {
+        const map = {
+          1: '/labs/lab1-bare-metal',
+          2: '/labs/lab2-trap-and-task',
+          3: '/labs/lab3-memory',
+          4: '/labs/lab4-process',
+          5: '/labs/lab5-fs-and-sync',
+          6: '/labs/lab6-disk-fs',
+          7: '/labs/lab7-ipc-signal',
+          8: '/labs/lab8-thread-sync',
+        }
+        return `](${map[n] || '/labs/overview'})`
+      })
       .replace(/\]\((?:\.\.\/)?answers\/([^)]+)\.md\)/g, '](/answers/$1)')
       .replace(/\]\(environment_setup\)/g, '](/setup/environment)')
       .replace(/\]\(environment_setup\.md\)/g, '](/setup/environment)')

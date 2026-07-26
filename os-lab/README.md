@@ -74,6 +74,9 @@ cargo run -p kernel --features lab3 --release
 | Lab3 | 内存管理与虚存 | [labs/lab3-memory.md](labs/lab3-memory.md) | [answers/lab3-answers.md](labs/answers/lab3-answers.md) |
 | Lab4 | 进程管理 | [labs/lab4-process.md](labs/lab4-process.md) | [answers/lab4-answers.md](labs/answers/lab4-answers.md) |
 | Lab5 | 文件系统与并发 | [labs/lab5-fs-and-sync.md](labs/lab5-fs-and-sync.md) | [answers/lab5-answers.md](labs/answers/lab5-answers.md) |
+| Lab6 | 磁盘文件系统 | [labs/lab6-disk-fs.md](labs/lab6-disk-fs.md) | [answers/lab6-answers.md](labs/answers/lab6-answers.md) |
+| Lab7 | IPC 与信号 | [labs/lab7-ipc-signal.md](labs/lab7-ipc-signal.md) | [answers/lab7-answers.md](labs/answers/lab7-answers.md) |
+| Lab8 | 线程与同步 | [labs/lab8-thread-sync.md](labs/lab8-thread-sync.md) | [answers/lab8-answers.md](labs/answers/lab8-answers.md) |
 
 实验总览与知识点地图：[labs/overview.md](labs/overview.md)。材料说明见 [labs/README.md](labs/README.md)。
 
@@ -82,12 +85,15 @@ cargo run -p kernel --features lab3 --release
 ### QEMU 集成测试（按 Lab）
 
 ```powershell
-# 或使用 make test-lab1 … make test-lab5
+# Lab1–5：可用 cargo run；Lab6–8：须 make test-labN（带 VirtIO）
 cargo run -p kernel --features lab1 --release
 cargo run -p kernel --features lab2 --release   # 关键输出：409684505、Yield round
 cargo run -p kernel --features lab3 --release
 cargo run -p kernel --features lab4 --release   # 关键输出：fork_test pass
 cargo run -p kernel --features lab5 --release   # 关键输出：fs_test pass、pipe_test pass
+make test-lab6
+make test-lab7
+make test-lab8
 ```
 
 ### 组件单元测试（host 目标，Windows 示例）
