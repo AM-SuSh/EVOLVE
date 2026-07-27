@@ -602,9 +602,12 @@ async function sendMessage(text: string) {
     // 单次失败（超时/限流/网络抖动）不该把整个会话打成离线：
     // 重探一次连接，还活着就提示重发，确实断了才降级到离线引导。
     await checkConnection()
+    const invalidCompletion = /没有返回文本|生成正文前|工具调用|内容过滤/.test(detail)
     const reply =
       connection.value === 'remote'
-        ? `这条回复失败了：${detail}\n\n连接正常，直接重发这条消息即可。`
+        ? invalidCompletion
+          ? `这条回复失败了：${detail}\n\n模型接口可以访问，但这次生成没有可显示的正文。服务已经自动重试，请检查所选模型是否支持 Chat Completions 文本对话。`
+          : `这条回复失败了：${detail}\n\n模型接口仍可访问，可以稍后重试。`
         : `模型连接中断（${detail}），已切换到离线引导。\n\n${offlineTutorReply(text, activeStage.value, guarded, lab.value)}`
     const existing = messages.value.find((item) => item.id === replyId)
     if (existing) existing.content = reply

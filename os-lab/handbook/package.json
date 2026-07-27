@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "sync": "node scripts/sync-content.mjs",
+    "test": "node --test llm-response.test.mjs",
     "dev": "npm run sync && vitepress dev",
     "tutor": "node tutor-server.mjs",
     "build": "npm run sync && vitepress build",

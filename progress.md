@@ -57,6 +57,31 @@
 
 > AI 工具使用声明、成果归属与交互记录见 [项目总报告.md §8](项目总报告.md#8-开发时使用-ai-工具的成果) 与 `os-lab/docs/ai-collaboration.md`。
 
+## 2026-07-27 - Task: AI 导师上游响应兼容与空回复自动恢复
+
+### What was done
+
+- **修复“连接正常但上游没有返回文本”**：确认健康检查仅能证明 `/models` 可访问，不能证明聊天接口与响应格式可用；将上游文本提取拆为独立模块，统一兼容 Chat Completions 的字符串/数组内容、`choices[0].text`、`reasoning_content`/`reasoning`/`analysis`，以及 Responses API 的 `output_text`、`output[].content[].text`。
+- **补强流式解析**：处理 SSE 流结束时无换行的残留缓冲、Responses API 的 `response.output_text.delta`，并区分增量事件与流末完整结果，避免重复拼接；普通正文为空时才以推理字段兜底。
+- **自动协议降级**：`/chat/completions` 返回成功但无正文时自动尝试 `/responses`；上游不提供 `/responses`（404）时再回退到非流式 Chat Completions。针对 `gpt-5.6-luna` 的现场诊断显示 Chat Completions 返回空的 HTTP 200，现可自动切换 Responses API。
+- **可诊断错误与前端提示**：空回复只记录响应字段结构、状态和模型名，不记录 API Key 或回答正文；区分输出长度耗尽、内容过滤、只返回工具调用等原因。学生端不再提示“连接正常，直接重发”，而是说明接口可访问但生成结果无有效正文，服务端已经自动重试。
+
+### Testing
+
+- `npm test`：7 项响应解析测试全部通过，覆盖标准/数组内容、推理字段、Responses 输出、流式 delta、防重复和空回复原因。
+- 端到端模拟一：流式 Chat Completions 空包、非流式 `reasoning` 返回，导师接口成功发送 `done` 帧。
+- 端到端模拟二：Chat Completions 返回空的 HTTP 200、Responses API 返回正文，导师接口成功返回 `Responses API 适配成功`。
+- `node --check tutor-server.mjs`、`node --check llm-response.mjs` 与 `npm run build` 全部通过；本地 `8787` 导师服务已加载修复版本。
+
+### Notes
+
+- `os-lab/handbook/llm-response.mjs`：新增多协议文本提取、空响应原因与安全结构摘要。
+- `os-lab/handbook/llm-response.test.mjs`、`package.json`：新增 Node 内置解析测试及 `npm test` 命令。
+- `os-lab/handbook/tutor-server.mjs`：流式解析、Responses API 自动回退、诊断日志与输出额度调整。
+- `os-lab/handbook/.vitepress/theme/components/LabWorkspace.vue`：修正学生端失败提示。
+- 运行时诊断写入已忽略的 `os-lab/learning/sessions/upstream-diagnostics.jsonl`，不纳入版本控制。
+- 回滚方式：还原上述 handbook 文件、删除两个 `llm-response` 文件，并删除本条进度记录。
+
 ## 2026-07-26 - Task: 教师体验重构：导航融入、工作台备课模式、独立批阅页
 
 ### What was done

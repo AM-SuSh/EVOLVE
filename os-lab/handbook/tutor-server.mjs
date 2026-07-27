@@ -4,6 +4,13 @@ import { spawn } from 'node:child_process'
 import { appendFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { parse as parseYaml } from 'yaml'
+import {
+  describePayloadShape,
+  emptyCompletionReason,
+  extractCompletionText,
+  extractReasoningText,
+  extractStreamText,
+} from './llm-response.mjs'
 import { scoreLearningEvents } from '../learning/rubric.mjs'
 import {
   EXERCISES,
@@ -338,6 +345,31 @@ async function pipeUpstreamStream(upstreamResponse, response) {
   const decoder = new TextDecoder()
   let buffer = ''
   let reply = ''
+  let completionFallback = ''
+  let reasoningReply = ''
+  let lastPayload
+
+  const consumeLine = (line) => {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith(':')) return
+    const data = trimmed.startsWith('data:') ? trimmed.slice(5).trim() : trimmed
+    if (!data || data === '[DONE]') return
+    let payload
+    try {
+      payload = JSON.parse(data)
+    } catch {
+      return
+    }
+    lastPayload = payload
+    const delta = extractStreamText(payload)
+    if (delta) {
+      reply += delta
+      sendFrame(response, { type: 'delta', text: delta })
+      return
+    }
+    completionFallback = extractCompletionText(payload, { allowReasoning: false }) || completionFallback
+    reasoningReply += extractReasoningText(payload)
+  }
 
   for (;;) {
     const { value, done } = await reader.read()
@@ -345,24 +377,43 @@ async function pipeUpstreamStream(upstreamResponse, response) {
     buffer += decoder.decode(value, { stream: true })
     const chunks = buffer.split('\n')
     buffer = chunks.pop() || ''
-    for (const line of chunks) {
-      const trimmed = line.trim()
-      if (!trimmed.startsWith('data:')) continue
-      const data = trimmed.slice(5).trim()
-      if (!data || data === '[DONE]') continue
-      let payload
-      try {
-        payload = JSON.parse(data)
-      } catch {
-        continue
-      }
-      const delta = payload?.choices?.[0]?.delta?.content
-      if (!delta) continue
-      reply += delta
-      sendFrame(response, { type: 'delta', text: delta })
-    }
+    for (const line of chunks) consumeLine(line)
   }
-  return reply
+  buffer += decoder.decode()
+  if (buffer.trim()) consumeLine(buffer)
+
+  const finalReply = reply || completionFallback || reasoningReply
+  return { reply: finalReply, lastPayload }
+}
+
+async function logEmptyUpstream(llm, payload, attempt) {
+  const shape = describePayloadShape(payload)
+  console.warn(`上游模型返回成功但未提取到文本：${shape}`)
+  try {
+    await mkdir(dataDir, { recursive: true })
+    await appendFile(
+      path.join(dataDir, 'upstream-diagnostics.jsonl'),
+      `${JSON.stringify({ timestamp: new Date().toISOString(), model: llm.model, attempt, shape })}\n`,
+      'utf8',
+    )
+  } catch {
+    // 诊断日志写入失败不能影响学生对话。
+  }
+}
+
+async function readUpstreamJson(upstreamResponse) {
+  const raw = await upstreamResponse.text()
+  const meta = {
+    status: upstreamResponse.status,
+    contentType: upstreamResponse.headers.get('content-type') || '',
+    bodyLength: raw.length,
+  }
+  if (!raw.trim()) return { payload: {}, meta }
+  try {
+    return { payload: JSON.parse(raw), meta }
+  } catch {
+    return { payload: {}, meta: { ...meta, invalidJson: true } }
+  }
 }
 
 async function handleChat(body, request, response, origin) {
@@ -403,28 +454,62 @@ async function handleChat(body, request, response, origin) {
   // 结束后 abort 是无害的空操作）。
   response.on('close', () => controller.abort())
 
-  const upstreamBody = JSON.stringify({
+  const upstreamPayload = {
     model: llm.model,
     temperature: 0.3,
-    max_tokens: 900,
-    stream: wantsStream,
+    max_tokens: 1_800,
     messages: [
       { role: 'system', content: framework.prompt },
       ...normalizeHistory(body.history),
       { role: 'user', content: message },
     ],
-  })
-
-  try {
-    const upstreamResponse = await fetch(`${llm.upstream}/chat/completions`, {
+  }
+  const requestUpstream = (stream) =>
+    fetch(`${llm.upstream}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(llm.apiKey ? { Authorization: `Bearer ${llm.apiKey}` } : {}),
       },
       signal: controller.signal,
-      body: upstreamBody,
+      body: JSON.stringify({ ...upstreamPayload, stream }),
     })
+  const requestResponses = () =>
+    fetch(`${llm.upstream}/responses`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(llm.apiKey ? { Authorization: `Bearer ${llm.apiKey}` } : {}),
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: llm.model,
+        instructions: framework.prompt,
+        input: [
+          ...normalizeHistory(body.history),
+          { role: 'user', content: message },
+        ],
+        max_output_tokens: 1_800,
+        stream: false,
+      }),
+    })
+
+  const tryResponsesApi = async () => {
+    const responsesResponse = await requestResponses()
+    const { payload, meta } = await readUpstreamJson(responsesResponse)
+    if (!responsesResponse.ok) {
+      return {
+        reply: '',
+        payload,
+        error: payload?.error?.message || `Responses API 返回 ${responsesResponse.status}`,
+        meta,
+      }
+    }
+    return { reply: extractCompletionText(payload).trim(), payload, error: '', meta }
+  }
+
+  try {
+    const upstreamResponse = await requestUpstream(wantsStream)
 
     // 连接已建立：解除超时，让长回复完整生成。
     clearTimeout(timer)
@@ -449,11 +534,17 @@ async function handleChat(body, request, response, origin) {
     }
 
     if (!wantsStream || !upstreamResponse.body) {
-      const payload = await upstreamResponse.json().catch(() => ({}))
-      const reply = payload?.choices?.[0]?.message?.content?.trim()
+      const { payload } = await readUpstreamJson(upstreamResponse)
+      let reply = extractCompletionText(payload).trim()
       if (!reply) {
-        json(response, 502, { error: '上游模型没有返回文本' }, origin)
-        return
+        await logEmptyUpstream(llm, payload, 'non-stream')
+        const responsesResult = await tryResponsesApi()
+        reply = responsesResult.reply
+        if (!reply) {
+          await logEmptyUpstream(llm, responsesResult.payload, 'responses-fallback')
+          json(response, 502, { error: responsesResult.error || emptyCompletionReason(responsesResult.payload) }, origin)
+          return
+        }
       }
       json(response, 200, {
         reply,
@@ -467,8 +558,28 @@ async function handleChat(body, request, response, origin) {
 
     openEventStream(response, origin)
     sendFrame(response, { type: 'meta', model: llm.model, triggered: false, framework: framework.version })
-    const reply = await pipeUpstreamStream(upstreamResponse, response)
-    if (!reply.trim()) sendFrame(response, { type: 'error', error: '上游模型没有返回文本' })
+    const streamed = await pipeUpstreamStream(upstreamResponse, response)
+    let reply = streamed.reply.trim()
+    let emptyPayload = streamed.lastPayload
+
+    // 部分 OpenAI 兼容网关的 /models 可用，但流式端只返回空包；自动降级重试一次。
+    if (!reply) {
+      await logEmptyUpstream(llm, emptyPayload, 'stream')
+      const responsesResult = await tryResponsesApi()
+      reply = responsesResult.reply
+      emptyPayload = responsesResult.payload
+
+      // 老式兼容网关可能没有 /responses，但只在非流式 Chat Completions 下工作。
+      if (!reply && responsesResult.meta.status === 404) {
+        const retryResponse = await requestUpstream(false)
+        const retryResult = await readUpstreamJson(retryResponse)
+        reply = retryResponse.ok ? extractCompletionText(retryResult.payload).trim() : ''
+        emptyPayload = retryResult.payload
+      }
+      if (!reply) await logEmptyUpstream(llm, emptyPayload, 'responses-fallback')
+    }
+
+    if (!reply) sendFrame(response, { type: 'error', error: emptyCompletionReason(emptyPayload) })
     else sendFrame(response, { type: 'done', reply })
     response.end()
   } catch (error) {
