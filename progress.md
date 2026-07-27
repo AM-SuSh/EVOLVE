@@ -57,6 +57,163 @@
 
 > AI 工具使用声明、成果归属与交互记录见 [项目总报告.md §8](项目总报告.md#8-开发时使用-ai-工具的成果) 与 `os-lab/docs/ai-collaboration.md`。
 
+## 2026-07-26 - Task: 教师体验重构：导航融入、工作台备课模式、独立批阅页
+
+### What was done
+
+- **教师=学生站点+管理入口**：默认主题导航栏经 Layout 插槽注入「发布作业 / 批阅报告」（仅教师可见）；工作台顶栏同样替换为这两个入口；保留右下角浮动按钮。
+- **手册编辑迁入工作台（可见真实内容）**：教师进入 /learn/labN 即备课模式——左栏是该实验的真实渲染正文，右下区页签变为「手册编辑 | 发布本实验 | 代码」（学生的报告/AI 导师页签隐藏）。新增 `TeacherDocPanel`（编辑当前 Lab 的 Markdown 源，保存自动同步，一键刷新预览）与 `TeacherPublishPanel`（对当前 Lab 按全局/班级/学生一站式：开放到本实验、下发任务类型、发布公告）。
+- **独立批阅页 `/teacher-review`**：完整页面——班级/Lab 筛选 + 左列提交列表（已批标记）+ 右侧全幅报告阅读 + **批语**；reports 表加 feedback 列（自动迁移），批语回传学生（实验报告面板顶部显示「老师批语」卡片）。
+- **/teacher 瘦身修版**：移除文档编辑与报告板块（迁走），顶部加两张入口卡片，编号顺延修复「①之后直接⑤」的跳号观感；teacher* 页面从学生搜索索引排除。
+
+### Testing
+
+- 批语闭环冒烟：学生提交报告 → 教师 /teacher/report-feedback 写批语 → 学生 /reports/mine 读到批语 ✓；`npm run build` 通过；测试库已清理。
+
+### Notes
+
+- 主要文件：`TeacherNav.vue`/`TeacherReview.vue`/`TeacherDocPanel.vue`/`TeacherPublishPanel.vue` 新增，`teacher-review.md` 新页，`Layout.vue`（nav 插槽）、`LabWorkspace.vue`（教师页签/批语回显）、`ReportPanel.vue`（批语卡片）、`TeacherConsole.vue` 瘦身、`db.mjs`（feedback）、`tutor-server.mjs`（/teacher/report-feedback）。
+- 待办：TeacherConsole 中已停用的文档编辑函数残留可后续清理；教师工作台左栏渲染的是构建期内容，编辑保存后需刷新页面看效果（dev 模式即时）。
+- 回滚方式：还原上述文件并删除本条记录。
+
+## 2026-07-26 - Task: 教师管理端升级：三级发布、指导文档在线编辑
+
+### What was done
+
+- **教师与学生界面彻底分离**：admin 登录后自动跳转 `/teacher` 管理端；其余页面右下角常驻「教师端」浮动按钮（仅教师可见）。
+- **三级发布模型**：teacher.json 扩展 `classes`/`students` 覆盖层，生效规则=学生覆盖>班级覆盖>全局默认，`effectiveConfigFor` 单点实现；作业公告、开放进度（下发阶段代码）、任务变体分配全部按发布对象生效——「给班级的所有学生发布 lab」「给不同班级/学生留不同类型作业」落地。scaffold 的门控/变体解析改用生效配置；学生端横幅显示就近公告。
+- **实验指导在线编辑**：教师端新增文档编辑板块——下拉选择 labs 指导/答案 Markdown，网页内编辑，保存写回 `os-lab/labs/` 并自动触发 sync 同步站点（dev 热更新即见；接口路径钉死 labs 目录防逃逸）。
+- 控制台改版为八板块：发布对象/公告/开放进度/任务分配/文档编辑/AI 配置（仅全局）/各班学生完成情况（班级筛选+每人生效开放进度列）/学生报告。
+
+### Testing
+
+- 冒烟全过：全局 lab8 + 计科2301 班覆盖 lab1 → 该班学生 status 显示 openLab=lab1 与班级公告；升 lab2 被班级门控拒绝；再给 xiaoming 学生级开放 lab2 → 该生升级成功（三级覆盖正确）；文档编辑保存后源文件与站点同步副本均更新（synced:true）。`npm run build` 通过。测试痕迹已回滚清理。
+
+### Notes
+
+- 主要文件：`scripts/scaffold.mjs`（classes/students/effectiveConfigFor）、`tutor-server.mjs`（分级 config、/teacher/docs|doc、sync 触发）、`TeacherConsole.vue` 重写、`AuthGate.vue`（教师跳转+浮动入口）、教师使用指南。
+- 边界：文档编辑是全局的（所有班级共用一份指导）；「按班级差异化指导」如需要可后续用变体机制同思路扩展。静态部署下文档改动需重新 build（界面已提示）。
+- 回滚方式：还原上述文件并删除本条记录。
+
+## 2026-07-26 - Task: 入口登录门、预置 admin 与班级制
+
+### What was done
+
+- **站点入口即登录**：新增 `AuthGate.vue` 挂在主题 Layout——打开站点任何页面先见登录/注册（覆盖全屏）；已有有效会话自动放行；「游客浏览」仅本次会话只读；导师服务未启动时给出提示且不锁死文档阅读。
+- **去掉教师码，预置管理员**：db.mjs 首次启动自动创建 `admin / admin123`（教师角色）；注册入口只产生学生账号；新增 `/auth/password` 改密接口 + 工作台账号弹窗内「修改密码」表单（admin 首登即改）。
+- **班级制**：users 表加 `class_name`（老库自动 ALTER 迁移）；学生注册必填班级（校验 1-32 位）；登录/会话/报告均携带班级；教师端学生进度与报告列表带班级列并支持**按班级筛选**。
+- 同步：入口/工作台/教师端三处表单统一（教师端仅登录，提示用 admin）；教师使用指南与学生流程文档更新。
+- **修复浏览器「未连接导师服务」**：带 `Authorization` 头的请求触发 CORS 预检，而预检响应的 `Access-Control-Allow-Headers` 只列了 Content-Type——浏览器拦截了全部登录态请求（curl 冒烟不走 CORS 故未暴露）。已补 `Authorization, X-Auth-Token`，OPTIONS 预检实测放行。
+
+### Testing
+
+- admin 预置登录 ✓；无班级注册被拒 ✓；带班级（计科2301）注册成功且 overview 班级列正确 ✓；admin 改密码 ✓；`npm run build` 通过。测试库已清理。
+
+### Notes
+
+- 主要文件：`learning/db.mjs`（班级列/预置 admin/改密）、`tutor-server.mjs`、`AuthGate.vue` 新增、`Layout.vue`、`LabWorkspace.vue`（班级注册/改密表单）、`TeacherConsole.vue`（仅登录+班级筛选）、教师使用指南。
+- 安全提醒已内置：启动日志与教师端登录页都提示 admin 首登改密码。
+- 回滚方式：还原上述文件并删除本条记录。
+
+## 2026-07-26 - Task: 得分视角全面解析、评估体系设计与 Bonus 规划（研究轮）
+
+### What was done
+
+- 遍历全项目重新盘点（Rust/ASM 10423 行、42 host 单测、9 组件 crate、28 用户程序、13 前端组件、服务端 1863 行、8 套指导 2511 行），编写《项目现状全面解析-得分视角.md》：按创新 30/完整 20/代码 25/文档 25 与评审补充要点逐项评估，给出按拉分损失排序的五项风险（报告叙事过时、CI 缺位、Lab3-8 变体空缺、评分深度、学习数据）。
+- 检索并下载 9 篇 arXiv 文献至 `papers/`（含索引 README）：学生-AI 交互行为分析（新手 prompt 协议编码、CS1 交互模式、prompt 轨迹与成绩关联）、教学对话评估（EducationQ、导师能力分类法、SID 七项苏格拉底指标、导师训练量规）、LLM 评分可靠性（LLM-as-Judges 综述、RULERS 证据锚定量规）。
+- 编写《学习评估体系与Bonus优化计划.md》：
+  - **五维证据模型**（提问与对话 30/实践轨迹 25/报告 25/成果 10/bonus 10），细粒度二元量规项 + ICAP/深浅提问/Bloom 理论锚定 + 轨迹指标（自主先行率、采纳-验证比、迭代节奏、时序校验防刷分）；
+  - **三层打分器**（启发式实时分 + 纯计算轨迹指标 + LLM 终评），照 RULERS 规范：量规版本锁定、证据引用强制、教师标注校准（κ）；落地四阶段 E1-E4；
+  - **Bonus 计划**：八个 Lab 各三档拓展挑战菜单（入门/进阶/自由，如 lab5 管道猜数字、lab8 多线程贪吃蛇）；需预留的系统接口（sys_get_time、sys_getchar、user_lib PRNG/ANSI 工具）；引导与作品墙方案；占分 10% 封顶；
+  - **总路线图 R1-R5**（证据收口→评估体系→内容填充→数据校准→决赛打磨）与取舍建议。
+
+### Testing
+
+- 文档为研究/规划产物；论文 PDF 均校验为有效 PDF（9 篇，232KB-16.5MB）。
+
+### Notes
+
+- 新增：《项目现状全面解析-得分视角.md》《学习评估体系与Bonus优化计划.md》`papers/`（9 PDF + README）。均为仓库根本地文档，是否入 git 由团队定。
+- 下一步建议从 R1（CI+主报告重写）与 E1（事件挂账号入库）起步。
+
+## 2026-07-26 - Task: 注册/登录账号体系（SQLite）与教师管理端
+
+### What was done
+
+- **真实账号体系**：新增 `os-lab/learning/db.mjs`——Node 22 内置 `node:sqlite` 零外部依赖；users/sessions/reports 三表；密码 scrypt 加盐哈希、登录签发 30 天会话 token。注册时填写教师码（`OS_LAB_TEACHER_CODE`，默认 `teach-os-lab`）即成为教师（管理员）角色。
+- **鉴权收口**：身份仅来自登录会话（不再信任 `?user=` 参数，防冒名）；工作区接口（scaffold/run/fs 写）未登录一律 401；教师接口要求教师角色。前端统一 `Authorization: Bearer` 注入（tutor-model `authHeaders`）。
+- **学生端**：首次进入弹注册/登录（可切换、教师码可选填）；顶栏账号芯片（查看/退出）；会话过期自动引导重登；**报告面板新增「提交给老师」**（入库，重复提交覆盖）；老师发布的作业公告以横幅显示在工作台。
+- **教师端 `/teacher` 六大板块**：①作业公告发布 ②教学进度（开放到第几层=下发阶段代码）③任务变体分配 ④AI 统一配置（可强制全班统一）⑤全班进度（含已注册未初始化的学生）⑥**学生提交的报告在线查看**。替代此前的口令方案。
+- 简化自上一版：教师页固定为独立页面 `/teacher`，登录即用，无额外口令概念。
+
+### Testing
+
+- 冒烟全过：学生注册→领系统（student-labs/xiaoming）；错误教师码注册被拒；教师注册成功；学生访问教师接口 401；未登录访问工作区 401；报告提交入库并在 /teacher/reports 可见；教师 overview 合并显示已注册与已初始化学生。`npm run build` 通过。测试库/工作区已清理。
+
+### Notes
+
+- 主要文件：`learning/db.mjs` 新增、`tutor-server.mjs`（auth/reports/教师鉴权）、`tutor-model.ts`（AuthSession）、`LabWorkspace.vue`（登录注册弹窗/公告横幅/报告提交）、`ReportPanel.vue`、`TeacherConsole.vue` 重写、`.gitignore`（*.db）。
+- 边界：会话 token 明文存 localStorage（课堂场景可接受）；学习事件流仍在浏览器本地（挂账号入库列入后续）；`node:sqlite` 启动时打印 ExperimentalWarning 属正常。
+- 回滚方式：还原上述文件、删除 learning/os-lab.db 与本条记录。
+
+## 2026-07-26 - Task: 账号制学生工作区与教师可视化控制台
+
+### What was done
+
+- **学生账号制**：工作台首次进入要求填写学号/昵称（顶栏可切换；不填=游客只读）；服务端按身份创建独立工作区 `student-labs/<学号>/`，终端、代码读写、脚手架升级全部按身份隔离——每个学生维护自己的小系统，多学生互不干扰。
+- **教师可视化控制台**：独立站点页 **`/teacher`**（不入导航，直接输网址打开即用；默认零口令，仅当共享部署设置 OS_LAB_TEACHER_TOKEN 环境变量时页面才要求输入）。四块功能：①开放进度（学生只能升级到教师开放的 Lab，未开放领不到代码）；②任务分配（各 Lab 下发 fill/debug/random 变体，random=每生随机）；③AI 统一配置（全班默认模型；可关闭「允许学生自配」强制统一——学生弹窗会相应提示）；④全班进度表（每人进度/变体/自建程序）。
+- scaffold.mjs 重构为多用户：`sanitizeUser` 防路径注入；teacher.json 集中教师配置（开放进度/分配表/统一 LLM）；CLI 增 `open/list` 命令作为备用。
+- tutor-server：所有工作区接口带 `?user=`；`/teacher/overview`、`/teacher/config`（X-Teacher-Token 鉴权，apiKey 回显打码）；LLM 解析改为「学生自配（教师允许时）> 教师统一 > 环境默认」三层。
+- 前端：身份弹窗/顶栏身份芯片；「我的系统」显示教师开放状态并禁用未开放升级；Terminal/CodePanel 按身份请求并随身份重挂载；《教师使用指南.md》改写为控制台优先（含开课流程与多机部署说明）。
+
+### Testing
+
+- `npm run build` 通过；冒烟全过：教师设 openLab=lab1 → 学生 xiaoming 初始化 lab1 成功、升 lab2 被拒（提示老师开放到 lab1）；教师开放 lab2 并分配 debug → 学生升级自动拿到 `variants:{lab2:debug}`；错误口令 401；overview 正确列出学生与配置；`/fs/tree?user=` 返回该生工作区。测试数据已清理。
+
+### Notes
+
+- 主要文件：`scripts/scaffold.mjs`（多用户重构）、`tutor-server.mjs`、`LabWorkspace.vue`、`TerminalPanel.vue`、`CodePanel.vue`、`tutor-model.ts`、`TeacherConsole.vue`+`guide/teacher-console.md` 新增、`.gitignore`、《教师使用指南.md》。
+- 边界：课堂内网信任模型（口令级防护，非完整鉴权）；学习事件/评分仍按浏览器隔离（同机多人共用浏览器会混，后续可把事件也挂学号）；机房集中部署方法见指南第七节。
+- 回滚方式：还原上述文件并删除本条记录。
+
+## 2026-07-26 - Task: 教师/学生使用指南与 AI 对话稳定性修复
+
+### What was done
+
+- **修复「API 连上但聊几句就离线」**：两处根因——①服务端 /chat 有 60 秒硬超时，连流式生成中也会被掐断（本地 7B 长回复必中招）；改为仅对「建立连接」保留 30 秒超时，连上后解除，另在响应断开时同步终止上游请求。②前端任一请求失败（超时/限流/网络抖动）就把会话永久标记离线且不再重试；改为失败后自动重探连接：仍在线则提示「这条失败了（原因），重发即可」，确实断了才降级离线引导。上游 429/401 等错误现在带中文原因提示。
+- **新增教师使用指南**（按要求放仓库根本地文档《教师使用指南.md》，**不进学生手册站点**，因含任务分配、答案位置等教师侧信息）：角色区分（是否初始化 student-lab）、部署步骤、任务变体分配（assign 命令与制作新变体两步法、debug 变体必须显形的教训）、查看报告与学习数据、内容维护入口、常见问题（解锁规则答疑、重置学生）。
+- **ai-tutor.md 增加学生完整流程**（学生可见，站点内）：起服务→配模型→领系统→学与做→写报告解锁→升级→个性化→交付，八步走一遍。
+
+### Testing
+
+- `node --check tutor-server.mjs` 通过；`npm run build` 通过（0 死链）。
+- 超时解除逻辑：连接建立后 clearTimeout，流式长回复不再被 60s 掐断（代码路径审查；实测需接真实模型长回复场景）。
+
+### Notes
+
+- 主要文件：`tutor-server.mjs`（超时/断开处理/错误提示）、`LabWorkspace.vue`（失败重探不永久离线）、`guide/teacher.md` 新增、`guide/ai-tutor.md`、`config.mts`。
+- 回滚方式：还原上述文件并删除本条记录。
+
+## 2026-07-26 - Task: 合并 Lab5-8 复核内容；任务变体分配与学生代码编辑
+
+### What was done
+
+- 提交本地工作台改造后合并远端 `163ee9d`（Lab5-8 教学文档按任务二模式人工复核重写、删除独立习题）：仅 progress.md 顶部双方追加记录冲突，保留双方全部条目；config.mts / tutor-model.ts / start.md 等自动合并，双方内容无丢失，构建 0 死链通过。
+- **任务变体机制（教师端灵活分配）**：`scaffold/exercises/<lab>/<变体>/` 结构；Lab2 完成 `fill`（补全调度器 TODO）与 `debug`（埋 bug：让出任务被误标 Exited，yield 5 轮只出 1 轮提前关机，已实测复现症状与修复）两个示范变体。教师 `scaffold.mjs assign <lab> <变体|random>` 写 `scaffold/assignment.json`（gitignore）；学生升级自动按分配表取变体；tutor-server 增 `POST /scaffold/assign`，status 返回变体信息。
+- **学生代码可编辑**：tutor-server 增 `POST /fs/save`——仅 student-lab 存在时可写（参考实现永远只读，无学生工作区时返回 403 与说明），路径校验/类型白名单/512KB 上限；CodePanel 在学生工作区显示「编辑/保存/取消」，参考实现显示「只读」徽标。
+- 首个 debug 变体埋点修正：初版把 bug 埋在 `find_next_task` 跳过 0 号槽，实测在 lab2 执行流中不显形；改埋 `mark_current_suspended`（Ready 误写 Exited）后症状明确可复现。
+
+### Testing
+
+- 合并后 `npm run build` 通过；`assign lab2 debug` → init/upgrade 学生拿到排错版（QEMU 实测：1 轮 Yield 后提前 `All user apps exited.`）；fill 版此前已验证。
+- `/fs/save` 无学生工作区返回 403 只读提示；`/scaffold/assign` 正常写入。测试 student-lab 与 assignment.json 已清理。
+
+### Notes
+
+- 主要文件：`scripts/scaffold.mjs`（变体/分配）、`scaffold/exercises/lab2/{fill,debug}/`、`tutor-server.mjs`（/fs/save、/scaffold/assign）、`CodePanel.vue`（编辑模式）、`.gitignore`。
+- Lab 页面解锁条件（学生常见疑问）：上一层「终端一次成功运行（自动记验证，需导师服务在跑）+ 报告填写收获与反思后保存」两者齐备即解锁下一层；与 scaffold 系统升级互相独立。
+- 回滚方式：还原上述文件并删除本条记录。
+
 ## 2026-07-26 - Task: 渐进式个性化学生工作区（scaffold 机制）
 
 ### What was done
