@@ -2,6 +2,24 @@
 
 Day 2 起由成员 B 补充内核与用户态集成测试。
 
+## 统一验证入口（成员 C 第一周）
+
+从 `os-lab/` 目录运行：
+
+```powershell
+node scripts/verify.mjs baseline
+```
+
+`baseline` 依次执行 handbook 静态构建、Lab2 host 组件测试、Lab2 QEMU 可信 recipe，并校验关键输出、5 轮 yield 以及 `trap_enter` / `task_switch` trace。也可单独运行：
+
+```powershell
+node scripts/verify.mjs handbook
+node scripts/verify.mjs host
+node scripts/verify.mjs qemu --lab lab2
+```
+
+任一步命令退出非零或 Lab 断言未全部通过，统一入口都会退出非零。运行前仍需按环境文档激活 Rust、QEMU 与 RISC-V target。
+
 ## Day 1 验证
 
 完整步骤见仓库 [`docs/os-lab.md`](../../docs/os-lab.md)。

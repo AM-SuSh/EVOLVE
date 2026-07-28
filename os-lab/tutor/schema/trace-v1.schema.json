@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://os-lab.local/schema/trace-v1.schema.json",
+  "title": "OS Lab educational kernel trace v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "seq", "ts", "cpu", "pid", "tid", "type"],
+  "properties": {
+    "v": { "const": 1 },
+    "seq": { "type": "integer", "minimum": 0 },
+    "ts": { "type": "integer", "minimum": 0 },
+    "cpu": { "type": "integer", "minimum": 0 },
+    "pid": { "type": "integer", "minimum": 0 },
+    "tid": { "type": "integer", "minimum": 0 },
+    "type": { "enum": ["trap_enter", "task_switch"] },
+    "cause": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "from": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "to": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "reason": { "type": "string", "minLength": 1, "maxLength": 120 }
+  },
+  "oneOf": [
+    {
+      "properties": { "type": { "const": "trap_enter" } },
+      "required": ["cause"]
+    },
+    {
+      "properties": { "type": { "const": "task_switch" } },
+      "required": ["from", "to", "reason"]
+    }
+  ]
+}

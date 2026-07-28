@@ -158,6 +158,105 @@ function toggleMax(target: 'terminal' | 'bottom') {
   maximized.value = maximized.value === target ? 'none' : target
 }
 
+/* -- 左右栏宽度 ------------------------------------------------------------- */
+
+const PANE_SPLIT_STORAGE_KEY = 'os-lab-workspace-pane-split'
+const DEFAULT_PANE_SPLIT = 57.5
+const MIN_PANE_SPLIT = 28
+const MAX_PANE_SPLIT = 72
+const MIN_LEFT_PANE = 320
+const MIN_RIGHT_PANE = 360
+const PANE_RESIZER_WIDTH = 10
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function loadPaneSplit() {
+  if (typeof localStorage === 'undefined') return DEFAULT_PANE_SPLIT
+  const raw = localStorage.getItem(PANE_SPLIT_STORAGE_KEY)
+  if (raw === null) return DEFAULT_PANE_SPLIT
+  const stored = Number(raw)
+  return Number.isFinite(stored)
+    ? clamp(stored, MIN_PANE_SPLIT, MAX_PANE_SPLIT)
+    : DEFAULT_PANE_SPLIT
+}
+
+const panesElement = ref<HTMLElement | null>(null)
+const paneSplit = ref(loadPaneSplit())
+const paneResizing = ref(false)
+const paneGridStyle = computed<Record<string, string>>(() => ({
+  '--ws-left-pane-width': `${paneSplit.value}%`,
+}))
+
+function paneLimits() {
+  const width = panesElement.value?.getBoundingClientRect().width || 0
+  if (width <= 900) return { min: MIN_PANE_SPLIT, max: MAX_PANE_SPLIT }
+  return {
+    min: Math.max(MIN_PANE_SPLIT, (MIN_LEFT_PANE / width) * 100),
+    max: Math.min(MAX_PANE_SPLIT, ((width - PANE_RESIZER_WIDTH - MIN_RIGHT_PANE) / width) * 100),
+  }
+}
+
+function setPaneSplit(value: number, persist = false) {
+  const limits = paneLimits()
+  paneSplit.value = limits.min <= limits.max
+    ? clamp(value, limits.min, limits.max)
+    : DEFAULT_PANE_SPLIT
+  if (persist && typeof localStorage !== 'undefined') {
+    localStorage.setItem(PANE_SPLIT_STORAGE_KEY, paneSplit.value.toFixed(2))
+  }
+}
+
+function updatePaneSplit(clientX: number) {
+  const rect = panesElement.value?.getBoundingClientRect()
+  if (!rect || rect.width <= 900) return
+  setPaneSplit(((clientX - rect.left) / rect.width) * 100)
+}
+
+function startPaneResize(event: PointerEvent) {
+  if (event.button !== 0) return
+  paneResizing.value = true
+  const target = event.currentTarget as HTMLElement
+  target.setPointerCapture(event.pointerId)
+  document.documentElement.classList.add('ws-pane-resizing')
+  updatePaneSplit(event.clientX)
+}
+
+function movePaneResize(event: PointerEvent) {
+  if (!paneResizing.value) return
+  updatePaneSplit(event.clientX)
+}
+
+function finishPaneResize(event?: PointerEvent) {
+  if (!paneResizing.value) return
+  paneResizing.value = false
+  document.documentElement.classList.remove('ws-pane-resizing')
+  if (event) {
+    const target = event.currentTarget as HTMLElement
+    if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId)
+  }
+  setPaneSplit(paneSplit.value, true)
+}
+
+function resetPaneSplit() {
+  setPaneSplit(DEFAULT_PANE_SPLIT, true)
+}
+
+function resizePaneByKeyboard(event: KeyboardEvent) {
+  const step = event.shiftKey ? 5 : 2
+  if (event.key === 'ArrowLeft') setPaneSplit(paneSplit.value - step, true)
+  else if (event.key === 'ArrowRight') setPaneSplit(paneSplit.value + step, true)
+  else if (event.key === 'Home') setPaneSplit(paneLimits().min, true)
+  else if (event.key === 'End') setPaneSplit(paneLimits().max, true)
+  else return
+  event.preventDefault()
+}
+
+function clampPaneSplitToViewport() {
+  setPaneSplit(paneSplit.value)
+}
+
 /* -- 我的系统（渐进式脚手架） ------------------------------------------------ */
 
 interface ScaffoldStatus {
@@ -320,7 +419,7 @@ const connectionLabel = computed(() => {
 
 function record(
   type: LearningEvent['type'],
-  options: Pick<LearningEvent, 'category' | 'content' | 'metadata'> = {},
+  options: Pick<LearningEvent, 'category' | 'content' | 'metadata' | 'runId' | 'recipeId' | 'assertions'> = {},
 ) {
   const result = appendEvent(events.value, {
     sessionId: sessionId.value,
@@ -337,7 +436,7 @@ async function syncEvent(event: LearningEvent) {
   try {
     await fetch(`${endpoint}/events`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ event }),
       keepalive: true,
     })
@@ -649,9 +748,28 @@ function announceUnlock(wasCompleted: boolean) {
 }
 
 /** 终端每次运行结束自动记录为验证证据（真实输出，不再靠学生自报）。 */
-function onRunFinished({ content, passed }: { content: string; passed: boolean }) {
+function onRunFinished(payload: {
+  content: string
+  passed: boolean
+  verified: boolean
+  runId: string
+  recipeId: string | null
+  trusted: boolean
+  assertions: Array<{ id: string; label: string; passed: boolean; expected: string; observed: string }>
+}) {
   const wasCompleted = Boolean(journeyItem.value?.completed)
-  record('verification_attempt', { content, metadata: { passed, source: 'terminal' } })
+  record('verification_attempt', {
+    content: payload.content,
+    runId: payload.runId,
+    ...(payload.recipeId ? { recipeId: payload.recipeId } : {}),
+    assertions: payload.assertions,
+    metadata: {
+      passed: payload.verified,
+      verified: payload.verified,
+      trusted: payload.trusted,
+      source: 'terminal',
+    },
+  })
   announceUnlock(wasCompleted)
 }
 
@@ -705,6 +823,8 @@ function exportGrowth() {
 
 onMounted(async () => {
   document.documentElement.classList.add('ws-lock')
+  window.addEventListener('resize', clampPaneSplitToViewport)
+  clampPaneSplitToViewport()
   events.value = loadEvents()
   if (!studentId.value) showIdentity.value = true
   await checkConnection()
@@ -715,6 +835,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   document.documentElement.classList.remove('ws-lock')
+  document.documentElement.classList.remove('ws-pane-resizing')
+  window.removeEventListener('resize', clampPaneSplitToViewport)
   window.clearTimeout(noticeTimer)
 })
 </script>
@@ -800,10 +922,11 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
-    <main class="ws-panes">
+    <main ref="panesElement" class="ws-panes" :style="paneGridStyle">
       <!-- 左栏：指导书渲染效果；教师点「编辑手册」后整栏切换为 Markdown 编辑器 -->
       <ManualPane
         v-show="!(isTeacherRole && teacherEditing)"
+        class="ws-left-pane"
         :class="{ 'ws-mobile-hidden': mobileView !== 'manual' }"
         :lab="lab"
         :editable="isTeacherRole"
@@ -814,13 +937,35 @@ onBeforeUnmount(() => {
       </ManualPane>
       <TeacherDocPanel
         v-if="isTeacherRole && teacherEditing"
-        class="ws-left-editor"
+        class="ws-left-pane"
         :class="{ 'ws-mobile-hidden': mobileView !== 'manual' }"
         :lab="lab"
         :endpoint="endpoint"
         @notice="toast"
         @close="teacherEditing = false"
       />
+
+      <div
+        class="ws-pane-resizer"
+        :class="{ active: paneResizing }"
+        role="separator"
+        aria-label="调整实验手册与实践区宽度"
+        aria-orientation="vertical"
+        :aria-valuemin="MIN_PANE_SPLIT"
+        :aria-valuemax="MAX_PANE_SPLIT"
+        :aria-valuenow="Math.round(paneSplit)"
+        tabindex="0"
+        title="拖动调整左右宽度；双击恢复默认"
+        @pointerdown="startPaneResize"
+        @pointermove="movePaneResize"
+        @pointerup="finishPaneResize"
+        @pointercancel="finishPaneResize"
+        @lostpointercapture="finishPaneResize"
+        @dblclick="resetPaneSplit"
+        @keydown="resizePaneByKeyboard"
+      >
+        <span aria-hidden="true"></span>
+      </div>
 
       <!-- 右栏（教师）：整栏就是作业发布面板，没有终端/代码 -->
       <div
@@ -839,6 +984,7 @@ onBeforeUnmount(() => {
             :lab="lab"
             :endpoint="endpoint"
             :student="studentId"
+            :session-id="sessionId"
             :maximized="maximized === 'terminal'"
             @run-finished="onRunFinished"
             @insert-report="onInsertReport"
@@ -1252,8 +1398,66 @@ onBeforeUnmount(() => {
 /* -- 双栏 ------------------------------------------------------------------ */
 .ws-panes {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(400px, 0.85fr);
+  grid-template-columns:
+    minmax(320px, var(--ws-left-pane-width, 57.5%))
+    10px
+    minmax(360px, 1fr);
   min-height: 0;
+}
+
+.ws-panes > .ws-left-pane {
+  min-width: 0;
+  border-right: 0;
+}
+
+.ws-pane-resizer {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  width: 10px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: var(--ws-surface-alt);
+  cursor: col-resize;
+  touch-action: none;
+  place-items: center;
+}
+
+.ws-pane-resizer::before {
+  position: absolute;
+  inset: 0 auto;
+  width: 1px;
+  background: var(--ws-line);
+  content: '';
+}
+
+.ws-pane-resizer span {
+  position: relative;
+  width: 3px;
+  height: 52px;
+  border-radius: var(--ws-radius-full);
+  background: var(--ws-line-strong, var(--ws-line));
+  transform: scaleY(0.73);
+  transition: background-color 160ms ease, transform 160ms ease;
+}
+
+.ws-pane-resizer:hover span,
+.ws-pane-resizer:focus-visible span,
+.ws-pane-resizer.active span {
+  background: var(--ws-accent);
+  transform: scaleY(1);
+}
+
+.ws-pane-resizer:focus-visible {
+  outline: 2px solid var(--ws-accent);
+  outline-offset: -2px;
+}
+
+:global(html.ws-pane-resizing),
+:global(html.ws-pane-resizing *) {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 /* 右栏：终端在上，下半区在「实验报告 / 代码 / AI 导师」间切换。 */
@@ -1262,17 +1466,12 @@ onBeforeUnmount(() => {
   grid-template-rows: minmax(0, 0.85fr) minmax(0, 1.15fr);
   min-width: 0;
   min-height: 0;
-  border-left: 1px solid var(--ws-line);
+  border-left: 0;
 }
 
 /* 教师右栏：整栏一个作业发布面板。 */
 .ws-right-teacher {
   grid-template-rows: minmax(0, 1fr);
-}
-
-/* 教师「编辑手册」占据左栏整栏时，补上与 ManualPane 一致的分隔线。 */
-.ws-left-editor {
-  border-right: 1px solid var(--ws-line);
 }
 
 .ws-panel-wrap {
@@ -1571,9 +1770,9 @@ onBeforeUnmount(() => {
   line-height: var(--ws-leading-normal);
 }
 
-@media (max-width: 1180px) {
-  .ws-panes {
-    grid-template-columns: minmax(0, 1fr) minmax(360px, 0.8fr);
+@media (prefers-reduced-motion: reduce) {
+  .ws-pane-resizer span {
+    transition: none;
   }
 }
 
@@ -1623,6 +1822,10 @@ onBeforeUnmount(() => {
 
   .ws-panes {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ws-pane-resizer {
+    display: none;
   }
 
   .ws-panes > .ws-mobile-hidden {

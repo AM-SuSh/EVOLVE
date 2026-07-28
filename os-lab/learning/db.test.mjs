@@ -1,0 +1,62 @@
+import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import test, { after } from 'node:test'
+
+const tempRoot = mkdtempSync(path.join(tmpdir(), 'os-lab-db-'))
+process.env.OS_LAB_DB_PATH = path.join(tempRoot, 'learning.db')
+const learningDb = await import(`./db.mjs?test=${Date.now()}`)
+
+after(() => {
+  learningDb.closeLearningDb()
+  rmSync(tempRoot, { recursive: true, force: true })
+})
+
+test('migration binds events and immutable runs to the authenticated user', () => {
+  const registration = learningDb.register('member-c-test', 'secret1', '计科2301')
+  const session = learningDb.resolveSession(registration.token)
+  assert.ok(session?.id)
+
+  const runId = '11111111-1111-4111-8111-111111111111'
+  learningDb.createRun({
+    id: runId,
+    userId: session.id,
+    learningSessionId: 'learning-1',
+    labId: 'lab2',
+    recipeId: 'lab2.verify-trace.v1',
+    workspaceVersion: 'workspace-1',
+    trusted: true,
+    steps: [{ cmd: 'cargo', args: ['run'] }],
+    startedAt: '2026-07-28T00:00:00.000Z',
+  })
+  const event = {
+    version: 2,
+    id: 'event-1',
+    sessionId: 'learning-1',
+    labId: 'lab2',
+    timestamp: '2026-07-28T00:00:00.000Z',
+    type: 'run_started',
+    stage: 'run',
+    runId,
+    recipeId: 'lab2.verify-trace.v1',
+    workspaceVersion: 'workspace-1',
+  }
+  assert.equal(learningDb.insertLearningEvents(session.id, [event]).accepted, 1)
+  assert.equal(learningDb.insertLearningEvents(session.id, [event]).accepted, 0)
+
+  learningDb.finishRun(session.id, {
+    runId,
+    finishedAt: '2026-07-28T00:00:01.000Z',
+    exitCode: 0,
+    durationMs: 1000,
+    verified: true,
+    assertions: [{ id: 'a1', label: 'trace', passed: true, expected: '1', observed: '1' }],
+    output: { hash: 'a'.repeat(64), bytes: 10, path: 'runs/run.output.log' },
+    trace: { version: 1, count: 2, hash: 'b'.repeat(64), path: 'runs/run.trace.jsonl' },
+  })
+  const stored = learningDb.getRun(session.id, runId)
+  assert.equal(stored.verified, true)
+  assert.equal(stored.trace.count, 2)
+  assert.throws(() => learningDb.finishRun(999999, { ...stored, stopped: false }), /不属于当前用户/)
+})

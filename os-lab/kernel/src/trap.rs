@@ -119,6 +119,20 @@ pub fn trap_handler(cx: &mut TrapContext) {
     activate_kernel();
 
     let scause = read_scause();
+    #[cfg(all(
+        feature = "trace-edu",
+        feature = "lab2",
+        not(any(feature = "lab3", feature = "lab4", feature = "lab5", feature = "lab6", feature = "lab7", feature = "lab8"))
+    ))]
+    {
+        let cause = match scause {
+            SCAUSE_USER_ECALL => "user_ecall",
+            SCAUSE_SUPERVISOR_ECALL => "supervisor_ecall",
+            SCAUSE_SUPERVISOR_TIMER => "supervisor_timer",
+            _ => "other",
+        };
+        crate::trace::trap_enter(crate::task::current_task_id(), cause);
+    }
     match scause {
         SCAUSE_USER_ECALL | SCAUSE_SUPERVISOR_ECALL => {
             cx.advance_sepc();

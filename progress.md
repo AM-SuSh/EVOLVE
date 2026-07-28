@@ -16,7 +16,7 @@
 |------|---------|---------|
 | 成员 A | 内核主体实现：feature gate 骨架、trap / mm / process / fs / sync 各模块随 lab1–lab5 逐级演进；构建系统（Makefile / build.rs / linker） | `os-lab/kernel/` |
 | 成员 B | 6 个组件 crate（os-sbi / os-context / os-syscall / os-alloc / os-vm / os-fs）实现与 host 单元测试；user 用户态测试程序 | `os-lab/os-*/`、`os-lab/user/`、`os-lab/tests/` |
-| 成员 C | 教学文档体系：5 个 lab 实验指导、5 组答案、5 组习题、overview 总览；设计总结报告、三方对比、AI 协作记录；交付清单与文档索引 | `os-lab/labs/`、`os-lab/docs/`、`docs/` |
+| 成员 C | 一期教学文档体系与总结材料；二期 AI 导师、运行证据、事件契约、SQLite 数据链和教学 trace | `os-lab/labs/`、`os-lab/tutor/`、`os-lab/learning/`、`os-lab/handbook/tutor-server.mjs` |
 
 ---
 
@@ -56,6 +56,30 @@
 ## 三、每日开发进度记录
 
 > AI 工具使用声明、成果归属与交互记录见 [项目总报告.md §8](项目总报告.md#8-开发时使用-ai-工具的成果) 与 `os-lab/docs/ai-collaboration.md`。
+
+## 2026-07-28 - Task: 运行、事件与 trace 契约基线
+
+### What was done
+
+- **版本化契约**：新增 `event-v2`、`run-result-v1`、`trace-v1` JSON Schema 与运行时校验；v1 事件继续兼容读取，v2 对 code/run/diagnostic/trace/hint/checkpoint/report/review 各类关键字段设必填约束。
+- **SQLite 迁移**：新增可重复执行的 migration 记录和 `events`、`runs`、`run_assertions` 表；事件去重，运行、断言及产物元数据全部用服务端登录会话的 `userId` 写入，原始输出与 trace 以文件保存，数据库仅留哈希、大小、路径和摘要。
+- **可信运行链**：每次运行生成不可变 `runId` 和源码内容 `workspaceVersion`；全局 `activeRun` 改为每用户一个活动 run。预置 recipe 才是 trusted，自定义白名单命令即使退出码 0 也不能解锁；前端改为只认 `verified`，并记录 `runId`、recipe 和断言。
+- **Lab2 trace PoC**：新增默认关闭的 `trace-edu` feature，在参考实现及 fill/debug 变体输出 `trap_enter`、`task_switch` 的 `TRACE_V1` JSON 行；服务端解析为 trace artifact 并绑定同一个 `runId`。
+- **统一验证入口**：新增跨平台 `node scripts/verify.mjs baseline`，顺序覆盖 handbook 构建、Lab2 host 测试和带 trace/行为断言的 QEMU recipe；支持 `handbook`、`host`、`qemu --lab labN` 分段运行。
+
+### Testing
+
+- `npm test`：12 项全部通过，其中本周新增契约/recipe 4 项、SQLite 迁移与用户绑定 1 项，既有 LLM 响应兼容 7 项保持通过。
+- `node scripts/verify.mjs baseline`：VitePress 生产构建通过；`os-context` 3 项、`os-syscall` 4 项 host 测试通过；Lab2 QEMU 输出 5 轮 `Yield round`、28 条 `trap_enter`、6 条 `task_switch`，5 项可信断言全部通过。
+- `npm run test:smoke`：真实 HTTP 链路完成注册、token 鉴权、SSE run；隔离 SQLite 中得到 1 个 verified run、2 个服务端 run 事件、5 个通过断言。
+- `node --check tutor-server.mjs` 与 `git diff --check` 通过；JSON Schema 均可解析。
+
+### Notes
+
+- 主要文件：`tutor/{contracts,run-recipes}.mjs` 与三个 schema、`learning/db.mjs`、`handbook/tutor-server.mjs`、`TerminalPanel.vue`、`tutor-model.ts`、`kernel/src/trace.rs`、统一验证脚本及测试。
+- 保留了 `LabWorkspace.vue` 中此前尚未提交的左右栏宽度拖拽改动，本任务只在其上追加鉴权同步和新的运行证据字段；其他未跟踪文档、`papers/`、`artifacts/`、`.temp/` 均未处理。
+- 边界：当前 trace 是 Lab2 最小数据 PoC，尚未实现第二周的 Trace 可视化页签；每用户运行隔离解决了进程状态串扰，多机部署时仍需按计划使用独立容器或受限 worker。
+- 回滚方式：还原上述运行/前端/内核/数据库文件，删除三个契约 schema、`contracts.mjs`、`run-recipes.mjs`、`trace.rs`、`verify.mjs` 与本周测试脚本；SQLite 新表不影响旧表读取。
 
 ## 2026-07-27 - Task: AI 导师上游响应兼容与空回复自动恢复
 

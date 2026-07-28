@@ -20,6 +20,13 @@ mod riscv;
 #[cfg(any(feature = "lab2", feature = "lab3", feature = "lab4", feature = "lab5", feature = "lab6", feature = "lab7", feature = "lab8"))]
 mod trap;
 
+#[cfg(all(
+    feature = "trace-edu",
+    feature = "lab2",
+    not(any(feature = "lab3", feature = "lab4", feature = "lab5", feature = "lab6", feature = "lab7", feature = "lab8"))
+))]
+mod trace;
+
 #[cfg(any(feature = "lab2", feature = "lab3", feature = "lab4", feature = "lab5", feature = "lab6", feature = "lab7", feature = "lab8"))]
 mod loader;
 

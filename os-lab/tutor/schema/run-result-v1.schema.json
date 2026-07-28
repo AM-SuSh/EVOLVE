@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://os-lab.local/schema/run-result-v1.schema.json",
+  "title": "OS Lab trusted run result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "runId", "labId", "recipeId", "workspaceVersion", "trusted", "startedAt", "finishedAt", "exitCode", "durationMs", "assertions", "output", "trace", "verified"],
+  "properties": {
+    "version": { "const": 1 },
+    "runId": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "labId": { "type": "string", "pattern": "^lab[1-8]$" },
+    "recipeId": { "type": ["string", "null"], "maxLength": 120 },
+    "workspaceVersion": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "trusted": { "type": "boolean" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "finishedAt": { "type": "string", "format": "date-time" },
+    "exitCode": { "type": "integer" },
+    "durationMs": { "type": "integer", "minimum": 0 },
+    "assertions": { "type": "array", "items": { "$ref": "#/$defs/assertion" } },
+    "output": { "$ref": "#/$defs/artifact" },
+    "trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "count", "hash"],
+      "properties": {
+        "version": { "const": 1 },
+        "count": { "type": "integer", "minimum": 0 },
+        "hash": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "path": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "verified": { "type": "boolean" }
+  },
+  "$defs": {
+    "assertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "passed", "expected", "observed"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "passed": { "type": "boolean" },
+        "expected": { "type": "string", "maxLength": 2000 },
+        "observed": { "type": "string", "maxLength": 2000 }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash", "bytes"],
+      "properties": {
+        "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "path": { "type": "string", "maxLength": 500 }
+      }
+    }
+  }
+}

@@ -3,7 +3,18 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { FilePlus2, Maximize2, Minimize2, Play, RotateCcw, Square } from 'lucide-vue-next'
 import { authHeaders, type TutorLab } from '../tutor-model'
 
-const props = defineProps<{ lab: TutorLab; endpoint: string; student?: string; maximized?: boolean }>()
+const props = defineProps<{ lab: TutorLab; endpoint: string; student?: string; sessionId?: string; maximized?: boolean }>()
+
+type RunAssertion = { id: string; label: string; passed: boolean; expected: string; observed: string }
+type RunFinishedPayload = {
+  content: string
+  passed: boolean
+  verified: boolean
+  runId: string
+  recipeId: string | null
+  trusted: boolean
+  assertions: RunAssertion[]
+}
 
 /** 带上学生身份：服务端据此在该生自己的工作区里执行命令。 */
 function apiUrl(pathname: string) {
@@ -12,8 +23,8 @@ function apiUrl(pathname: string) {
 }
 
 const emit = defineEmits<{
-  /** 每次运行结束自动上报（passed = 全部步骤退出码 0），作为验证证据。 */
-  (event: 'run-finished', payload: { content: string; passed: boolean }): void
+  /** 只有服务端可信 recipe 的全部断言通过，passed/verified 才为 true。 */
+  (event: 'run-finished', payload: RunFinishedPayload): void
   /** 学生把本次输出插进实验报告的「过程记录」。 */
   (event: 'insert-report', text: string): void
   (event: 'toggle-max'): void
@@ -22,7 +33,16 @@ const emit = defineEmits<{
 const command = ref('')
 const running = ref(false)
 const output = ref('')
-const exitInfo = ref<{ code: number; ok: boolean; stopped?: string } | null>(null)
+const exitInfo = ref<{
+  code: number
+  ok: boolean
+  verified: boolean
+  runId: string
+  recipeId: string | null
+  trusted: boolean
+  assertions: RunAssertion[]
+  stopped?: string
+} | null>(null)
 const inserted = ref(false)
 const stepTitle = ref('')
 const errorText = ref('')
@@ -34,7 +54,10 @@ const statusLabel = computed(() => {
   if (!exitInfo.value) return '可直接编辑命令，或从左侧手册复制后粘贴；支持多行按顺序执行'
   if (exitInfo.value.stopped === 'timeout') return '已超时终止'
   if (exitInfo.value.stopped) return '已手动停止'
-  return exitInfo.value.ok ? '运行结束（退出码 0），已自动记录为验证证据' : `运行结束（退出码 ${exitInfo.value.code}）`
+  if (exitInfo.value.verified) return '可信验证通过，已自动记录为验证证据'
+  if (exitInfo.value.ok && !exitInfo.value.trusted) return '运行成功；自定义命令不作为实验通过证据'
+  if (exitInfo.value.ok) return '运行结束，但实验行为断言未全部通过'
+  return `运行结束（退出码 ${exitInfo.value.code}）`
 })
 
 function resetCommand() {
@@ -77,10 +100,15 @@ async function run() {
   stepTitle.value = ''
 
   try {
+    const trustedPreset = command.value.trim() === props.lab.verificationCommand.trim()
     const response = await fetch(apiUrl(`/run`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...authHeaders() },
-      body: JSON.stringify({ labId: props.lab.id, command: command.value }),
+      body: JSON.stringify({
+        labId: props.lab.id,
+        sessionId: props.sessionId || '',
+        ...(trustedPreset ? {} : { command: command.value }),
+      }),
     })
     if (!response.ok || !response.body) {
       const payload = await response.json().catch(() => ({}))
@@ -99,7 +127,19 @@ async function run() {
       for (const chunk of chunks) {
         const line = chunk.split('\n').find((item) => item.startsWith('data:'))
         if (!line) continue
-        let frame: { type?: string; title?: string; text?: string; code?: number; ok?: boolean; stopped?: string }
+        let frame: {
+          type?: string
+          title?: string
+          text?: string
+          code?: number
+          ok?: boolean
+          verified?: boolean
+          stopped?: string
+          runId?: string
+          recipeId?: string | null
+          trusted?: boolean
+          assertions?: RunAssertion[]
+        }
         try {
           frame = JSON.parse(line.slice(5).trim())
         } catch {
@@ -111,12 +151,29 @@ async function run() {
         }
         if (frame.type === 'output' && frame.text) output.value += frame.text
         if (frame.type === 'exit') {
-          exitInfo.value = { code: frame.code ?? -1, ok: Boolean(frame.ok), stopped: frame.stopped }
+          exitInfo.value = {
+            code: frame.code ?? -1,
+            ok: Boolean(frame.ok),
+            verified: Boolean(frame.verified),
+            runId: frame.runId || '',
+            recipeId: frame.recipeId || null,
+            trusted: Boolean(frame.trusted),
+            assertions: frame.assertions || [],
+            stopped: frame.stopped,
+          }
         }
       }
     }
     if (exitInfo.value && !exitInfo.value.stopped) {
-      emit('run-finished', { content: runSummary(), passed: exitInfo.value.ok })
+      emit('run-finished', {
+        content: runSummary(),
+        passed: exitInfo.value.verified,
+        verified: exitInfo.value.verified,
+        runId: exitInfo.value.runId,
+        recipeId: exitInfo.value.recipeId,
+        trusted: exitInfo.value.trusted,
+        assertions: exitInfo.value.assertions,
+      })
     }
   } catch (error) {
     errorText.value =

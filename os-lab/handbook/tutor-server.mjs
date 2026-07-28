@@ -1,6 +1,7 @@
 import http from 'node:http'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
+import { createHash, randomUUID } from 'node:crypto'
 import { appendFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { parse as parseYaml } from 'yaml'
@@ -12,6 +13,8 @@ import {
   extractStreamText,
 } from './llm-response.mjs'
 import { scoreLearningEvents } from '../learning/rubric.mjs'
+import { collectTraceEvents, validateInteractionEvent, validateRunResult } from '../tutor/contracts.mjs'
+import { evaluateRunAssertions, getRunRecipe } from '../tutor/run-recipes.mjs'
 import {
   EXERCISES,
   LAB_ORDER,
@@ -28,6 +31,9 @@ import {
 } from '../scripts/scaffold.mjs'
 import {
   changePassword,
+  createRun,
+  finishRun,
+  insertLearningEvents,
   listAllReports,
   listMyReports,
   listUsers,
@@ -287,19 +293,6 @@ async function checkUpstream(llm) {
   } finally {
     clearTimeout(timer)
   }
-}
-
-function validateEvent(event) {
-  return Boolean(
-    event &&
-      event.version === 1 &&
-      typeof event.id === 'string' &&
-      typeof event.sessionId === 'string' &&
-      labIds.has(event.labId) &&
-      stageIds.has(event.stage) &&
-      typeof event.type === 'string' &&
-      !Number.isNaN(Date.parse(event.timestamp)),
-  )
 }
 
 async function persistEvents(events) {
@@ -600,41 +593,6 @@ async function handleChat(body, request, response, origin) {
 /* -- 本机终端：代跑各 Lab 的验证命令 ---------------------------------------- */
 
 /**
- * 前端只传 labId，命令由服务端预置——不接受任意命令串，避免把本机变成
- * 任意命令执行入口。QEMU 的 lab6-8 挂盘参数与 Makefile 保持一致。
- */
-function runRecipe(labId) {
-  const kernelElf = 'target/riscv64gc-unknown-none-elf/release/kernel'
-  const fsImg = 'target/riscv64gc-unknown-none-elf/release/fs.img'
-  if (labId === 'lab6' || labId === 'lab7' || labId === 'lab8') {
-    return [
-      {
-        title: `cargo build -p kernel --features ${labId} --release`,
-        cmd: 'cargo',
-        args: ['build', '-p', 'kernel', '--features', labId, '--release'],
-      },
-      {
-        title: 'qemu-system-riscv64（VirtIO 磁盘）',
-        cmd: 'qemu-system-riscv64',
-        args: [
-          '-machine', 'virt', '-nographic', '-bios', 'default',
-          '-drive', `file=${fsImg},if=none,format=raw,id=x0`,
-          '-device', 'virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0',
-          '-kernel', kernelElf,
-        ],
-      },
-    ]
-  }
-  return [
-    {
-      title: `cargo run -p kernel --features ${labId} --release`,
-      cmd: 'cargo',
-      args: ['run', '-p', 'kernel', '--features', labId, '--release'],
-    },
-  ]
-}
-
-/**
  * 学生可以在终端输入/粘贴自定义命令，但仍不给 shell：
  * 只允许白名单内的可执行程序，禁止链式、重定向、子 shell 与引号，
  * 用 spawn(argv) 直接执行。多行粘贴按行作为多个步骤顺序执行。
@@ -672,13 +630,13 @@ function parseCommandInput(command) {
   return steps.length ? { steps } : { error: '命令为空' }
 }
 
-/** 同一时间只允许一个运行中的命令；QEMU 卡死由整体超时兜底。 */
-let activeRun = null
+/** 每个登录用户最多一个活动运行；QEMU 卡死由整体超时兜底。 */
+const activeRuns = new Map()
 const RUN_TIMEOUT_MS = 300_000
 const RUN_OUTPUT_CAP = 262_144
 
-function killActiveRun(reason) {
-  const run = activeRun
+function killActiveRun(userId, reason) {
+  const run = activeRuns.get(userId)
   if (!run) return false
   run.stopped = reason || 'stopped'
   try {
@@ -698,13 +656,16 @@ function runStep(step, response, run, cwd) {
     sendFrame(response, { type: 'step', title: step.title })
     const child = spawn(step.cmd, step.args, { cwd, env: process.env })
     run.child = child
-    let emitted = 0
     const forward = (chunk) => {
-      if (emitted >= RUN_OUTPUT_CAP) return
       const text = chunk.toString('utf8')
-      emitted += text.length
-      sendFrame(response, { type: 'output', text })
-      if (emitted >= RUN_OUTPUT_CAP) {
+      if (run.outputLength >= RUN_OUTPUT_CAP) return
+      const remaining = RUN_OUTPUT_CAP - run.outputLength
+      const accepted = text.slice(0, remaining)
+      run.output.push(accepted)
+      run.outputLength += accepted.length
+      sendFrame(response, { type: 'output', text: accepted })
+      if (accepted.length < text.length && !run.outputTruncated) {
+        run.outputTruncated = true
         sendFrame(response, { type: 'output', text: '\n[输出过长，已截断……]\n' })
       }
     }
@@ -718,15 +679,110 @@ function runStep(step, response, run, cwd) {
   })
 }
 
-async function handleRun(body, request, response, origin, reqUser) {
+function sha256(content) {
+  return createHash('sha256').update(content).digest('hex')
+}
+
+const WORKSPACE_FINGERPRINT_EXCLUDED = new Set([
+  '.git',
+  'target',
+  'node_modules',
+  'handbook',
+  'learning',
+  'student-labs',
+  'scaffold',
+  'reference-patches',
+])
+const WORKSPACE_FINGERPRINT_FILES = new Set(['Cargo.toml', 'Cargo.lock', 'Makefile'])
+const WORKSPACE_FINGERPRINT_EXTENSIONS = new Set(['.rs', '.toml', '.lock', '.ld', '.asm', '.S'])
+
+async function hashWorkspaceDirectory(root, relative, hash) {
+  const entries = await readdir(path.join(root, relative), { withFileTypes: true })
+  entries.sort((left, right) => left.name.localeCompare(right.name))
+  for (const entry of entries) {
+    if (entry.isDirectory() && WORKSPACE_FINGERPRINT_EXCLUDED.has(entry.name)) continue
+    const childRelative = path.join(relative, entry.name)
+    if (entry.isDirectory()) {
+      await hashWorkspaceDirectory(root, childRelative, hash)
+      continue
+    }
+    if (
+      !entry.isFile() ||
+      (!WORKSPACE_FINGERPRINT_FILES.has(entry.name) && !WORKSPACE_FINGERPRINT_EXTENSIONS.has(path.extname(entry.name)))
+    ) {
+      continue
+    }
+    hash.update(childRelative.replace(/\\/g, '/'))
+    hash.update('\0')
+    hash.update(await readFile(path.join(root, childRelative)))
+    hash.update('\0')
+  }
+}
+
+async function workspaceVersionFor(workRoot) {
+  const hash = createHash('sha256')
+  await hashWorkspaceDirectory(workRoot.root, '', hash)
+  return `sha256:${hash.digest('hex')}`
+}
+
+function runEvent(run, type, result) {
+  const common = {
+    version: 2,
+    id: `${run.id}:${type}`,
+    sessionId: run.learningSessionId || `run-${run.id}`,
+    labId: run.labId,
+    timestamp: type === 'run_started' ? run.startedAt : result.finishedAt,
+    type,
+    stage: 'run',
+    runId: run.id,
+  }
+  if (type === 'run_started') {
+    return {
+      ...common,
+      recipeId: run.recipeId || 'custom.whitelist.v1',
+      workspaceVersion: run.workspaceVersion,
+    }
+  }
+  return {
+    ...common,
+    exitCode: result.exitCode,
+    assertions: result.assertions,
+    duration: result.durationMs,
+    outputHash: result.output.hash,
+  }
+}
+
+async function storeRunArtifacts(run, output, traceEvents) {
+  const runsDir = path.join(dataDir, 'runs')
+  await mkdir(runsDir, { recursive: true })
+  const outputName = `${run.id}.output.log`
+  const outputRelative = `runs/${outputName}`
+  await writeFile(path.join(runsDir, outputName), output, 'utf8')
+
+  let trace = { version: 1, count: 0, hash: null }
+  if (traceEvents.length) {
+    const traceText = `${traceEvents.map((event) => JSON.stringify(event)).join('\n')}\n`
+    const traceName = `${run.id}.trace.jsonl`
+    const traceRelative = `runs/${traceName}`
+    await writeFile(path.join(runsDir, traceName), traceText, 'utf8')
+    trace = { version: 1, count: traceEvents.length, hash: sha256(traceText), path: traceRelative }
+  }
+  return {
+    output: { hash: sha256(output), bytes: Buffer.byteLength(output), path: outputRelative },
+    trace,
+  }
+}
+
+async function handleRun(body, request, response, origin, session) {
   const labId = String(body.labId || '')
   if (!labIds.has(labId)) {
     json(response, 400, { error: 'labId 必须是 lab1 到 lab8 之一' }, origin)
     return
   }
-  // 自定义命令优先；为空则退回该 Lab 预置的验证命令序列。
-  let steps = runRecipe(labId)
-  if (typeof body.command === 'string' && body.command.trim()) {
+  const customCommand = typeof body.command === 'string' && body.command.trim()
+  const recipe = getRunRecipe(labId)
+  let steps = recipe.steps
+  if (customCommand) {
     const parsed = parseCommandInput(body.command)
     if (parsed.error) {
       json(response, 400, { error: parsed.error }, origin)
@@ -734,23 +790,58 @@ async function handleRun(body, request, response, origin, reqUser) {
     }
     steps = parsed.steps
   }
-  if (activeRun) {
-    json(response, 409, { error: '已有命令在运行，先停止它或等它结束' }, origin)
+  if (activeRuns.has(session.id)) {
+    json(response, 409, { error: '你的账号已有命令在运行，先停止它或等它结束' }, origin)
     return
   }
 
-  const workRoot = await resolveWorkRoot(reqUser)
-  const run = { child: null, stopped: '' }
-  activeRun = run
+  const workRoot = await resolveWorkRoot(session.username)
+  const run = {
+    id: randomUUID(),
+    userId: session.id,
+    labId,
+    learningSessionId: String(body.sessionId || '').slice(0, 160),
+    recipeId: customCommand ? null : recipe.id,
+    workspaceVersion: await workspaceVersionFor(workRoot),
+    trusted: !customCommand,
+    startedAt: new Date().toISOString(),
+    child: null,
+    stopped: '',
+    output: [],
+    outputLength: 0,
+    outputTruncated: false,
+  }
+  createRun({
+    id: run.id,
+    userId: run.userId,
+    learningSessionId: run.learningSessionId,
+    labId,
+    recipeId: run.recipeId,
+    workspaceVersion: run.workspaceVersion,
+    trusted: run.trusted,
+    steps,
+    startedAt: run.startedAt,
+  })
+  const startedEvent = runEvent(run, 'run_started')
+  insertLearningEvents(run.userId, [startedEvent])
+  await persistEvents([startedEvent])
+  activeRuns.set(session.id, run)
   openEventStream(response, origin)
+  sendFrame(response, {
+    type: 'run',
+    runId: run.id,
+    recipeId: run.recipeId,
+    trusted: run.trusted,
+    workspaceVersion: run.workspaceVersion,
+  })
   sendFrame(response, { type: 'output', text: `# 工作目录：${workRoot.name}/\n` })
   const timer = setTimeout(() => {
     sendFrame(response, { type: 'output', text: `\n[超过 ${RUN_TIMEOUT_MS / 1000} 秒，已终止]\n` })
-    killActiveRun('timeout')
+    killActiveRun(session.id, 'timeout')
   }, RUN_TIMEOUT_MS)
   // 学生关掉页面时终止子进程，不留孤儿 QEMU。
   request.on('close', () => {
-    if (activeRun === run && !run.done) killActiveRun('client-closed')
+    if (activeRuns.get(session.id) === run && !run.done) killActiveRun(session.id, 'client-closed')
   })
 
   try {
@@ -760,15 +851,49 @@ async function handleRun(body, request, response, origin, reqUser) {
       if (run.stopped || code !== 0) break
     }
     run.done = true
+    const output = run.output.join('')
+    const traceEvents = collectTraceEvents(output)
+    const assertions = run.trusted ? evaluateRunAssertions(run.recipeId, output, traceEvents) : []
+    const artifacts = await storeRunArtifacts(run, output, traceEvents)
+    const finishedAt = new Date().toISOString()
+    const result = {
+      version: 1,
+      runId: run.id,
+      labId,
+      recipeId: run.recipeId,
+      workspaceVersion: run.workspaceVersion,
+      trusted: run.trusted,
+      startedAt: run.startedAt,
+      finishedAt,
+      exitCode: code,
+      durationMs: Date.parse(finishedAt) - Date.parse(run.startedAt),
+      assertions,
+      ...artifacts,
+      verified: run.trusted && code === 0 && assertions.length > 0 && assertions.every((item) => item.passed),
+      ...(run.stopped ? { stopped: run.stopped } : {}),
+    }
+    const contractResult = { ...result }
+    delete contractResult.stopped
+    if (!validateRunResult(contractResult)) throw new Error('run-result-v1 内部契约校验失败')
+    finishRun(run.userId, result)
+    const finishedEvent = runEvent(run, 'run_finished', result)
+    insertLearningEvents(run.userId, [finishedEvent])
+    await persistEvents([finishedEvent])
     sendFrame(response, {
       type: 'exit',
       code,
       ok: !run.stopped && code === 0,
+      verified: result.verified,
+      runId: run.id,
+      recipeId: run.recipeId,
+      trusted: run.trusted,
+      assertions,
+      result,
       stopped: run.stopped || undefined,
     })
   } finally {
     clearTimeout(timer)
-    if (activeRun === run) activeRun = null
+    if (activeRuns.get(session.id) === run) activeRuns.delete(session.id)
     response.end()
   }
 }
@@ -969,12 +1094,20 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === 'POST' && pathname === '/run') {
-      await handleRun(await readBody(request), request, response, origin, reqUser)
+      if (!session) {
+        json(response, 401, { error: '请先登录再运行实验' }, origin)
+        return
+      }
+      await handleRun(await readBody(request), request, response, origin, session)
       return
     }
 
     if (request.method === 'POST' && pathname === '/run/stop') {
-      json(response, 200, { stopped: killActiveRun('user-stop') }, origin)
+      if (!session) {
+        json(response, 401, { error: '请先登录' }, origin)
+        return
+      }
+      json(response, 200, { stopped: killActiveRun(session.id, 'user-stop') }, origin)
       return
     }
 
@@ -1027,8 +1160,8 @@ const server = http.createServer(async (request, response) => {
         json(response, 401, { error: '请先登录' }, origin)
         return
       }
-      if (activeRun) {
-        json(response, 409, { error: '有命令正在运行，先停止再升级' }, origin)
+      if (activeRuns.has(session.id)) {
+        json(response, 409, { error: '你的账号有命令正在运行，先停止再升级' }, origin)
         return
       }
       const body = await readBody(request)
@@ -1217,21 +1350,34 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === 'POST' && pathname === '/events') {
-      const body = await readBody(request)
-      const events = Array.isArray(body.events) ? body.events : [body.event]
-      if (!events.length || events.some((event) => !validateEvent(event))) {
-        json(response, 400, { error: '事件不符合 interaction-event v1 契约' }, origin)
+      if (!session) {
+        json(response, 401, { error: '请先登录再同步学习事件' }, origin)
         return
       }
+      const body = await readBody(request)
+      const events = Array.isArray(body.events) ? body.events : [body.event]
+      if (
+        !events.length ||
+        events.some(
+          (event) =>
+            !validateInteractionEvent(event) ||
+            event.type === 'run_started' ||
+            event.type === 'run_finished',
+        )
+      ) {
+        json(response, 400, { error: '事件不符合 event v1/v2 契约，或属于只能由服务端生成的运行事件' }, origin)
+        return
+      }
+      const stored = insertLearningEvents(session.id, events)
       await persistEvents(events)
-      json(response, 202, { accepted: events.length }, origin)
+      json(response, 202, { accepted: stored.accepted }, origin)
       return
     }
 
     if (request.method === 'POST' && pathname === '/report') {
       const body = await readBody(request)
       const events = Array.isArray(body.events) ? body.events : []
-      if (events.some((event) => !validateEvent(event))) {
+      if (events.some((event) => !validateInteractionEvent(event))) {
         json(response, 400, { error: '报告包含无效事件' }, origin)
         return
       }

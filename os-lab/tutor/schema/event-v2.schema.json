@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://os-lab.local/schema/event-v2.schema.json",
+  "title": "OS Lab learning event v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "id", "sessionId", "labId", "timestamp", "type", "stage"],
+  "properties": {
+    "version": { "const": 2 },
+    "id": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "sessionId": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "labId": { "type": "string", "pattern": "^lab[1-8]$" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "type": {
+      "enum": [
+        "session_start", "stage_enter", "template_used", "student_message", "ai_response",
+        "guardrail_triggered", "verification_attempt", "reflection_submitted", "manual_note",
+        "code_open", "code_save", "run_started", "run_finished", "diagnostic_opened",
+        "trace_inspected", "hint_requested", "checkpoint_answered", "report_submitted", "teacher_reviewed"
+      ]
+    },
+    "stage": { "enum": ["orient", "read", "run", "debug", "reflect"] },
+    "category": { "type": "string", "maxLength": 80 },
+    "content": { "type": "string", "maxLength": 262144 },
+    "metadata": { "type": "object" },
+    "runId": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "recipeId": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "workspaceVersion": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "exitCode": { "type": "integer" },
+    "duration": { "type": "integer", "minimum": 0 },
+    "outputHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "assertions": {
+      "type": "array",
+      "items": { "$ref": "run-result-v1.schema.json#/$defs/assertion" }
+    },
+    "path": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "line": { "type": "integer", "minimum": 1 },
+    "source": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "baseHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "newHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "added": { "type": "integer", "minimum": 0 },
+    "deleted": { "type": "integer", "minimum": 0 },
+    "taskId": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "file": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "code": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "view": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "eventRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "checkpointId": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "hintLevel": { "type": "integer", "minimum": 1, "maximum": 3 },
+    "answerId": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "conceptIds": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 160 } },
+    "reportVersion": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "evidenceRefs": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 200 } },
+    "rubricVersion": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "decision": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "comment": { "type": "string", "maxLength": 8000 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "run_started" } }, "required": ["type"] },
+      "then": { "required": ["runId", "recipeId", "workspaceVersion"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "run_finished" } }, "required": ["type"] },
+      "then": { "required": ["runId", "exitCode", "assertions", "duration", "outputHash"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "code_open" } }, "required": ["type"] },
+      "then": { "required": ["path", "line", "source"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "code_save" } }, "required": ["type"] },
+      "then": { "required": ["path", "baseHash", "newHash", "added", "deleted", "taskId"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "diagnostic_opened" } }, "required": ["type"] },
+      "then": { "required": ["runId", "file", "line", "code"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "trace_inspected" } }, "required": ["type"] },
+      "then": { "required": ["runId", "view", "eventRange"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "hint_requested" } }, "required": ["type"] },
+      "then": { "required": ["checkpointId", "hintLevel"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "checkpoint_answered" } }, "required": ["type"] },
+      "then": { "required": ["checkpointId", "answerId", "conceptIds"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "report_submitted" } }, "required": ["type"] },
+      "then": { "required": ["reportVersion", "evidenceRefs"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "teacher_reviewed" } }, "required": ["type"] },
+      "then": { "required": ["rubricVersion", "decision", "comment"] }
+    }
+  ]
+}

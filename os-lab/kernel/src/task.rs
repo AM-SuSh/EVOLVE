@@ -116,6 +116,10 @@ pub fn current_app_id() -> usize {
     TASK_MANAGER.with(|tm| tm.current)
 }
 
+pub fn current_task_id() -> usize {
+    TASK_MANAGER.with(|tm| tm.current)
+}
+
 pub fn init() {
     TASK_MANAGER.with(|tm| tm.init_tasks());
 }
@@ -125,6 +129,8 @@ pub fn run_first_task() -> ! {
     TASK_MANAGER.with(|tm| {
         load_app(0);
         tm.tasks[0].as_mut().unwrap().task_status = TaskStatus::Running;
+        #[cfg(feature = "trace-edu")]
+        crate::trace::task_switch(0, "initial");
         let trap_cx = &mut tm.tasks[0].as_mut().unwrap().trap_cx;
         run_user_task(trap_cx)
     })
@@ -165,6 +171,8 @@ pub fn run_next_task() -> ! {
         }
         if let Some(next) = tm.find_next_task() {
             tm.tasks[next].as_mut().unwrap().task_status = TaskStatus::Running;
+            #[cfg(feature = "trace-edu")]
+            crate::trace::task_switch(next, "scheduler");
             let trap_cx = &mut tm.tasks[next].as_mut().unwrap().trap_cx;
             run_user_task(trap_cx)
         } else {

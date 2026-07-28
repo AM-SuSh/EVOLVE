@@ -69,7 +69,7 @@ export interface TutorMessage {
 }
 
 export interface LearningEvent {
-  version: 1
+  version: 1 | 2
   id: string
   sessionId: string
   labId: TutorLabId
@@ -84,10 +84,27 @@ export interface LearningEvent {
     | 'verification_attempt'
     | 'reflection_submitted'
     | 'manual_note'
+    | 'code_open'
+    | 'code_save'
+    | 'run_started'
+    | 'run_finished'
+    | 'diagnostic_opened'
+    | 'trace_inspected'
+    | 'hint_requested'
+    | 'checkpoint_answered'
+    | 'report_submitted'
+    | 'teacher_reviewed'
   stage: TutorStageId
   category?: QuestionCategory
   content?: string
   metadata?: Record<string, unknown>
+  runId?: string
+  recipeId?: string
+  workspaceVersion?: string
+  exitCode?: number
+  duration?: number
+  outputHash?: string
+  assertions?: Array<{ id: string; label: string; passed: boolean; expected: string; observed: string }>
 }
 
 export interface TutorScore {
@@ -581,7 +598,7 @@ export function loadEvents(): LearningEvent[] {
     return Array.isArray(value)
       ? value.filter(
           (event) =>
-            event?.version === 1 &&
+            (event?.version === 1 || event?.version === 2) &&
             tutorLabIds.has(event?.labId) &&
             typeof event?.sessionId === 'string' &&
             typeof event?.timestamp === 'string',
@@ -602,7 +619,7 @@ export function appendEvent(
   input: Omit<LearningEvent, 'version' | 'id' | 'timestamp'>,
 ) {
   const event: LearningEvent = {
-    version: 1,
+    version: 2,
     id: createId('event'),
     timestamp: new Date().toISOString(),
     ...input,

@@ -13,7 +13,9 @@ import { DatabaseSync } from 'node:sqlite'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 mkdirSync(here, { recursive: true })
-const db = new DatabaseSync(path.join(here, 'os-lab.db'))
+const dbPath = process.env.OS_LAB_DB_PATH || path.join(here, 'os-lab.db')
+const db = new DatabaseSync(dbPath)
+db.exec('PRAGMA foreign_keys = ON;')
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
@@ -38,6 +40,10 @@ CREATE TABLE IF NOT EXISTS reports (
   updated_at TEXT NOT NULL,
   UNIQUE(user_id, lab_id)
 );
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version TEXT PRIMARY KEY,
+  applied_at TEXT NOT NULL
+);
 `)
 
 const SESSION_DAYS = 30
@@ -52,12 +58,81 @@ function now() {
   return new Date().toISOString()
 }
 
+function applyMigration(version, sql) {
+  if (db.prepare('SELECT version FROM schema_migrations WHERE version = ?').get(version)) return
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    db.exec(sql)
+    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(version, now())
+    db.exec('COMMIT')
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+}
+
 // 老库升级：补班级列 / 报告批语列。
 try {
   db.exec('ALTER TABLE users ADD COLUMN class_name TEXT NOT NULL DEFAULT ""')
 } catch {
   /* 列已存在 */
 }
+
+applyMigration('20260728_member_c_run_event_v1', `
+CREATE TABLE IF NOT EXISTS runs (
+  id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  learning_session_id TEXT NOT NULL DEFAULT '',
+  lab_id TEXT NOT NULL,
+  recipe_id TEXT,
+  command_json TEXT NOT NULL,
+  workspace_version TEXT NOT NULL,
+  trusted INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  exit_code INTEGER,
+  duration_ms INTEGER,
+  verified INTEGER NOT NULL DEFAULT 0,
+  output_hash TEXT,
+  output_bytes INTEGER NOT NULL DEFAULT 0,
+  output_path TEXT,
+  trace_version INTEGER,
+  trace_count INTEGER NOT NULL DEFAULT 0,
+  trace_hash TEXT,
+  trace_path TEXT
+);
+CREATE INDEX IF NOT EXISTS runs_user_started_idx ON runs(user_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS runs_lab_started_idx ON runs(lab_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS run_assertions (
+  run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  assertion_id TEXT NOT NULL,
+  label TEXT NOT NULL,
+  passed INTEGER NOT NULL,
+  expected TEXT NOT NULL,
+  observed TEXT NOT NULL,
+  PRIMARY KEY(run_id, assertion_id)
+);
+
+CREATE TABLE IF NOT EXISTS events (
+  row_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id TEXT NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  schema_version INTEGER NOT NULL,
+  session_id TEXT NOT NULL,
+  lab_id TEXT NOT NULL,
+  run_id TEXT REFERENCES runs(id),
+  type TEXT NOT NULL,
+  stage TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(user_id, id)
+);
+CREATE INDEX IF NOT EXISTS events_user_time_idx ON events(user_id, occurred_at);
+CREATE INDEX IF NOT EXISTS events_run_idx ON events(run_id);
+`)
 try {
   db.exec('ALTER TABLE reports ADD COLUMN feedback TEXT NOT NULL DEFAULT ""')
 } catch {
@@ -191,4 +266,141 @@ export function listUsers() {
   return db
     .prepare('SELECT username, role, class_name AS className, created_at AS createdAt FROM users ORDER BY class_name, username')
     .all()
+}
+
+/* -- 学习事件与可信运行链 ---------------------------------------------------- */
+
+export function insertLearningEvents(userId, events) {
+  const insert = db.prepare(
+    `INSERT INTO events
+      (id, user_id, schema_version, session_id, lab_id, run_id, type, stage, occurred_at, payload_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, id) DO NOTHING`,
+  )
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    let accepted = 0
+    for (const event of events) {
+      const result = insert.run(
+        event.id,
+        userId,
+        event.version,
+        event.sessionId,
+        event.labId,
+        event.runId || null,
+        event.type,
+        event.stage,
+        event.timestamp,
+        JSON.stringify(event),
+        now(),
+      )
+      accepted += Number(result.changes || 0)
+    }
+    db.exec('COMMIT')
+    return { ok: true, accepted }
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+}
+
+export function createRun(input) {
+  db.prepare(
+    `INSERT INTO runs
+      (id, user_id, learning_session_id, lab_id, recipe_id, command_json, workspace_version, trusted, status, started_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?)`,
+  ).run(
+    input.id,
+    input.userId,
+    input.learningSessionId || '',
+    input.labId,
+    input.recipeId || null,
+    JSON.stringify(input.steps || []),
+    input.workspaceVersion,
+    input.trusted ? 1 : 0,
+    input.startedAt,
+  )
+  return { ok: true, runId: input.id }
+}
+
+export function finishRun(userId, result) {
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    const changed = db.prepare(
+      `UPDATE runs SET
+        status = ?, finished_at = ?, exit_code = ?, duration_ms = ?, verified = ?,
+        output_hash = ?, output_bytes = ?, output_path = ?, trace_version = ?,
+        trace_count = ?, trace_hash = ?, trace_path = ?
+       WHERE id = ? AND user_id = ?`,
+    ).run(
+      result.stopped ? 'stopped' : result.exitCode === 0 ? 'finished' : 'failed',
+      result.finishedAt,
+      result.exitCode,
+      result.durationMs,
+      result.verified ? 1 : 0,
+      result.output.hash,
+      result.output.bytes,
+      result.output.path || null,
+      result.trace.version,
+      result.trace.count,
+      result.trace.hash,
+      result.trace.path || null,
+      result.runId,
+      userId,
+    )
+    if (!changed.changes) throw new Error('运行记录不存在或不属于当前用户')
+    const insertAssertion = db.prepare(
+      `INSERT INTO run_assertions (run_id, assertion_id, label, passed, expected, observed)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    db.prepare('DELETE FROM run_assertions WHERE run_id = ?').run(result.runId)
+    for (const assertion of result.assertions) {
+      insertAssertion.run(
+        result.runId,
+        assertion.id,
+        assertion.label,
+        assertion.passed ? 1 : 0,
+        assertion.expected,
+        assertion.observed,
+      )
+    }
+    db.exec('COMMIT')
+    return { ok: true }
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+}
+
+export function getRun(userId, runId) {
+  const row = db.prepare('SELECT * FROM runs WHERE id = ? AND user_id = ?').get(runId, userId)
+  if (!row) return null
+  const assertions = db
+    .prepare(
+      `SELECT assertion_id AS id, label, passed, expected, observed
+       FROM run_assertions WHERE run_id = ? ORDER BY assertion_id`,
+    )
+    .all(runId)
+    .map((item) => ({ ...item, passed: Boolean(item.passed) }))
+  return {
+    version: 1,
+    runId: row.id,
+    labId: row.lab_id,
+    recipeId: row.recipe_id,
+    workspaceVersion: row.workspace_version,
+    trusted: Boolean(row.trusted),
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+    exitCode: row.exit_code,
+    durationMs: row.duration_ms,
+    assertions,
+    output: { hash: row.output_hash, bytes: row.output_bytes, path: row.output_path },
+    trace: { version: row.trace_version, count: row.trace_count, hash: row.trace_hash, path: row.trace_path },
+    verified: Boolean(row.verified),
+    status: row.status,
+  }
+}
+
+export function closeLearningDb() {
+  db.close()
 }

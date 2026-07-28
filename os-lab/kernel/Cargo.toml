@@ -17,6 +17,7 @@ lab5 = ["lab4", "dep:os-fs"]
 lab6 = ["lab5", "dep:easy-fs", "dep:virtio-drivers", "dep:spin"]
 lab7 = ["lab6", "dep:os-signal"]
 lab8 = ["lab7", "dep:os-sync"]
+trace-edu = []
 
 [dependencies]
 os-sbi = { path = "../os-sbi", optional = true }
