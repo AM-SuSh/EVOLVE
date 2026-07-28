@@ -143,6 +143,15 @@ export default withMermaid(defineConfig({
         '@data': resolve(handbookRoot, 'data'),
       },
     },
+    optimizeDeps: {
+      include: ['monaco-editor', '@xterm/xterm', '@xterm/addon-fit'],
+    },
+    worker: {
+      format: 'es',
+    },
+    ssr: {
+      noExternal: ['@xterm/xterm', '@xterm/addon-fit'],
+    },
     server: {
       fs: {
         // 前端直接 import os-lab/learning/rubric.mjs 与 os-lab/tutor/prompts/guardrails.yaml

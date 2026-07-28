@@ -14,7 +14,11 @@
     "preview": "vitepress preview"
   },
   "dependencies": {
+    "@monaco-editor/loader": "^1.7.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "markdown-it": "^14.3.0",
+    "monaco-editor": "^0.56.0",
     "yaml": "^2.8.0"
   },
   "devDependencies": {

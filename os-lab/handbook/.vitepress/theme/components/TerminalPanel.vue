@@ -2,8 +2,16 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { FilePlus2, Maximize2, Minimize2, Play, RotateCcw, Square } from 'lucide-vue-next'
 import { authHeaders, type TutorLab } from '../tutor-model'
+import XtermOutput from './XtermOutput.vue'
 
-const props = defineProps<{ lab: TutorLab; endpoint: string; student?: string; sessionId?: string; maximized?: boolean }>()
+const props = defineProps<{
+  lab: TutorLab
+  endpoint: string
+  student?: string
+  sessionId?: string
+  maximized?: boolean
+  dark?: boolean
+}>()
 
 type RunAssertion = { id: string; label: string; passed: boolean; expected: string; observed: string }
 type RunFinishedPayload = {
@@ -25,6 +33,8 @@ function apiUrl(pathname: string) {
 const emit = defineEmits<{
   /** 只有服务端可信 recipe 的全部断言通过，passed/verified 才为 true。 */
   (event: 'run-finished', payload: RunFinishedPayload): void
+  /** 运行结束（含手动停止），用于关联 trace / Problems。 */
+  (event: 'run-exit', runId: string): void
   /** 学生把本次输出插进实验报告的「过程记录」。 */
   (event: 'insert-report', text: string): void
   (event: 'toggle-max'): void
@@ -46,7 +56,7 @@ const exitInfo = ref<{
 const inserted = ref(false)
 const stepTitle = ref('')
 const errorText = ref('')
-const outputEl = ref<HTMLElement>()
+const xtermRef = ref<InstanceType<typeof XtermOutput> | null>(null)
 
 const statusLabel = computed(() => {
   if (running.value) return stepTitle.value ? `运行中 · ${stepTitle.value}` : '运行中…'
@@ -70,20 +80,18 @@ watch(() => props.lab.id, () => {
   exitInfo.value = null
   inserted.value = false
   errorText.value = ''
+  xtermRef.value?.clear()
 }, { immediate: true })
+
+function appendOutput(text: string) {
+  output.value += text
+  xtermRef.value?.write(text)
+}
 
 async function scrollToBottom() {
   await nextTick()
-  const el = outputEl.value
-  if (el) el.scrollTop = el.scrollHeight
+  xtermRef.value?.fit()
 }
-
-watch(output, () => {
-  const el = outputEl.value
-  if (!el) return
-  const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
-  if (nearBottom) scrollToBottom()
-})
 
 function runSummary() {
   const tail = output.value.length > 2400 ? `…${output.value.slice(-2400)}` : output.value
@@ -94,6 +102,7 @@ async function run() {
   if (running.value) return
   running.value = true
   output.value = ''
+  xtermRef.value?.clear()
   exitInfo.value = null
   inserted.value = false
   errorText.value = ''
@@ -147,9 +156,9 @@ async function run() {
         }
         if (frame.type === 'step') {
           stepTitle.value = frame.title || ''
-          output.value += `$ ${frame.title}\n`
+          appendOutput(`$ ${frame.title}\n`)
         }
-        if (frame.type === 'output' && frame.text) output.value += frame.text
+        if (frame.type === 'output' && frame.text) appendOutput(frame.text)
         if (frame.type === 'exit') {
           exitInfo.value = {
             code: frame.code ?? -1,
@@ -160,6 +169,12 @@ async function run() {
             trusted: Boolean(frame.trusted),
             assertions: frame.assertions || [],
             stopped: frame.stopped,
+          }
+          if (frame.runId) emit('run-exit', frame.runId)
+          if (frame.stopped === 'timeout') {
+            xtermRef.value?.writeln('\r\n\x1b[33m[已超时终止]\x1b[0m')
+          } else if (frame.stopped) {
+            xtermRef.value?.writeln('\r\n\x1b[33m[已手动停止]\x1b[0m')
           }
         }
       }
@@ -190,6 +205,7 @@ async function run() {
 async function stop() {
   try {
     await fetch(apiUrl(`/run/stop`), { method: 'POST', headers: authHeaders() })
+    xtermRef.value?.writeln('\r\n\x1b[33m[正在停止…]\x1b[0m')
   } catch {
     // 服务不在时无事可停。
   }
@@ -254,7 +270,8 @@ onBeforeUnmount(() => {
 
     <p class="ws-terminal-status" :data-ok="exitInfo?.ok">{{ statusLabel }}</p>
 
-    <pre ref="outputEl" class="ws-terminal-output" aria-live="polite"><span v-if="!output && !running" class="ws-terminal-hint">点击「运行」在本机执行命令，输出会实时显示在这里。</span>{{ output }}</pre>
+    <XtermOutput ref="xtermRef" :dark="dark" />
+    <p v-if="!output && !running" class="ws-terminal-hint-overlay">点击「运行」在本机执行命令，输出会实时显示在这里。</p>
 
     <footer v-if="exitInfo" class="ws-terminal-foot">
       <button v-if="!inserted" type="button" @click="insertReport">
@@ -280,8 +297,8 @@ onBeforeUnmount(() => {
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
-  border-bottom: 1px solid var(--ws-line);
   background: var(--ws-surface);
+  position: relative;
 }
 
 .ws-terminal-head {
@@ -379,23 +396,13 @@ onBeforeUnmount(() => {
   color: var(--ws-danger, #c0392b);
 }
 
-.ws-terminal-output {
-  min-height: 0;
+.ws-terminal-hint-overlay {
+  position: absolute;
+  inset: auto var(--ws-space-3) var(--ws-space-6);
   margin: 0;
-  padding: var(--ws-space-2) var(--ws-space-3);
-  overflow: auto;
-  color: var(--ws-ink);
-  background: var(--ws-surface-soft, var(--ws-surface-alt));
-  font-family: var(--ws-font-mono);
-  font-size: var(--ws-text-xs);
-  line-height: 1.55;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-.ws-terminal-hint {
   color: var(--ws-ink-faint);
-  font-family: inherit;
+  font-size: var(--ws-text-xs);
+  pointer-events: none;
 }
 
 .ws-terminal-foot {

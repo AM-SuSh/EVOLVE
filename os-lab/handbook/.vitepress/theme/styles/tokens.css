@@ -93,10 +93,23 @@
   --ws-shadow-2: 0 4px 16px rgba(16, 28, 32, 0.09);
   --ws-shadow-3: 0 16px 48px rgba(16, 28, 32, 0.18);
 
+  /* -- 文件树状态色（色弱友好：配合 A/M/T/G/! 字母标记）-------------------- */
+  --ws-file-added-fg: var(--vp-c-green-1);
+  --ws-file-added-bg: var(--vp-c-green-soft);
+  --ws-file-modified-fg: var(--vp-c-yellow-1);
+  --ws-file-modified-bg: var(--vp-c-yellow-soft);
+  --ws-file-todo-fg: var(--vp-c-brand-1);
+  --ws-file-todo-bg: var(--vp-c-brand-soft);
+  --ws-file-generated-fg: var(--ws-ink-muted);
+  --ws-file-generated-bg: var(--ws-surface-alt);
+  --ws-file-conflict-fg: var(--vp-c-red-1);
+  --ws-file-conflict-bg: var(--vp-c-red-soft);
+
   /* -- 工作台布局 ---------------------------------------------------------- */
   --ws-topbar-height: 56px;
   --ws-pane-gap: 1px;
   --ws-reading-measure: 74ch;
+  --ws-dock-height: 28%;
 
   /* -- 层级 ---------------------------------------------------------------- */
   --ws-z-sticky: 10;

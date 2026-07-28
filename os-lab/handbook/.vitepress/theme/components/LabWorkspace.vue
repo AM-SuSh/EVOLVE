@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useData, useRouter, withBase } from 'vitepress'
-import { Blocks, BookOpen, ClipboardCheck, Home, Maximize2, MessagesSquare, Minimize2, Moon, Settings, Sun, UserRound } from 'lucide-vue-next'
+import { Blocks, BookOpen, ClipboardCheck, Code2, Home, MessagesSquare, Moon, Play, Settings, Sun, UserRound } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
 import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
 import ReportPanel from './ReportPanel.vue'
 import CodePanel from './CodePanel.vue'
+import BottomDock, { type DockTab } from './BottomDock.vue'
 import JourneyRail from './JourneyRail.vue'
 import TeacherDocPanel from './TeacherDocPanel.vue'
 import TeacherPublishPanel from './TeacherPublishPanel.vue'
@@ -142,20 +143,29 @@ const connection = ref<'checking' | 'remote' | 'offline'>('checking')
 const modelName = ref('')
 const notice = ref('')
 const currentSection = ref({ h2: '', h3: '' })
-const mobileView = ref<'manual' | 'tutor'>('manual')
-/** 右栏下半区页签（仅学生）：报告 / 代码 / AI 导师。 */
-const rightTab = ref<'report' | 'code' | 'tutor'>('report')
-/** 代码页签首次打开后保持挂载，切换页签不丢浏览状态。 */
-const codeVisited = ref(false)
-watch(rightTab, (tab) => {
-  if (tab === 'code') codeVisited.value = true
-})
+const mobileView = ref<'manual' | 'code' | 'tutor' | 'run'>('manual')
+/** 右上栏页签（仅学生）：实验报告 / AI 导师。 */
+const sideTab = ref<'report' | 'tutor'>('tutor')
+/** 底部 Dock 页签。 */
+const dockTab = ref<DockTab>('terminal')
+/** 最近一次可信运行的 runId，供 Trace/Problems 占位关联。 */
+const lastRunId = ref('')
+/** 代码区首次访问后保持挂载。 */
+const codeVisited = ref(true)
+/** 底部面板高度占工作台比例。 */
+function loadDockHeight() {
+  if (typeof localStorage === 'undefined') return 28
+  const raw = localStorage.getItem('os-lab-dock-height')
+  const stored = Number(raw)
+  return Number.isFinite(stored) ? stored : 28
+}
+const dockHeight = ref(loadDockHeight())
 /** 终端 → 报告「过程记录」的插入载荷（id 递增触发）。 */
 const reportInsert = ref<{ id: number; text: string } | null>(null)
-/** 面板最大化：终端或下半区可放大到整个工作台。 */
-const maximized = ref<'none' | 'terminal' | 'bottom'>('none')
-function toggleMax(target: 'terminal' | 'bottom') {
-  maximized.value = maximized.value === target ? 'none' : target
+/** 面板最大化：底部 Dock 可放大到整个工作台。 */
+const maximized = ref<'none' | 'dock'>('none')
+function toggleMaxDock() {
+  maximized.value = maximized.value === 'dock' ? 'none' : 'dock'
 }
 
 /* -- 左右栏宽度 ------------------------------------------------------------- */
@@ -187,6 +197,7 @@ const paneSplit = ref(loadPaneSplit())
 const paneResizing = ref(false)
 const paneGridStyle = computed<Record<string, string>>(() => ({
   '--ws-left-pane-width': `${paneSplit.value}%`,
+  '--ws-dock-height': `${dockHeight.value}%`,
 }))
 
 function paneLimits() {
@@ -770,19 +781,22 @@ function onRunFinished(payload: {
       source: 'terminal',
     },
   })
+  if (payload.runId) lastRunId.value = payload.runId
   announceUnlock(wasCompleted)
 }
 
 /** 终端输出插入实验报告的「过程记录」。 */
 function onInsertReport(text: string) {
   reportInsert.value = { id: (reportInsert.value?.id ?? 0) + 1, text }
-  rightTab.value = 'report'
+  sideTab.value = 'report'
+  mobileView.value = 'tutor'
   toast('输出已插入实验报告。')
 }
 
 /** 报告面板请导师点评：切到对话页签并把报告作为提问发送。 */
 function reviewReport(content: string) {
-  rightTab.value = 'tutor'
+  sideTab.value = 'tutor'
+  mobileView.value = 'tutor'
   if (sending.value) {
     toast('导师正在回复上一条消息，稍后再试。')
     return
@@ -909,8 +923,19 @@ onBeforeUnmount(() => {
         :class="{ active: mobileView === 'manual' }"
         @click="mobileView = 'manual'"
       >
-        <BookOpen :size="15" aria-hidden="true" />实验手册
+        <BookOpen :size="15" aria-hidden="true" />手册
       </button>
+      <template v-if="!isTeacherRole">
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="mobileView === 'code'"
+          :class="{ active: mobileView === 'code' }"
+          @click="mobileView = 'code'"
+        >
+          <Code2 :size="15" aria-hidden="true" />代码
+        </button>
+      </template>
       <button
         type="button"
         role="tab"
@@ -918,11 +943,26 @@ onBeforeUnmount(() => {
         :class="{ active: mobileView === 'tutor' }"
         @click="mobileView = 'tutor'"
       >
-        <MessagesSquare :size="15" aria-hidden="true" />{{ isTeacherRole ? '教学安排' : '实践区' }}
+        <MessagesSquare :size="15" aria-hidden="true" />{{ isTeacherRole ? '教学' : '导师' }}
+      </button>
+      <button
+        v-if="!isTeacherRole"
+        type="button"
+        role="tab"
+        :aria-selected="mobileView === 'run'"
+        :class="{ active: mobileView === 'run' }"
+        @click="mobileView = 'run'"
+      >
+        <Play :size="15" aria-hidden="true" />运行
       </button>
     </div>
 
-    <main ref="panesElement" class="ws-panes" :style="paneGridStyle">
+    <main
+      ref="panesElement"
+      class="ws-panes"
+      :class="{ 'ws-ide-student': !isTeacherRole }"
+      :style="paneGridStyle"
+    >
       <!-- 左栏：指导书渲染效果；教师点「编辑手册」后整栏切换为 Markdown 编辑器 -->
       <ManualPane
         v-show="!(isTeacherRole && teacherEditing)"
@@ -976,65 +1016,34 @@ onBeforeUnmount(() => {
         <TeacherPublishPanel :lab="lab" :endpoint="endpoint" @notice="toast" />
       </div>
 
-      <!-- 右栏（学生）：终端在上，下半区在「实验报告 / 代码 / AI 导师」间切换 -->
-      <div v-else class="ws-right" :class="{ 'ws-mobile-hidden': mobileView !== 'tutor' }">
-        <div class="ws-panel-wrap" :class="{ 'ws-max': maximized === 'terminal' }">
-          <TerminalPanel
-            :key="`terminal-${studentId}`"
-            :lab="lab"
-            :endpoint="endpoint"
-            :student="studentId"
-            :session-id="sessionId"
-            :maximized="maximized === 'terminal'"
-            @run-finished="onRunFinished"
-            @insert-report="onInsertReport"
-            @toggle-max="toggleMax('terminal')"
-          />
-        </div>
-
-        <div class="ws-bottom" :class="{ 'ws-max': maximized === 'bottom' }">
-          <div class="ws-right-tabs" role="tablist" aria-label="实践区视图">
+      <!-- 右栏（学生）：IDE 四区 — 右上导师/报告、中部代码、底部 Dock -->
+      <template v-else>
+        <div
+          class="ws-ide-side"
+          :class="{ 'ws-mobile-hidden': mobileView !== 'tutor', 'ws-max': maximized === 'dock' && mobileView === 'tutor' }"
+        >
+          <div class="ws-side-tabs" role="tablist" aria-label="导师与报告">
             <button
               type="button"
               role="tab"
-              :aria-selected="rightTab === 'report'"
-              :class="{ active: rightTab === 'report' }"
-              @click="rightTab = 'report'"
+              :aria-selected="sideTab === 'report'"
+              :class="{ active: sideTab === 'report' }"
+              @click="sideTab = 'report'"
             >
               实验报告
             </button>
             <button
               type="button"
               role="tab"
-              :aria-selected="rightTab === 'code'"
-              :class="{ active: rightTab === 'code' }"
-              @click="rightTab = 'code'"
-            >
-              代码
-            </button>
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="rightTab === 'tutor'"
-              :class="{ active: rightTab === 'tutor' }"
-              @click="rightTab = 'tutor'"
+              :aria-selected="sideTab === 'tutor'"
+              :class="{ active: sideTab === 'tutor' }"
+              @click="sideTab = 'tutor'"
             >
               AI 导师
             </button>
-            <button
-              type="button"
-              class="ws-tab-max"
-              :title="maximized === 'bottom' ? '恢复布局' : '放大到整页'"
-              :aria-label="maximized === 'bottom' ? '恢复布局' : '放大到整页'"
-              @click="toggleMax('bottom')"
-            >
-              <Minimize2 v-if="maximized === 'bottom'" :size="14" aria-hidden="true" />
-              <Maximize2 v-else :size="14" aria-hidden="true" />
-            </button>
           </div>
-
           <ReportPanel
-            v-show="rightTab === 'report'"
+            v-show="sideTab === 'report'"
             :lab="lab"
             :insert-payload="reportInsert"
             :teacher-feedback="teacherFeedback"
@@ -1043,16 +1052,8 @@ onBeforeUnmount(() => {
             @submit-teacher="submitReportToTeacher"
             @notice="toast"
           />
-          <CodePanel
-            v-if="codeVisited"
-            v-show="rightTab === 'code'"
-            :key="`code-${studentId}`"
-            :lab="lab"
-            :endpoint="endpoint"
-            :student="studentId"
-          />
           <TutorPane
-            v-show="rightTab === 'tutor'"
+            v-show="sideTab === 'tutor'"
             :lab="lab"
             :messages="messages"
             :sending="sending"
@@ -1065,7 +1066,43 @@ onBeforeUnmount(() => {
             @use-prompt="usePrompt"
           />
         </div>
-      </div>
+
+        <CodePanel
+          v-if="codeVisited"
+          class="ws-ide-code"
+          :class="{ 'ws-mobile-hidden': mobileView !== 'code' }"
+          :key="`code-${studentId}`"
+          :lab="lab"
+          :endpoint="endpoint"
+          :student="studentId"
+          :dark="isDark"
+        />
+
+        <BottomDock
+          class="ws-ide-dock"
+          :class="{ 'ws-mobile-hidden': mobileView !== 'run', 'ws-max': maximized === 'dock' }"
+          v-model:active-tab="dockTab"
+          v-model:height-percent="dockHeight"
+          :run-id="lastRunId"
+          :lab-id="lab.id"
+          :maximized="maximized === 'dock'"
+          @toggle-max="toggleMaxDock"
+        >
+          <template #terminal>
+            <TerminalPanel
+              :key="`terminal-${studentId}`"
+              :lab="lab"
+              :endpoint="endpoint"
+              :student="studentId"
+              :session-id="sessionId"
+              :dark="isDark"
+              @run-finished="onRunFinished"
+              @run-exit="lastRunId = $event"
+              @insert-report="onInsertReport"
+            />
+          </template>
+        </BottomDock>
+      </template>
     </main>
 
     <p v-if="notice" class="ws-toast" role="status">{{ notice }}</p>
@@ -1460,6 +1497,55 @@ onBeforeUnmount(() => {
   user-select: none !important;
 }
 
+/* 学生 IDE 右上：导师与报告 */
+.ws-ide-side {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--ws-line);
+  background: var(--ws-surface);
+}
+
+.ws-side-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--ws-space-1);
+  padding: var(--ws-space-1) var(--ws-space-3) 0;
+  border-bottom: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
+}
+
+.ws-side-tabs button {
+  min-height: var(--ws-control-md);
+  padding: var(--ws-space-1) var(--ws-space-4);
+  color: var(--ws-ink-muted);
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--ws-radius-md) var(--ws-radius-md) 0 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-semibold);
+  cursor: pointer;
+}
+
+.ws-side-tabs button:hover,
+.ws-side-tabs button.active {
+  color: var(--ws-accent);
+}
+
+.ws-side-tabs button.active {
+  border-color: var(--ws-line);
+  background: var(--ws-surface);
+}
+
+.ws-ide-side > :deep(.ws-report),
+.ws-ide-side > :deep(.ws-tutor-pane) {
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* 右栏：终端在上，下半区在「实验报告 / 代码 / AI 导师」间切换。 */
 .ws-right {
   display: grid;
@@ -1791,11 +1877,16 @@ onBeforeUnmount(() => {
 
   .ws-mobile-switch {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(4, 1fr);
     gap: var(--ws-space-1);
     padding: var(--ws-space-2) var(--ws-space-3);
     border-bottom: 1px solid var(--ws-line);
     background: var(--ws-surface-alt);
+  }
+
+  .ws-mobile-switch:has(button:nth-child(2):last-child),
+  .ws-workspace:has(.ws-right-teacher) .ws-mobile-switch {
+    grid-template-columns: 1fr 1fr;
   }
 
   .ws-mobile-switch button {
