@@ -30,7 +30,6 @@ export default withMermaid(defineConfig({
       { text: '首页', link: '/' },
       { text: '引导式学习', link: '/guide/ai-tutor' },
       { text: '开始学习', link: '/guide/start' },
-      { text: '实验手册', link: '/labs/overview' },
       { text: '环境配置', link: '/setup/environment' },
     ],
     sidebar: {
@@ -44,58 +43,6 @@ export default withMermaid(defineConfig({
             { text: '验证命令', link: '/guide/verify' },
             { text: '环境安装', link: '/setup/environment' },
             { text: '完整验证文档', link: '/setup/verify-full' },
-          ],
-        },
-        {
-          text: '进入引导式学习',
-          items: [
-            { text: 'Lab1 启动底座', link: '/learn/lab1' },
-            { text: 'Lab2 执行与切换', link: '/learn/lab2' },
-            { text: 'Lab3 地址空间', link: '/learn/lab3' },
-            { text: 'Lab4 进程能力', link: '/learn/lab4' },
-            { text: 'Lab5 文件与并发', link: '/learn/lab5' },
-            { text: 'Lab6 持久存储', link: '/learn/lab6' },
-            { text: 'Lab7 进程通信', link: '/learn/lab7' },
-            { text: 'Lab8 并发同步', link: '/learn/lab8' },
-          ],
-        },
-      ],
-      '/labs/': [
-        {
-          text: '实验指导',
-          items: [
-            { text: '材料说明', link: '/labs/README' },
-            { text: '总览与知识地图', link: '/labs/overview' },
-            { text: 'Lab1 裸机启动', link: '/labs/lab1-bare-metal' },
-            { text: 'Lab2 中断与多任务', link: '/labs/lab2-trap-and-task' },
-            { text: 'Lab3 内存与虚存', link: '/labs/lab3-memory' },
-            { text: 'Lab4 进程管理', link: '/labs/lab4-process' },
-            { text: 'Lab5 文件系统与并发', link: '/labs/lab5-fs-and-sync' },
-            { text: 'Lab6 磁盘文件系统', link: '/labs/lab6-disk-fs' },
-            { text: 'Lab7 IPC 与信号', link: '/labs/lab7-ipc-signal' },
-            { text: 'Lab8 线程与同步', link: '/labs/lab8-thread-sync' },
-          ],
-        },
-        {
-          text: '引导式学习',
-          items: [
-            { text: '在工作台中学习', link: '/guide/ai-tutor' },
-          ],
-        },
-      ],
-      '/answers/': [
-        {
-          text: '参考答案',
-          items: [
-            { text: '答案说明', link: '/answers/README' },
-            { text: 'Lab1 答案', link: '/answers/lab1-answers' },
-            { text: 'Lab2 答案', link: '/answers/lab2-answers' },
-            { text: 'Lab3 答案', link: '/answers/lab3-answers' },
-            { text: 'Lab4 答案', link: '/answers/lab4-answers' },
-            { text: 'Lab5 答案', link: '/answers/lab5-answers' },
-            { text: 'Lab6 答案', link: '/answers/lab6-answers' },
-            { text: 'Lab7 答案', link: '/answers/lab7-answers' },
-            { text: 'Lab8 答案', link: '/answers/lab8-answers' },
           ],
         },
       ],
@@ -147,7 +94,11 @@ export default withMermaid(defineConfig({
       fs: {
         // 前端直接 import os-lab/learning/rubric.mjs 与 os-lab/tutor/prompts/guardrails.yaml
         // （评分与护栏的单一事实源），dev server 需要允许访问 handbook 之外的 os-lab 目录。
-        allow: [handbookRoot, resolve(handbookRoot, '..')],
+        allow: [
+          handbookRoot,
+          resolve(handbookRoot, '..', 'learning'),
+          resolve(handbookRoot, '..', 'tutor', 'prompts'),
+        ],
       },
     },
   },

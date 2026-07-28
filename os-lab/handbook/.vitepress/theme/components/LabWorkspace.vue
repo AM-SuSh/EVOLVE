@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useData, useRouter, withBase } from 'vitepress'
-import { Blocks, BookOpen, ClipboardCheck, Home, Maximize2, MessagesSquare, Minimize2, Moon, Settings, Sun, UserRound } from 'lucide-vue-next'
+import { Blocks, BookOpen, ClipboardCheck, LockKeyhole, Maximize2, MessagesSquare, Minimize2, Moon, Settings, Sun, UserRound } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
 import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
@@ -28,6 +28,7 @@ import {
   saveLlmConfig,
   tutorStages,
   type LearningEvent,
+  type LearningAccessItem,
   type LlmConfig,
   type TutorLabId,
   type TutorMessage,
@@ -57,6 +58,7 @@ const authMode = ref<'login' | 'register'>('login')
 const authForm = ref({ username: '', password: '', className: '' })
 const authBusy = ref(false)
 const authError = ref('')
+const manualKey = ref(0)
 
 function apiUrl(pathname: string) {
   return `${endpoint}${pathname}`
@@ -82,6 +84,8 @@ async function submitAuth() {
     showIdentity.value = false
     authForm.value = { username: '', password: '', className: '' }
     toast(`欢迎，${payload.username}${payload.role === 'teacher' ? '（教师）' : ''}。`)
+    manualKey.value += 1
+    void refreshLearningAccess()
     void refreshScaffold()
   } catch (err) {
     authError.value =
@@ -125,6 +129,8 @@ async function doLogout() {
   auth.value = null
   saveAuth(null)
   scaffold.value = null
+  learningAccess.value = []
+  manualKey.value += 1
   showIdentity.value = false
   toast('已退出登录（游客只读）。')
 }
@@ -269,6 +275,7 @@ interface ScaffoldStatus {
   next: string | null
   nextSummary: string | null
   nextAllowed: boolean
+  nextBlockedReason?: string
   openLab: string
   extraBins: string[]
   variants: Record<string, string>
@@ -279,6 +286,26 @@ const showScaffold = ref(false)
 const scaffoldBusy = ref(false)
 const scaffoldLog = ref<string[]>([])
 const newBinName = ref('')
+const learningAccess = ref<LearningAccessItem[]>([])
+const accessLoading = ref(true)
+
+async function refreshLearningAccess() {
+  if (!auth.value) {
+    learningAccess.value = []
+    accessLoading.value = false
+    return
+  }
+  accessLoading.value = true
+  try {
+    const response = await fetch(apiUrl('/learning/access'), { headers: authHeaders() })
+    const payload = await response.json().catch(() => ({}))
+    learningAccess.value = response.ok && Array.isArray(payload.labs) ? payload.labs : []
+  } catch {
+    learningAccess.value = []
+  } finally {
+    accessLoading.value = false
+  }
+}
 
 const scaffoldLabel = computed(() => {
   if (!studentId.value) return '我的系统 · 未登录'
@@ -401,8 +428,12 @@ const connectionDetail = ref('')
 let noticeTimer = 0
 
 const lab = computed(() => getTutorLab(props.labId))
-const journey = computed(() => buildLabJourney(events.value, props.labId))
+const journey = computed(() => buildLabJourney(events.value, props.labId, learningAccess.value))
 const journeyItem = computed(() => journey.value.find((item) => item.lab.id === props.labId))
+const currentAccess = computed(() => learningAccess.value.find((item) => item.labId === props.labId))
+const workspaceRestricted = computed(
+  () => !isTeacherRole.value && (!auth.value || accessLoading.value || !currentAccess.value?.unlocked),
+)
 const sessionEvents = computed(() =>
   events.value.filter((event) => event.sessionId === sessionId.value),
 )
@@ -429,19 +460,25 @@ function record(
     ...options,
   })
   events.value = result.next
-  if (connection.value === 'remote') void syncEvent(result.event)
+  // 解锁证据属于导师服务，不应依赖上游大模型是否在线。
+  if (auth.value) void syncEvent(result.event)
 }
 
 async function syncEvent(event: LearningEvent) {
   try {
-    await fetch(`${endpoint}/events`, {
+    const wasCompleted = Boolean(journeyItem.value?.completed)
+    const response = await fetch(`${endpoint}/events`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ event }),
       keepalive: true,
     })
+    if (response.ok && ['verification_attempt', 'reflection_submitted'].includes(event.type)) {
+      await refreshLearningAccess()
+      announceUnlock(wasCompleted)
+    }
   } catch {
-    // 浏览器本地存储是权威副本，代理服务缺席不影响学习。
+    // 本地档案仍保留；服务恢复后可继续学习，但服务端解锁必须等待证据同步成功。
   }
 }
 
@@ -813,6 +850,11 @@ function enterLab(labId: TutorLabId) {
   router.go(withBase(`/learn/${labId}`))
 }
 
+function finishTeacherEditing() {
+  teacherEditing.value = false
+  manualKey.value += 1
+}
+
 function exportGrowth() {
   exportEventsAsJsonl(
     events.value,
@@ -828,6 +870,7 @@ onMounted(async () => {
   events.value = loadEvents()
   if (!studentId.value) showIdentity.value = true
   await checkConnection()
+  await refreshLearningAccess()
   startSession()
   void refreshScaffold()
   void loadMyFeedback()
@@ -876,9 +919,6 @@ onBeforeUnmount(() => {
           <Blocks :size="15" aria-hidden="true" /><span>{{ scaffoldLabel }}</span>
         </button>
         <JourneyRail :journey="journey" @enter-lab="enterLab" @export-growth="exportGrowth" />
-        <a class="ws-topbar-link" :href="withBase('/labs/overview')">
-          <Home :size="15" aria-hidden="true" /><span>返回手册</span>
-        </a>
         <button
           class="ws-topbar-icon"
           type="button"
@@ -925,6 +965,7 @@ onBeforeUnmount(() => {
     <main ref="panesElement" class="ws-panes" :style="paneGridStyle">
       <!-- 左栏：指导书渲染效果；教师点「编辑手册」后整栏切换为 Markdown 编辑器 -->
       <ManualPane
+        :key="manualKey"
         v-show="!(isTeacherRole && teacherEditing)"
         class="ws-left-pane"
         :class="{ 'ws-mobile-hidden': mobileView !== 'manual' }"
@@ -932,9 +973,7 @@ onBeforeUnmount(() => {
         :editable="isTeacherRole"
         @edit="teacherEditing = true"
         @section-change="currentSection = $event"
-      >
-        <slot />
-      </ManualPane>
+      />
       <TeacherDocPanel
         v-if="isTeacherRole && teacherEditing"
         class="ws-left-pane"
@@ -942,7 +981,7 @@ onBeforeUnmount(() => {
         :lab="lab"
         :endpoint="endpoint"
         @notice="toast"
-        @close="teacherEditing = false"
+        @close="finishTeacherEditing"
       />
 
       <div
@@ -974,6 +1013,17 @@ onBeforeUnmount(() => {
         :class="{ 'ws-mobile-hidden': mobileView !== 'tutor' }"
       >
         <TeacherPublishPanel :lab="lab" :endpoint="endpoint" @notice="toast" />
+      </div>
+
+      <div
+        v-else-if="workspaceRestricted"
+        class="ws-right ws-access-blocked"
+        :class="{ 'ws-mobile-hidden': mobileView !== 'tutor' }"
+      >
+        <LockKeyhole :size="28" aria-hidden="true" />
+        <strong>{{ accessLoading ? '正在确认学习进度' : '当前实验尚未解锁' }}</strong>
+        <p>{{ currentAccess?.reason || (auth ? '请从学习路径确认教师开放范围和前置任务。' : '登录后才能进入实验工作台。') }}</p>
+        <a :href="withBase('/guide/ai-tutor')">返回学习路径</a>
       </div>
 
       <!-- 右栏（学生）：终端在上，下半区在「实验报告 / 代码 / AI 导师」间切换 -->
@@ -1181,7 +1231,7 @@ onBeforeUnmount(() => {
             <template v-if="!scaffold.exists">{{ scaffold.user }}，尚未初始化。点击下方按钮领取 Lab1 起步代码。</template>
             <template v-else-if="scaffold.next">
               当前进度：{{ scaffold.applied.join(' → ') }}；下一步 {{ scaffold.next }}（{{ scaffold.nextSummary }}）
-              <template v-if="!scaffold.nextAllowed">——老师当前开放到 {{ scaffold.openLab }}，{{ scaffold.next }} 尚未开放。</template>
+              <template v-if="!scaffold.nextAllowed">——{{ scaffold.nextBlockedReason || `教师当前开放到 ${scaffold.openLab}` }}。</template>
             </template>
             <template v-else>八个 Lab 已全部发放，继续自由完善你的系统吧。</template>
           </p>
@@ -1194,7 +1244,7 @@ onBeforeUnmount(() => {
               :disabled="scaffoldBusy || (scaffold.exists && !scaffold.nextAllowed)"
               @click="scaffoldUpgrade"
             >
-              {{ scaffoldBusy ? '发放中…' : scaffold.exists ? (scaffold.nextAllowed ? `升级到 ${scaffold.next}` : `${scaffold.next} 未开放`) : '初始化我的系统（Lab1）' }}
+              {{ scaffoldBusy ? '发放中…' : scaffold.exists ? (scaffold.nextAllowed ? `升级到 ${scaffold.next}` : `${scaffold.next} 暂不可领取`) : '初始化我的系统（Lab1）' }}
             </button>
           </div>
 
@@ -1289,6 +1339,44 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.ws-access-blocked {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--ws-space-2);
+  padding: var(--ws-space-6);
+  color: var(--ws-ink-muted);
+  background: var(--ws-surface-alt);
+  text-align: center;
+}
+
+.ws-access-blocked > svg {
+  color: var(--ws-warn);
+}
+
+.ws-access-blocked strong {
+  color: var(--ws-ink);
+  font-size: var(--ws-text-lg);
+}
+
+.ws-access-blocked p {
+  max-width: 420px;
+  margin: 0;
+  font-size: var(--ws-text-sm);
+}
+
+.ws-access-blocked a {
+  margin-top: var(--ws-space-2);
+  padding: var(--ws-space-2) var(--ws-space-3);
+  color: var(--ws-accent);
+  border: 1px solid var(--ws-accent);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
+  font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-semibold);
+  text-decoration: none;
+}
+
 .ws-workspace {
   display: grid;
   /* 隐式的 auto 列会以子项 min-content 为下限，窄屏下会把整个外壳顶宽

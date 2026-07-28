@@ -16,8 +16,6 @@ const REPO_ROOT = path.resolve(OS_LAB_ROOT, '..')
 const SYNC_DIRS = ['labs', 'exercises', 'answers', 'project', 'setup', 'learn']
 
 const COPY_JOBS = [
-  { from: path.join(OS_LAB_ROOT, 'labs'), to: path.join(HANDBOOK_ROOT, 'labs'), filter: (f) => f.endsWith('.md') },
-  { from: path.join(OS_LAB_ROOT, 'labs', 'answers'), to: path.join(HANDBOOK_ROOT, 'answers'), filter: (f) => f.endsWith('.md') },
   { from: path.join(OS_LAB_ROOT, 'docs'), to: path.join(HANDBOOK_ROOT, 'project'), filter: (f) => f.endsWith('.md') },
 ]
 
@@ -124,6 +122,10 @@ function rewriteLinks(text) {
       .replace(/\]\(\/answers\/([^)]+)\.md\)/g, '](/answers/$1)')
       // 前序规则可能产出 /labs/answers/ 这类目录链接，收敛到答案说明页
       .replace(/\]\(\/labs\/answers\/\)/g, '](/answers/README)')
+      // 学生实验正文不再生成静态页，统一回到受权限控制的学习工作台。
+      .replace(/\]\(\/labs\/lab([1-8])-[^)]*\)/g, '](/learn/lab$1)')
+      .replace(/\]\(\/labs\/overview\)/g, '](/guide/ai-tutor)')
+      .replace(/\]\(\/answers\/[^)]*\)/g, '](/guide/ai-tutor)')
   )
 }
 
@@ -170,9 +172,8 @@ function copySingleFile(job) {
 }
 
 /**
- * 学习工作台壳页：/learn/labN 与 /labs/labN-* 共用同一份正文。
- * 用 VitePress 的 @include 在构建期并入，正文因此走完整 markdown 管线
- * （shiki 高亮、mermaid、容器、锚点），工作台不需要重复实现渲染。
+ * 学习工作台只生成不含正文的路由壳。实验手册由 tutor-server 在登录后按
+ * 教师发布范围和可信学习进度返回，避免静态构建泄露未开放内容。
  */
 const WORKSPACE_LAYERS = {
   lab1: '启动底座',
@@ -197,8 +198,8 @@ function writeWorkspacePages() {
   let count = 0
   for (const lab of labs) {
     const source = `${lab.guide.replace(/^\/labs\//, '')}.md`
-    if (!fs.existsSync(path.join(HANDBOOK_ROOT, 'labs', source))) {
-      console.warn(`skip workspace page, missing manual: labs/${source}`)
+    if (!fs.existsSync(path.join(OS_LAB_ROOT, 'labs', source))) {
+      console.warn(`skip workspace page, missing manual: os-lab/labs/${source}`)
       continue
     }
     const layer = WORKSPACE_LAYERS[lab.id] || lab.subtitle
@@ -218,7 +219,7 @@ function writeWorkspacePages() {
       '',
       '<!-- 由 scripts/sync-content.mjs 生成，请勿直接编辑 -->',
       '',
-      `<!--@include: ../labs/${source}-->`,
+      '<!-- 正文由工作台在登录后从 tutor-server 获取。 -->',
       '',
     ].join('\n')
     fs.writeFileSync(path.join(outDir, `${lab.id}.md`), body, 'utf8')

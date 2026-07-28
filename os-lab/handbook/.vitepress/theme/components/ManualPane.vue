@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vitepress'
-import { BookOpen, ExternalLink, Pencil, TableOfContents } from 'lucide-vue-next'
-import { collapsedSectionPrefix, sectionPrefixOf, type TutorLab } from '../tutor-model'
+import { useRoute, withBase } from 'vitepress'
+import MarkdownIt from 'markdown-it'
+import mermaid from 'mermaid'
+import { BookOpen, LockKeyhole, Pencil, RefreshCw, TableOfContents } from 'lucide-vue-next'
+import { authHeaders, collapsedSectionPrefix, sectionPrefixOf, type TutorLab } from '../tutor-model'
 
 /**
  * 实验手册栏。
  *
- * 正文由 VitePress 在构建期通过 @include 并入 /learn/labN，再作为 <slot/> 传进来，
- * 因此这里拿到的是完整 markdown 管线的产物：shiki 高亮、mermaid、锚点、容器全部原生可用。
- * 本组件负责两件事：观测学生读到哪一节（供导师上下文），提供左侧可折叠目录。
+ * 正文在登录后从 tutor-server 获取；服务端负责教师发布范围与学习进度鉴权。
+ * 这里负责可信 Markdown 渲染、阅读位置观测和章节目录。
  */
 const props = defineProps<{ lab: TutorLab; editable?: boolean }>()
 
@@ -28,12 +29,44 @@ interface ManualSection {
 }
 
 const route = useRoute()
+const endpoint = String(
+  import.meta.env.VITE_OS_LAB_TUTOR_ENDPOINT || 'http://127.0.0.1:8787',
+).replace(/\/$/, '')
 const scroller = ref<HTMLElement>()
 const docRoot = ref<HTMLElement>()
 const sections = ref<ManualSection[]>([])
 const activeIndex = ref(0)
 const promptSectionCollapsed = ref(true)
 const tocOpen = ref(false)
+const manualHtml = ref('')
+const loading = ref(true)
+const error = ref('')
+const locked = ref(false)
+
+const markdown = new MarkdownIt({ html: true, linkify: true })
+const defaultFence = markdown.renderer.rules.fence
+markdown.renderer.rules.fence = (tokens, index, options, env, self) => {
+  const token = tokens[index]
+  if (token.info.trim().split(/\s+/)[0] === 'mermaid') {
+    return `<div class="mermaid">${markdown.utils.escapeHtml(token.content)}</div>`
+  }
+  return defaultFence ? defaultFence(tokens, index, options, env, self) : self.renderToken(tokens, index, options)
+}
+const defaultLinkOpen = markdown.renderer.rules.link_open
+markdown.renderer.rules.link_open = (tokens, index, options, env, self) => {
+  const hrefIndex = tokens[index].attrIndex('href')
+  if (hrefIndex >= 0) {
+    const raw = tokens[index].attrs![hrefIndex][1]
+    const labMatch = raw.match(/(?:^|\/)lab([1-8])-[^/#]+(?:\.md)?(#[^\s]*)?$/)
+    const answerMatch = raw.match(/(?:^|\/)answers\/lab([1-8])-answers(?:\.md)?(#[^\s]*)?$/)
+    if (answerMatch) tokens[index].attrs![hrefIndex][1] = withBase(`/learn/lab${answerMatch[1]}`)
+    else if (labMatch) tokens[index].attrs![hrefIndex][1] = withBase(`/learn/lab${labMatch[1]}${labMatch[2] || ''}`)
+    else if (/\/?labs\/overview(?:\.md)?$/.test(raw)) tokens[index].attrs![hrefIndex][1] = withBase('/guide/ai-tutor')
+  }
+  return defaultLinkOpen ? defaultLinkOpen(tokens, index, options, env, self) : self.renderToken(tokens, index, options)
+}
+
+mermaid.initialize({ startOnLoad: false, securityLevel: 'strict' })
 
 let frame = 0
 
@@ -58,6 +91,19 @@ function headingText(el: HTMLElement) {
 function indexSections() {
   const root = docRoot.value
   if (!root) return
+  const used = new Set<string>()
+  root.querySelectorAll<HTMLElement>('h2, h3').forEach((heading, index) => {
+    if (heading.id) return
+    const base = headingText(heading)
+      .toLowerCase()
+      .replace(/[^\p{Letter}\p{Number}]+/gu, '-')
+      .replace(/^-|-$/g, '') || `section-${index + 1}`
+    let id = base
+    let duplicate = 2
+    while (used.has(id)) id = `${base}-${duplicate++}`
+    used.add(id)
+    heading.id = id
+  })
   sections.value = [...root.querySelectorAll<HTMLElement>('h2, h3')].map((el) => {
     const title = headingText(el)
     return {
@@ -70,6 +116,33 @@ function indexSections() {
   })
   applyPromptCollapse()
   updateActiveSection()
+}
+
+async function loadManual() {
+  loading.value = true
+  error.value = ''
+  locked.value = false
+  manualHtml.value = ''
+  sections.value = []
+  try {
+    const response = await fetch(`${endpoint}/manual?labId=${encodeURIComponent(props.lab.id)}`, {
+      headers: authHeaders(),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      locked.value = response.status === 401 || response.status === 403
+      throw new Error(payload.error || `手册服务返回 ${response.status}`)
+    }
+    manualHtml.value = markdown.render(String(payload.content || ''))
+    await nextTick()
+    indexSections()
+    const diagrams = docRoot.value?.querySelectorAll<HTMLElement>('.mermaid') || []
+    if (diagrams.length) await mermaid.run({ nodes: [...diagrams] })
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : '实验手册加载失败'
+  } finally {
+    loading.value = false
+  }
 }
 
 /**
@@ -158,12 +231,11 @@ function jumpTo(section: ManualSection) {
 
 watch(
   () => route.path,
-  () => nextTick(indexSections),
+  () => void loadManual(),
 )
 
 onMounted(async () => {
-  await nextTick()
-  indexSections()
+  await loadManual()
   scroller.value?.addEventListener('scroll', onScroll, { passive: true })
   window.addEventListener('resize', onScroll, { passive: true })
 })
@@ -209,16 +281,6 @@ onBeforeUnmount(() => {
           <Pencil :size="15" aria-hidden="true" />
           <span>编辑手册</span>
         </button>
-        <a
-          class="ws-manual-open-full"
-          :href="lab.documentRoute"
-          target="_blank"
-          rel="noopener"
-          title="在新标签打开完整手册"
-        >
-          <ExternalLink :size="15" aria-hidden="true" />
-          <span>完整手册</span>
-        </a>
       </div>
 
       <!-- 目录下拉：挂在工具条下方，点外部关闭 -->
@@ -243,7 +305,20 @@ onBeforeUnmount(() => {
         @click="onDocClick"
         @keydown="onDocKeydown"
       >
-        <slot />
+        <div v-if="loading" class="ws-manual-state" role="status">
+          <RefreshCw :size="22" class="ws-spin" aria-hidden="true" />
+          <strong>正在读取实验手册</strong>
+          <span>同步教师发布范围与学习进度</span>
+        </div>
+        <div v-else-if="error" class="ws-manual-state" :class="{ locked }" role="alert">
+          <LockKeyhole v-if="locked" :size="24" aria-hidden="true" />
+          <RefreshCw v-else :size="24" aria-hidden="true" />
+          <strong>{{ locked ? '当前内容尚不可查看' : '实验手册暂时无法读取' }}</strong>
+          <span>{{ error }}</span>
+          <a v-if="locked" :href="withBase('/guide/ai-tutor')">返回学习路径</a>
+          <button v-else type="button" @click="loadManual">重新加载</button>
+        </div>
+        <div v-else v-html="manualHtml" />
       </div>
     </div>
   </section>
@@ -398,8 +473,7 @@ onBeforeUnmount(() => {
   gap: var(--ws-space-2);
 }
 
-.ws-manual-edit,
-.ws-manual-open-full {
+.ws-manual-edit {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
@@ -427,11 +501,6 @@ onBeforeUnmount(() => {
   opacity: 0.9;
 }
 
-.ws-manual-open-full:hover {
-  color: var(--ws-accent);
-  border-color: var(--ws-accent);
-}
-
 /* -- 正文 ------------------------------------------------------------------ */
 .ws-manual-scroll {
   min-height: 0;
@@ -440,13 +509,59 @@ onBeforeUnmount(() => {
   scroll-behavior: smooth;
 }
 
+.ws-manual-state {
+  display: grid;
+  min-height: 320px;
+  align-content: center;
+  justify-items: center;
+  gap: var(--ws-space-2);
+  color: var(--ws-ink-muted);
+  text-align: center;
+}
+
+.ws-manual-state strong {
+  color: var(--ws-ink);
+  font-size: var(--ws-text-lg);
+}
+
+.ws-manual-state span {
+  max-width: 420px;
+  font-size: var(--ws-text-sm);
+}
+
+.ws-manual-state a,
+.ws-manual-state button {
+  margin-top: var(--ws-space-2);
+  padding: var(--ws-space-2) var(--ws-space-3);
+  color: var(--ws-accent);
+  border: 1px solid var(--ws-accent);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
+  font: inherit;
+  font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-semibold);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.ws-manual-state.locked > svg {
+  color: var(--ws-warn);
+}
+
+.ws-spin {
+  animation: ws-manual-spin 1s linear infinite;
+}
+
+@keyframes ws-manual-spin {
+  to { transform: rotate(360deg); }
+}
+
 @media (max-width: 900px) {
   .ws-manual-scroll {
     padding: var(--ws-space-4) var(--ws-space-4) var(--ws-space-6);
   }
 
-  .ws-manual-edit span,
-  .ws-manual-open-full span {
+  .ws-manual-edit span {
     display: none;
   }
 }
