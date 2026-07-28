@@ -1,0 +1,96 @@
+# Lab2 机制 spec：Trap / 系统调用 / 上下文
+# 每个知识点回答六层次，并挂关系边，供手册、导师、可视化、评价共用。
+
+lab: lab2
+version: 0.1.0-draft
+
+concepts:
+
+  - id: os.trap.limited-direct-execution
+    title: 受限的直接执行
+    layers:
+      course_concept: 用户程序尽量在 CPU 上直接跑以获得速度，但特权受限；要服务或出错时必须陷入 OS。
+      arch_mechanism: RISC-V U-mode / S-mode；用户 ecall 陷入 S-mode；CSR 记录原因与返回点。
+      project_impl:
+        - kernel/src/trap.rs
+        - os-context/src/trap.asm
+      practice_tasks:
+        - 阅读「问题场景」并对照 Lab1 特权模型差异
+        - 任务二第 1、3 题
+      observable_evidence:
+        - QEMU 出现用户程序输出（证明 U-mode 程序经 syscall 成功请求内核）
+        - TRACE trap_enter / trap_exit（若开启 trace-edu）
+      transfer:
+        - 系统调用入口
+        - 异常与缺页处理
+        - 虚拟化中的 VM Exit
+    relations:
+      prerequisite: [lab1.s-mode-kernel]
+      part_of: [os.cpu-virtualization]
+      implemented_by: [kernel/src/trap.rs, os-context/src/trap.asm]
+      observed_by: [trap_enter, hello-output]
+      assessed_by: [task-read, task2-q1, task2-q3]
+      generalizes_to: [syscall, preemptive-irq, vm-exit]
+      commonly_confused_with:
+        - id: ecall-same-target
+          note: Lab1 内核 ecall→OpenSBI(M) 与 Lab2 用户 ecall→内核(S) 指令相同、目标不同
+
+  - id: os.trap.context-switch
+    title: Trap 上下文保存与恢复
+    layers:
+      course_concept: 陷入时必须完整保存可恢复的执行状态，否则返回后程序状态损坏。
+      arch_mechanism: sepc / sstatus / sscratch；通用寄存器；双栈（用户栈 ↔ 内核栈）。
+      project_impl:
+        - os-context/src/lib.rs   # TrapContext
+        - os-context/src/trap.asm  # __alltraps / __restore
+        - kernel/src/trap.rs       # trap_handler / run_user_task
+      practice_tasks:
+        - 解释为何 __alltraps 最先 csrrw sp, sscratch, sp
+        - 任务三：注释 csrrw 观察崩溃（务必改回）
+      observable_evidence:
+        - 正常 sret 后用户程序继续输出
+        - 破坏双栈后崩溃/卡死（负向）
+        - TRACE 中 trap_enter 后能对应到同一任务继续运行
+      transfer:
+        - 线程上下文切换
+        - 信号 handler 帧
+        - 抢占时的中断现场
+    relations:
+      prerequisite: [os.trap.limited-direct-execution]
+      part_of: [os.trap.context-switch]
+      implemented_by: [os-context/src/trap.asm, os-context/src/lib.rs]
+      observed_by: [trap_enter, trap_exit]
+      assessed_by: [task2-q1, task2-q2, task3-csrrw]
+      commonly_confused_with:
+        - id: sepc-is-next-pc
+          note: sepc 指向 ecall 本身，返回前需 +4
+        - id: save-on-user-stack
+          note: 不可在用户栈上构造 TrapContext
+
+  - id: os.trap.syscall-abi
+    title: 系统调用 ABI 与分发
+    layers:
+      course_concept: 用户通过约定寄存器传递「调用号 + 参数」，内核分发到具体服务并写回返回值。
+      arch_mechanism: a7=syscall id；a0–a2=参数；返回值写回 a0；ecall / sret。
+      project_impl:
+        - os-syscall/src/lib.rs
+        - user/src/syscall.rs
+        - kernel/src/trap.rs
+      practice_tasks:
+        - 任务二第 4 题：走通 sys_write 参数链路
+        - 任务三：自定义 syscall（可选）
+      observable_evidence:
+        - Hello from user app!
+        - 409684505
+        - App N exited with code 0
+      transfer:
+        - Linux syscall 约定
+        - 能力系统 / seccomp 过滤点
+    relations:
+      prerequisite: [os.trap.context-switch]
+      implemented_by: [os-syscall/src/lib.rs, kernel/src/trap.rs, user/src/syscall.rs]
+      observed_by: [hello-output, power-result]
+      assessed_by: [task2-q3, task2-q4]
+      commonly_confused_with:
+        - id: forget-advance-sepc
+          note: 不推进 sepc 会反复执行同一条 ecall

@@ -1,0 +1,69 @@
+# Lab2 fill 变体：补全调度器
+
+id: lab2-fill
+lab: lab2
+variant: fill
+version: 0.2.0-draft
+
+learning_goal: |
+  学生独立实现 `TaskManager::find_next_task`，理解 Ready 集合选取与
+  current 更新；跑通 hello/power/yield 全链，并能对比两种扫描起点对输出顺序的影响。
+
+target_concepts:
+  - os.sched.round-robin
+  - os.sched.task-state
+
+student_file: kernel/src/task.rs
+source_template: ../../../scaffold/exercises/lab2/fill/kernel/src/task.rs
+manual_anchor: labs/lab2-trap-and-task.md#任务四教师发放的变体若有
+
+what_is_blank:
+  - symbol: find_next_task
+    hint_in_source: true
+    required_behavior:
+      - 仅选择 task_status == Ready 的任务
+      - 更新 self.current 为选中下标
+      - 无 Ready 时返回 None
+      - 推荐从 current+1 轮转扫描（允许从 0 扫描，但需在报告中说明顺序差异）
+
+success_criteria:
+  recipe: test-lab2
+  assertions: [hello-output, power-result, yield-five-rounds, all-exited]
+
+negative_tests:
+  - id: leave-todo
+    description: 未实现（仍 todo!）则无法完成用户程序轮转 / 编译或运行失败
+    expect_fail: true
+  - id: always-none
+    description: 函数恒返回 None → 过早 All user apps exited 或无法调度
+    expect_fail_assertions: [yield-five-rounds]
+  - id: pick-running-or-exited
+    description: 选中非 Ready 任务 → 状态机错乱或重复跑已退出任务
+    expect_fail: true
+  - id: never-update-current
+    description: 选中了任务但不写 current → 后续 trap 路径找错 TCB
+    expect_fail: true
+
+common_mistakes:
+  - 把 Exited 当成可调度
+  - 忘记更新 current
+  - 只检查 Option::is_some 不检查 Ready
+
+# 提示阶梯：导师 / 工作台应按层释放，禁止一次给完整实现
+hint_ladder:
+  - level: 0
+    when: 学生尚未描述 Ready 条件
+    say: 先用自己的话写出「什么样的任务可以被选中」，再打开函数注释对照。
+  - level: 1
+    when: 知道 Ready 但仍卡住
+    say: 选中之后，内核稍后靠哪个字段找到「当前任务」？find_next_task 要不要改它？
+  - level: 2
+    when: 能跑但不理解顺序
+    say: 从 current+1 扫描和从 0 扫描，对 Yield 输出穿插有何影响？各跑一次写进报告。
+  - level: 3
+    when: 仍无法通过 yield-five-rounds
+    say: 对照 run_next_task 与 all_exited：没有 Ready 时应返回 None 并走到关机路径，而不是 panic 或死循环。仍不要索要整函数粘贴。
+
+report_prompts:
+  - 你从 current+1 扫描还是从 0 扫描？对 Yield 输出穿插有何影响？
+  - 若所有任务都 Exited，find_next_task 与 all_exited 如何配合关机？
