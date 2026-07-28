@@ -4,6 +4,22 @@
 
 Lab1 让内核在裸机上活了下来；接下来，我们要让它从「只会说 Hello」变成「能干活」。Lab2 对应《操作系统导论》里的 **CPU 虚拟化**：让用户程序跑在用户态，通过**系统调用**请求内核服务，并在多个程序之间切换。
 
+**本实验知识路径（课本 → 项目 → 实践 → 证据 → 迁移）**：
+
+```text
+OSTEP Ch.6/7 受限执行与调度
+        ↓
+RISC-V U/S 特权 + ecall/sret + TCB 轮转（本仓库实现）
+        ↓
+跑通 hello / power / yield；按需完成 fill 或 debug 变体
+        ↓
+必须看见：用户输出、409684505、Yield round×5、All user apps exited.
+        ↓
+可迁移到：抢占式调度、异常处理、虚拟化 VM Exit
+```
+
+结构化规格见 `lab-packages/lab2/`（供工作台 / 评分 / 变体发放引用；你仍以本文正文为主阅读）。
+
 > **推荐：打开引导式 LLM 外壳。** 如果你想按“先判断 → 再提问 → 跑验证 → 写复盘”的方式完成本实验，可以先进入 [Lab2 AI 引导学习](/guide/ai-tutor)。导师不会替你交付完整代码，但会把你的提问、验证和复盘记录成可导出的学习 trace，便于最后答辩说明“我是怎么学会的”。
 
 ## 零、开始之前
@@ -66,6 +82,14 @@ trap 后内核读 **CSR** 判断原因。先记三个：
 
 Lab1 里内核用 `ecall` 找 OpenSBI（M-mode）；Lab2 里用户程序用 `ecall` 找内核（S-mode）。指令相同，陷入的目标不同。
 
+| 层次 | 本小节对应什么 |
+| --- | --- |
+| **课本** | OSTEP「受限的直接执行」：快，但特权受限 |
+| **项目** | U-mode 用户程序 + S-mode 内核；`ecall` 进入 `trap_handler` |
+| **实践** | 对照 Lab1 特权模型，说出为何需要 trap |
+| **证据** | QEMU 里出现用户程序输出（而不仅是内核写死的 Hello） |
+| **迁移** | 系统调用入口、缺页异常、虚拟机 Exit |
+
 ### 2.2 上下文保存与恢复
 
 trap 时用户程序的寄存器和 CSR 必须完整保存，否则 `sret` 回去后程序状态错误。本实验用 **TrapContext** 结构体保存 32 个 GPR 以及 `sstatus`、`sepc`、`kernel_sp`。
@@ -83,6 +107,14 @@ trap 时用户程序的寄存器和 CSR 必须完整保存，否则 `sret` 回�
 保存/恢复顺序必须严格对应。trap 入口不能用 Rust 函数——调用会破坏正要保存的寄存器，所以先用汇编存现场。
 
 `ecall` 触发 trap 后 `sepc` 指向 `ecall` 本身；返回前须 `advance_sepc()`（`sepc += 4`），否则会反复陷入同一条指令。
+
+| 层次 | 本小节对应什么 |
+| --- | --- |
+| **课本** | 上下文切换：打断处的状态必须可恢复 |
+| **项目** | `TrapContext` + `trap.asm` 的 `__alltraps` / `__restore` |
+| **实践** | 任务二 Q1–Q2；任务三临时注释 `csrrw`（务必改回） |
+| **证据** | 正常返回后用户程序继续输出；破坏双栈则崩溃/卡死 |
+| **迁移** | 线程切换现场、信号 handler 栈帧 |
 
 ### 2.3 用户栈与内核栈：`sscratch`
 
@@ -119,6 +151,14 @@ csrrw sp, sscratch, sp
 
 以 `sys_write` 为例：用户侧把 fd/buf/len 放入 `a0`/`a1`/`a2`、`64` 放入 `a7`，执行 `ecall`；内核 `trap_handler` 读 `scause` 和 `a7`，调 `sys_write`，结果写回 `a0`，`advance_sepc()` 后返回。
 
+| 层次 | 本小节对应什么 |
+| --- | --- |
+| **课本** | 系统调用是「受限执行」里主动请求 OS 服务的接口 |
+| **项目** | `os-syscall` 编号 + `user/syscall.rs` + `trap.rs` 分发 |
+| **实践** | 任务二 Q3–Q4；可选任务三自定义 syscall |
+| **证据** | `Hello from user app!`、`409684505`、`App N exited with code 0` |
+| **迁移** | Linux syscall ABI、能力检查 / seccomp 插入点 |
+
 ### 2.5 任务调度
 
 OSTEP 第 7 章：多程序「同时运行」靠**快速切换 CPU** 制造幻觉。本实验用简单的 Ready / Running / Exited 三态和轮转调度。
@@ -133,7 +173,15 @@ OSTEP 第 7 章：多程序「同时运行」靠**快速切换 CPU** 制造幻�
 - **`sys_exit`**：标 Exited，调度下一个 Ready 任务。
 - **`sys_yield`**：标 Ready，让出 CPU。
 
-`user/src/bin/yield.rs` 循环 5 次 `sys_yield`，预期 5 行 `Yield round`。若只有 1 行，检查 `trap.asm` 双栈切换和 `SYS_YIELD` 分发。
+`user/src/bin/yield.rs` 循环 5 次 `sys_yield`，预期 5 行 `Yield round`。若只有 1 行，检查 `trap.asm` 双栈切换和 `SYS_YIELD` 分发——也要怀疑「让出」是否被误写成「退出」（见下方任务四 debug 变体）。
+
+| 层次 | 本小节对应什么 |
+| --- | --- |
+| **课本** | 调度制造「多程序同时跑」的幻觉（协作式让出） |
+| **项目** | `task.rs` 中 Ready/Running/Exited 与 `find_next_task` |
+| **实践** | 数 `Yield round`；fill 补调度 / debug 排错状态机 |
+| **证据** | `Yield round` 不少于 5 行 + `All user apps exited.` |
+| **迁移** | 时间片抢占、用户态协程调度 |
 
 ### 2.6 把 trap 与调度放进同一条时间线
 
@@ -241,20 +289,60 @@ println("Hello again from user!");
 
 - 通过标准：内核打印出对应信息。
 
+### 任务四：教师发放的变体（若有）
+
+若老师给你的工作区里，`kernel/src/task.rs` 来自 **fill（补全）** 或 **debug（排错）** 变体，请先确认文件头注释，再按对应目标完成。规格细节也写在 `lab-packages/lab2/variants/`。
+
+#### A. fill：补全调度器
+
+- **学习目标**：实现 `find_next_task`，只从 **Ready** 任务里选出下一个，并更新 `current`；跑通任务一全部输出。
+- **常见误区**：选中 Exited；忘记写 `current`；恒返回 `None`；只会从 0 号槽扫描却说不清与轮转扫描的差别。
+- **通过断言**（缺一不可）：`Hello from user app!`、`409684505`、`Yield round`×≥5、`All user apps exited.`
+- **提示阶梯**（先自己做；卡住再向下看一层）：
+  1. 只看函数注释：Ready 才能选；选中后要改 `current`。
+  2. 问自己：从 `current+1` 扫和从 `0` 扫，yield 输出顺序会怎样？
+  3. 对照 `run_next_task` / `all_exited`：没有 Ready 时应如何收场？
+  4. （最后一层）讨论轮转扫描的循环下标写法，仍不要直接要完整粘贴答案。
+
+#### B. debug：yield 只打一轮就关机
+
+- **学习目标**：按「现象 → 假设 → 最小实验 → 证据 → 结论」找到状态机错误并修复；理解 **让出 ≠ 退出**。
+- **典型现象**：只有 **1** 行 `Yield round`，随后 `All user apps exited.`；进程退出码仍可能是 0——**所以不能只看退出码判通过**。
+- **常见误区**：先怪 `trap.asm` 双栈；只改 `exit` 路径；报告只写「改好了」没有假设链。
+- **通过断言**：与 fill / 任务一相同（尤其 `Yield round`×≥5）。
+- **提示阶梯**：
+  1. 复现并**数清** `Yield round` 行数。
+  2. 假设：主动让出的任务为何再也没被调度？Ready 与 Exited 差在哪？
+  3. 沿 `SYS_YIELD` → `mark_current_suspended` → `run_next_task` 读，找能证伪假设的一行。
+  4. 修复后重跑；把假设与被否证/证实的证据写进报告。
+
 ### 提交清单（自查）
 
 - [ ] `cargo run -p kernel --features lab2` 输出 `Hello from user app!`、`409684505`、`All user apps exited.`
+- [ ] 若有变体：`Yield round` 不少于 5 行（不要只用退出码判断）
 - [ ] 能说明 `ecall` → `__alltraps` → `trap_handler` → `sret` 的顺序
 - [ ] 能解释 `sscratch` 双栈切换的作用
 - [ ] 完成任务二 5 道阅读理解（对照答案自查）
+- [ ] （可选）能用一句话对照「课本概念 / 本项目文件 / 可观察输出」
 
 ## 四、验证
 
 | 验证项 | 命令 | 通过标准 |
 | --- | --- | --- |
 | 主编译 | `cargo check -p kernel --features lab2` | 无 error |
-| QEMU | `cargo run -p kernel --features lab2 --release` | `Hello from user app!`、`409684505`、5 行 `Yield round`、`All user apps exited.` |
+| QEMU（受信 recipe） | `cargo run -p kernel --features lab2 --release` | 同时满足下列**输出断言** |
 | 组件单测（可选） | `cargo test -p os-context --target x86_64-pc-windows-msvc` | 通过 |
+
+**输出断言（与 `lab-packages/lab2/lab.yaml` 对齐；缺一不算通过）**：
+
+| 断言 id | 必须看到 |
+| --- | --- |
+| `hello-output` | `Hello from user app!` |
+| `power-result` | `409684505` |
+| `yield-five-rounds` | `Yield round` 出现不少于 5 次 |
+| `all-exited` | `All user apps exited.` |
+
+> 任意白名单命令「退出码 0」**不等于** Lab 通过。debug 变体未修复时就常出现「早关机但仍可能是 0」。
 
 手册交互清单见 handbook「Lab2 中断与任务」页（`handbook/data/labs.json`）。
 

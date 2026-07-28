@@ -57,6 +57,72 @@
 
 > AI 工具使用声明、成果归属与交互记录见 [项目总报告.md §8](项目总报告.md#8-开发时使用-ai-工具的成果) 与 `os-lab/docs/ai-collaboration.md`。
 
+## 2026-07-28 - Task: 学生手册并入引导式学习与服务端渐进解锁
+
+### What was done
+
+- **收口学生入口**：删除顶栏“实验手册”、`/labs`/`/answers` 侧栏与学生列表中的“只读手册”；学生只从“引导式学习”路径进入 Lab 工作台，教师仍在同一入口选择 Lab 完成预览、编辑、发布和验收。
+- **入口直接分流**：移除 `/guide/ai-tutor` 外层学生说明与重复 Lab 列表，并新增不经过 VitePress 文档外壳的全屏 `launch` 布局；加载期间只显示一个进度圆环。已登录学生按服务端账号历史直接进入当前已领取且未完成的 Lab，或进入下一个可学习 Lab。教师仍看到跨 Lab 备课选择页；工作台顶栏移除重复的“学习路径”链接，路径切换统一由“系统构建路径”完成。
+- **消除静态正文泄露**：同步脚本不再复制 `labs/`、`answers/`，`/learn/labN` 只生成路由壳；手册正文改由 `GET /manual` 登录后返回。Vite 开发服务器的文件读取范围从整个 `os-lab` 缩到 `learning/` 与 `tutor/prompts/`，阻断 `/@fs/.../labs/` 旁路。
+- **确定性访问模型**：新增 `GET /learning/access`。教师始终可预览全部 Lab；学生同时受教师 `openLab` 和前置完成证据约束，上一层必须存在服务端可信 verified run 与 `reflection_submitted` 才解锁下一层；旧用户已发放到个人工作区的 Lab 保持可回看。
+- **手册与代码统一门控**：`/scaffold/upgrade` 与手册读取共用同一份访问状态，避免“手册锁了但代码已发”或相反；路径显示“已学可回看 / 当前可学习 / 待完成前置 / 待教师开放”四类状态，锁定 Lab 的右侧实践区同步停用并常驻显示原因。
+- **运行时正文渲染**：`ManualPane` 使用 MarkdownIt 与 Mermaid 渲染受信源文件，保留 H2/H3 目录、阅读位置跟踪、AI 提问模板折叠和教师编辑后刷新预览；移除“完整手册”外链。
+- **离线模型不影响解锁**：学习事件同步只依赖登录与导师服务，不再错误绑定上游模型在线状态；没有模型时复盘仍会进入 SQLite 并参与解锁。
+
+### Testing
+
+- `npm test`：14 项全部通过，新增访问模型 2 项；既有响应兼容、事件契约、trace recipe 与 SQLite 测试保持通过。
+- `npm run test:smoke`：真实 HTTP 链验证未登录手册返回 401、学生 Lab1 可读、Lab2 初始 403、Lab1 可信验证+复盘后 Lab2 返回 200、教师可直接读取 Lab8；既有 Lab2 QEMU 可信运行链继续通过。
+- `npm run build`：VitePress 生产构建通过，仅同步 19 个公开 Markdown/路由壳；产物不存在 `dist/labs` 与 `dist/answers`，`learn/*.html` 不含手册正文。
+- 开发服务器实测 `/@fs/.../os-lab/labs/lab8-thread-sync.md` 返回 403，而前端需要的 `learning/rubric.mjs` 返回 200；默认前端与导师服务已在 `http://localhost:5173/`、`127.0.0.1:8787` 运行。
+- 应用内浏览器运行时未提供可用浏览器实例，无法完成截图级桌面/窄屏交互验收；未改用其他浏览器工具绕过该限制。
+
+### Notes
+
+- 主要文件：`learning/access.mjs` 及测试、`learning/db.mjs`、`handbook/tutor-server.mjs` 与冒烟测试、`ManualPane.vue`、`LabWorkspace.vue`、`TutorEntry.vue`、`tutor-model.ts`、VitePress 配置/同步脚本及学生说明页。
+- `TutorLab.documentRoute` 暂保留为教师编辑器的内部源文件映射，不再作为学生端链接；参考答案源文件仍完整保留在仓库，但不进入学生静态站点。
+- 未处理仓库根目录既有的未跟踪中文文档、`papers/`、`artifacts/` 与 `papers.zip`。
+- 回滚方式：还原上述 handbook/learning/progress 文件并删除 `learning/access.mjs`、`learning/access.test.mjs`；重新执行 `npm run sync` 会恢复对应版本的静态产物。
+## 2026-07-28 - Task: 成员 A 第 2–3 天 Lab2 正文增补与变体/UI 文案
+
+### What was done
+
+- 在保留 Lab2 原有叙述的前提下，为正文补上知识路径与分节「课本—项目—实践—证据—迁移」对照表；新增任务四 fill/debug；验证节改为四条输出断言并禁止只认退出码。
+- 升级 fill/debug manifest 的提示阶梯（L0–L3）；完成工作台 UI 文案审核说明；同步 Lab2 的 tutor-model / labs.json checklist / tutor context 为目标与证据导向。
+
+### Testing
+
+- 人工确认 H2 仍为「零、～六、」结构未打乱；新增内容均为文首说明、节内表格或「任务四」H3。
+- 断言文案与 `lab-packages/lab2/lab.yaml`、任务一预期输出一致。
+
+### Notes
+
+- `os-lab/labs/lab2-trap-and-task.md`：增补层次与变体，不改原叙事主干。
+- `os-lab/lab-packages/lab2/variants/*`、`ui-copy-review.md`、`DAY2-3-DELIVERABLE.md`、`lab.yaml`：规格与说明更新。
+- `os-lab/handbook/.vitepress/theme/tutor-model.ts`、`data/labs.json`、`tutor/prompts/lab2/context.md`：Lab2 文案。
+- `progress.md`：追加本轮记录。
+- 回滚方式：对上述文件 `git checkout --` 并删除本条记录。
+
+## 2026-07-28 - Task: 成员 A 第 1 天（M0）Lab2 教学规格与量规草案
+
+### What was done
+
+- 建立 `os-lab/lab-packages/`：完成 Lab1–8 知识盘点索引，选定 Lab2 为样板包。
+- 编写 Lab2 `lab.yaml`、`concepts/trap.yaml`、`concepts/scheduler.yaml`、知识点细表，以及 fill/debug 变体 manifest（含负向测试与反退出码误判说明）。
+- 产出评分量规 v2 可观察细项草案（12 项）与 10 条 Lab2 模拟学习轨迹人工打分，供后续与 event-v2/run 断言对齐。
+
+### Testing
+
+- 人工核对：Lab2 断言文本与 `labs/lab2-trap-and-task.md` / `labs.json` 期望输出一致；debug 埋点与 `scaffold/exercises/lab2/debug/.../task.rs` 中 `mark_current_suspended`→`Exited` 一致；fill 空白为 `find_next_task`。
+- 未改线上评分/运行代码；本轮为教学规格交付，无 QEMU 回归要求。
+
+### Notes
+
+- `os-lab/lab-packages/README.md`、`lab2/**`：M0 样板与 Day1 说明。
+- `os-lab/learning/rubric-v2-draft.md`、`traces-lab2-mock.json`：量规与标注集。
+- `progress.md`：追加本轮记录。
+- 回滚方式：删除 `os-lab/lab-packages/` 与上述 learning 两文件，并移除本条记录。
+
 ## 2026-07-28 - Task: 运行、事件与 trace 契约基线
 
 ### What was done

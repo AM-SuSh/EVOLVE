@@ -28,6 +28,9 @@ const { frontmatter } = useData()
   >
     <Content />
   </LabWorkspace>
+  <main v-else-if="frontmatter.launch" class="launch-layout">
+    <Content />
+  </main>
   <div v-else-if="frontmatter.teacherReview" class="teacher-review-layout">
     <Content />
   </div>
@@ -44,5 +47,12 @@ const { frontmatter } = useData()
   height: 100dvh;
   min-height: 620px;
   overflow: hidden;
+}
+
+.launch-layout {
+  min-height: 100dvh;
+  padding: clamp(20px, 4vw, 48px);
+  overflow-y: auto;
+  background: var(--ws-surface);
 }
 </style>

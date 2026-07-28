@@ -6,7 +6,7 @@ import { authHeaders, loadAuth, saveAuth } from '../tutor-model'
 /**
  * 站点入口登录门：进入本系统先登录/注册（学生注册需填班级），
  * 教师直接用管理员账号（预置 admin / admin123）。
- * 「游客浏览」仅本次会话有效，全站只读（工作台不可用个人功能）。
+ * 「游客浏览」仅本次会话有效，只能阅读公开说明页；实验正文必须登录并通过解锁判定。
  */
 const endpoint = String(
   import.meta.env.VITE_OS_LAB_TUTOR_ENDPOINT || 'http://127.0.0.1:8787',
@@ -31,7 +31,7 @@ async function verifyExisting() {
     if (response.status === 401) saveAuth(null)
     return false
   } catch {
-    // 导师服务未启动：不锁死站点，允许先阅读文档。
+    // 导师服务未启动：不锁死公开说明页，但工作台正文仍无法从服务端取得。
     serverDown.value = true
     return false
   }
@@ -92,7 +92,7 @@ onMounted(async () => {
       <h1>{{ mode === 'login' ? '登录' : '学生注册' }}</h1>
 
       <p v-if="serverDown" class="ag-warn">
-        未连接到导师服务（<code>npm run tutor</code>）。可先游客浏览文档，登录相关功能暂不可用。
+        未连接到导师服务（<code>npm run tutor</code>）。可先游客浏览公开说明，实验正文与登录功能暂不可用。
       </p>
 
       <label>

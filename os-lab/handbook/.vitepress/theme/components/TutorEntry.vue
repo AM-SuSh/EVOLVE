@@ -1,66 +1,67 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { withBase } from 'vitepress'
-import {
-  ArrowRight,
-  BookOpenText,
-  Check,
-  CheckCircle2,
-  Circle,
-  ClipboardCheck,
-  Download,
-  LockKeyhole,
-  PencilLine,
-  Play,
-} from 'lucide-vue-next'
-import {
-  buildLabJourney,
-  exportEventsAsJsonl,
-  getTutorLab,
-  loadAuth,
-  loadEvents,
-  recommendedLabId,
-  tutorLabs,
-  type LearningEvent,
-} from '../tutor-model'
+import { ArrowRight, ClipboardCheck, LogIn, PencilLine, RefreshCw } from 'lucide-vue-next'
+import { authHeaders, loadAuth, tutorLabs, type LearningAccessItem } from '../tutor-model'
 
 /**
- * 引导式学习的入口页。
- * 工作台本身在 /learn/labN，这一页只负责「我现在该进哪一层」和成长档案总览。
+ * “引导式学习”只是一条角色分流路由：学生直接进入当前 Lab，
+ * 教师保留跨 Lab 的备课入口。
  */
-const events = ref<LearningEvent[]>([])
-const mounted = ref(false)
+const endpoint = String(
+  import.meta.env.VITE_OS_LAB_TUTOR_ENDPOINT || 'http://127.0.0.1:8787',
+).replace(/\/$/, '')
+
 const isTeacher = ref(false)
+const launchState = ref<'loading' | 'login' | 'error'>('loading')
+const launchMessage = ref('正在确认教师发布范围与学习进度')
 
-const journey = computed(() => buildLabJourney(events.value))
-const completedCount = computed(() => journey.value.filter((item) => item.completed).length)
-const progress = computed(() => Math.round((completedCount.value / tutorLabs.length) * 100))
-const nextLab = computed(() => getTutorLab(recommendedLabId(events.value)))
-const nextLabStarted = computed(
-  () => journey.value.find((item) => item.lab.id === nextLab.value.id)?.started,
-)
+function pickStudentLab(labs: LearningAccessItem[]) {
+  const issued = [...labs].reverse().find((lab) => lab.unlocked && !lab.completed && lab.alreadyIssued)
+  const next = labs.find((lab) => lab.unlocked && !lab.completed)
+  const latest = [...labs].reverse().find((lab) => lab.unlocked)
+  return issued || next || latest
+}
 
-function exportGrowth() {
-  exportEventsAsJsonl(
-    events.value,
-    `os-lab-growth-record-${new Date().toISOString().slice(0, 10)}.jsonl`,
-  )
+async function launchStudent() {
+  launchState.value = 'loading'
+  launchMessage.value = '正在确认教师发布范围与学习进度'
+  try {
+    const response = await fetch(`${endpoint}/learning/access`, { headers: authHeaders() })
+    const payload = await response.json().catch(() => ({}))
+    if (response.status === 401) {
+      launchState.value = 'login'
+      launchMessage.value = '登录后才能进入教师已发布的实验'
+      return
+    }
+    if (!response.ok || !Array.isArray(payload.labs)) {
+      throw new Error(payload.error || `导师服务返回 ${response.status}`)
+    }
+    const target = pickStudentLab(payload.labs)
+    if (!target) throw new Error('教师尚未发布可学习的实验')
+    window.location.replace(withBase(`/learn/${target.labId}`))
+  } catch (error) {
+    launchState.value = 'error'
+    launchMessage.value = error instanceof Error ? error.message : '暂时无法确认当前实验'
+  }
+}
+
+function openLogin() {
+  sessionStorage.removeItem('os-lab-guest')
+  window.location.reload()
 }
 
 onMounted(() => {
-  isTeacher.value = loadAuth()?.role === 'teacher'
-  document.documentElement.classList.toggle('ws-teacher-entry-page', isTeacher.value)
-  events.value = loadEvents()
-  mounted.value = true
+  const auth = loadAuth()
+  isTeacher.value = auth?.role === 'teacher'
+  if (!isTeacher.value) void launchStudent()
 })
-
-onBeforeUnmount(() => document.documentElement.classList.remove('ws-teacher-entry-page'))
 </script>
 
 <template>
   <div class="ws-entry">
     <template v-if="isTeacher">
-      <section class="ws-entry-hero ws-entry-teacher-hero">
+      <section class="ws-entry-hero">
         <div>
           <span>教师工作区</span>
           <h2>备课、发布与验收，围绕每个实验完成</h2>
@@ -81,7 +82,7 @@ onBeforeUnmount(() => document.documentElement.classList.remove('ws-teacher-entr
         <div class="ws-entry-progress" role="img" aria-label="8 个实验可管理">
           <strong>{{ tutorLabs.length }}<em> Labs</em></strong>
           <span>手册与教学安排</span>
-          <i><b style="width: 100%" /></i>
+          <i><b /></i>
         </div>
       </section>
 
@@ -104,11 +105,8 @@ onBeforeUnmount(() => document.documentElement.classList.remove('ws-teacher-entr
               <p>{{ teacherLab.title }}</p>
             </div>
             <div class="ws-teacher-lab-actions">
-              <a :href="withBase(teacherLab.documentRoute)" title="打开只读实验手册">
-                <BookOpenText :size="15" aria-hidden="true" />手册
-              </a>
               <a class="primary" :href="withBase(`/learn/${teacherLab.id}`)">
-                编辑与发布<ArrowRight :size="15" aria-hidden="true" />
+                预览、编辑与发布<ArrowRight :size="15" aria-hidden="true" />
               </a>
             </div>
           </li>
@@ -116,77 +114,17 @@ onBeforeUnmount(() => document.documentElement.classList.remove('ws-teacher-entr
       </section>
     </template>
 
-    <template v-else>
-    <section class="ws-entry-hero">
-      <div>
-        <span>引导式学习</span>
-        <h2>在实验手册旁边，有一位只提问不代写的导师</h2>
-        <p>
-          左边是实验正文，右边是 AI 导师。导师知道你正在读哪一节，会顺着你的判断往下追问；
-          它不会给你可直接粘贴的完整实现。每一层都要留下一次通过验证和一次学习复盘，
-          下一层才会解锁。
-        </p>
-        <div class="ws-entry-cta">
-          <a class="primary" :href="withBase(`/learn/${nextLab.id}`)">
-            <Play :size="16" aria-hidden="true" />
-            {{ mounted && nextLabStarted ? '继续' : '开始' }}{{ nextLab.label }} · {{ nextLab.systemLayer }}
-          </a>
-          <button v-if="mounted && events.length" type="button" @click="exportGrowth">
-            <Download :size="15" aria-hidden="true" />导出成长档案
-          </button>
-        </div>
-      </div>
-
-      <div class="ws-entry-progress" role="img" :aria-label="`已构建 ${completedCount} / ${tutorLabs.length} 个系统层`">
-        <strong>{{ completedCount }}<em>/{{ tutorLabs.length }}</em></strong>
-        <span>系统层已构建</span>
-        <i><b :style="{ width: `${progress}%` }" /></i>
-      </div>
+    <section v-else class="ws-launch-state" role="status" aria-live="polite" aria-label="正在恢复学习进度">
+      <span v-if="launchState === 'loading'" class="ws-progress-ring" aria-hidden="true" />
+      <template v-else>
+        <LogIn v-if="launchState === 'login'" :size="24" aria-hidden="true" />
+        <RefreshCw v-else :size="24" aria-hidden="true" />
+        <strong>暂时无法进入工作台</strong>
+        <span>{{ launchMessage }}</span>
+        <button v-if="launchState === 'login'" type="button" @click="openLogin">登录</button>
+        <button v-else type="button" @click="launchStudent">重新尝试</button>
+      </template>
     </section>
-
-    <ol class="ws-entry-list">
-      <li
-        v-for="item in journey"
-        :key="item.lab.id"
-        :class="{ complete: item.completed, locked: !item.unlocked }"
-      >
-        <div class="ws-entry-mark" aria-hidden="true">
-          <CheckCircle2 v-if="item.completed" :size="20" />
-          <LockKeyhole v-else-if="!item.unlocked" :size="17" />
-          <strong v-else>{{ item.index + 1 }}</strong>
-        </div>
-
-        <div class="ws-entry-body">
-          <h3>
-            {{ item.lab.label }} · {{ item.lab.systemLayer }}
-            <small>{{ item.status }}</small>
-          </h3>
-          <p>{{ item.lab.buildOutcome }}</p>
-          <p v-if="item.lockReason" class="ws-entry-lock">
-            <LockKeyhole :size="13" aria-hidden="true" />{{ item.lockReason }}
-          </p>
-          <div class="ws-entry-evidence">
-            <span :class="{ done: item.passedVerification }">
-              <Check v-if="item.passedVerification" :size="13" aria-hidden="true" />
-              <Circle v-else :size="10" aria-hidden="true" />运行验证
-            </span>
-            <span :class="{ done: item.reflected }">
-              <Check v-if="item.reflected" :size="13" aria-hidden="true" />
-              <Circle v-else :size="10" aria-hidden="true" />学习复盘
-            </span>
-            <span v-if="item.evidenceCount">{{ item.evidenceCount }} 条成长证据</span>
-          </div>
-        </div>
-
-        <div class="ws-entry-links">
-          <a v-if="item.unlocked" class="primary" :href="withBase(`/learn/${item.lab.id}`)">
-            进入工作台<ArrowRight :size="14" aria-hidden="true" />
-          </a>
-          <a :href="withBase(item.lab.documentRoute)">只读手册</a>
-        </div>
-      </li>
-    </ol>
-    </template>
   </div>
 </template>
 
@@ -196,10 +134,51 @@ onBeforeUnmount(() => document.documentElement.classList.remove('ws-teacher-entr
   margin: 0 auto;
 }
 
-:global(html.ws-teacher-entry-page .vp-doc > div > .ws-entry ~ *),
-:global(html.ws-teacher-entry-page .VPDocAside),
-:global(html.ws-teacher-entry-page .VPDocFooter) {
-  display: none !important;
+.ws-launch-state {
+  display: grid;
+  min-height: calc(100dvh - clamp(40px, 8vw, 96px));
+  align-content: center;
+  justify-items: center;
+  gap: var(--ws-space-2);
+  color: var(--ws-ink-muted);
+  text-align: center;
+}
+
+.ws-launch-state strong {
+  color: var(--ws-ink);
+  font-size: var(--ws-text-lg);
+}
+
+.ws-launch-state span {
+  max-width: 420px;
+  font-size: var(--ws-text-sm);
+}
+
+.ws-launch-state button {
+  margin-top: var(--ws-space-2);
+  min-height: var(--ws-control-md);
+  padding: var(--ws-space-1) var(--ws-space-4);
+  color: var(--ws-accent-contrast);
+  border: 1px solid var(--ws-accent);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-accent);
+  font: inherit;
+  font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-semibold);
+  cursor: pointer;
+}
+
+.ws-progress-ring {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--ws-line-strong);
+  border-top-color: var(--ws-accent);
+  border-radius: 50%;
+  animation: ws-entry-spin 0.72s linear infinite;
+}
+
+@keyframes ws-entry-spin {
+  to { transform: rotate(360deg); }
 }
 
 .ws-entry-hero {
@@ -209,17 +188,20 @@ onBeforeUnmount(() => document.documentElement.classList.remove('ws-teacher-entr
   gap: var(--ws-space-6);
   padding: var(--ws-space-6);
   border: 1px solid var(--ws-line);
+  border-top: 3px solid var(--ws-accent);
   border-radius: var(--ws-radius-lg);
   background: var(--ws-surface-soft);
 }
 
-.ws-entry-hero > div:first-child > span {
+.ws-entry-hero > div:first-child > span,
+.ws-teacher-labs > header span {
   color: var(--ws-accent);
   font-size: var(--ws-text-xs);
   font-weight: var(--ws-weight-bold);
 }
 
-.ws-entry-hero h2 {
+.ws-entry-hero h2,
+.ws-teacher-labs > header h2 {
   margin: var(--ws-space-2) 0;
   padding: 0;
   border: 0;
@@ -227,143 +209,26 @@ onBeforeUnmount(() => document.documentElement.classList.remove('ws-teacher-entr
   line-height: var(--ws-leading-tight);
 }
 
-.ws-entry-hero p {
+.ws-entry-hero p,
+.ws-teacher-labs li p {
   margin: 0;
   color: var(--ws-ink-muted);
-  font-size: var(--ws-text-base);
+  font-size: var(--ws-text-sm);
   line-height: var(--ws-leading-relaxed);
 }
 
-.ws-entry-cta {
+.ws-entry-cta,
+.ws-teacher-lab-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--ws-space-2);
+}
+
+.ws-entry-cta {
   margin-top: var(--ws-space-4);
 }
 
 .ws-entry-cta a,
-.ws-entry-cta button,
-.ws-entry-links a {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ws-space-2);
-  min-height: var(--ws-control-md);
-  padding: var(--ws-space-2) var(--ws-space-4);
-  color: var(--ws-ink);
-  border: 1px solid var(--ws-line-strong);
-  border-radius: var(--ws-radius-md);
-  background: var(--ws-surface);
-  font: inherit;
-  font-size: var(--ws-text-sm);
-  font-weight: var(--ws-weight-semibold);
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.ws-entry-cta a.primary,
-.ws-entry-links a.primary {
-  color: var(--ws-accent-contrast);
-  border-color: var(--ws-accent);
-  background: var(--ws-accent);
-}
-
-.ws-entry-cta a.primary:hover,
-.ws-entry-links a.primary:hover {
-  background: var(--ws-accent-hover);
-}
-
-.ws-entry-cta button:hover,
-.ws-entry-links a:not(.primary):hover {
-  border-color: var(--ws-accent);
-}
-
-.ws-entry-progress {
-  text-align: center;
-}
-
-.ws-entry-progress strong {
-  display: block;
-  color: var(--ws-accent);
-  font-size: 40px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-
-.ws-entry-progress em {
-  color: var(--ws-ink-faint);
-  font-size: var(--ws-text-xl);
-  font-style: normal;
-}
-
-.ws-entry-progress span {
-  display: block;
-  margin-top: var(--ws-space-2);
-  color: var(--ws-ink-muted);
-  font-size: var(--ws-text-sm);
-}
-
-.ws-entry-progress i {
-  display: block;
-  height: 8px;
-  margin-top: var(--ws-space-3);
-  border-radius: var(--ws-radius-full);
-  background: var(--ws-surface);
-  overflow: hidden;
-}
-
-.ws-entry-progress i b {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--ws-accent);
-}
-
-.ws-entry-list {
-  margin: var(--ws-space-6) 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ws-entry-teacher-hero {
-  border-top: 3px solid var(--ws-accent);
-}
-
-.ws-entry-teacher-hero .ws-entry-progress strong {
-  font-size: 34px;
-}
-
-.ws-entry-teacher-hero .ws-entry-progress em {
-  font-size: var(--ws-text-sm);
-  font-style: normal;
-  text-transform: uppercase;
-}
-
-.ws-teacher-labs {
-  margin-top: var(--ws-space-6);
-}
-
-.ws-teacher-labs > header {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: var(--ws-space-4);
-  padding-bottom: var(--ws-space-3);
-  border-bottom: 1px solid var(--ws-line-strong);
-}
-
-.ws-teacher-labs > header span {
-  color: var(--ws-accent);
-  font-size: var(--ws-text-xs);
-  font-weight: var(--ws-weight-bold);
-}
-
-.ws-teacher-labs > header h2 {
-  margin: var(--ws-space-1) 0 0;
-  padding: 0;
-  border: 0;
-  font-size: var(--ws-text-xl);
-}
-
 .ws-teacher-labs > header > a,
 .ws-teacher-lab-actions a {
   display: inline-flex;
@@ -379,6 +244,71 @@ onBeforeUnmount(() => document.documentElement.classList.remove('ws-teacher-entr
   font-size: var(--ws-text-sm);
   font-weight: var(--ws-weight-semibold);
   text-decoration: none;
+}
+
+.ws-entry-cta a.primary,
+.ws-teacher-lab-actions a.primary {
+  color: var(--ws-accent-contrast);
+  border-color: var(--ws-accent);
+  background: var(--ws-accent);
+}
+
+.ws-entry-progress {
+  text-align: center;
+}
+
+.ws-entry-progress strong {
+  display: block;
+  color: var(--ws-accent);
+  font-size: 34px;
+  line-height: 1;
+}
+
+.ws-entry-progress em {
+  color: var(--ws-ink-faint);
+  font-size: var(--ws-text-sm);
+  font-style: normal;
+  text-transform: uppercase;
+}
+
+.ws-entry-progress span {
+  display: block;
+  margin-top: var(--ws-space-2);
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-sm);
+}
+
+.ws-entry-progress i {
+  display: block;
+  height: 8px;
+  margin-top: var(--ws-space-3);
+  overflow: hidden;
+  border-radius: var(--ws-radius-full);
+  background: var(--ws-surface);
+}
+
+.ws-entry-progress i b {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--ws-accent);
+}
+
+.ws-teacher-labs {
+  margin-top: var(--ws-space-6);
+}
+
+.ws-teacher-labs > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--ws-space-4);
+  padding-bottom: var(--ws-space-3);
+  border-bottom: 1px solid var(--ws-line-strong);
+}
+
+.ws-teacher-labs > header h2 {
+  margin: var(--ws-space-1) 0 0;
 }
 
 .ws-teacher-labs ol {
@@ -411,133 +341,13 @@ onBeforeUnmount(() => document.documentElement.classList.remove('ws-teacher-entr
 }
 
 .ws-teacher-labs li p {
-  margin: var(--ws-space-1) 0 0;
-  color: var(--ws-ink-muted);
-  font-size: var(--ws-text-sm);
-}
-
-.ws-teacher-lab-actions {
-  display: flex;
-  gap: var(--ws-space-2);
-}
-
-.ws-teacher-lab-actions a.primary {
-  color: var(--ws-accent-contrast);
-  border-color: var(--ws-accent);
-  background: var(--ws-accent);
-}
-
-.ws-teacher-labs > header > a:hover,
-.ws-teacher-lab-actions a:not(.primary):hover {
-  color: var(--ws-accent);
-  border-color: var(--ws-accent);
-}
-
-.ws-entry-list li {
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--ws-space-3);
-  padding: var(--ws-space-4) 0;
-  border-bottom: 1px solid var(--ws-line);
-}
-
-.ws-entry-list li.locked {
-  opacity: 0.72;
-}
-
-.ws-entry-mark {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  color: var(--ws-ink-muted);
-  border: 1px solid var(--ws-line-strong);
-  border-radius: var(--ws-radius-full);
-  place-items: center;
-  font-variant-numeric: tabular-nums;
-}
-
-.ws-entry-list li.complete .ws-entry-mark {
-  color: var(--ws-accent-contrast);
-  border-color: var(--ws-accent);
-  background: var(--ws-accent);
-}
-
-.ws-entry-body h3 {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--ws-space-2);
-  margin: 0;
-  padding: 0;
-  border: 0;
-  font-size: var(--ws-text-lg);
-}
-
-.ws-entry-body h3 small {
-  color: var(--ws-ink-faint);
-  font-size: var(--ws-text-xs);
-  font-weight: var(--ws-weight-medium);
-}
-
-.ws-entry-body p {
-  margin: var(--ws-space-1) 0 0;
-  color: var(--ws-ink-muted);
-  font-size: var(--ws-text-sm);
-  line-height: var(--ws-leading-normal);
-}
-
-.ws-entry-lock {
-  display: inline-flex !important;
-  align-items: center;
-  gap: var(--ws-space-1);
-  margin-top: var(--ws-space-2) !important;
-  padding: 2px var(--ws-space-2);
-  color: var(--ws-warn) !important;
-  border-radius: var(--ws-radius-sm);
-  background: var(--ws-warn-soft);
-  font-size: var(--ws-text-xs) !important;
-}
-
-.ws-entry-evidence {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ws-space-1) var(--ws-space-4);
-  margin-top: var(--ws-space-2);
-}
-
-.ws-entry-evidence span {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ws-space-1);
-  color: var(--ws-ink-faint);
-  font-size: var(--ws-text-xs);
-}
-
-.ws-entry-evidence span.done {
-  color: var(--ws-ok);
-}
-
-.ws-entry-links {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ws-space-2);
+  margin-top: var(--ws-space-1);
 }
 
 @media (max-width: 720px) {
   .ws-entry-hero {
     grid-template-columns: minmax(0, 1fr);
     padding: var(--ws-space-4);
-  }
-
-  .ws-entry-list li {
-    grid-template-columns: 34px minmax(0, 1fr);
-  }
-
-  .ws-entry-links {
-    grid-column: 2;
-    flex-direction: row;
-    flex-wrap: wrap;
   }
 
   .ws-teacher-labs > header {
@@ -550,7 +360,10 @@ onBeforeUnmount(() => document.documentElement.classList.remove('ws-teacher-entr
 
   .ws-teacher-lab-actions {
     grid-column: 2;
-    flex-wrap: wrap;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-progress-ring { animation-duration: 1.5s; }
 }
 </style>

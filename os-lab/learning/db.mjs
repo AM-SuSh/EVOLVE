@@ -268,6 +268,27 @@ export function listUsers() {
     .all()
 }
 
+/** 读取服务端可信学习证据，供手册解锁与脚手架发放共同判定。 */
+export function getLearningEvidence(userId) {
+  const verified = new Set(
+    db
+      .prepare('SELECT DISTINCT lab_id AS labId FROM runs WHERE user_id = ? AND trusted = 1 AND verified = 1')
+      .all(userId)
+      .map((row) => row.labId),
+  )
+  const reflected = new Set(
+    db
+      .prepare("SELECT DISTINCT lab_id AS labId FROM events WHERE user_id = ? AND type = 'reflection_submitted'")
+      .all(userId)
+      .map((row) => row.labId),
+  )
+  return [...new Set([...verified, ...reflected])].map((labId) => ({
+    labId,
+    verified: verified.has(labId),
+    reflected: reflected.has(labId),
+  }))
+}
+
 /* -- 学习事件与可信运行链 ---------------------------------------------------- */
 
 export function insertLearningEvents(userId, events) {

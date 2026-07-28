@@ -209,18 +209,18 @@ export const tutorLabs: TutorLab[] = [
     title: 'Trap 与任务切换',
     shortTitle: 'Trap & Task',
     systemLayer: '执行与切换',
-    buildOutcome: '让用户程序进入内核、返回用户态，并在多个任务间协作切换。',
+    buildOutcome: '当前目标：让用户程序经 trap 请求内核服务，并在多任务间协作切换；用输出断言证明学会了。',
     bridge: '复用 Lab1 的启动入口、内核栈和控制台，为用户态执行建立边界。',
-    focus: '理解用户态到内核态的 Trap 控制流、上下文保存恢复与协作式任务切换。',
+    focus: '先弄清「为何必须 trap」，再沿 ecall→保存→分发→调度→sret 找证据；变体任务看 task.rs 文件头。',
     documentRoute: '/labs/lab2-trap-and-task',
-    initialQuestion: '用户程序为什么不能直接调用内核里的普通函数？先写下你的理解，我会继续追问，并帮你把它落到代码路径和可验证实验上。',
+    initialQuestion: '用户程序为什么不能直接调用内核里的普通函数？先写下你的判断（不必完美），我们再把它对到代码路径，并用 QEMU 输出验证。',
     verificationCommand: 'cargo run -p kernel --features lab2 --release',
     resources: {
-      orient: { paths: ['labs/lab2-trap-and-task.md', 'kernel/src/trap.rs'], docs: [{ title: 'Lab2 实验指导', description: '理解 Trap、系统调用与任务切换的整体目标', href: '/labs/lab2-trap-and-task' }, { title: '实验知识地图', description: '查看八个 Lab 的递进关系', href: '/labs/overview' }] },
-      read: { paths: ['os-context/src/trap.asm', 'kernel/src/trap.rs', 'os-context/src/lib.rs'], docs: [{ title: 'Lab2 机制说明', description: '沿 ecall、TrapContext 和 sret 阅读控制流', href: '/labs/lab2-trap-and-task' }, { title: '系统架构', description: '理解 kernel 与 os-context 的职责边界', href: '/project/architecture' }] },
-      run: { paths: ['kernel/src/main.rs', 'user/src/bin/yield.rs'], docs: [{ title: '快速验证', description: '查看环境启动和 QEMU 验证方式', href: '/guide/verify' }, { title: 'Lab2 阅读理解（任务二）', description: '用实验文档【任务二】自测机制理解', href: '/labs/lab2-trap-and-task' }] },
-      debug: { paths: ['kernel/src/trap.rs', 'kernel/src/task.rs', 'kernel/src/console.rs'], docs: [{ title: 'Lab2 常见现象', description: '回到实验正文对照异常与观察点', href: '/labs/lab2-trap-and-task' }, { title: '验证命令', description: '用最小实验区分 Trap 与调度问题', href: '/guide/verify' }] },
-      reflect: { paths: ['project/ai-collaboration.md', 'answers/lab2-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理独立判断、AI 帮助和验证证据', href: '/project/ai-collaboration' }, { title: 'Lab2 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab2-answers' }] },
+      orient: { paths: ['labs/lab2-trap-and-task.md', 'kernel/src/trap.rs'], docs: [{ title: 'Lab2 实验指导', description: '看清本实验目标：用户态、trap 与多任务', href: '/labs/lab2-trap-and-task' }, { title: '实验知识地图', description: 'Lab2 在八个 Lab 中的位置', href: '/labs/overview' }] },
+      read: { paths: ['os-context/src/trap.asm', 'kernel/src/trap.rs', 'os-context/src/lib.rs'], docs: [{ title: '沿着控制流读', description: 'ecall → TrapContext → sret；对照正文知识层次表', href: '/labs/lab2-trap-and-task' }, { title: '系统架构', description: 'kernel 与 os-context 的职责边界', href: '/project/architecture' }] },
+      run: { paths: ['kernel/src/main.rs', 'user/src/bin/yield.rs'], docs: [{ title: '受信验证', description: '必须同时看到 Hello、幂结果、Yield×5、全部退出', href: '/guide/verify' }, { title: '阅读理解（任务二）', description: '先独立作答再对照答案', href: '/labs/lab2-trap-and-task' }] },
+      debug: { paths: ['kernel/src/trap.rs', 'kernel/src/task.rs', 'kernel/src/console.rs'], docs: [{ title: '最小实验排错', description: '区分双栈 / 调度状态 / ABI；变体见任务四', href: '/labs/lab2-trap-and-task' }, { title: '验证断言', description: '不要只用退出码 0 判断通过', href: '/guide/verify' }] },
+      reflect: { paths: ['project/ai-collaboration.md', 'answers/lab2-answers.md'], docs: [{ title: '复盘证据链', description: '写清假设、AI 帮助点与验证输出', href: '/project/ai-collaboration' }, { title: 'Lab2 参考答案', description: '完成后再核对', href: '/answers/lab2-answers' }] },
     },
   },
   {
@@ -408,9 +408,22 @@ export interface LabJourneyItem {
   lockReason: string
 }
 
+export interface LearningAccessItem {
+  labId: TutorLabId
+  published: boolean
+  unlocked: boolean
+  completed: boolean
+  verified: boolean
+  reflected: boolean
+  alreadyIssued: boolean
+  state: 'completed' | 'review' | 'current' | 'teacher' | 'waiting_teacher' | 'waiting_prerequisite'
+  reason: string
+}
+
 export function buildLabJourney(
   events: LearningEvent[],
   activeLabId?: TutorLabId,
+  serverAccess: LearningAccessItem[] = [],
 ): LabJourneyItem[] {
   const stats = tutorLabs.map((lab) => {
     const labEvents = events.filter((event) => event.labId === lab.id)
@@ -430,28 +443,37 @@ export function buildLabJourney(
 
   let previousCompleted = true
   return stats.map((item, index) => {
-    const unlocked = index === 0 || previousCompleted
-    const completed = unlocked && item.passedVerification && item.reflected
+    const trusted = serverAccess.find((access) => access.labId === item.lab.id)
+    const unlocked = trusted ? trusted.unlocked : index === 0 || previousCompleted
+    const passedVerification = trusted ? trusted.verified : item.passedVerification
+    const reflected = trusted ? trusted.reflected : item.reflected
+    const completed = trusted ? trusted.completed : unlocked && passedVerification && reflected
     previousCompleted = completed
     const previousLab = tutorLabs[index - 1]
     return {
       ...item,
+      passedVerification,
+      reflected,
       index,
       unlocked,
       completed,
       current: item.lab.id === activeLabId,
       status: completed
-        ? '已构建'
+        ? '已学 · 可回看'
+        : trusted?.state === 'review'
+          ? '已发放 · 可回看'
+          : trusted?.state === 'waiting_teacher'
+            ? '待教师开放'
+            : trusted?.state === 'waiting_prerequisite'
+              ? '待完成前置'
         : item.started && unlocked
           ? '学习中'
           : unlocked
-            ? '可开始'
+            ? '当前可学习'
             : item.started
               ? '有记录 · 待解锁'
               : '待解锁',
-      lockReason: unlocked
-        ? ''
-        : `完成 ${previousLab.label} 的一次通过验证和一次学习复盘后解锁`,
+      lockReason: unlocked ? '' : trusted?.reason || `完成 ${previousLab.label} 的一次通过验证和一次学习复盘后解锁`,
     }
   })
 }

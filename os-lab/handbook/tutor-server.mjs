@@ -13,6 +13,7 @@ import {
   extractStreamText,
 } from './llm-response.mjs'
 import { scoreLearningEvents } from '../learning/rubric.mjs'
+import { accessForLab, buildLearningAccess } from '../learning/access.mjs'
 import { collectTraceEvents, validateInteractionEvent, validateRunResult } from '../tutor/contracts.mjs'
 import { evaluateRunAssertions, getRunRecipe } from '../tutor/run-recipes.mjs'
 import {
@@ -33,6 +34,7 @@ import {
   changePassword,
   createRun,
   finishRun,
+  getLearningEvidence,
   insertLearningEvents,
   listAllReports,
   listMyReports,
@@ -49,10 +51,43 @@ const handbookRoot = path.dirname(fileURLToPath(import.meta.url))
 const promptRoot = path.resolve(handbookRoot, '..', 'tutor', 'prompts')
 const osLabRoot = path.resolve(handbookRoot, '..')
 
+const manualFiles = {
+  lab1: 'lab1-bare-metal.md',
+  lab2: 'lab2-trap-and-task.md',
+  lab3: 'lab3-memory.md',
+  lab4: 'lab4-process.md',
+  lab5: 'lab5-fs-and-sync.md',
+  lab6: 'lab6-disk-fs.md',
+  lab7: 'lab7-ipc-signal.md',
+  lab8: 'lab8-thread-sync.md',
+}
+
 /** 该学生的生效教学配置（学生覆盖 > 班级覆盖 > 全局）。 */
 async function effectiveFor(session) {
   const config = await readTeacherConfig()
   return effectiveConfigFor(config, session?.username || '', session?.className || '')
+}
+
+/** 同一份访问状态同时驱动手册、学习路径和下一层代码发放。 */
+async function learningContextFor(session, effectiveOverride) {
+  const effective = effectiveOverride || (await effectiveFor(session))
+  const status = await scaffoldStatus(session.username, effective)
+  const access = buildLearningAccess({
+    role: session.role,
+    openLab: effective.openLab,
+    applied: status.applied || [],
+    evidence: session.role === 'student' ? getLearningEvidence(session.id) : [],
+  })
+  const nextAccess = status.next ? accessForLab(access, status.next) : null
+  return {
+    effective,
+    access,
+    status: {
+      ...status,
+      nextAllowed: Boolean(nextAccess?.unlocked),
+      nextBlockedReason: nextAccess?.reason || '',
+    },
+  }
 }
 
 /** 从请求头解析登录会话（Authorization: Bearer <token> 或 X-Auth-Token）。 */
@@ -1044,6 +1079,40 @@ const server = http.createServer(async (request, response) => {
       return
     }
 
+    /* -- 渐进式手册访问 ---------------------------------------------------- */
+
+    if (request.method === 'GET' && pathname === '/learning/access') {
+      if (!session) {
+        json(response, 401, { error: '请先登录后进入引导式学习' }, origin)
+        return
+      }
+      const { access } = await learningContextFor(session)
+      json(response, 200, { ok: true, ...access }, origin)
+      return
+    }
+
+    if (request.method === 'GET' && pathname === '/manual') {
+      if (!session) {
+        json(response, 401, { error: '请先登录后阅读实验手册' }, origin)
+        return
+      }
+      const labId = String(requestUrl.searchParams.get('labId') || '')
+      const file = manualFiles[labId]
+      if (!file) {
+        json(response, 404, { error: '实验手册不存在' }, origin)
+        return
+      }
+      const { access } = await learningContextFor(session)
+      const labAccess = accessForLab(access, labId)
+      if (!labAccess?.unlocked) {
+        json(response, 403, { error: labAccess?.reason || '该实验尚未解锁', access: labAccess }, origin)
+        return
+      }
+      const content = await readFile(path.join(osLabRoot, 'labs', file), 'utf8')
+      json(response, 200, { ok: true, labId, file, content, access: labAccess }, origin)
+      return
+    }
+
     /* -- 学生报告提交 -------------------------------------------------------- */
 
     if (request.method === 'POST' && pathname === '/reports') {
@@ -1150,8 +1219,8 @@ const server = http.createServer(async (request, response) => {
         json(response, 401, { error: '请先登录' }, origin)
         return
       }
-      const effective = await effectiveFor(session)
-      json(response, 200, { ...(await scaffoldStatus(reqUser, effective)), notice: effective.notice || '' }, origin)
+      const { effective, status } = await learningContextFor(session)
+      json(response, 200, { ...status, notice: effective.notice || '' }, origin)
       return
     }
 
@@ -1166,8 +1235,20 @@ const server = http.createServer(async (request, response) => {
       }
       const body = await readBody(request)
       const effective = await effectiveFor(session)
+      const before = await learningContextFor(session, effective)
+      const nextAccess = before.status.next ? accessForLab(before.access, before.status.next) : null
+      if (before.status.next && !nextAccess?.unlocked) {
+        json(response, 403, {
+          ok: false,
+          error: nextAccess?.reason || '下一层尚未解锁',
+          log: [nextAccess?.reason || '下一层尚未解锁'],
+          status: before.status,
+        }, origin)
+        return
+      }
       const result = await applyNext(reqUser, body.variant, effective)
-      json(response, result.ok ? 200 : 400, { ...result, status: await scaffoldStatus(reqUser, effective) }, origin)
+      const after = await learningContextFor(session, effective)
+      json(response, result.ok ? 200 : 400, { ...result, status: after.status }, origin)
       return
     }
 

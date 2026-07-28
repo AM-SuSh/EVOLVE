@@ -9,8 +9,6 @@ type Lab = {
   feature: string
   title: string
   subtitle: string
-  guide: string
-  answers: string
   verifyCmd: string
   expected: string[]
   checklist: ChecklistItem[]
@@ -107,9 +105,7 @@ watch(checked, save, { deep: true })
       </div>
 
       <div class="lab-links">
-        <a class="primary" :href="`/learn/${lab.id}`">引导式学习</a>
-        <a :href="lab.guide">实验指导</a>
-        <a :href="lab.answers">参考答案</a>
+        <a class="primary" :href="`/learn/${lab.id}`">进入引导式学习</a>
       </div>
 
       <CopyCommand :command="lab.verifyCmd" label="复制验证命令" />

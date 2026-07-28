@@ -12,9 +12,6 @@ hero:
     - theme: alt
       text: 认识 os-lab
       link: /guide/start
-    - theme: alt
-      text: 实验手册
-      link: /labs/overview
 
 features:
   - icon: 🧭
@@ -28,11 +25,11 @@ features:
     details: 提问质量、验证行为、试错与复盘按统一 rubric 打分；护栏拦截「索要完整答案」，教师端可查看学习报告。
   - icon: 📖
     title: 完整实验材料
-    details: 8 个 Lab 的指导、思考题与参考答案全部就绪，与 labs/ 源文档自动同步；Mermaid 知识地图原样渲染。
+    details: 8 个 Lab 的指导与思考题按教师发布和学习进度逐层开放；教师始终可预览、编辑并安排任务。
 ---
 
 ## 怎么开始
 
 第一次来：先读 **[认识 os-lab](/guide/start)** 配好环境，然后直接进入 **[引导式学习](/guide/ai-tutor)**——从 [Lab1 工作台](/learn/lab1) 起步，逐层解锁到 Lab8。
 
-习惯纯阅读的同学也可以走传统路径：[实验手册](/labs/overview) → 按 Lab 阅读 → QEMU 验证 → 完成【任务二】 → 对照 [参考答案](/answers/README)。工作台与手册使用同一份正文，随时可以切换。
+学生的实验正文统一放在引导式学习工作台中：教师先开放实验，学生完成当前 Lab 的可信验证与学习复盘后，下一层才可查看和领取。

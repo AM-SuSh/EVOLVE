@@ -19,7 +19,7 @@ npm run dev
 
 浏览器打开终端提示的本地地址（默认 `http://localhost:5173`）。
 
-`npm run dev` / `npm run build` 会自动执行 `npm run sync`，从 `../labs/`、`../docs/`、`../../docs/` 同步 Markdown 到 `labs/`、`answers/`、`project/`、`setup/`（这些目录已 gitignore，勿手改）。
+`npm run dev` / `npm run build` 会自动执行 `npm run sync`。公开项目文档同步到 `project/`、`setup/`；`learn/` 只生成工作台路由壳。实验手册正文不进入静态构建，而由 tutor-server 登录后按权限读取（同步目录已 gitignore，勿手改）。
 
 ## 构建静态站点
 
@@ -46,8 +46,7 @@ handbook/
 
 | 手册路径 | 源文件 |
 | --- | --- |
-| `/labs/*` | `os-lab/labs/*.md` |
-| `/answers/*` | `os-lab/labs/answers/` |
+| `/learn/labN` | 路由壳；正文由 `GET /manual` 按教师发布与学习证据返回 |
 | `/project/*` | `os-lab/docs/` |
 | `/setup/*` | 仓库 `docs/` 中环境安装与完整验证文档 |
 
