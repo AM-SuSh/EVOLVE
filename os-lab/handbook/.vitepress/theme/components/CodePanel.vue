@@ -1,15 +1,12 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
-import { ChevronDown, ChevronRight, FileCode2, Folder, FolderOpen, RefreshCw } from 'lucide-vue-next'
+import { FileCode2, FolderTree, RefreshCw, X } from 'lucide-vue-next'
 import { authHeaders, type TutorLab } from '../tutor-model'
 import { mockFileStatus, monacoLanguageForPath, type FileStatusKind } from '../file-status'
 import FileStatusBadge from './FileStatusBadge.vue'
 
 const MonacoEditor = defineAsyncComponent(() => import('./MonacoEditor.vue'))
 
-/**
- * 学生代码区：文件树 + Monaco 编辑器（第一周 PoC）。
- */
 const props = defineProps<{
   lab: TutorLab
   endpoint: string
@@ -17,7 +14,6 @@ const props = defineProps<{
   dark?: boolean
 }>()
 
-/** 带上学生身份：服务端据此返回/写入该生自己的工作区。 */
 function apiUrl(pathname: string) {
   if (!props.student) return `${props.endpoint}${pathname}`
   return `${props.endpoint}${pathname}${pathname.includes('?') ? '&' : '?'}user=${encodeURIComponent(props.student)}`
@@ -39,24 +35,23 @@ const activePath = ref('')
 const fileContent = ref('')
 const fileTruncated = ref(false)
 const fileLoading = ref(false)
-/** 学生工作区可编辑；参考实现保持只读。 */
-const editing = ref(false)
 const draft = ref('')
 const saving = ref(false)
 const saveNote = ref('')
 const clientReady = ref(false)
+/** 文件树抽屉：默认关闭，打开文件后给编辑器让出全宽。 */
+const treeOpen = ref(false)
 
-const canEdit = computed(
-  () => rootName.value.startsWith('student-labs') && !fileTruncated.value && Boolean(activePath.value),
-)
-
+const isStudent = computed(() => rootName.value.startsWith('student-labs'))
+const canEdit = computed(() => isStudent.value && !fileTruncated.value && Boolean(activePath.value))
 const editorLanguage = computed(() =>
   activePath.value ? monacoLanguageForPath(activePath.value) : 'plaintext',
 )
-
 const showEditor = computed(() => Boolean(activePath.value) && !fileLoading.value)
+const workspaceLabel = computed(() =>
+  isStudent.value ? `你的系统 · ${rootName.value.split('/')[1] || ''}` : '参考实现 · 只读',
+)
 
-/** 本 Lab 各阶段推荐阅读的代码文件（去重，仅保留仓库代码路径）。 */
 const labFiles = computed(() => {
   const seen = new Set<string>()
   for (const stage of Object.values(props.lab.resources)) {
@@ -68,7 +63,7 @@ const labFiles = computed(() => {
 })
 
 function fileStatusFor(path: string): FileStatusKind | null {
-  if (!rootName.value.startsWith('student-labs')) return null
+  if (!isStudent.value) return null
   return mockFileStatus(props.lab.id, path)
 }
 
@@ -76,7 +71,7 @@ async function loadTree() {
   loading.value = true
   error.value = ''
   try {
-    const response = await fetch(apiUrl(`/fs/tree`), { headers: authHeaders() })
+    const response = await fetch(apiUrl('/fs/tree'), { headers: authHeaders() })
     if (!response.ok) throw new Error(`导师服务返回 ${response.status}`)
     const payload = await response.json()
     tree.value = payload.tree || []
@@ -99,15 +94,25 @@ function toggleDir(node: FsNode) {
   expanded.value = next
 }
 
+function toggleTree() {
+  treeOpen.value = !treeOpen.value
+}
+
+function closeTree() {
+  treeOpen.value = false
+}
+
 async function openFile(relative: string) {
   activePath.value = relative
   fileLoading.value = true
   fileContent.value = ''
   fileTruncated.value = false
-  editing.value = false
   saveNote.value = ''
+  treeOpen.value = false
   try {
-    const response = await fetch(apiUrl(`/fs/file?path=${encodeURIComponent(relative)}`), { headers: authHeaders() })
+    const response = await fetch(apiUrl(`/fs/file?path=${encodeURIComponent(relative)}`), {
+      headers: authHeaders(),
+    })
     const payload = await response.json()
     if (!response.ok) throw new Error(payload?.error || `导师服务返回 ${response.status}`)
     fileContent.value = payload.content || ''
@@ -127,17 +132,11 @@ async function openFile(relative: string) {
   }
 }
 
-function startEdit() {
-  draft.value = fileContent.value
-  editing.value = true
-  saveNote.value = ''
-}
-
 async function saveEdit() {
-  if (saving.value) return
+  if (saving.value || !canEdit.value) return
   saving.value = true
   try {
-    const response = await fetch(apiUrl(`/fs/save`), {
+    const response = await fetch(apiUrl('/fs/save'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ path: activePath.value, content: draft.value }),
@@ -145,7 +144,6 @@ async function saveEdit() {
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(payload?.error || `导师服务返回 ${response.status}`)
     fileContent.value = draft.value
-    editing.value = false
     saveNote.value = '已保存。去终端重新运行验证你的修改。'
   } catch (err) {
     saveNote.value = err instanceof Error ? err.message : '保存失败'
@@ -154,10 +152,8 @@ async function saveEdit() {
   }
 }
 
-function cancelEdit() {
-  draft.value = fileContent.value
-  editing.value = false
-  saveNote.value = ''
+function onEditorSave() {
+  void saveEdit()
 }
 
 onMounted(() => {
@@ -168,78 +164,113 @@ onMounted(() => {
 
 <template>
   <section class="ws-code" aria-label="系统代码">
-    <header class="ws-code-head">
-      <div class="ws-code-cwd">
-        <strong>{{ rootName.startsWith('student-labs') ? `你的系统 · ${rootName.split('/')[1] || ''}` : '参考实现 · 只读' }}</strong>
-        <small>命令执行目录：<code>{{ rootName }}/</code></small>
-      </div>
-      <button type="button" title="重新加载目录" @click="loadTree">
-        <RefreshCw :size="14" aria-hidden="true" />
+    <header class="ws-code-toolbar">
+      <button
+        type="button"
+        class="ws-code-tree-btn"
+        :class="{ active: treeOpen }"
+        :aria-expanded="treeOpen"
+        title="打开文件目录"
+        @click="toggleTree"
+      >
+        <FolderTree :size="15" aria-hidden="true" />
+        <span>目录</span>
       </button>
+
+      <div v-if="activePath" class="ws-code-file-meta">
+        <FileCode2 :size="14" aria-hidden="true" />
+        <FileStatusBadge v-if="fileStatusFor(activePath)" :kind="fileStatusFor(activePath)!" />
+        <code>{{ activePath }}</code>
+        <em v-if="fileTruncated">（已截断）</em>
+      </div>
+      <div v-else class="ws-code-file-meta ws-code-file-meta--hint">
+        <span>{{ workspaceLabel }}</span>
+        <small>执行目录 <code>{{ rootName }}/</code></small>
+      </div>
+
+      <div class="ws-code-toolbar-actions">
+        <button
+          v-if="canEdit && activePath"
+          type="button"
+          class="ws-code-save"
+          :disabled="saving || draft === fileContent"
+          @click="saveEdit"
+        >
+          {{ saving ? '保存中…' : '保存' }}
+        </button>
+        <button type="button" class="ws-code-icon-btn" title="重新加载目录" @click="loadTree">
+          <RefreshCw :size="14" aria-hidden="true" />
+        </button>
+      </div>
     </header>
 
-    <div v-if="labFiles.length" class="ws-code-quick">
-      <span>本 Lab 相关：</span>
-      <button
-        v-for="file in labFiles"
-        :key="file"
-        type="button"
-        :class="{ active: activePath === file }"
-        @click="openFile(file)"
-      >
-        {{ file }}
-      </button>
-    </div>
+    <p v-if="saveNote" class="ws-code-flash" :class="{ ok: saveNote.startsWith('已保存') }">{{ saveNote }}</p>
 
-    <div class="ws-code-body">
-      <nav class="ws-code-tree" aria-label="目录结构">
-        <p v-if="loading" class="ws-code-note">目录加载中…</p>
-        <p v-else-if="error" class="ws-code-note error">{{ error }}</p>
-        <template v-else>
-          <template v-for="node in tree" :key="node.path">
-            <CodeTreeNode
-              :node="node"
-              :depth="0"
-              :expanded="expanded"
-              :active-path="activePath"
-              :lab-id="lab.id"
-              :student-root="rootName.startsWith('student-labs')"
-              @toggle="toggleDir"
-              @open="openFile"
-            />
+    <div class="ws-code-main">
+      <button
+        v-if="treeOpen"
+        type="button"
+        class="ws-code-tree-backdrop"
+        aria-label="关闭文件目录"
+        @click="closeTree"
+      />
+
+      <aside v-if="treeOpen" class="ws-code-tree-drawer" aria-label="目录结构">
+        <header class="ws-code-drawer-head">
+          <strong>文件</strong>
+          <small><code>{{ rootName }}/</code></small>
+          <button type="button" class="ws-code-icon-btn" aria-label="关闭" @click="closeTree">
+            <X :size="14" aria-hidden="true" />
+          </button>
+        </header>
+        <div class="ws-code-tree">
+          <p v-if="loading" class="ws-code-note">目录加载中…</p>
+          <p v-else-if="error" class="ws-code-note error">{{ error }}</p>
+          <template v-else>
+            <template v-for="node in tree" :key="node.path">
+              <CodeTreeNode
+                :node="node"
+                :depth="0"
+                :expanded="expanded"
+                :active-path="activePath"
+                :lab-id="lab.id"
+                :student-root="isStudent"
+                @toggle="toggleDir"
+                @open="openFile"
+              />
+            </template>
           </template>
-        </template>
-      </nav>
+        </div>
+      </aside>
 
       <div class="ws-code-view">
-        <p v-if="!activePath" class="ws-code-note">
-          左边选择一个文件查看源码。建议从 <code>kernel/src/main.rs</code> 或上方「本 Lab 相关」文件开始。
-        </p>
+        <div v-if="!activePath" class="ws-code-empty">
+          <p class="ws-code-empty-lead">选择要查看或编辑的源码文件</p>
+          <p class="ws-code-empty-sub">工作区 <code>{{ rootName }}/</code> · 可从下方快捷入口或左侧「目录」浏览</p>
+          <div v-if="labFiles.length" class="ws-code-picks">
+            <span>本 Lab 相关</span>
+            <div class="ws-code-picks-grid">
+              <button v-for="file in labFiles" :key="file" type="button" @click="openFile(file)">
+                <FileCode2 :size="14" aria-hidden="true" />
+                {{ file }}
+              </button>
+            </div>
+          </div>
+          <button type="button" class="ws-code-browse" @click="treeOpen = true">
+            <FolderTree :size="15" aria-hidden="true" />
+            浏览全部文件
+          </button>
+        </div>
+
         <template v-else>
-          <p class="ws-code-file">
-            <FileCode2 :size="14" aria-hidden="true" />
-            <FileStatusBadge v-if="fileStatusFor(activePath)" :kind="fileStatusFor(activePath)!" />
-            <code>{{ rootName }}/{{ activePath }}</code>
-            <em v-if="fileTruncated">（文件过大，已截断显示）</em>
-            <span class="ws-code-file-actions">
-              <template v-if="canEdit">
-                <button v-if="!editing" type="button" @click="startEdit">编辑</button>
-                <template v-else>
-                  <button type="button" :disabled="saving" @click="saveEdit">{{ saving ? '保存中…' : '保存' }}</button>
-                  <button type="button" @click="cancelEdit">取消</button>
-                </template>
-              </template>
-              <em v-else-if="!rootName.startsWith('student-labs')" class="readonly">只读</em>
-            </span>
-          </p>
-          <p v-if="saveNote" class="ws-code-note" :class="{ ok: saveNote.startsWith('已保存') }">{{ saveNote }}</p>
           <p v-if="fileLoading" class="ws-code-note">读取中…</p>
           <MonacoEditor
             v-else-if="showEditor && clientReady"
             v-model="draft"
             :language="editorLanguage"
-            :read-only="!editing"
+            :read-only="!canEdit"
             :dark="dark"
+            @save="onEditorSave"
           />
         </template>
       </div>
@@ -249,7 +280,13 @@ onMounted(() => {
 
 <script lang="ts">
 import { defineComponent, h, type PropType } from 'vue'
-import { ChevronDown as IconDown, ChevronRight as IconRight, FileCode2 as IconFile, Folder as IconFolder, FolderOpen as IconFolderOpen } from 'lucide-vue-next'
+import {
+  ChevronDown as IconDown,
+  ChevronRight as IconRight,
+  FileCode2 as IconFile,
+  Folder as IconFolder,
+  FolderOpen as IconFolderOpen,
+} from 'lucide-vue-next'
 import FileStatusBadge from './FileStatusBadge.vue'
 import { mockFileStatus, type FileStatusKind } from '../file-status'
 
@@ -260,7 +297,6 @@ interface FsNodeShape {
   children?: FsNodeShape[]
 }
 
-/** 递归目录节点：小而平的实现，避免为一棵树引入额外依赖。 */
 const CodeTreeNode = defineComponent({
   name: 'CodeTreeNode',
   components: { FileStatusBadge },
@@ -340,38 +376,108 @@ export default { components: { CodeTreeNode } }
 
 <style scoped>
 .ws-code {
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   background: var(--ws-surface);
 }
 
-.ws-code-head {
+.ws-code-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--ws-space-3);
-  padding: var(--ws-space-2) var(--ws-space-4);
+  gap: var(--ws-space-2);
+  min-width: 0;
+  padding: var(--ws-space-1) var(--ws-space-2);
   border-bottom: 1px solid var(--ws-line);
   background: var(--ws-surface-alt);
 }
 
-.ws-code-cwd strong {
-  display: block;
-  font-size: var(--ws-text-sm);
+.ws-code-tree-btn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--ws-control-sm);
+  padding: 0 var(--ws-space-2);
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
+  font: inherit;
+  font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-semibold);
+  cursor: pointer;
 }
 
-.ws-code-cwd small {
+.ws-code-tree-btn:hover,
+.ws-code-tree-btn.active {
+  color: var(--ws-accent);
+  border-color: var(--ws-accent);
+  background: var(--ws-accent-soft);
+}
+
+.ws-code-file-meta {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--ws-space-1);
+  min-width: 0;
   color: var(--ws-ink-muted);
   font-size: var(--ws-text-xs);
 }
 
-.ws-code-cwd code {
+.ws-code-file-meta code {
+  overflow: hidden;
   font-family: var(--ws-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.ws-code-head > button {
+.ws-code-file-meta--hint {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.ws-code-file-meta--hint span {
+  color: var(--ws-ink);
+  font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-code-file-meta--hint small {
+  color: var(--ws-ink-faint);
+}
+
+.ws-code-toolbar-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--ws-space-1);
+  margin-left: auto;
+}
+
+.ws-code-save {
+  min-height: var(--ws-control-sm);
+  padding: 0 var(--ws-space-3);
+  color: var(--ws-accent-contrast);
+  border: 1px solid var(--ws-accent);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-accent);
+  font: inherit;
+  font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-semibold);
+  cursor: pointer;
+}
+
+.ws-code-save:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ws-code-icon-btn {
   display: grid;
   width: var(--ws-control-sm);
   height: var(--ws-control-sm);
@@ -383,62 +489,86 @@ export default { components: { CodeTreeNode } }
   cursor: pointer;
 }
 
-.ws-code-head > button:hover {
+.ws-code-icon-btn:hover {
   color: var(--ws-accent);
   border-color: var(--ws-accent);
 }
 
-.ws-code-quick {
-  display: flex;
-  align-items: center;
-  gap: var(--ws-space-1);
+.ws-code-flash {
+  margin: 0;
   padding: var(--ws-space-1) var(--ws-space-3);
-  overflow-x: auto;
-  border-bottom: 1px solid var(--ws-line);
-  scrollbar-width: none;
-  font-size: var(--ws-text-xs);
-}
-
-.ws-code-quick::-webkit-scrollbar {
-  display: none;
-}
-
-.ws-code-quick > span {
-  flex: 0 0 auto;
-  color: var(--ws-ink-faint);
-}
-
-.ws-code-quick button {
-  flex: 0 0 auto;
-  padding: 2px var(--ws-space-2);
   color: var(--ws-ink-muted);
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-full);
-  background: var(--ws-surface);
-  font-family: var(--ws-font-mono);
+  border-bottom: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
   font-size: var(--ws-text-xs);
+}
+
+.ws-code-flash.ok {
+  color: var(--ws-ok, #1a7f37);
+}
+
+.ws-code-main {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.ws-code-tree-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  padding: 0;
+  border: 0;
+  background: color-mix(in srgb, var(--ws-ink) 28%, transparent);
   cursor: pointer;
 }
 
-.ws-code-quick button:hover,
-.ws-code-quick button.active {
-  color: var(--ws-accent);
-  border-color: var(--ws-accent);
-  background: var(--ws-accent-soft);
+.ws-code-tree-drawer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(300px, 88%);
+  border-right: 1px solid var(--ws-line);
+  background: var(--ws-surface);
+  box-shadow: var(--ws-shadow-3);
 }
 
-.ws-code-body {
-  display: grid;
-  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
-  min-height: 0;
+.ws-code-drawer-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ws-space-2);
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border-bottom: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
+}
+
+.ws-code-drawer-head strong {
+  font-size: var(--ws-text-sm);
+}
+
+.ws-code-drawer-head small {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--ws-ink-faint);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-code-drawer-head small code {
+  font-family: var(--ws-font-mono);
 }
 
 .ws-code-tree {
   min-height: 0;
   padding: var(--ws-space-2);
   overflow: auto;
-  border-right: 1px solid var(--ws-line);
-  background: var(--ws-surface-alt);
 }
 
 .ws-code-tree :deep(.ws-tree-item) {
@@ -468,7 +598,7 @@ export default { components: { CodeTreeNode } }
 
 .ws-code-tree :deep(.ws-tree-item:hover) {
   color: var(--ws-accent);
-  background: var(--ws-surface);
+  background: var(--ws-surface-alt);
 }
 
 .ws-code-tree :deep(.ws-tree-item.file.active) {
@@ -479,59 +609,102 @@ export default { components: { CodeTreeNode } }
 
 .ws-code-view {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
 }
 
-.ws-code-file {
+.ws-code-empty {
   display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   align-items: center;
-  gap: var(--ws-space-1);
-  margin: 0;
-  padding: var(--ws-space-1) var(--ws-space-3);
-  border-bottom: 1px solid var(--ws-line);
-  color: var(--ws-ink-muted);
-  font-size: var(--ws-text-xs);
+  justify-content: center;
+  gap: var(--ws-space-4);
+  min-height: 0;
+  padding: var(--ws-space-6);
+  text-align: center;
 }
 
-.ws-code-file code {
+.ws-code-empty-lead {
+  margin: 0;
+  color: var(--ws-ink);
+  font-size: var(--ws-text-base);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-code-empty-sub {
+  margin: 0;
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-sm);
+  line-height: var(--ws-leading-normal);
+}
+
+.ws-code-empty-sub code {
   font-family: var(--ws-font-mono);
 }
 
-.ws-code-file em {
-  color: var(--ws-warn, #b7791f);
-  font-style: normal;
+.ws-code-picks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ws-space-2);
+  width: min(100%, 520px);
 }
 
-.ws-code-file-actions {
-  display: inline-flex;
-  gap: var(--ws-space-1);
-  margin-left: auto;
-}
-
-.ws-code-file-actions button {
-  padding: 2px var(--ws-space-2);
-  color: var(--ws-accent);
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-sm);
-  background: var(--ws-surface);
-  font: inherit;
+.ws-code-picks > span {
+  color: var(--ws-ink-faint);
   font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ws-code-picks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--ws-space-2);
+}
+
+.ws-code-picks-grid button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ws-space-2);
+  padding: var(--ws-space-2) var(--ws-space-3);
+  color: var(--ws-ink);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+  font-family: var(--ws-font-mono);
+  font-size: var(--ws-text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ws-code-picks-grid button:hover {
+  color: var(--ws-accent);
+  border-color: var(--ws-accent);
+  background: var(--ws-accent-soft);
+}
+
+.ws-code-browse {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ws-space-1);
+  min-height: var(--ws-control-md);
+  padding: 0 var(--ws-space-4);
+  color: var(--ws-accent);
+  border: 1px solid var(--ws-accent);
+  border-radius: var(--ws-radius-md);
+  background: transparent;
+  font: inherit;
+  font-size: var(--ws-text-sm);
   font-weight: var(--ws-weight-semibold);
   cursor: pointer;
 }
 
-.ws-code-file-actions button:hover:not(:disabled) {
-  border-color: var(--ws-accent);
-}
-
-.ws-code-file-actions .readonly {
-  color: var(--ws-ink-faint);
-}
-
-.ws-code-note.ok {
-  color: var(--ws-ok, #1a7f37);
+.ws-code-browse:hover {
+  background: var(--ws-accent-soft);
 }
 
 .ws-code-note {

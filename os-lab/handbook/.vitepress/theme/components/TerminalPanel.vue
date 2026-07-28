@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { FilePlus2, Maximize2, Minimize2, Play, RotateCcw, Square } from 'lucide-vue-next'
+import { FilePlus2, Play, RotateCcw, Square } from 'lucide-vue-next'
 import { authHeaders, type TutorLab } from '../tutor-model'
 import XtermOutput from './XtermOutput.vue'
 
@@ -9,7 +9,6 @@ const props = defineProps<{
   endpoint: string
   student?: string
   sessionId?: string
-  maximized?: boolean
   dark?: boolean
 }>()
 
@@ -37,7 +36,6 @@ const emit = defineEmits<{
   (event: 'run-exit', runId: string): void
   /** 学生把本次输出插进实验报告的「过程记录」。 */
   (event: 'insert-report', text: string): void
-  (event: 'toggle-max'): void
 }>()
 
 const command = ref('')
@@ -255,16 +253,6 @@ onBeforeUnmount(() => {
       </button>
       <button v-else type="button" class="ws-terminal-stop" @click="stop">
         <Square :size="13" aria-hidden="true" /><span>停止</span>
-      </button>
-      <button
-        type="button"
-        class="ws-terminal-icon"
-        :title="maximized ? '恢复布局' : '放大到整页'"
-        :aria-label="maximized ? '恢复布局' : '放大到整页'"
-        @click="emit('toggle-max')"
-      >
-        <Minimize2 v-if="maximized" :size="14" aria-hidden="true" />
-        <Maximize2 v-else :size="14" aria-hidden="true" />
       </button>
     </header>
 

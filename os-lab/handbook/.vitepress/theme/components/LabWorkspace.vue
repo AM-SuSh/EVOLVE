@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useData, useRouter, withBase } from 'vitepress'
-import { Blocks, BookOpen, ClipboardCheck, Code2, Home, LockKeyhole, MessagesSquare, Moon, Play, Settings, Sun, UserRound } from 'lucide-vue-next'
+import { Blocks, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, Home, LockKeyhole, MessagesSquare, Moon, PanelLeftClose, PanelLeftOpen, Play, Settings, Sun, Terminal, UserRound } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
 import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
@@ -149,30 +149,168 @@ const connection = ref<'checking' | 'remote' | 'offline'>('checking')
 const modelName = ref('')
 const notice = ref('')
 const currentSection = ref({ h2: '', h3: '' })
-const mobileView = ref<'manual' | 'code' | 'tutor' | 'run'>('manual')
-/** 右上栏页签（仅学生）：实验报告 / AI 导师。 */
-const sideTab = ref<'report' | 'tutor'>('tutor')
-/** 底部 Dock 页签。 */
+const mobileView = ref<'manual' | 'practice'>('manual')
+/** 右栏下半区页签：实验报告 / AI 导师 / 工作区（代码编辑）。 */
+const rightTab = ref<'report' | 'tutor' | 'workspace'>('tutor')
+/** 底部 Dock 页签（终端 / Problems / Trace / 测试结果）。 */
 const dockTab = ref<DockTab>('terminal')
 /** 最近一次可信运行的 runId，供 Trace/Problems 占位关联。 */
 const lastRunId = ref('')
-/** 代码区首次访问后保持挂载。 */
-const codeVisited = ref(true)
-/** 底部面板高度占工作台比例。 */
-function loadDockHeight() {
-  if (typeof localStorage === 'undefined') return 28
-  const raw = localStorage.getItem('os-lab-dock-height')
-  const stored = Number(raw)
-  return Number.isFinite(stored) ? stored : 28
-}
-const dockHeight = ref(loadDockHeight())
+/** 工作区页签打开标记（Monaco 可见性回调用）。 */
+const workspaceVisited = ref(false)
+
+watch(rightTab, (tab) => {
+  if (tab === 'workspace') workspaceVisited.value = true
+})
+
 /** 终端 → 报告「过程记录」的插入载荷（id 递增触发）。 */
 const reportInsert = ref<{ id: number; text: string } | null>(null)
-/** 面板最大化：底部 Dock 可放大到整个工作台。 */
-const maximized = ref<'none' | 'dock'>('none')
-function toggleMaxDock() {
-  maximized.value = maximized.value === 'dock' ? 'none' : 'dock'
+
+/* -- 三栏开关与纵向比例（手册 / 实践 / 终端） ------------------------------ */
+
+const PANEL_STORAGE_KEY = 'os-lab-panels-v1'
+const PRACTICE_SPLIT_KEY = 'os-lab-practice-split'
+const PRACTICE_SPLIT_MIN = 28
+const PRACTICE_SPLIT_MAX = 72
+const DEFAULT_PRACTICE_SPLIT = 58
+
+type PanelKey = 'manual' | 'practice' | 'terminal'
+
+function loadPanelState(): Record<PanelKey, boolean> {
+  const defaults = { manual: true, practice: true, terminal: true }
+  if (typeof localStorage === 'undefined') return defaults
+  try {
+    const raw = localStorage.getItem(PANEL_STORAGE_KEY)
+    if (!raw) return defaults
+    const merged = { ...defaults, ...JSON.parse(raw) } as Record<PanelKey, boolean>
+    return merged
+  } catch {
+    return defaults
+  }
 }
+
+function loadPracticeSplit() {
+  if (typeof localStorage === 'undefined') return DEFAULT_PRACTICE_SPLIT
+  const stored = Number(localStorage.getItem(PRACTICE_SPLIT_KEY))
+  return Number.isFinite(stored)
+    ? clamp(stored, PRACTICE_SPLIT_MIN, PRACTICE_SPLIT_MAX)
+    : DEFAULT_PRACTICE_SPLIT
+}
+
+const panelOpen = ref(loadPanelState())
+const practiceSplit = ref(loadPracticeSplit())
+const rightElement = ref<HTMLElement | null>(null)
+const rowResizing = ref(false)
+
+/** 窄屏走 Tab 切换，手册折叠状态不应让正文从 DOM 中消失。 */
+const isMobileLayout = ref(false)
+
+function syncMobileLayout() {
+  if (typeof window === 'undefined') return
+  isMobileLayout.value = window.matchMedia('(max-width: 900px)').matches
+}
+
+const showManualPane = computed(() => {
+  if (isTeacherRole.value && teacherEditing.value) return false
+  if (isMobileLayout.value) return mobileView.value === 'manual'
+  return panelOpen.value.manual
+})
+
+const showPracticePane = computed(() => {
+  if (isMobileLayout.value && mobileView.value === 'practice') return true
+  return panelOpen.value.practice
+})
+
+const showTerminalPane = computed(() => {
+  if (isMobileLayout.value && mobileView.value === 'practice') return true
+  return panelOpen.value.terminal
+})
+
+/** 右栏（实践 + 终端）是否有任一可见。 */
+const showRightPane = computed(() => {
+  if (isTeacherRole.value) return true
+  if (isMobileLayout.value) return mobileView.value === 'practice'
+  return showPracticePane.value || showTerminalPane.value
+})
+
+const panesLayoutClass = computed(() => {
+  if (isTeacherRole.value || isMobileLayout.value) return {}
+  return {
+    'ws-panes-manual-only': showManualPane.value && !showRightPane.value,
+    'ws-panes-right-only': !showManualPane.value && showRightPane.value,
+  }
+})
+
+watch(mobileView, (view) => {
+  if (!isMobileLayout.value) return
+  if (view === 'manual' && !panelOpen.value.manual) {
+    panelOpen.value.manual = true
+    persistPanels()
+  }
+  if (view === 'practice' && (!panelOpen.value.practice || !panelOpen.value.terminal)) {
+    panelOpen.value.practice = true
+    panelOpen.value.terminal = true
+    persistPanels()
+  }
+})
+
+function persistPanels() {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(PANEL_STORAGE_KEY, JSON.stringify(panelOpen.value))
+}
+
+function togglePanel(key: PanelKey) {
+  panelOpen.value[key] = !panelOpen.value[key]
+  persistPanels()
+}
+
+function startRowResize(event: PointerEvent) {
+  if (event.button !== 0) return
+  rowResizing.value = true
+  const target = event.currentTarget as HTMLElement
+  target.setPointerCapture(event.pointerId)
+  document.documentElement.classList.add('ws-row-resizing')
+}
+
+function moveRowResize(event: PointerEvent) {
+  if (!rowResizing.value) return
+  const rect = rightElement.value?.getBoundingClientRect()
+  if (!rect || rect.height <= 0) return
+  const percent = ((event.clientY - rect.top) / rect.height) * 100
+  practiceSplit.value = clamp(percent, PRACTICE_SPLIT_MIN, PRACTICE_SPLIT_MAX)
+}
+
+function finishRowResize(event?: PointerEvent) {
+  if (!rowResizing.value) return
+  rowResizing.value = false
+  document.documentElement.classList.remove('ws-row-resizing')
+  if (event) {
+    const target = event.currentTarget as HTMLElement
+    if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId)
+  }
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(PRACTICE_SPLIT_KEY, String(practiceSplit.value))
+  }
+}
+
+const rightGridStyle = computed<Record<string, string>>(() => {
+  if (!showPracticePane.value || !showTerminalPane.value) return {}
+  const terminal = 100 - practiceSplit.value
+  return {
+    gridTemplateRows: `minmax(120px, ${practiceSplit.value}fr) 6px minmax(100px, ${terminal}fr)`,
+  }
+})
+
+const rightPaneClass = computed(() => {
+  if (showPracticePane.value && showTerminalPane.value) return 'ws-right-split'
+  return 'ws-right-single'
+})
+
+const rightHasRail = computed(
+  () =>
+    !isMobileLayout.value &&
+    (!showPracticePane.value || !showTerminalPane.value),
+)
 
 /* -- 左右栏宽度 ------------------------------------------------------------- */
 
@@ -201,10 +339,29 @@ function loadPaneSplit() {
 const panesElement = ref<HTMLElement | null>(null)
 const paneSplit = ref(loadPaneSplit())
 const paneResizing = ref(false)
-const paneGridStyle = computed<Record<string, string>>(() => ({
-  '--ws-left-pane-width': `${paneSplit.value}%`,
-  '--ws-dock-height': `${dockHeight.value}%`,
-}))
+const paneGridStyle = computed<Record<string, string>>(() => {
+  if (isTeacherRole.value) {
+    const teacherManual = panelOpen.value.manual
+    if (teacherManual) {
+      return { gridTemplateColumns: `minmax(0, ${paneSplit.value}%) minmax(0, 1fr)` }
+    }
+    return { gridTemplateColumns: 'minmax(0, 1fr)' }
+  }
+
+  const manual = showManualPane.value
+  const right = showRightPane.value
+
+  if (manual && right) {
+    return { gridTemplateColumns: `minmax(0, ${paneSplit.value}%) 10px minmax(0, 1fr)` }
+  }
+  if (manual && !right) {
+    return { gridTemplateColumns: 'minmax(0, 1fr)' }
+  }
+  if (!manual && right) {
+    return { gridTemplateColumns: '40px minmax(0, 1fr)' }
+  }
+  return { gridTemplateColumns: '40px minmax(0, 1fr)' }
+})
 
 function paneLimits() {
   const width = panesElement.value?.getBoundingClientRect().width || 0
@@ -286,7 +443,6 @@ interface ScaffoldStatus {
   next: string | null
   nextSummary: string | null
   nextAllowed: boolean
-  nextBlockedReason?: string
   openLab: string
   extraBins: string[]
   variants: Record<string, string>
@@ -439,7 +595,7 @@ const connectionDetail = ref('')
 let noticeTimer = 0
 
 const lab = computed(() => getTutorLab(props.labId))
-const journey = computed(() => buildLabJourney(events.value, props.labId, learningAccess.value))
+const journey = computed(() => buildLabJourney(events.value, props.labId))
 const journeyItem = computed(() => journey.value.find((item) => item.lab.id === props.labId))
 const currentAccess = computed(() => learningAccess.value.find((item) => item.labId === props.labId))
 const workspaceRestricted = computed(
@@ -497,6 +653,11 @@ function toast(text: string, duration = 3200) {
   notice.value = text
   window.clearTimeout(noticeTimer)
   noticeTimer = window.setTimeout(() => (notice.value = ''), duration)
+}
+
+function finishTeacherEditing() {
+  teacherEditing.value = false
+  manualKey.value += 1
 }
 
 /* -- 会话 ------------------------------------------------------------------- */
@@ -825,15 +986,15 @@ function onRunFinished(payload: {
 /** 终端输出插入实验报告的「过程记录」。 */
 function onInsertReport(text: string) {
   reportInsert.value = { id: (reportInsert.value?.id ?? 0) + 1, text }
-  sideTab.value = 'report'
-  mobileView.value = 'tutor'
+  rightTab.value = 'report'
+  mobileView.value = 'practice'
   toast('输出已插入实验报告。')
 }
 
 /** 报告面板请导师点评：切到对话页签并把报告作为提问发送。 */
 function reviewReport(content: string) {
-  sideTab.value = 'tutor'
-  mobileView.value = 'tutor'
+  rightTab.value = 'tutor'
+  mobileView.value = 'practice'
   if (sending.value) {
     toast('导师正在回复上一条消息，稍后再试。')
     return
@@ -864,11 +1025,6 @@ function enterLab(labId: TutorLabId) {
   router.go(withBase(`/learn/${labId}`))
 }
 
-function finishTeacherEditing() {
-  teacherEditing.value = false
-  manualKey.value += 1
-}
-
 function exportGrowth() {
   exportEventsAsJsonl(
     events.value,
@@ -877,8 +1033,14 @@ function exportGrowth() {
   toast('成长档案已导出为 JSONL。')
 }
 
+onBeforeMount(() => {
+  syncMobileLayout()
+})
+
 onMounted(async () => {
   document.documentElement.classList.add('ws-lock')
+  syncMobileLayout()
+  window.addEventListener('resize', syncMobileLayout)
   window.addEventListener('resize', clampPaneSplitToViewport)
   clampPaneSplitToViewport()
   events.value = loadEvents()
@@ -893,6 +1055,8 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   document.documentElement.classList.remove('ws-lock')
   document.documentElement.classList.remove('ws-pane-resizing')
+  document.documentElement.classList.remove('ws-row-resizing')
+  window.removeEventListener('resize', syncMobileLayout)
   window.removeEventListener('resize', clampPaneSplitToViewport)
   window.clearTimeout(noticeTimer)
 })
@@ -934,6 +1098,39 @@ onBeforeUnmount(() => {
         </button>
         <JourneyRail :journey="journey" @enter-lab="enterLab" @export-growth="exportGrowth" />
         <button
+          v-if="!isTeacherRole"
+          type="button"
+          class="ws-topbar-link"
+          :class="{ 'ws-topbar-link--active': panelOpen.manual }"
+          title="显示/隐藏实验手册"
+          @click="togglePanel('manual')"
+        >
+          <BookOpen :size="15" aria-hidden="true" /><span>手册</span>
+        </button>
+        <button
+          v-if="!isTeacherRole"
+          type="button"
+          class="ws-topbar-link"
+          :class="{ 'ws-topbar-link--active': panelOpen.practice }"
+          title="显示/隐藏实践区（报告 / 导师 / 工作区）"
+          @click="togglePanel('practice')"
+        >
+          <MessagesSquare :size="15" aria-hidden="true" /><span>实践</span>
+        </button>
+        <button
+          v-if="!isTeacherRole"
+          type="button"
+          class="ws-topbar-link"
+          :class="{ 'ws-topbar-link--active': panelOpen.terminal }"
+          title="显示/隐藏终端"
+          @click="togglePanel('terminal')"
+        >
+          <Terminal :size="15" aria-hidden="true" /><span>终端</span>
+        </button>
+        <a class="ws-topbar-link" :href="withBase('/labs/overview')">
+          <Home :size="15" aria-hidden="true" /><span>返回手册</span>
+        </a>
+        <button
           class="ws-topbar-icon"
           type="button"
           aria-label="模型设置"
@@ -965,66 +1162,97 @@ onBeforeUnmount(() => {
       >
         <BookOpen :size="15" aria-hidden="true" />手册
       </button>
-      <template v-if="!isTeacherRole">
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="mobileView === 'code'"
-          :class="{ active: mobileView === 'code' }"
-          @click="mobileView = 'code'"
-        >
-          <Code2 :size="15" aria-hidden="true" />代码
-        </button>
-      </template>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="mobileView === 'tutor'"
-        :class="{ active: mobileView === 'tutor' }"
-        @click="mobileView = 'tutor'"
-      >
-        <MessagesSquare :size="15" aria-hidden="true" />{{ isTeacherRole ? '教学' : '导师' }}
-      </button>
       <button
         v-if="!isTeacherRole"
         type="button"
         role="tab"
-        :aria-selected="mobileView === 'run'"
-        :class="{ active: mobileView === 'run' }"
-        @click="mobileView = 'run'"
+        :aria-selected="mobileView === 'practice'"
+        :class="{ active: mobileView === 'practice' }"
+        @click="mobileView = 'practice'"
       >
-        <Play :size="15" aria-hidden="true" />运行
+        <MessagesSquare :size="15" aria-hidden="true" />实践
+      </button>
+      <button
+        v-else
+        type="button"
+        role="tab"
+        :aria-selected="mobileView === 'practice'"
+        :class="{ active: mobileView === 'practice' }"
+        @click="mobileView = 'practice'"
+      >
+        <MessagesSquare :size="15" aria-hidden="true" />教学
       </button>
     </div>
 
     <main
       ref="panesElement"
       class="ws-panes"
-      :class="{ 'ws-ide-student': !isTeacherRole }"
+      :class="panesLayoutClass"
       :style="paneGridStyle"
     >
-      <!-- 左栏：指导书渲染效果；教师点「编辑手册」后整栏切换为 Markdown 编辑器 -->
-      <ManualPane
-        :key="manualKey"
-        v-show="!(isTeacherRole && teacherEditing)"
-        class="ws-left-pane"
-        :class="{ 'ws-mobile-hidden': mobileView !== 'manual' }"
-        :lab="lab"
-        :editable="isTeacherRole"
-        @edit="teacherEditing = true"
-        @section-change="currentSection = $event"
-      />
-      <TeacherDocPanel
-        v-if="isTeacherRole && teacherEditing"
-        class="ws-left-pane"
-        :class="{ 'ws-mobile-hidden': mobileView !== 'manual' }"
-        :lab="lab"
-        :endpoint="endpoint"
-        @notice="toast"
-        @close="finishTeacherEditing"
-      />
+      <!-- 手册收起后：左侧展开条（仅桌面） -->
+      <button
+        v-if="!isTeacherRole && !isMobileLayout && !panelOpen.manual"
+        type="button"
+        class="ws-panel-rail ws-panel-rail--manual"
+        title="展开实验手册"
+        @click="togglePanel('manual')"
+      >
+        <PanelLeftOpen :size="16" aria-hidden="true" />
+        <span>手册</span>
+      </button>
+
+      <!-- 左栏：指导书 -->
+      <div
+        v-if="showManualPane"
+        class="ws-zone ws-zone-manual ws-left-pane"
+        :class="{ 'ws-mobile-hidden': isMobileLayout && mobileView !== 'manual' }"
+      >
+        <header class="ws-zone-head">
+          <span class="ws-zone-title"><BookOpen :size="14" aria-hidden="true" />实验手册</span>
+          <button
+            v-if="!isTeacherRole && !isMobileLayout"
+            type="button"
+            class="ws-zone-toggle"
+            title="收起手册"
+            aria-label="收起手册"
+            @click="togglePanel('manual')"
+          >
+            <PanelLeftClose :size="14" aria-hidden="true" />
+          </button>
+        </header>
+        <div class="ws-zone-body">
+          <ManualPane
+            :key="manualKey"
+            :lab="lab"
+            :editable="isTeacherRole"
+            @edit="teacherEditing = true"
+            @section-change="currentSection = $event"
+          >
+            <slot />
+          </ManualPane>
+        </div>
+      </div>
+      <div
+        v-if="isTeacherRole && teacherEditing && panelOpen.manual"
+        class="ws-zone ws-zone-manual ws-left-pane"
+        :class="{ 'ws-mobile-hidden': isMobileLayout && mobileView !== 'manual' }"
+      >
+        <header class="ws-zone-head">
+          <span class="ws-zone-title"><BookOpen :size="14" aria-hidden="true" />编辑手册</span>
+        </header>
+        <div class="ws-zone-body">
+          <TeacherDocPanel
+            :lab="lab"
+            :endpoint="endpoint"
+            @notice="toast"
+            @close="finishTeacherEditing"
+          />
+        </div>
+      </div>
 
       <div
+        v-if="showManualPane && showRightPane && !isTeacherRole && !isMobileLayout"
         class="ws-pane-resizer"
         :class="{ active: paneResizing }"
         role="separator"
@@ -1050,7 +1278,7 @@ onBeforeUnmount(() => {
       <div
         v-if="isTeacherRole"
         class="ws-right ws-right-teacher"
-        :class="{ 'ws-mobile-hidden': mobileView !== 'tutor' }"
+        :class="{ 'ws-mobile-hidden': isMobileLayout && mobileView !== 'practice' }"
       >
         <TeacherPublishPanel :lab="lab" :endpoint="endpoint" @notice="toast" />
       </div>
@@ -1058,7 +1286,7 @@ onBeforeUnmount(() => {
       <div
         v-else-if="workspaceRestricted"
         class="ws-right ws-access-blocked"
-        :class="{ 'ws-mobile-hidden': mobileView !== 'tutor' }"
+        :class="{ 'ws-mobile-hidden': isMobileLayout && mobileView !== 'practice' }"
       >
         <LockKeyhole :size="28" aria-hidden="true" />
         <strong>{{ accessLoading ? '正在确认学习进度' : '当前实验尚未解锁' }}</strong>
@@ -1066,93 +1294,181 @@ onBeforeUnmount(() => {
         <a :href="withBase('/guide/ai-tutor')">返回学习路径</a>
       </div>
 
-      <!-- 右栏（学生）：IDE 四区 — 右上导师/报告、中部代码、底部 Dock -->
-      <template v-else>
-        <div
-          class="ws-ide-side"
-          :class="{ 'ws-mobile-hidden': mobileView !== 'tutor', 'ws-max': maximized === 'dock' && mobileView === 'tutor' }"
+      <!-- 右栏（学生）：实践区 + 终端，均可折叠、纵向拖动 -->
+      <div
+        v-else-if="showRightPane"
+        ref="rightElement"
+        class="ws-right"
+        :class="[
+          rightPaneClass,
+          { 'ws-right-has-rail': rightHasRail, 'ws-mobile-hidden': isMobileLayout && mobileView !== 'practice' },
+        ]"
+        :style="rightGridStyle"
+      >
+        <button
+          v-if="!isMobileLayout && !showPracticePane"
+          type="button"
+          class="ws-panel-rail ws-panel-rail--inline"
+          title="展开实践区"
+          @click="togglePanel('practice')"
         >
-          <div class="ws-side-tabs" role="tablist" aria-label="导师与报告">
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="sideTab === 'report'"
-              :class="{ active: sideTab === 'report' }"
-              @click="sideTab = 'report'"
-            >
-              实验报告
-            </button>
-            <button
-              type="button"
-              role="tab"
-              :aria-selected="sideTab === 'tutor'"
-              :class="{ active: sideTab === 'tutor' }"
-              @click="sideTab = 'tutor'"
-            >
-              AI 导师
-            </button>
-          </div>
-          <ReportPanel
-            v-show="sideTab === 'report'"
-            :lab="lab"
-            :insert-payload="reportInsert"
-            :teacher-feedback="teacherFeedback"
-            @reflect="submitReflection"
-            @review="reviewReport"
-            @submit-teacher="submitReportToTeacher"
-            @notice="toast"
-          />
-          <TutorPane
-            v-show="sideTab === 'tutor'"
-            :lab="lab"
-            :messages="messages"
-            :sending="sending"
-            :streaming-id="streamingId"
-            :connection="connection"
-            :connection-label="connectionLabel"
-            @send="sendMessage"
-            @new-session="startSession"
-            @check-connection="checkConnection"
-            @use-prompt="usePrompt"
-          />
-        </div>
+          <MessagesSquare :size="14" aria-hidden="true" />
+          <span>展开实践区（报告 / 导师 / 工作区）</span>
+          <ChevronDown :size="14" aria-hidden="true" />
+        </button>
 
-        <CodePanel
-          v-if="codeVisited"
-          class="ws-ide-code"
-          :class="{ 'ws-mobile-hidden': mobileView !== 'code' }"
-          :key="`code-${studentId}`"
-          :lab="lab"
-          :endpoint="endpoint"
-          :student="studentId"
-          :dark="isDark"
-        />
-
-        <BottomDock
-          class="ws-ide-dock"
-          :class="{ 'ws-mobile-hidden': mobileView !== 'run', 'ws-max': maximized === 'dock' }"
-          v-model:active-tab="dockTab"
-          v-model:height-percent="dockHeight"
-          :run-id="lastRunId"
-          :lab-id="lab.id"
-          :maximized="maximized === 'dock'"
-          @toggle-max="toggleMaxDock"
+        <section
+          v-show="showPracticePane"
+          class="ws-zone ws-zone-practice"
         >
-          <template #terminal>
-            <TerminalPanel
-              :key="`terminal-${studentId}`"
+          <header class="ws-zone-head ws-zone-head--tabs">
+            <span class="ws-zone-title"><MessagesSquare :size="14" aria-hidden="true" />实践</span>
+            <div class="ws-right-tabs" role="tablist" aria-label="实践区视图">
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="rightTab === 'report'"
+                :class="{ active: rightTab === 'report' }"
+                @click="rightTab = 'report'"
+              >
+                实验报告
+              </button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="rightTab === 'tutor'"
+                :class="{ active: rightTab === 'tutor' }"
+                @click="rightTab = 'tutor'"
+              >
+                AI 导师
+              </button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="rightTab === 'workspace'"
+                :class="{ active: rightTab === 'workspace' }"
+                @click="rightTab = 'workspace'"
+              >
+                工作区
+              </button>
+            </div>
+            <button
+              v-if="!isMobileLayout"
+              type="button"
+              class="ws-zone-toggle"
+              title="收起实践区"
+              aria-label="收起实践区"
+              @click="togglePanel('practice')"
+            >
+              <ChevronUp :size="14" aria-hidden="true" />
+            </button>
+          </header>
+          <div class="ws-zone-body ws-bottom-body">
+            <ReportPanel
+              v-show="rightTab === 'report'"
+              :lab="lab"
+              :insert-payload="reportInsert"
+              :teacher-feedback="teacherFeedback"
+              @reflect="submitReflection"
+              @review="reviewReport"
+              @submit-teacher="submitReportToTeacher"
+              @notice="toast"
+            />
+            <TutorPane
+              v-show="rightTab === 'tutor'"
+              :lab="lab"
+              :messages="messages"
+              :sending="sending"
+              :streaming-id="streamingId"
+              :connection="connection"
+              :connection-label="connectionLabel"
+              @send="sendMessage"
+              @new-session="startSession"
+              @check-connection="checkConnection"
+              @use-prompt="usePrompt"
+            />
+            <CodePanel
+              v-show="rightTab === 'workspace'"
+              :key="`code-${studentId}`"
               :lab="lab"
               :endpoint="endpoint"
               :student="studentId"
-              :session-id="sessionId"
               :dark="isDark"
-              @run-finished="onRunFinished"
-              @run-exit="lastRunId = $event"
-              @insert-report="onInsertReport"
             />
-          </template>
-        </BottomDock>
-      </template>
+          </div>
+        </section>
+
+        <div
+          v-show="showPracticePane && showTerminalPane"
+          class="ws-row-resizer"
+          :class="{ active: rowResizing }"
+          role="separator"
+          aria-label="调整实践区与终端高度"
+          aria-orientation="horizontal"
+          tabindex="0"
+          title="拖动调整上下高度"
+          @pointerdown="startRowResize"
+          @pointermove="moveRowResize"
+          @pointerup="finishRowResize"
+          @pointercancel="finishRowResize"
+          @lostpointercapture="finishRowResize"
+        >
+          <span aria-hidden="true" />
+        </div>
+
+        <button
+          v-if="!isMobileLayout && !showTerminalPane"
+          type="button"
+          class="ws-panel-rail ws-panel-rail--inline"
+          title="展开终端"
+          @click="togglePanel('terminal')"
+        >
+          <Terminal :size="14" aria-hidden="true" />
+          <span>展开终端</span>
+          <ChevronUp :size="14" aria-hidden="true" />
+        </button>
+
+        <section
+          v-show="showTerminalPane"
+          class="ws-zone ws-zone-terminal"
+        >
+          <header class="ws-zone-head">
+            <span class="ws-zone-title"><Terminal :size="14" aria-hidden="true" />运行</span>
+            <button
+              v-if="!isMobileLayout"
+              type="button"
+              class="ws-zone-toggle"
+              title="收起终端"
+              aria-label="收起终端"
+              @click="togglePanel('terminal')"
+            >
+              <ChevronDown :size="14" aria-hidden="true" />
+            </button>
+          </header>
+          <div class="ws-zone-body">
+            <BottomDock
+              v-model:active-tab="dockTab"
+              :run-id="lastRunId"
+              :lab-id="lab.id"
+              class="ws-practice-dock"
+            >
+              <template #terminal>
+                <TerminalPanel
+                  :key="`terminal-${studentId}`"
+                  :lab="lab"
+                  :endpoint="endpoint"
+                  :student="studentId"
+                  :session-id="sessionId"
+                  :dark="isDark"
+                  @run-finished="onRunFinished"
+                  @run-exit="lastRunId = $event"
+                  @insert-report="onInsertReport"
+                />
+              </template>
+            </BottomDock>
+          </div>
+        </section>
+      </div>
     </main>
 
     <p v-if="notice" class="ws-toast" role="status">{{ notice }}</p>
@@ -1268,7 +1584,7 @@ onBeforeUnmount(() => {
             <template v-if="!scaffold.exists">{{ scaffold.user }}，尚未初始化。点击下方按钮领取 Lab1 起步代码。</template>
             <template v-else-if="scaffold.next">
               当前进度：{{ scaffold.applied.join(' → ') }}；下一步 {{ scaffold.next }}（{{ scaffold.nextSummary }}）
-              <template v-if="!scaffold.nextAllowed">——{{ scaffold.nextBlockedReason || `教师当前开放到 ${scaffold.openLab}` }}。</template>
+              <template v-if="!scaffold.nextAllowed">——老师当前开放到 {{ scaffold.openLab }}，{{ scaffold.next }} 尚未开放。</template>
             </template>
             <template v-else>八个 Lab 已全部发放，继续自由完善你的系统吧。</template>
           </p>
@@ -1281,7 +1597,7 @@ onBeforeUnmount(() => {
               :disabled="scaffoldBusy || (scaffold.exists && !scaffold.nextAllowed)"
               @click="scaffoldUpgrade"
             >
-              {{ scaffoldBusy ? '发放中…' : scaffold.exists ? (scaffold.nextAllowed ? `升级到 ${scaffold.next}` : `${scaffold.next} 暂不可领取`) : '初始化我的系统（Lab1）' }}
+              {{ scaffoldBusy ? '发放中…' : scaffold.exists ? (scaffold.nextAllowed ? `升级到 ${scaffold.next}` : `${scaffold.next} 未开放`) : '初始化我的系统（Lab1）' }}
             </button>
           </div>
 
@@ -1376,44 +1692,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.ws-access-blocked {
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  gap: var(--ws-space-2);
-  padding: var(--ws-space-6);
-  color: var(--ws-ink-muted);
-  background: var(--ws-surface-alt);
-  text-align: center;
-}
-
-.ws-access-blocked > svg {
-  color: var(--ws-warn);
-}
-
-.ws-access-blocked strong {
-  color: var(--ws-ink);
-  font-size: var(--ws-text-lg);
-}
-
-.ws-access-blocked p {
-  max-width: 420px;
-  margin: 0;
-  font-size: var(--ws-text-sm);
-}
-
-.ws-access-blocked a {
-  margin-top: var(--ws-space-2);
-  padding: var(--ws-space-2) var(--ws-space-3);
-  color: var(--ws-accent);
-  border: 1px solid var(--ws-accent);
-  border-radius: var(--ws-radius-md);
-  background: var(--ws-surface);
-  font-size: var(--ws-text-sm);
-  font-weight: var(--ws-weight-semibold);
-  text-decoration: none;
-}
-
 .ws-workspace {
   display: grid;
   /* 隐式的 auto 列会以子项 min-content 为下限，窄屏下会把整个外壳顶宽
@@ -1508,6 +1786,12 @@ onBeforeUnmount(() => {
   border-color: var(--ws-accent);
 }
 
+.ws-topbar-link--active {
+  color: var(--ws-accent);
+  border-color: var(--ws-accent);
+  background: var(--ws-accent-soft);
+}
+
 .ws-topbar-icon {
   display: grid;
   width: var(--ws-control-md);
@@ -1523,16 +1807,50 @@ onBeforeUnmount(() => {
 /* -- 双栏 ------------------------------------------------------------------ */
 .ws-panes {
   display: grid;
-  grid-template-columns:
-    minmax(320px, var(--ws-left-pane-width, 57.5%))
-    10px
-    minmax(360px, 1fr);
+  /* 单行占满可用高度，避免手册内容撑开行高、右侧百分比高度失效 */
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 57.5%) 10px minmax(0, 1fr);
+  grid-row: 2;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .ws-panes > .ws-left-pane {
+  grid-row: 1;
+  grid-column: 1;
   min-width: 0;
+  min-height: 0;
   border-right: 0;
+}
+
+.ws-panes > .ws-pane-resizer {
+  grid-row: 1;
+  grid-column: 2;
+  min-height: 0;
+}
+
+.ws-panes > .ws-right {
+  grid-row: 1;
+  grid-column: -2 / -1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ws-panes > .ws-panel-rail--manual {
+  grid-row: 1;
+  grid-column: 1;
+}
+
+/* 仅手册：占满整行 */
+.ws-panes-manual-only > .ws-left-pane {
+  grid-column: 1 / -1;
+}
+
+/* 仅右栏：除左侧展开条外占满 */
+.ws-panes-right-only > .ws-right {
+  grid-column: 2 / -1;
 }
 
 .ws-pane-resizer {
@@ -1585,109 +1903,127 @@ onBeforeUnmount(() => {
   user-select: none !important;
 }
 
-/* 学生 IDE 右上：导师与报告 */
-.ws-ide-side {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-width: 0;
-  min-height: 0;
-  border-left: 1px solid var(--ws-line);
-  background: var(--ws-surface);
+:global(html.ws-row-resizing),
+:global(html.ws-row-resizing *) {
+  cursor: row-resize !important;
+  user-select: none !important;
 }
 
-.ws-side-tabs {
+/* -- 三栏分区：折叠 / 拖动 / 内部滚动 ------------------------------------ */
+
+.ws-panel-rail {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--ws-space-1);
-  padding: var(--ws-space-1) var(--ws-space-3) 0;
-  border-bottom: 1px solid var(--ws-line);
-  background: var(--ws-surface-alt);
-}
-
-.ws-side-tabs button {
-  min-height: var(--ws-control-md);
-  padding: var(--ws-space-1) var(--ws-space-4);
+  justify-content: center;
+  gap: var(--ws-space-2);
+  padding: var(--ws-space-2);
   color: var(--ws-ink-muted);
-  border: 1px solid transparent;
-  border-bottom: 0;
-  border-radius: var(--ws-radius-md) var(--ws-radius-md) 0 0;
-  background: transparent;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
   font: inherit;
-  font-size: var(--ws-text-sm);
+  font-size: var(--ws-text-xs);
   font-weight: var(--ws-weight-semibold);
   cursor: pointer;
 }
 
-.ws-side-tabs button:hover,
-.ws-side-tabs button.active {
+.ws-panel-rail:hover {
   color: var(--ws-accent);
+  border-color: var(--ws-accent);
+  background: var(--ws-accent-soft);
 }
 
-.ws-side-tabs button.active {
-  border-color: var(--ws-line);
+.ws-panel-rail--manual {
+  z-index: 3;
+  width: 40px;
+  min-height: 0;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+.ws-panel-rail--manual span {
+  letter-spacing: 0.12em;
+}
+
+.ws-panel-rail--inline {
+  flex: 0 0 auto;
+  flex-direction: row;
+  width: 100%;
+  min-height: var(--ws-control-md);
+  writing-mode: horizontal-tb;
+}
+
+.ws-zone {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
   background: var(--ws-surface);
 }
 
-.ws-ide-side > :deep(.ws-report),
-.ws-ide-side > :deep(.ws-tutor-pane) {
+.ws-zone-manual {
+  border-right: 0;
+  border-radius: 0;
+}
+
+.ws-zone-practice,
+.ws-zone-terminal {
   min-height: 0;
   overflow: hidden;
 }
 
-/* 右栏：终端在上，下半区在「实验报告 / 代码 / AI 导师」间切换。 */
-.ws-right {
-  display: grid;
-  grid-template-rows: minmax(0, 0.85fr) minmax(0, 1.15fr);
-  min-width: 0;
-  min-height: 0;
-  border-left: 0;
-}
-
-/* 教师右栏：整栏一个作业发布面板。 */
-.ws-right-teacher {
-  grid-template-rows: minmax(0, 1fr);
-}
-
-.ws-panel-wrap {
-  display: grid;
-  min-width: 0;
-  min-height: 0;
-}
-
-.ws-bottom {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-width: 0;
-  min-height: 0;
-}
-
-/* 最大化：铺满顶栏以下的整个工作台。 */
-.ws-max {
-  position: fixed;
-  top: var(--ws-topbar-height);
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 40;
-  background: var(--ws-surface);
-  box-shadow: var(--ws-shadow-3);
-}
-
-.ws-right-tabs {
+.ws-zone-practice .ws-zone-body {
   display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ws-zone-terminal {
+  min-height: 0;
+}
+
+.ws-zone-solo {
+  min-height: 0;
+}
+
+.ws-zone-head {
+  display: flex;
+  flex-shrink: 0;
   align-items: center;
-  gap: var(--ws-space-1);
-  padding: var(--ws-space-1) var(--ws-space-3) 0;
+  gap: var(--ws-space-2);
+  min-height: var(--ws-control-md);
+  padding: var(--ws-space-1) var(--ws-space-3);
   border-bottom: 1px solid var(--ws-line);
   background: var(--ws-surface-alt);
 }
 
-.ws-tab-max {
+.ws-zone-head--tabs {
+  flex-wrap: wrap;
+  padding-bottom: 0;
+}
+
+.ws-zone-title {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--ws-space-1);
+  color: var(--ws-ink);
+  font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-zone-toggle {
   display: grid;
+  flex: 0 0 auto;
   width: var(--ws-control-sm);
   height: var(--ws-control-sm);
   margin-left: auto;
-  margin-bottom: var(--ws-space-1);
   color: var(--ws-ink-muted);
   border: 1px solid var(--ws-line);
   border-radius: var(--ws-radius-md);
@@ -1696,14 +2032,175 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.ws-tab-max:hover {
+.ws-zone-toggle:hover {
   color: var(--ws-accent);
   border-color: var(--ws-accent);
 }
 
+.ws-zone-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.ws-zone-manual .ws-zone-body {
+  overflow: hidden;
+}
+
+.ws-zone-manual .ws-zone-body :deep(.ws-manual-pane) {
+  height: 100%;
+  min-height: 0;
+}
+
+.ws-zone-terminal .ws-zone-body {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.ws-zone-terminal .ws-practice-dock {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.ws-row-resizer {
+  height: 6px;
+  min-height: 6px;
+  display: grid;
+  cursor: row-resize;
+  touch-action: none;
+  place-items: center;
+  background: var(--ws-surface-alt);
+}
+
+.ws-row-resizer span {
+  width: 52px;
+  height: 3px;
+  border-radius: var(--ws-radius-full);
+  background: var(--ws-line-strong, var(--ws-line));
+}
+
+.ws-row-resizer:hover span,
+.ws-row-resizer.active span {
+  background: var(--ws-accent);
+}
+
+/* 右栏：实践 + 终端纵向 grid */
+.ws-access-blocked {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--ws-space-2);
+  padding: var(--ws-space-6);
+  color: var(--ws-ink-muted);
+  background: var(--ws-surface-alt);
+  text-align: center;
+}
+
+.ws-access-blocked > svg {
+  color: var(--ws-warn);
+}
+
+.ws-access-blocked strong {
+  color: var(--ws-ink);
+  font-size: var(--ws-text-lg);
+}
+
+.ws-access-blocked p {
+  max-width: 420px;
+  margin: 0;
+  font-size: var(--ws-text-sm);
+}
+
+.ws-access-blocked a {
+  margin-top: var(--ws-space-2);
+  padding: var(--ws-space-2) var(--ws-space-3);
+  color: var(--ws-accent);
+  border: 1px solid var(--ws-accent);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
+  font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-semibold);
+  text-decoration: none;
+}
+
+.ws-right {
+  display: grid;
+  gap: var(--ws-space-1);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  padding: var(--ws-space-1);
+  border-left: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
+  overflow: hidden;
+}
+
+.ws-right-split {
+  /* 行比例由 rightGridStyle 内联 gridTemplateRows 控制 */
+}
+
+.ws-right-single {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.ws-right-single > .ws-zone {
+  min-height: 0;
+}
+
+.ws-right-single.ws-right-has-rail {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.ws-right-single.ws-right-has-rail > .ws-zone {
+  grid-row: 2;
+  min-height: 0;
+}
+
+.ws-right .ws-zone {
+  min-height: 0;
+}
+
+.ws-bottom-body {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ws-bottom-body > :deep(.ws-report),
+.ws-bottom-body > :deep(.ws-tutor-pane),
+.ws-bottom-body > :deep(.ws-code) {
+  grid-area: 1 / 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 教师右栏：整栏一个作业发布面板。 */
+.ws-right-teacher {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  padding: 0;
+  border-left: 1px solid var(--ws-line);
+  background: var(--ws-surface);
+}
+
+.ws-right-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ws-space-1);
+  min-width: 0;
+  margin-left: var(--ws-space-2);
+}
+
 .ws-right-tabs button {
   min-height: var(--ws-control-md);
-  padding: var(--ws-space-1) var(--ws-space-4);
+  padding: var(--ws-space-1) var(--ws-space-3);
   color: var(--ws-ink-muted);
   border: 1px solid transparent;
   border-bottom: 0;
@@ -1965,7 +2462,7 @@ onBeforeUnmount(() => {
 
   .ws-mobile-switch {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: 1fr 1fr;
     gap: var(--ws-space-1);
     padding: var(--ws-space-2) var(--ws-space-3);
     border-bottom: 1px solid var(--ws-line);

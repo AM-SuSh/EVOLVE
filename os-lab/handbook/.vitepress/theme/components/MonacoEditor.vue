@@ -12,11 +12,15 @@ const props = withDefaults(
   { language: 'plaintext', readOnly: false, dark: false },
 )
 
-const emit = defineEmits<{ (event: 'update:modelValue', value: string): void }>()
+const emit = defineEmits<{
+  (event: 'update:modelValue', value: string): void
+  (event: 'save'): void
+}>()
 
 const host = ref<HTMLElement | null>(null)
 let editor: import('monaco-editor').editor.IStandaloneCodeEditor | null = null
 let monacoApi: typeof import('monaco-editor') | null = null
+let resizeObserver: ResizeObserver | null = null
 let syncing = false
 
 function applyTheme() {
@@ -24,8 +28,16 @@ function applyTheme() {
   monacoApi.editor.setTheme(props.dark ? 'vs-dark' : 'vs')
 }
 
+function onKeydown(event: KeyboardEvent) {
+  if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+    event.preventDefault()
+    emit('save')
+  }
+}
+
 onMounted(async () => {
   if (!host.value || typeof window === 'undefined') return
+  window.addEventListener('keydown', onKeydown)
   const monaco = await import('monaco-editor')
   loader.config({ monaco })
   monacoApi = await loader.init()
@@ -49,6 +61,10 @@ onMounted(async () => {
     emit('update:modelValue', editor.getValue())
     syncing = false
   })
+  resizeObserver = new ResizeObserver(() => {
+    if (host.value && host.value.offsetHeight > 0) editor?.layout()
+  })
+  resizeObserver.observe(host.value)
 })
 
 watch(
@@ -82,6 +98,8 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  window.removeEventListener('keydown', onKeydown)
   editor?.dispose()
   editor = null
   monacoApi = null
