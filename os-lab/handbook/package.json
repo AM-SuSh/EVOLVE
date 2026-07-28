@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "sync": "node scripts/sync-content.mjs",
-    "test": "node --test llm-response.test.mjs ../tutor/contracts.test.mjs ../learning/access.test.mjs ../learning/db.test.mjs",
+    "test": "node --test llm-response.test.mjs lab2-contract.test.mjs ../tutor/contracts.test.mjs ../learning/access.test.mjs ../learning/db.test.mjs",
     "test:smoke": "node tutor-server.smoke.mjs",
     "dev": "npm run sync && vitepress dev",
     "tutor": "node tutor-server.mjs",

@@ -142,7 +142,7 @@ try {
     assertions: db.prepare('SELECT count(*) AS value FROM run_assertions WHERE passed = 1').get().value,
   }
   db.close()
-  assert.deepEqual(counts, { runs: 2, events: 2, assertions: 5 })
+  assert.deepEqual(counts, { runs: 2, events: 2, assertions: 6 })
   console.log(`tutor smoke passed: ${JSON.stringify(counts)}`)
 } catch (error) {
   console.error(logs)

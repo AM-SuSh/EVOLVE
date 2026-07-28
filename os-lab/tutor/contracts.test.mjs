@@ -26,7 +26,7 @@ test('event-v2 accepts a trusted run chain and keeps v1 compatibility', () => {
     timestamp: '2026-07-28T00:00:00.000Z',
     stage: 'run',
   }
-  assert.equal(validateInteractionEvent({ ...common, type: 'run_started', runId: 'run-1', recipeId: 'lab2.verify.v1', workspaceVersion: 'workspace-1' }), true)
+  assert.equal(validateInteractionEvent({ ...common, type: 'run_started', runId: 'run-1', recipeId: 'lab2.verify-trace.v1', workspaceVersion: 'workspace-1' }), true)
   assert.equal(validateInteractionEvent({ ...common, type: 'run_finished', runId: 'run-1', exitCode: 0, duration: 12, outputHash: 'a'.repeat(64), assertions: [assertion] }), true)
   assert.equal(validateInteractionEvent({ ...common, type: 'run_finished' }), false)
   assert.equal(validateInteractionEvent({ ...common, version: 1, type: 'student_message' }), true)
@@ -47,7 +47,7 @@ test('run-result-v1 only verifies trusted zero-exit runs with passing assertions
     version: 1,
     runId: 'run-1',
     labId: 'lab2',
-    recipeId: 'lab2.verify.v1',
+    recipeId: 'lab2.verify-trace.v1',
     workspaceVersion: 'workspace-1',
     trusted: true,
     startedAt: '2026-07-28T00:00:00.000Z',
@@ -66,11 +66,18 @@ test('run-result-v1 only verifies trusted zero-exit runs with passing assertions
 test('Lab2 trusted recipe checks behavior and both teaching trace types', () => {
   const recipe = getRunRecipe('lab2')
   assert.equal(recipe.id, 'lab2.verify-trace.v1')
-  const output = `Power check ok\n${'Yield round\n'.repeat(5)}All user apps exited.\n`
+  const output = `Hello from user app!\n409684505\nPower check ok\n${'Yield round\n'.repeat(5)}All user apps exited.\n`
   const traces = [
     { type: 'trap_enter' },
     { type: 'task_switch' },
   ]
-  assert.equal(evaluateRunAssertions(recipe.id, output, traces).every((item) => item.passed), true)
+  const assertions = evaluateRunAssertions(recipe.id, output, traces)
+  assert.deepEqual(
+    assertions.map((item) => item.id),
+    ['hello-output', 'power-result', 'yield-five-rounds', 'all-exited', 'trace-trap-enter', 'trace-task-switch'],
+  )
+  assert.equal(assertions.every((item) => item.passed), true)
+  assert.equal(evaluateRunAssertions(recipe.id, output.replace('Hello from user app!\n', ''), traces).every((item) => item.passed), false)
+  assert.equal(evaluateRunAssertions(recipe.id, output.replace('409684505\n', ''), traces).every((item) => item.passed), false)
   assert.equal(evaluateRunAssertions(recipe.id, output.replace('Yield round\n', ''), traces).every((item) => item.passed), false)
 })

@@ -23,10 +23,9 @@ type RunFinishedPayload = {
   assertions: RunAssertion[]
 }
 
-/** 带上学生身份：服务端据此在该生自己的工作区里执行命令。 */
+/** 登录会话决定工作区；前端不通过查询参数传递或切换学生身份。 */
 function apiUrl(pathname: string) {
-  if (!props.student) return `${props.endpoint}${pathname}`
-  return `${props.endpoint}${pathname}?user=${encodeURIComponent(props.student)}`
+  return `${props.endpoint}${pathname}`
 }
 
 const emit = defineEmits<{
@@ -227,7 +226,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="ws-terminal" aria-label="本机终端">
+  <section class="ws-terminal" aria-label="当前实验运行与验证">
     <header class="ws-terminal-head">
       <label class="ws-visually-hidden" for="ws-terminal-input">要运行的命令</label>
       <textarea
@@ -259,7 +258,7 @@ onBeforeUnmount(() => {
     <p class="ws-terminal-status" :data-ok="exitInfo?.ok">{{ statusLabel }}</p>
 
     <XtermOutput ref="xtermRef" :dark="dark" />
-    <p v-if="!output && !running" class="ws-terminal-hint-overlay">点击「运行」在本机执行命令，输出会实时显示在这里。</p>
+    <p v-if="!output && !running" class="ws-terminal-hint-overlay">点击「运行」在当前账号的实验工作区执行命令，输出会实时显示在这里。</p>
 
     <footer v-if="exitInfo" class="ws-terminal-foot">
       <button v-if="!inserted" type="button" @click="insertReport">

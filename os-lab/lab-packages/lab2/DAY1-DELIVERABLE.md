@@ -21,6 +21,6 @@
 
 ## 请 B/C 对齐的命名
 
-- Trace：`trap_enter` / `trap_exit` / `task_switch`
+- Trace：`trap_enter` / `task_switch`（当前 PoC 已真实采集）
 - 断言 id：`hello-output` / `power-result` / `yield-five-rounds` / `all-exited`
-- Recipe：`test-lab2`
+- Recipe：`lab2.verify-trace.v1`

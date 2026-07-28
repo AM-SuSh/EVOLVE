@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useData, useRouter, withBase } from 'vitepress'
-import { Blocks, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, Home, LockKeyhole, MessagesSquare, Moon, PanelLeftClose, PanelLeftOpen, Play, Settings, Sun, Terminal, UserRound } from 'lucide-vue-next'
+import { Blocks, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, Code2, LockKeyhole, Maximize2, MessagesSquare, Minimize2, Moon, PanelLeftClose, PanelLeftOpen, Play, Settings, Sun, UserRound } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
 import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
 import ReportPanel from './ReportPanel.vue'
 import CodePanel from './CodePanel.vue'
-import BottomDock, { type DockTab } from './BottomDock.vue'
+import ProblemsPanel from './ProblemsPanel.vue'
+import TracePanel from './TracePanel.vue'
 import JourneyRail from './JourneyRail.vue'
 import TeacherDocPanel from './TeacherDocPanel.vue'
 import TeacherPublishPanel from './TeacherPublishPanel.vue'
@@ -150,29 +151,31 @@ const modelName = ref('')
 const notice = ref('')
 const currentSection = ref({ h2: '', h3: '' })
 const mobileView = ref<'manual' | 'practice'>('manual')
-/** 右栏下半区页签：实验报告 / AI 导师 / 工作区（代码编辑）。 */
-const rightTab = ref<'report' | 'tutor' | 'workspace'>('tutor')
-/** 底部 Dock 页签（终端 / Problems / Trace / 测试结果）。 */
-const dockTab = ref<DockTab>('terminal')
+/** 右栏下半区页签：学习支持与运行诊断。 */
+const rightTab = ref<'tutor' | 'report' | 'problems' | 'trace' | 'tests'>('tutor')
 /** 最近一次可信运行的 runId，供 Trace/Problems 占位关联。 */
 const lastRunId = ref('')
-/** 工作区页签打开标记（Monaco 可见性回调用）。 */
-const workspaceVisited = ref(false)
+/** 右上工作区或右下学习支持区可铺满顶栏以下的整个页面。 */
+const maximized = ref<'none' | 'workspace' | 'assistant'>('none')
 
-watch(rightTab, (tab) => {
-  if (tab === 'workspace') workspaceVisited.value = true
-})
+function toggleMaximized(target: 'workspace' | 'assistant') {
+  maximized.value = maximized.value === target ? 'none' : target
+}
 
 /** 终端 → 报告「过程记录」的插入载荷（id 递增触发）。 */
 const reportInsert = ref<{ id: number; text: string } | null>(null)
 
-/* -- 三栏开关与纵向比例（手册 / 实践 / 终端） ------------------------------ */
+/* -- 三栏开关与纵向比例（手册 / 工作区 / 学习支持） ------------------------ */
 
 const PANEL_STORAGE_KEY = 'os-lab-panels-v1'
-const PRACTICE_SPLIT_KEY = 'os-lab-practice-split'
-const PRACTICE_SPLIT_MIN = 28
-const PRACTICE_SPLIT_MAX = 72
-const DEFAULT_PRACTICE_SPLIT = 58
+const PRACTICE_SPLIT_KEY = 'os-lab-workspace-support-split-v2'
+const PRACTICE_SPLIT_MIN = 40
+const PRACTICE_SPLIT_MAX = 78
+const DEFAULT_PRACTICE_SPLIT = 64
+const WORKSPACE_CODE_SPLIT_KEY = 'os-lab-code-terminal-split-v1'
+const WORKSPACE_CODE_SPLIT_MIN = 35
+const WORKSPACE_CODE_SPLIT_MAX = 80
+const DEFAULT_WORKSPACE_CODE_SPLIT = 62
 
 type PanelKey = 'manual' | 'practice' | 'terminal'
 
@@ -197,10 +200,21 @@ function loadPracticeSplit() {
     : DEFAULT_PRACTICE_SPLIT
 }
 
+function loadWorkspaceCodeSplit() {
+  if (typeof localStorage === 'undefined') return DEFAULT_WORKSPACE_CODE_SPLIT
+  const stored = Number(localStorage.getItem(WORKSPACE_CODE_SPLIT_KEY))
+  return Number.isFinite(stored)
+    ? clamp(stored, WORKSPACE_CODE_SPLIT_MIN, WORKSPACE_CODE_SPLIT_MAX)
+    : DEFAULT_WORKSPACE_CODE_SPLIT
+}
+
 const panelOpen = ref(loadPanelState())
 const practiceSplit = ref(loadPracticeSplit())
+const workspaceCodeSplit = ref(loadWorkspaceCodeSplit())
 const rightElement = ref<HTMLElement | null>(null)
+const workspaceBodyElement = ref<HTMLElement | null>(null)
 const rowResizing = ref(false)
+const workspaceRowResizing = ref(false)
 
 /** 窄屏走 Tab 切换，手册折叠状态不应让正文从 DOM 中消失。 */
 const isMobileLayout = ref(false)
@@ -260,8 +274,18 @@ function persistPanels() {
 }
 
 function togglePanel(key: PanelKey) {
+  if (
+    (key === 'practice' && maximized.value === 'workspace') ||
+    (key === 'terminal' && maximized.value === 'assistant')
+  ) {
+    maximized.value = 'none'
+  }
   panelOpen.value[key] = !panelOpen.value[key]
   persistPanels()
+}
+
+function closeMaximizedOnEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape' && maximized.value !== 'none') maximized.value = 'none'
 }
 
 function startRowResize(event: PointerEvent) {
@@ -293,6 +317,66 @@ function finishRowResize(event?: PointerEvent) {
   }
 }
 
+function persistWorkspaceCodeSplit() {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(WORKSPACE_CODE_SPLIT_KEY, String(workspaceCodeSplit.value))
+}
+
+function startWorkspaceRowResize(event: PointerEvent) {
+  if (event.button !== 0) return
+  workspaceRowResizing.value = true
+  const target = event.currentTarget as HTMLElement
+  target.setPointerCapture(event.pointerId)
+  document.documentElement.classList.add('ws-row-resizing')
+}
+
+function moveWorkspaceRowResize(event: PointerEvent) {
+  if (!workspaceRowResizing.value) return
+  const rect = workspaceBodyElement.value?.getBoundingClientRect()
+  if (!rect || rect.height <= 0) return
+  const percent = ((event.clientY - rect.top) / rect.height) * 100
+  workspaceCodeSplit.value = clamp(
+    percent,
+    WORKSPACE_CODE_SPLIT_MIN,
+    WORKSPACE_CODE_SPLIT_MAX,
+  )
+}
+
+function finishWorkspaceRowResize(event?: PointerEvent) {
+  if (!workspaceRowResizing.value) return
+  workspaceRowResizing.value = false
+  document.documentElement.classList.remove('ws-row-resizing')
+  if (event) {
+    const target = event.currentTarget as HTMLElement
+    if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId)
+  }
+  persistWorkspaceCodeSplit()
+}
+
+function resetWorkspaceCodeSplit() {
+  workspaceCodeSplit.value = DEFAULT_WORKSPACE_CODE_SPLIT
+  persistWorkspaceCodeSplit()
+}
+
+function resizeWorkspaceByKeyboard(event: KeyboardEvent) {
+  if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+  event.preventDefault()
+  const delta = event.key === 'ArrowUp' ? -2 : 2
+  workspaceCodeSplit.value = clamp(
+    workspaceCodeSplit.value + delta,
+    WORKSPACE_CODE_SPLIT_MIN,
+    WORKSPACE_CODE_SPLIT_MAX,
+  )
+  persistWorkspaceCodeSplit()
+}
+
+const workspaceGridStyle = computed<Record<string, string>>(() => {
+  const terminal = 100 - workspaceCodeSplit.value
+  return {
+    gridTemplateRows: `minmax(140px, ${workspaceCodeSplit.value}fr) 6px minmax(100px, ${terminal}fr)`,
+  }
+})
+
 const rightGridStyle = computed<Record<string, string>>(() => {
   if (!showPracticePane.value || !showTerminalPane.value) return {}
   const terminal = 100 - practiceSplit.value
@@ -303,7 +387,9 @@ const rightGridStyle = computed<Record<string, string>>(() => {
 
 const rightPaneClass = computed(() => {
   if (showPracticePane.value && showTerminalPane.value) return 'ws-right-split'
-  return 'ws-right-single'
+  return showPracticePane.value
+    ? 'ws-right-single ws-right-workspace-only'
+    : 'ws-right-single ws-right-assistant-only'
 })
 
 const rightHasRail = computed(
@@ -988,6 +1074,8 @@ function onInsertReport(text: string) {
   reportInsert.value = { id: (reportInsert.value?.id ?? 0) + 1, text }
   rightTab.value = 'report'
   mobileView.value = 'practice'
+  panelOpen.value.terminal = true
+  persistPanels()
   toast('输出已插入实验报告。')
 }
 
@@ -995,6 +1083,8 @@ function onInsertReport(text: string) {
 function reviewReport(content: string) {
   rightTab.value = 'tutor'
   mobileView.value = 'practice'
+  panelOpen.value.terminal = true
+  persistPanels()
   if (sending.value) {
     toast('导师正在回复上一条消息，稍后再试。')
     return
@@ -1042,6 +1132,7 @@ onMounted(async () => {
   syncMobileLayout()
   window.addEventListener('resize', syncMobileLayout)
   window.addEventListener('resize', clampPaneSplitToViewport)
+  window.addEventListener('keydown', closeMaximizedOnEscape)
   clampPaneSplitToViewport()
   events.value = loadEvents()
   if (!studentId.value) showIdentity.value = true
@@ -1058,6 +1149,7 @@ onBeforeUnmount(() => {
   document.documentElement.classList.remove('ws-row-resizing')
   window.removeEventListener('resize', syncMobileLayout)
   window.removeEventListener('resize', clampPaneSplitToViewport)
+  window.removeEventListener('keydown', closeMaximizedOnEscape)
   window.clearTimeout(noticeTimer)
 })
 </script>
@@ -1112,24 +1204,21 @@ onBeforeUnmount(() => {
           type="button"
           class="ws-topbar-link"
           :class="{ 'ws-topbar-link--active': panelOpen.practice }"
-          title="显示/隐藏实践区（报告 / 导师 / 工作区）"
+          title="显示/隐藏代码与运行工作区"
           @click="togglePanel('practice')"
         >
-          <MessagesSquare :size="15" aria-hidden="true" /><span>实践</span>
+          <Code2 :size="15" aria-hidden="true" /><span>工作区</span>
         </button>
         <button
           v-if="!isTeacherRole"
           type="button"
           class="ws-topbar-link"
           :class="{ 'ws-topbar-link--active': panelOpen.terminal }"
-          title="显示/隐藏终端"
+          title="显示/隐藏 AI 导师、报告与诊断"
           @click="togglePanel('terminal')"
         >
-          <Terminal :size="15" aria-hidden="true" /><span>终端</span>
+          <MessagesSquare :size="15" aria-hidden="true" /><span>学习支持</span>
         </button>
-        <a class="ws-topbar-link" :href="withBase('/labs/overview')">
-          <Home :size="15" aria-hidden="true" /><span>返回手册</span>
-        </a>
         <button
           class="ws-topbar-icon"
           type="button"
@@ -1294,7 +1383,7 @@ onBeforeUnmount(() => {
         <a :href="withBase('/guide/ai-tutor')">返回学习路径</a>
       </div>
 
-      <!-- 右栏（学生）：实践区 + 终端，均可折叠、纵向拖动 -->
+      <!-- 右栏（学生）：右上完整工作区，右下学习支持与诊断。 -->
       <div
         v-else-if="showRightPane"
         ref="rightElement"
@@ -1309,92 +1398,90 @@ onBeforeUnmount(() => {
           v-if="!isMobileLayout && !showPracticePane"
           type="button"
           class="ws-panel-rail ws-panel-rail--inline"
-          title="展开实践区"
+          title="展开代码与运行工作区"
           @click="togglePanel('practice')"
         >
-          <MessagesSquare :size="14" aria-hidden="true" />
-          <span>展开实践区（报告 / 导师 / 工作区）</span>
+          <Code2 :size="14" aria-hidden="true" />
+          <span>展开工作区（代码 / 运行）</span>
           <ChevronDown :size="14" aria-hidden="true" />
         </button>
 
         <section
           v-show="showPracticePane"
-          class="ws-zone ws-zone-practice"
+          class="ws-zone ws-zone-practice ws-zone-workspace"
+          :class="{ 'ws-zone-maximized': maximized === 'workspace' }"
         >
-          <header class="ws-zone-head ws-zone-head--tabs">
-            <span class="ws-zone-title"><MessagesSquare :size="14" aria-hidden="true" />实践</span>
-            <div class="ws-right-tabs" role="tablist" aria-label="实践区视图">
-              <button
-                type="button"
-                role="tab"
-                :aria-selected="rightTab === 'report'"
-                :class="{ active: rightTab === 'report' }"
-                @click="rightTab = 'report'"
-              >
-                实验报告
-              </button>
-              <button
-                type="button"
-                role="tab"
-                :aria-selected="rightTab === 'tutor'"
-                :class="{ active: rightTab === 'tutor' }"
-                @click="rightTab = 'tutor'"
-              >
-                AI 导师
-              </button>
-              <button
-                type="button"
-                role="tab"
-                :aria-selected="rightTab === 'workspace'"
-                :class="{ active: rightTab === 'workspace' }"
-                @click="rightTab = 'workspace'"
-              >
-                工作区
-              </button>
-            </div>
+          <header class="ws-zone-head">
+            <span class="ws-zone-title"><Code2 :size="14" aria-hidden="true" />工作区</span>
+            <small class="ws-zone-context">代码编辑与运行共用当前账号目录</small>
+            <button
+              type="button"
+              class="ws-zone-toggle"
+              :title="maximized === 'workspace' ? '恢复布局' : '铺满页面'"
+              :aria-label="maximized === 'workspace' ? '恢复工作区布局' : '将工作区铺满页面'"
+              @click="toggleMaximized('workspace')"
+            >
+              <Minimize2 v-if="maximized === 'workspace'" :size="14" aria-hidden="true" />
+              <Maximize2 v-else :size="14" aria-hidden="true" />
+            </button>
             <button
               v-if="!isMobileLayout"
               type="button"
-              class="ws-zone-toggle"
-              title="收起实践区"
-              aria-label="收起实践区"
+              class="ws-zone-toggle ws-zone-collapse"
+              title="收起工作区"
+              aria-label="收起工作区"
               @click="togglePanel('practice')"
             >
               <ChevronUp :size="14" aria-hidden="true" />
             </button>
           </header>
-          <div class="ws-zone-body ws-bottom-body">
-            <ReportPanel
-              v-show="rightTab === 'report'"
-              :lab="lab"
-              :insert-payload="reportInsert"
-              :teacher-feedback="teacherFeedback"
-              @reflect="submitReflection"
-              @review="reviewReport"
-              @submit-teacher="submitReportToTeacher"
-              @notice="toast"
-            />
-            <TutorPane
-              v-show="rightTab === 'tutor'"
-              :lab="lab"
-              :messages="messages"
-              :sending="sending"
-              :streaming-id="streamingId"
-              :connection="connection"
-              :connection-label="connectionLabel"
-              @send="sendMessage"
-              @new-session="startSession"
-              @check-connection="checkConnection"
-              @use-prompt="usePrompt"
-            />
+          <div
+            ref="workspaceBodyElement"
+            class="ws-zone-body ws-workspace-body"
+            :style="workspaceGridStyle"
+          >
             <CodePanel
-              v-show="rightTab === 'workspace'"
+              class="ws-workspace-code"
               :key="`code-${studentId}`"
               :lab="lab"
               :endpoint="endpoint"
               :student="studentId"
               :dark="isDark"
             />
+            <div
+              class="ws-workspace-row-resizer"
+              :class="{ active: workspaceRowResizing }"
+              role="separator"
+              aria-label="调整代码编辑器与终端高度"
+              aria-orientation="horizontal"
+              :aria-valuemin="100 - WORKSPACE_CODE_SPLIT_MAX"
+              :aria-valuemax="100 - WORKSPACE_CODE_SPLIT_MIN"
+              :aria-valuenow="Math.round(100 - workspaceCodeSplit)"
+              tabindex="0"
+              title="拖动调整终端高度；双击恢复默认"
+              @pointerdown="startWorkspaceRowResize"
+              @pointermove="moveWorkspaceRowResize"
+              @pointerup="finishWorkspaceRowResize"
+              @pointercancel="finishWorkspaceRowResize"
+              @lostpointercapture="finishWorkspaceRowResize"
+              @dblclick="resetWorkspaceCodeSplit"
+              @keydown="resizeWorkspaceByKeyboard"
+            >
+              <span aria-hidden="true" />
+            </div>
+            <div class="ws-workspace-terminal">
+              <TerminalPanel
+                :key="`terminal-${studentId}`"
+                :lab="lab"
+                :endpoint="endpoint"
+                :student="studentId"
+                :session-id="sessionId"
+                :dark="isDark"
+                @run-finished="onRunFinished"
+                @run-exit="lastRunId = $event"
+                @insert-report="onInsertReport"
+              />
+            </div>
           </div>
         </section>
 
@@ -1403,7 +1490,7 @@ onBeforeUnmount(() => {
           class="ws-row-resizer"
           :class="{ active: rowResizing }"
           role="separator"
-          aria-label="调整实践区与终端高度"
+          aria-label="调整工作区与学习支持区高度"
           aria-orientation="horizontal"
           tabindex="0"
           title="拖动调整上下高度"
@@ -1420,52 +1507,109 @@ onBeforeUnmount(() => {
           v-if="!isMobileLayout && !showTerminalPane"
           type="button"
           class="ws-panel-rail ws-panel-rail--inline"
-          title="展开终端"
+          title="展开学习支持区"
           @click="togglePanel('terminal')"
         >
-          <Terminal :size="14" aria-hidden="true" />
-          <span>展开终端</span>
+          <MessagesSquare :size="14" aria-hidden="true" />
+          <span>展开学习支持（AI 导师 / 报告 / 诊断）</span>
           <ChevronUp :size="14" aria-hidden="true" />
         </button>
 
         <section
           v-show="showTerminalPane"
-          class="ws-zone ws-zone-terminal"
+          class="ws-zone ws-zone-terminal ws-zone-assistant"
+          :class="{ 'ws-zone-maximized': maximized === 'assistant' }"
         >
-          <header class="ws-zone-head">
-            <span class="ws-zone-title"><Terminal :size="14" aria-hidden="true" />运行</span>
+          <header class="ws-zone-head ws-zone-head--tabs">
+            <span class="ws-zone-title"><MessagesSquare :size="14" aria-hidden="true" />学习支持</span>
+            <div class="ws-right-tabs" role="tablist" aria-label="学习支持与诊断视图">
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="rightTab === 'tutor'"
+                :class="{ active: rightTab === 'tutor' }"
+                @click="rightTab = 'tutor'"
+              >AI 导师</button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="rightTab === 'report'"
+                :class="{ active: rightTab === 'report' }"
+                @click="rightTab = 'report'"
+              >实验报告</button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="rightTab === 'problems'"
+                :class="{ active: rightTab === 'problems' }"
+                @click="rightTab = 'problems'"
+              >Problems</button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="rightTab === 'trace'"
+                :class="{ active: rightTab === 'trace' }"
+                @click="rightTab = 'trace'"
+              >Trace</button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="rightTab === 'tests'"
+                :class="{ active: rightTab === 'tests' }"
+                @click="rightTab = 'tests'"
+              >测试结果</button>
+            </div>
+            <button
+              type="button"
+              class="ws-zone-toggle"
+              :title="maximized === 'assistant' ? '恢复布局' : '铺满页面'"
+              :aria-label="maximized === 'assistant' ? '恢复学习支持区布局' : '将学习支持区铺满页面'"
+              @click="toggleMaximized('assistant')"
+            >
+              <Minimize2 v-if="maximized === 'assistant'" :size="14" aria-hidden="true" />
+              <Maximize2 v-else :size="14" aria-hidden="true" />
+            </button>
             <button
               v-if="!isMobileLayout"
               type="button"
-              class="ws-zone-toggle"
-              title="收起终端"
-              aria-label="收起终端"
+              class="ws-zone-toggle ws-zone-collapse"
+              title="收起学习支持区"
+              aria-label="收起学习支持区"
               @click="togglePanel('terminal')"
             >
               <ChevronDown :size="14" aria-hidden="true" />
             </button>
           </header>
-          <div class="ws-zone-body">
-            <BottomDock
-              v-model:active-tab="dockTab"
-              :run-id="lastRunId"
-              :lab-id="lab.id"
-              class="ws-practice-dock"
-            >
-              <template #terminal>
-                <TerminalPanel
-                  :key="`terminal-${studentId}`"
-                  :lab="lab"
-                  :endpoint="endpoint"
-                  :student="studentId"
-                  :session-id="sessionId"
-                  :dark="isDark"
-                  @run-finished="onRunFinished"
-                  @run-exit="lastRunId = $event"
-                  @insert-report="onInsertReport"
-                />
-              </template>
-            </BottomDock>
+          <div class="ws-zone-body ws-assistant-body">
+            <TutorPane
+              v-show="rightTab === 'tutor'"
+              :lab="lab"
+              :messages="messages"
+              :sending="sending"
+              :streaming-id="streamingId"
+              :connection="connection"
+              :connection-label="connectionLabel"
+              @send="sendMessage"
+              @new-session="startSession"
+              @check-connection="checkConnection"
+              @use-prompt="usePrompt"
+            />
+            <ReportPanel
+              v-show="rightTab === 'report'"
+              :lab="lab"
+              :insert-payload="reportInsert"
+              :teacher-feedback="teacherFeedback"
+              @reflect="submitReflection"
+              @review="reviewReport"
+              @submit-teacher="submitReportToTeacher"
+              @notice="toast"
+            />
+            <ProblemsPanel v-show="rightTab === 'problems'" :run-id="lastRunId" />
+            <TracePanel v-show="rightTab === 'trace'" :run-id="lastRunId" :lab-id="lab.id" />
+            <div v-show="rightTab === 'tests'" class="ws-tests-empty">
+              <p v-if="!lastRunId">运行可信验证命令后，断言结果将汇总在此。</p>
+              <p v-else>最近一次运行 <code>{{ lastRunId }}</code> 的断言详情已记录在运行状态和实验报告证据中。</p>
+            </div>
           </div>
         </section>
       </div>
@@ -2004,7 +2148,7 @@ onBeforeUnmount(() => {
 }
 
 .ws-zone-head--tabs {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   padding-bottom: 0;
 }
 
@@ -2016,6 +2160,14 @@ onBeforeUnmount(() => {
   color: var(--ws-ink);
   font-size: var(--ws-text-sm);
   font-weight: var(--ws-weight-semibold);
+}
+
+.ws-zone-context {
+  overflow: hidden;
+  color: var(--ws-ink-faint);
+  font-size: var(--ws-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ws-zone-toggle {
@@ -2037,6 +2189,10 @@ onBeforeUnmount(() => {
   border-color: var(--ws-accent);
 }
 
+.ws-zone-collapse {
+  margin-left: 0;
+}
+
 .ws-zone-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -2052,18 +2208,46 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
-.ws-zone-terminal .ws-zone-body {
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.ws-zone-terminal .ws-practice-dock {
+.ws-zone-workspace .ws-workspace-body {
+  display: grid;
   flex: 1 1 auto;
+  grid-template-rows: minmax(180px, 1.25fr) minmax(130px, 0.75fr);
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
-.ws-row-resizer {
+.ws-workspace-code,
+.ws-workspace-terminal,
+.ws-workspace-terminal :deep(.ws-terminal) {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.ws-workspace-terminal {
+  overflow: hidden;
+}
+
+.ws-zone-assistant .ws-zone-body {
+  overflow: hidden;
+}
+
+.ws-zone-maximized {
+  position: fixed;
+  top: var(--ws-topbar-height);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  border: 0;
+  border-radius: 0;
+  background: var(--ws-surface);
+  box-shadow: var(--ws-shadow-3);
+}
+
+.ws-row-resizer,
+.ws-workspace-row-resizer {
   height: 6px;
   min-height: 6px;
   display: grid;
@@ -2073,7 +2257,8 @@ onBeforeUnmount(() => {
   background: var(--ws-surface-alt);
 }
 
-.ws-row-resizer span {
+.ws-row-resizer span,
+.ws-workspace-row-resizer span {
   width: 52px;
   height: 3px;
   border-radius: var(--ws-radius-full);
@@ -2081,11 +2266,19 @@ onBeforeUnmount(() => {
 }
 
 .ws-row-resizer:hover span,
-.ws-row-resizer.active span {
+.ws-row-resizer.active span,
+.ws-workspace-row-resizer:hover span,
+.ws-workspace-row-resizer.active span,
+.ws-workspace-row-resizer:focus-visible span {
   background: var(--ws-accent);
 }
 
-/* 右栏：实践 + 终端纵向 grid */
+.ws-workspace-row-resizer:focus-visible {
+  outline: 2px solid var(--ws-accent);
+  outline-offset: -2px;
+}
+
+/* 右栏：工作区 + 学习支持纵向 grid */
 .ws-access-blocked {
   display: grid;
   align-content: center;
@@ -2152,16 +2345,29 @@ onBeforeUnmount(() => {
   grid-template-rows: auto minmax(0, 1fr);
 }
 
-.ws-right-single.ws-right-has-rail > .ws-zone {
+.ws-right-assistant-only.ws-right-has-rail > .ws-zone {
   grid-row: 2;
   min-height: 0;
+}
+
+.ws-right-workspace-only.ws-right-has-rail {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.ws-right-workspace-only.ws-right-has-rail > .ws-zone {
+  grid-row: 1;
+  min-height: 0;
+}
+
+.ws-right-workspace-only.ws-right-has-rail > .ws-panel-rail {
+  grid-row: 2;
 }
 
 .ws-right .ws-zone {
   min-height: 0;
 }
 
-.ws-bottom-body {
+.ws-assistant-body {
   display: grid;
   flex: 1 1 auto;
   grid-template: minmax(0, 1fr) / minmax(0, 1fr);
@@ -2170,13 +2376,29 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.ws-bottom-body > :deep(.ws-report),
-.ws-bottom-body > :deep(.ws-tutor-pane),
-.ws-bottom-body > :deep(.ws-code) {
+.ws-assistant-body > :deep(.ws-report),
+.ws-assistant-body > :deep(.ws-tutor-pane),
+.ws-assistant-body > :deep(.ws-problems),
+.ws-assistant-body > :deep(.ws-trace),
+.ws-assistant-body > .ws-tests-empty {
   grid-area: 1 / 1;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
+}
+
+.ws-tests-empty {
+  padding: var(--ws-space-3);
+  color: var(--ws-ink-faint);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-tests-empty p {
+  margin: 0;
+}
+
+.ws-tests-empty code {
+  font-family: var(--ws-font-mono);
 }
 
 /* 教师右栏：整栏一个作业发布面板。 */
@@ -2191,14 +2413,17 @@ onBeforeUnmount(() => {
 .ws-right-tabs {
   display: flex;
   flex: 1 1 auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--ws-space-1);
   min-width: 0;
   margin-left: var(--ws-space-2);
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .ws-right-tabs button {
+  flex: 0 0 auto;
   min-height: var(--ws-control-md);
   padding: var(--ws-space-1) var(--ws-space-3);
   color: var(--ws-ink-muted);
@@ -2210,6 +2435,7 @@ onBeforeUnmount(() => {
   font-size: var(--ws-text-sm);
   font-weight: var(--ws-weight-semibold);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .ws-right-tabs button:hover {

@@ -28,7 +28,7 @@ planted_bug:
     All user apps exited. 并关机。
 
 success_criteria:
-  recipe: test-lab2
+  recipe: lab2.verify-trace.v1
   assertions: [hello-output, power-result, yield-five-rounds, all-exited]
 
 negative_tests:

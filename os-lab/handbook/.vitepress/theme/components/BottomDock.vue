@@ -32,7 +32,7 @@ const emit = defineEmits<{
 
 const tabs: { id: DockTab; label: string }[] = [
 
-  { id: 'terminal', label: '终端' },
+  { id: 'terminal', label: '运行与验证' },
 
   { id: 'problems', label: 'Problems' },
 

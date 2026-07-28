@@ -10,13 +10,23 @@
 | 团队规模 | 3 人 |
 | 协作模式 | 文件边界划分 + 串行/并行混合，全程与 AI 工具协作 |
 
-### 成员分工
+### 一期成员分工
 
 | 成员 | 主要职责 | 负责目录 |
 |------|---------|---------|
 | 成员 A | 内核主体实现：feature gate 骨架、trap / mm / process / fs / sync 各模块随 lab1–lab5 逐级演进；构建系统（Makefile / build.rs / linker） | `os-lab/kernel/` |
 | 成员 B | 6 个组件 crate（os-sbi / os-context / os-syscall / os-alloc / os-vm / os-fs）实现与 host 单元测试；user 用户态测试程序 | `os-lab/os-*/`、`os-lab/user/`、`os-lab/tests/` |
 | 成员 C | 一期教学文档体系与总结材料；二期 AI 导师、运行证据、事件契约、SQLite 数据链和教学 trace | `os-lab/labs/`、`os-lab/tutor/`、`os-lab/learning/`、`os-lab/handbook/tutor-server.mjs` |
+
+### 二期当前分工
+
+| 成员 | 当前主责 | 当前主要产物 |
+|------|---------|-------------|
+| 成员 A | 教学内容与评价 | Lab spec、知识层次、Lab2/3 样板、量规与试用方案 |
+| 成员 B | 学生工作台与可视化 | Monaco/xterm、文件状态、Problems、Trace Viewer 与端到端交互 |
+| 成员 C | 运行时、数据与 AI | run/event/trace 契约、SQLite 证据层、导师 harness、评分与 Lab 发布后端 |
+
+> 二期详细里程碑、周任务与验收条件见 [三人小组后续实验发展实施计划.md](三人小组后续实验发展实施计划.md)。
 
 ---
 
@@ -56,6 +66,74 @@
 ## 三、每日开发进度记录
 
 > AI 工具使用声明、成果归属与交互记录见 [项目总报告.md §8](项目总报告.md#8-开发时使用-ai-工具的成果) 与 `os-lab/docs/ai-collaboration.md`。
+
+## 2026-07-29 - Task: 恢复右侧上下实验台并重组完整工作区
+
+### What was done
+
+- **恢复上下主次结构**：学生端右侧重新分为上下两区；右上固定为“工作区”，右下固定为“学习支持”，默认比例为 64% / 36%，继续支持拖动调整及分别折叠。
+- **工作区包含完整闭环**：文件目录、Monaco 代码编辑和当前账号目录下的命令运行归入同一个右上工作区；编辑器在上、运行输出在下，不再把“工作区”误用成单独的文件目录页签。
+- **学习支持回到右下**：AI 导师、实验报告、Problems、Trace、测试结果使用同一行页签；窄栏时页签横向滚动，不换成多行挤压内容。
+- **恢复区域全页**：右上工作区和右下学习支持区都可通过放大图标铺满顶栏以下页面，再次点击或按 `Esc` 恢复；收起被放大的区域时也会先退出全页状态。
+- **修复手册目录初始化**：手册正文退出加载占位并挂载到 DOM 后再扫描 `h2/h3`，目录按钮可正常获得章节列表、当前章节和跳转目标。
+- **固定折叠条方位**：折叠右下“学习支持”后，其展开条固定在右侧底部；折叠右上“工作区”时，工作区展开条才位于顶部，不再用同一条 Grid 行规则处理两种相反状态。
+- **终端高度可调**：在右上工作区的代码编辑器与终端之间增加独立拖动条，支持鼠标拖动、方向键微调、双击恢复默认，并将比例保存在本地；xterm 通过现有 ResizeObserver 自动适配新的行列尺寸。
+- **保留上一轮正确改动**：继续使用真实文件过滤、未保存草稿保护、会话绑定和可信诊断空态，没有回滚 Lab2 spec/recipe/trace 契约。
+
+### Testing
+
+- `npm run build`：VitePress 客户端、服务端 bundle 与页面渲染通过。
+- `npm test`：15 项测试全部通过。
+- 应用内浏览器运行时没有可用浏览器实例，无法完成截图级布局复核；已完成组件层级、响应式约束和最大化覆盖关系的源码检查。
+
+### Notes
+
+- 主要文件：`LabWorkspace.vue` 与 `progress.md`；继续复用 `CodePanel.vue`、`TerminalPanel.vue`、`ProblemsPanel.vue`、`TracePanel.vue`。
+- 本轮没有提交或推送。
+
+## 2026-07-28 - Task: 学生代码工作区与运行区交互收口
+
+### What was done
+
+- **统一编辑器与目录**：桌面端文件目录改为编辑器左侧常驻栏，可随时折叠；当实践区自身被拖窄到 620px 以下时自动采用遮罩抽屉，不再用目录覆盖宽屏编辑器，也不依赖整个浏览器的宽度判断。
+- **只展示真实文件**：“本 Lab 相关”快捷入口与服务端返回的实际文件树取交集，尚未随实验发放的文件不再显示为可点击入口，避免点击后出现 404。
+- **保护编辑草稿**：增加“未保存”状态；切换文件前要求确认是否放弃修改，刷新或关闭页面时也触发浏览器离开提醒；文件读取错误独立显示，不再污染目录加载状态或清空当前文件。
+- **隐藏内部路径与身份参数**：工作区对学生显示“我的系统”，只读回退显示“参考实现 · 只读”，不再把 `student-labs/<username>` 作为主标签；文件和运行接口均只依赖登录会话，不再附带无效的 `?user=` 参数。
+- **统一运行语义**：工作台顶栏、底部 Dock、折叠控制和空态统一使用“运行与验证”，并明确命令在当前账号的实验工作区执行，不再让代码区与“本机终端”看起来像两套无关目录。
+
+### Testing
+
+- `npm run build`：VitePress 客户端、服务端 bundle 与页面渲染通过。
+- `npm test`：15 项测试全部通过，包含 Lab2 契约、学习访问控制、SQLite 证据链与模型响应解析。
+- 应用内浏览器当前没有可用浏览器实例，无法完成截图级桌面/窄栏视觉复核；本轮通过容器响应式样式、生产构建和接口契约检查完成静态验证。
+
+### Notes
+
+- 主要文件：`CodePanel.vue`、`TerminalPanel.vue`、`BottomDock.vue`、`LabWorkspace.vue` 与 `progress.md`。
+- 本轮没有提交或推送；保留此前 Lab2 契约与可信空态的全部未提交修改。
+
+## 2026-07-28 - Task: 小组成果集成复核与 Lab2 契约收口
+
+### What was done
+
+- **统一 Lab2 事实契约**：`lab.yaml`、fill/debug manifest 与运行时统一使用 `lab2.verify-trace.v1`；输出证据固定为 `hello-output`、`power-result`、`yield-five-rounds`、`all-exited`，其中幂运算同时检查 `409684505` 与 `Power check ok`；trace 只承诺当前真实采集的 `trap_enter`、`task_switch`。
+- **增加防漂移测试**：新增 `lab2-contract.test.mjs`，直接解析 `lab.yaml` 并与运行时 recipe 比对 recipe ID、输出 assertion ID 和 trace 类型；契约任一侧单独修改都会使测试失败。
+- **收口学生入口**：删除工作台顶栏重新出现的 `/labs/overview`“返回手册”链接，继续保持学生只在已解锁 Lab 工作台内读取服务端手册。
+- **可信诊断空态**：Problems/Trace 不再根据 `runId` 展示 mock 错误、虚构时间线或不存在的映射文件；真实查询 API 接入前只说明“尚未采集”或“本次运行没有可用数据”。
+- **恢复团队 process**：重新纳入正式的《三人小组后续实验发展实施计划》，个人 `.local.md` 仍保持忽略；标记三位成员第一周完成项与尚未完成的共同纵向验收，并在本进度总览补充二期职责。
+
+### Testing
+
+- `npm test`：15 项全部通过，含新增 Lab2 spec/runtime 防漂移测试与缺少 Hello、幂结果、Yield 时的负向验证。
+- `npm run test:smoke`：真实 HTTP 链通过，SQLite 记录 2 个 verified run、2 个运行事件和 6 个通过断言。
+- `node scripts/verify.mjs baseline`：VitePress 生产构建、`os-context` 3 项、`os-syscall` 4 项 host 测试以及 Lab2 QEMU 全部通过；观察到 28 条 `trap_enter`、6 条 `task_switch`，4 项输出与 2 项 trace 断言全部通过。
+- `git diff --check`：通过。
+
+### Notes
+
+- 当前 Trace Viewer 和 Problems 查询 API 仍属于后续里程碑；本轮只保证没有真实数据时不误导学生，不把空态伪装成已完成的可视化。
+- 主要文件：`lab-packages/lab2/**`、`tutor/run-recipes.mjs` 及测试、工作台 Problems/Trace/LabWorkspace 组件、正式实施计划与 `progress.md`。
+- 回滚方式：还原上述契约、前端与 process 文件，并删除 `handbook/lab2-contract.test.mjs`。
 
 ## 2026-07-28 - Task: 学生手册并入引导式学习与服务端渐进解锁
 

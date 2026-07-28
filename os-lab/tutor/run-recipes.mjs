@@ -38,9 +38,45 @@ const definitions = {
   lab2: {
     id: 'lab2.verify-trace.v1',
     steps: [cargoRunStep('lab2', 'lab2,trace-edu')],
-    contains: ['Power check ok', 'All user apps exited.'],
-    counts: [{ text: 'Yield round', exact: 5 }],
-    traceTypes: ['trap_enter', 'task_switch'],
+    assertions: [
+      {
+        id: 'hello-output',
+        kind: 'output-contains',
+        text: 'Hello from user app!',
+        label: '用户程序成功输出',
+      },
+      {
+        id: 'power-result',
+        kind: 'output-contains-all',
+        texts: ['409684505', 'Power check ok'],
+        label: '幂运算结果与程序自检通过',
+      },
+      {
+        id: 'yield-five-rounds',
+        kind: 'output-count-min',
+        text: 'Yield round',
+        min: 5,
+        label: 'Yield round 完整执行',
+      },
+      {
+        id: 'all-exited',
+        kind: 'output-contains',
+        text: 'All user apps exited.',
+        label: '所有用户程序正常退出',
+      },
+      {
+        id: 'trace-trap-enter',
+        kind: 'trace-type',
+        type: 'trap_enter',
+        label: 'trace 包含 trap_enter',
+      },
+      {
+        id: 'trace-task-switch',
+        kind: 'trace-type',
+        type: 'task_switch',
+        label: 'trace 包含 task_switch',
+      },
+    ],
   },
   lab3: {
     id: 'lab3.verify.v1',
@@ -100,6 +136,53 @@ export function evaluateRunAssertions(recipeId, output, traceEvents = []) {
   const definition = Object.values(definitions).find((item) => item.id === recipeId)
   if (!definition) return []
   const text = String(output || '')
+
+  if (definition.assertions) {
+    return definition.assertions.map((assertion) => {
+      if (assertion.kind === 'output-contains') {
+        const passed = text.includes(assertion.text)
+        return {
+          id: assertion.id,
+          label: assertion.label,
+          passed,
+          expected: assertion.text,
+          observed: passed ? assertion.text : '未观察到',
+        }
+      }
+      if (assertion.kind === 'output-contains-all') {
+        const missing = assertion.texts.filter((expected) => !text.includes(expected))
+        return {
+          id: assertion.id,
+          label: assertion.label,
+          passed: missing.length === 0,
+          expected: assertion.texts.join('；'),
+          observed: missing.length === 0 ? assertion.texts.join('；') : `缺少：${missing.join('；')}`,
+        }
+      }
+      if (assertion.kind === 'output-count-min') {
+        const observed = occurrenceCount(text, assertion.text)
+        return {
+          id: assertion.id,
+          label: assertion.label,
+          passed: observed >= assertion.min,
+          expected: `至少 ${assertion.min}`,
+          observed: String(observed),
+        }
+      }
+      if (assertion.kind === 'trace-type') {
+        const observed = traceEvents.filter((event) => event.type === assertion.type).length
+        return {
+          id: assertion.id,
+          label: assertion.label,
+          passed: observed > 0,
+          expected: '至少 1 条',
+          observed: `${observed} 条`,
+        }
+      }
+      throw new Error(`unknown assertion kind: ${assertion.kind}`)
+    })
+  }
+
   const assertions = []
 
   for (const expected of definition.contains || []) {
@@ -133,6 +216,21 @@ export function evaluateRunAssertions(recipeId, output, traceEvents = []) {
     })
   }
   return assertions
+}
+
+export function getRunRecipeContract(labId) {
+  const definition = definitions[String(labId || '')]
+  if (!definition) return null
+  const assertions = definition.assertions || []
+  return {
+    recipeId: definition.id,
+    outputAssertionIds: assertions
+      .filter((assertion) => assertion.kind.startsWith('output-'))
+      .map((assertion) => assertion.id),
+    traceTypes: assertions
+      .filter((assertion) => assertion.kind === 'trace-type')
+      .map((assertion) => assertion.type),
+  }
 }
 
 export function listRunRecipes() {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
 import { FileCode2, FolderTree, RefreshCw, X } from 'lucide-vue-next'
 import { authHeaders, type TutorLab } from '../tutor-model'
 import { mockFileStatus, monacoLanguageForPath, type FileStatusKind } from '../file-status'
@@ -15,8 +15,7 @@ const props = defineProps<{
 }>()
 
 function apiUrl(pathname: string) {
-  if (!props.student) return `${props.endpoint}${pathname}`
-  return `${props.endpoint}${pathname}${pathname.includes('?') ? '&' : '?'}user=${encodeURIComponent(props.student)}`
+  return `${props.endpoint}${pathname}`
 }
 
 interface FsNode {
@@ -35,12 +34,14 @@ const activePath = ref('')
 const fileContent = ref('')
 const fileTruncated = ref(false)
 const fileLoading = ref(false)
+const fileError = ref('')
 const draft = ref('')
 const saving = ref(false)
 const saveNote = ref('')
 const clientReady = ref(false)
-/** 文件树抽屉：默认关闭，打开文件后给编辑器让出全宽。 */
-const treeOpen = ref(false)
+const codeRoot = ref<HTMLElement | null>(null)
+/** 桌面端是常驻侧栏，窄屏下由同一状态控制抽屉。 */
+const treeOpen = ref(true)
 
 const isStudent = computed(() => rootName.value.startsWith('student-labs'))
 const canEdit = computed(() => isStudent.value && !fileTruncated.value && Boolean(activePath.value))
@@ -48,9 +49,22 @@ const editorLanguage = computed(() =>
   activePath.value ? monacoLanguageForPath(activePath.value) : 'plaintext',
 )
 const showEditor = computed(() => Boolean(activePath.value) && !fileLoading.value)
+const hasUnsavedChanges = computed(() => canEdit.value && draft.value !== fileContent.value)
 const workspaceLabel = computed(() =>
-  isStudent.value ? `你的系统 · ${rootName.value.split('/')[1] || ''}` : '参考实现 · 只读',
+  isStudent.value ? '我的系统' : '参考实现 · 只读',
 )
+
+const existingFiles = computed(() => {
+  const paths = new Set<string>()
+  const visit = (nodes: FsNode[]) => {
+    for (const node of nodes) {
+      if (node.type === 'file') paths.add(node.path)
+      else if (node.children) visit(node.children)
+    }
+  }
+  visit(tree.value)
+  return paths
+})
 
 const labFiles = computed(() => {
   const seen = new Set<string>()
@@ -59,7 +73,7 @@ const labFiles = computed(() => {
       if (/\.(rs|asm|ld|toml)$/.test(p)) seen.add(p)
     }
   }
-  return [...seen].slice(0, 8)
+  return [...seen].filter((path) => existingFiles.value.has(path)).slice(0, 8)
 })
 
 function fileStatusFor(path: string): FileStatusKind | null {
@@ -102,22 +116,35 @@ function closeTree() {
   treeOpen.value = false
 }
 
+function closeTreeOnNarrowScreen() {
+  if ((codeRoot.value?.clientWidth || window.innerWidth) <= 620) closeTree()
+}
+
+function allowDiscardDraft(nextPath: string) {
+  if (!hasUnsavedChanges.value || nextPath === activePath.value) return true
+  return window.confirm(`“${activePath.value}”还有未保存的修改。放弃修改并打开其他文件吗？`)
+}
+
 async function openFile(relative: string) {
-  activePath.value = relative
+  if (!allowDiscardDraft(relative)) return
+  if (relative === activePath.value) {
+    closeTreeOnNarrowScreen()
+    return
+  }
   fileLoading.value = true
-  fileContent.value = ''
-  fileTruncated.value = false
+  fileError.value = ''
   saveNote.value = ''
-  treeOpen.value = false
   try {
     const response = await fetch(apiUrl(`/fs/file?path=${encodeURIComponent(relative)}`), {
       headers: authHeaders(),
     })
     const payload = await response.json()
     if (!response.ok) throw new Error(payload?.error || `导师服务返回 ${response.status}`)
+    activePath.value = relative
     fileContent.value = payload.content || ''
     draft.value = fileContent.value
     fileTruncated.value = Boolean(payload.truncated)
+    closeTreeOnNarrowScreen()
     const parts = relative.split('/')
     const next = new Set(expanded.value)
     for (let index = 1; index < parts.length; index += 1) {
@@ -125,8 +152,7 @@ async function openFile(relative: string) {
     }
     expanded.value = next
   } catch (err) {
-    fileContent.value = ''
-    error.value = err instanceof Error ? err.message : '读取文件失败'
+    fileError.value = err instanceof Error ? err.message : '读取文件失败'
   } finally {
     fileLoading.value = false
   }
@@ -144,7 +170,7 @@ async function saveEdit() {
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(payload?.error || `导师服务返回 ${response.status}`)
     fileContent.value = draft.value
-    saveNote.value = '已保存。去终端重新运行验证你的修改。'
+    saveNote.value = '已保存。可在下方“运行与验证”中检查修改。'
   } catch (err) {
     saveNote.value = err instanceof Error ? err.message : '保存失败'
   } finally {
@@ -156,14 +182,25 @@ function onEditorSave() {
   void saveEdit()
 }
 
+function warnBeforeUnload(event: BeforeUnloadEvent) {
+  if (!hasUnsavedChanges.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+
 onMounted(() => {
   clientReady.value = true
+  window.addEventListener('beforeunload', warnBeforeUnload)
   void loadTree()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', warnBeforeUnload)
 })
 </script>
 
 <template>
-  <section class="ws-code" aria-label="系统代码">
+  <section ref="codeRoot" class="ws-code" aria-label="系统代码">
     <header class="ws-code-toolbar">
       <button
         type="button"
@@ -182,10 +219,11 @@ onMounted(() => {
         <FileStatusBadge v-if="fileStatusFor(activePath)" :kind="fileStatusFor(activePath)!" />
         <code>{{ activePath }}</code>
         <em v-if="fileTruncated">（已截断）</em>
+        <em v-else-if="hasUnsavedChanges" class="ws-code-unsaved">未保存</em>
       </div>
       <div v-else class="ws-code-file-meta ws-code-file-meta--hint">
         <span>{{ workspaceLabel }}</span>
-        <small>执行目录 <code>{{ rootName }}/</code></small>
+        <small>代码编辑与下方运行共用此工作区</small>
       </div>
 
       <div class="ws-code-toolbar-actions">
@@ -215,10 +253,12 @@ onMounted(() => {
         @click="closeTree"
       />
 
-      <aside v-if="treeOpen" class="ws-code-tree-drawer" aria-label="目录结构">
+      <aside class="ws-code-tree-drawer" :class="{ open: treeOpen }" aria-label="目录结构">
         <header class="ws-code-drawer-head">
-          <strong>文件</strong>
-          <small><code>{{ rootName }}/</code></small>
+          <div>
+            <strong>文件</strong>
+            <small>{{ workspaceLabel }}</small>
+          </div>
           <button type="button" class="ws-code-icon-btn" aria-label="关闭" @click="closeTree">
             <X :size="14" aria-hidden="true" />
           </button>
@@ -244,9 +284,10 @@ onMounted(() => {
       </aside>
 
       <div class="ws-code-view">
+        <p v-if="fileError" class="ws-code-file-error">{{ fileError }}</p>
         <div v-if="!activePath" class="ws-code-empty">
           <p class="ws-code-empty-lead">选择要查看或编辑的源码文件</p>
-          <p class="ws-code-empty-sub">工作区 <code>{{ rootName }}/</code> · 可从下方快捷入口或左侧「目录」浏览</p>
+          <p class="ws-code-empty-sub">{{ workspaceLabel }} · 从左侧文件栏浏览当前账号的实验代码</p>
           <div v-if="labFiles.length" class="ws-code-picks">
             <span>本 Lab 相关</span>
             <div class="ws-code-picks-grid">
@@ -376,6 +417,7 @@ export default { components: { CodeTreeNode } }
 
 <style scoped>
 .ws-code {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -433,6 +475,13 @@ export default { components: { CodeTreeNode } }
   font-family: var(--ws-font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ws-code-file-meta .ws-code-unsaved {
+  flex: 0 0 auto;
+  color: var(--ws-warning, #a15c00);
+  font-style: normal;
+  font-weight: var(--ws-weight-semibold);
 }
 
 .ws-code-file-meta--hint {
@@ -514,31 +563,24 @@ export default { components: { CodeTreeNode } }
   min-height: 0;
   overflow: hidden;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
 }
 
 .ws-code-tree-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  padding: 0;
-  border: 0;
-  background: color-mix(in srgb, var(--ws-ink) 28%, transparent);
-  cursor: pointer;
+  display: none;
 }
 
 .ws-code-tree-drawer {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 5;
-  display: grid;
+  display: none;
+  flex: 0 0 clamp(210px, 27%, 290px);
   grid-template-rows: auto minmax(0, 1fr);
-  width: min(300px, 88%);
+  min-width: 0;
   border-right: 1px solid var(--ws-line);
   background: var(--ws-surface);
-  box-shadow: var(--ws-shadow-3);
+}
+
+.ws-code-tree-drawer.open {
+  display: grid;
 }
 
 .ws-code-drawer-head {
@@ -550,19 +592,20 @@ export default { components: { CodeTreeNode } }
   background: var(--ws-surface-alt);
 }
 
+.ws-code-drawer-head > div {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .ws-code-drawer-head strong {
   font-size: var(--ws-text-sm);
 }
 
 .ws-code-drawer-head small {
-  flex: 1 1 auto;
-  min-width: 0;
   color: var(--ws-ink-faint);
   font-size: var(--ws-text-xs);
-}
-
-.ws-code-drawer-head small code {
-  font-family: var(--ws-font-mono);
 }
 
 .ws-code-tree {
@@ -608,11 +651,28 @@ export default { components: { CodeTreeNode } }
 }
 
 .ws-code-view {
+  position: relative;
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+}
+
+.ws-code-file-error {
+  position: absolute;
+  z-index: 2;
+  top: var(--ws-space-2);
+  right: var(--ws-space-2);
+  left: var(--ws-space-2);
+  margin: 0;
+  padding: var(--ws-space-2) var(--ws-space-3);
+  color: var(--ws-danger, #c0392b);
+  border: 1px solid color-mix(in srgb, var(--ws-danger, #c0392b) 35%, var(--ws-line));
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
+  box-shadow: var(--ws-shadow-2);
+  font-size: var(--ws-text-xs);
 }
 
 .ws-code-empty {
@@ -717,5 +777,36 @@ export default { components: { CodeTreeNode } }
 
 .ws-code-note.error {
   color: var(--ws-danger, #c0392b);
+}
+
+@container (max-width: 620px) {
+  .ws-code-tree-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    display: block;
+    padding: 0;
+    border: 0;
+    background: color-mix(in srgb, var(--ws-ink) 28%, transparent);
+    cursor: pointer;
+  }
+
+  .ws-code-tree-drawer {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 5;
+    width: min(300px, 88%);
+    box-shadow: var(--ws-shadow-3);
+  }
+
+  .ws-code-empty {
+    padding: var(--ws-space-4);
+  }
+
+  .ws-code-picks-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

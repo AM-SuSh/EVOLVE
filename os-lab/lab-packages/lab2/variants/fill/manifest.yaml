@@ -27,7 +27,7 @@ what_is_blank:
       - 推荐从 current+1 轮转扫描（允许从 0 扫描，但需在报告中说明顺序差异）
 
 success_criteria:
-  recipe: test-lab2
+  recipe: lab2.verify-trace.v1
   assertions: [hello-output, power-result, yield-five-rounds, all-exited]
 
 negative_tests:

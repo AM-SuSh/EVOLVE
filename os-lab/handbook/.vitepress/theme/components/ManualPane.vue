@@ -134,6 +134,8 @@ async function loadManual() {
       throw new Error(payload.error || `手册服务返回 ${response.status}`)
     }
     manualHtml.value = markdown.render(String(payload.content || ''))
+    // 先撤下加载占位，让 v-html 真正挂载，再扫描正文标题生成目录。
+    loading.value = false
     await nextTick()
     indexSections()
     const diagrams = docRoot.value?.querySelectorAll<HTMLElement>('.mermaid') || []

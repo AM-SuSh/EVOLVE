@@ -78,7 +78,7 @@ variants:
     source: ../../scaffold/exercises/lab2/debug/kernel/src/task.rs
 
 verification:
-  recipe: test-lab2
+  recipe: lab2.verify-trace.v1
   command: cargo run -p kernel --features lab2 --release
   # 可选：带教学 trace（需 feature trace-edu）
   command_with_trace: cargo run -p kernel --features lab2,trace-edu --release
@@ -109,7 +109,6 @@ verification:
       note: 防止「退出码 0 + 提前关机」被记为通过
   observable_trace:
     - trap_enter
-    - trap_exit
     - task_switch
 
 misconceptions:
