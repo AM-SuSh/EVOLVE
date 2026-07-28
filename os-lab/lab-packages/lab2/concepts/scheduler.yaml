@@ -1,0 +1,62 @@
+# Lab2 机制 spec：任务状态与协作式轮转调度
+
+lab: lab2
+version: 0.1.0-draft
+
+concepts:
+
+  - id: os.sched.task-state
+    title: 任务控制块与状态机
+    layers:
+      course_concept: 每个可调度实体有生命周期状态；调度器只从「可运行」集合中选取。
+      arch_mechanism: 本实验为软件状态机（尚无强制时钟抢占）；状态保存在 TCB。
+      project_impl:
+        - kernel/src/task.rs  # TaskStatus, TaskControlBlock, TaskManager
+      practice_tasks:
+        - 任务二第 5 题：TCB 字段与双栈分离
+        - debug 变体：区分 yield 与 exit 的状态迁移
+      observable_evidence:
+        - All user apps exited.
+        - TRACE task_switch
+        - yield 五轮输出（证明 Ready 循环而非过早 Exited）
+      transfer:
+        - 进程/线程状态机
+        - 阻塞等待队列（Lab8）
+    relations:
+      prerequisite: [os.trap.context-switch]
+      implemented_by: [kernel/src/task.rs]
+      observed_by: [all-exited, task_switch, yield-five-rounds]
+      assessed_by: [task2-q5, variant-debug]
+      commonly_confused_with:
+        - id: yield-equals-exit
+          note: mark_current_suspended 误写成 Exited 会导致只跑一轮 yield
+
+  - id: os.sched.round-robin
+    title: 协作式轮转调度
+    layers:
+      course_concept: 通过主动让出（yield）在多任务间切换 CPU，制造「同时运行」的幻觉。
+      arch_mechanism: 从 current 之后扫描 Ready 任务；无硬件时间片时依赖 syscall yield/exit。
+      project_impl:
+        - kernel/src/task.rs  # find_next_task, run_next_task, mark_current_suspended
+        - user/src/bin/yield.rs
+        - kernel/src/trap.rs  # SYS_YIELD 分发
+      practice_tasks:
+        - fill 变体：实现 find_next_task
+        - 比较「从 0 扫描」与「从 current+1 轮转」的输出顺序差异并写入报告
+      observable_evidence:
+        - Yield round 出现不少于 5 次
+        - hello → power → yield 依次完成
+        - TRACE 中多次 task_switch 且 task id 变化
+      transfer:
+        - 时间片轮转 / 优先级调度
+        - 用户态协程调度器
+    relations:
+      prerequisite: [os.sched.task-state]
+      implemented_by: [kernel/src/task.rs, user/src/bin/yield.rs]
+      observed_by: [yield-five-rounds, task_switch]
+      assessed_by: [variant-fill, verification-yield]
+      commonly_confused_with:
+        - id: always-pick-zero
+          note: 若始终选 tasks[0] 且不轮转，多任务公平性与 yield 循环会失败
+        - id: empty-ready-panic
+          note: 无 Ready 时应走到 all_exited 关机路径，而不是 panic

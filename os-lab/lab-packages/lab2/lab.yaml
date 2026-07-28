@@ -1,0 +1,127 @@
+# Lab2 教学规格草案（成员 A · M0 Day1）
+# schema 意图：单一事实源；第一阶段引用现有路径，不强制搬迁文件。
+
+id: lab2
+title: 中断处理与多任务
+version: 0.2.0-draft
+feature: lab2
+prerequisites: [lab1]
+textbook:
+  - OSTEP Ch.6 Limited Direct Execution
+  - OSTEP Ch.7 Scheduling Introduction
+status: sample
+manual_revision: day2-3-layers-and-variants
+
+manual: ../../labs/lab2-trap-and-task.md
+answers: ../../labs/answers/lab2-answers.md
+tutor_context: ../../tutor/prompts/lab2/context.md
+
+knowledge:
+  - id: os.trap.limited-direct-execution
+    level: concept
+    concept_ref: concepts/trap.yaml#os.trap.limited-direct-execution
+  - id: os.trap.context-switch
+    level: mechanism
+    concept_ref: concepts/trap.yaml#os.trap.context-switch
+  - id: os.trap.syscall-abi
+    level: mechanism
+    concept_ref: concepts/trap.yaml#os.trap.syscall-abi
+  - id: os.sched.round-robin
+    level: mechanism
+    concept_ref: concepts/scheduler.yaml#os.sched.round-robin
+  - id: os.sched.task-state
+    level: mechanism
+    concept_ref: concepts/scheduler.yaml#os.sched.task-state
+
+tasks:
+  - id: orient
+    stage: orient
+    goal: 说明 Lab1→Lab2 为何需要 U-mode、trap 与多任务
+  - id: read
+    stage: read
+    goal: 沿 ecall→__alltraps→trap_handler→sret 解释控制流
+  - id: run
+    stage: run
+    goal: 跑通 hello / power / yield 参考实现或已修复变体
+  - id: debug
+    stage: debug
+    goal: 用最小实验区分「保存错误 / 调度错误 / ABI 错误」
+  - id: reflect
+    stage: reflect
+    goal: 写下独立判断、AI 帮助点与验证证据
+  - id: transfer
+    stage: reflect
+    goal: 把协作式 yield 与抢占式/时钟中断调度对照
+
+starter_files:
+  # 相对学生工作区 / 参考实现 os-lab 根
+  added:
+    - kernel/src/trap.rs
+    - kernel/src/task.rs
+    - os-context/src/lib.rs
+    - os-context/src/trap.asm
+    - os-syscall/src/lib.rs
+    - user/src/bin/hello.rs
+    - user/src/bin/power.rs
+    - user/src/bin/yield.rs
+  editable_by_variant:
+    fill: [kernel/src/task.rs]
+    debug: [kernel/src/task.rs]
+  generated: [Cargo.toml, kernel/Cargo.toml, user/Cargo.toml]
+
+variants:
+  fill:
+    manifest: variants/fill/manifest.yaml
+    source: ../../scaffold/exercises/lab2/fill/kernel/src/task.rs
+  debug:
+    manifest: variants/debug/manifest.yaml
+    source: ../../scaffold/exercises/lab2/debug/kernel/src/task.rs
+
+verification:
+  recipe: test-lab2
+  command: cargo run -p kernel --features lab2 --release
+  # 可选：带教学 trace（需 feature trace-edu）
+  command_with_trace: cargo run -p kernel --features lab2,trace-edu --release
+  assertions:
+    - id: hello-output
+      kind: output-contains
+      text: "Hello from user app!"
+      assesses: [os.trap.syscall-abi]
+    - id: power-result
+      kind: output-contains
+      text: "409684505"
+      assesses: [os.trap.syscall-abi, os.sched.round-robin]
+    - id: yield-five-rounds
+      kind: output-count
+      text: "Yield round"
+      min: 5
+      assesses: [os.sched.round-robin, os.sched.task-state]
+    - id: all-exited
+      kind: output-contains
+      text: "All user apps exited."
+      assesses: [os.sched.task-state]
+  negative_assertions:
+    - id: not-early-shutdown-after-one-yield
+      kind: output-count
+      text: "Yield round"
+      # 若只有 1 次就 All exited，判失败（debug 变体未修时的典型错误通过）
+      min: 5
+      note: 防止「退出码 0 + 提前关机」被记为通过
+  observable_trace:
+    - trap_enter
+    - trap_exit
+    - task_switch
+
+misconceptions:
+  - id: sepc-is-next-pc
+    statement: 认为 sepc 已经指向 ecall 下一条指令
+    counter: 处理 syscall 前必须 advance_sepc，否则死循环
+  - id: yield-equals-exit
+    statement: 把 sys_yield 当成退出
+    counter: yield 应 Ready，exit 才 Exited（见 debug 变体）
+  - id: save-on-user-stack
+    statement: trap 后可继续在用户栈上保存上下文
+    counter: 必须先 csrrw 换到内核栈
+
+rubric_ref: ../../learning/rubric-v2-draft.md
+mock_traces_ref: ../../learning/traces-lab2-mock.json

@@ -1,0 +1,108 @@
+{
+  "labId": "lab2",
+  "rubricRef": "rubric-v2-draft.md",
+  "rubricVersion": "v2-draft-0.1",
+  "notes": "成员 A 人工标注。scores 为细项 0/1 或部分分；legacyHeuristicGuess 估计现网 rubric.mjs 可能给出的总分倾向。",
+  "trajectories": [
+    {
+      "id": "T01",
+      "label": "认真学完整链",
+      "summary": "orient→read 提问；假设双栈；跑通；反思含独立判断+验证",
+      "eventsSketch": ["stage_enter×5", "student_message×4 non-direct", "verification passed", "reflection full"],
+      "itemScores": { "P1": 1, "P2": 1, "P3": 1, "P4": 1, "P5": 1, "P6": 1, "R1": 1, "R2": 1, "R3": 1, "R4": 1, "F1": 1, "F2": 1, "G1": 0 },
+      "manualTotalHint": 92,
+      "legacyHeuristicGuess": 88,
+      "calibrationNote": "现网与 v2 都高分，分歧小"
+    },
+    {
+      "id": "T02",
+      "label": "只要答案",
+      "summary": "首问直接要完整 trap.asm 实现；无运行",
+      "eventsSketch": ["direct_answer", "guardrail_triggered×2"],
+      "itemScores": { "P1": 0, "P2": 0, "P3": 0, "P4": 0, "P5": 0, "P6": 0, "R1": 0, "R2": 0, "R3": 0, "R4": 0, "F1": 0, "F2": 0, "G1": 2 },
+      "manualTotalHint": 5,
+      "legacyHeuristicGuess": 12,
+      "calibrationNote": "现网可能因消息条数给一点过程分；v2 应接近 0"
+    },
+    {
+      "id": "T03",
+      "label": "刷模板反思",
+      "summary": "复制粘贴反思套话；有一次通过 run 但无失败迭代；提问很少",
+      "eventsSketch": ["stage_enter run/reflect", "1×verification passed", "reflection template"],
+      "itemScores": { "P1": 0, "P2": 0, "P3": 0, "P4": 0, "P5": 1, "P6": 0, "R1": 1, "R2": 1, "R3": 1, "R4": 1, "F1": 0, "F2": 0, "G1": 0 },
+      "manualTotalHint": 38,
+      "legacyHeuristicGuess": 55,
+      "calibrationNote": "现网关键词反思易高估 F；v2 应压低 process/reflection"
+    },
+    {
+      "id": "T04",
+      "label": "debug 未修却退出码 0",
+      "summary": "跑了 QEMU，只有 1 次 Yield round 后关机；学生声称完成",
+      "eventsSketch": ["verification_attempt passed=true 仅因 exit 0", "Yield round×1"],
+      "itemScores": { "P1": 1, "P2": 1, "P3": 1, "P5": 1, "P6": 0, "R1": 1, "R2": 1, "R3": 0, "R4": 1, "F1": 0, "F2": 0, "G1": 0 },
+      "manualTotalHint": 40,
+      "legacyHeuristicGuess": 70,
+      "calibrationNote": "关键校准案：现网/旧逻辑若只看 exit0 会严重高估；v2 必须 R3 失败"
+    },
+    {
+      "id": "T05",
+      "label": "fail 后修好",
+      "summary": "先失败（todo!/断言失败）再通过；有假设记录",
+      "eventsSketch": ["run fail", "student_message cause", "run pass"],
+      "itemScores": { "P1": 1, "P2": 1, "P3": 1, "P4": 1, "P5": 1, "P6": 1, "R1": 1, "R2": 1, "R3": 1, "R4": 1, "F1": 1, "F2": 1, "G1": 0 },
+      "manualTotalHint": 90,
+      "legacyHeuristicGuess": 80,
+      "calibrationNote": "v2 应奖励 P6；现网对 fail→pass 不敏感"
+    },
+    {
+      "id": "T06",
+      "label": "只读不跑",
+      "summary": "大量概念提问，无 verification",
+      "eventsSketch": ["orient/read messages×6"],
+      "itemScores": { "P1": 1, "P2": 1, "P3": 1, "P4": 1, "P5": 0, "P6": 0, "R1": 0, "R2": 0, "R3": 0, "R4": 0, "F1": 1, "F2": 0, "G1": 0 },
+      "manualTotalHint": 28,
+      "legacyHeuristicGuess": 45,
+      "calibrationNote": "现网过程分偏高；结果维应为 0"
+    },
+    {
+      "id": "T07",
+      "label": "fill 实现错误扫描",
+      "summary": "实现了 find_next 但逻辑错，断言多次失败，最后放弃",
+      "eventsSketch": ["verification fail×3", "no pass"],
+      "itemScores": { "P1": 1, "P2": 1, "P3": 1, "P4": 1, "P5": 1, "P6": 0, "R1": 0, "R2": 0, "R3": 0, "R4": 0, "F1": 1, "F2": 1, "G1": 0 },
+      "manualTotalHint": 32,
+      "legacyHeuristicGuess": 40,
+      "calibrationNote": "应给过程分、结果低；避免因尝试次数虚高结果分"
+    },
+    {
+      "id": "T08",
+      "label": "护栏多次",
+      "summary": "反复要答案触发护栏，后来改问现象并跑通",
+      "eventsSketch": ["guardrail×4", "later good path", "pass"],
+      "itemScores": { "P1": 1, "P2": 0, "P3": 1, "P4": 1, "P5": 1, "P6": 1, "R1": 1, "R2": 1, "R3": 1, "R4": 1, "F1": 1, "F2": 1, "G1": 4 },
+      "manualTotalHint": 70,
+      "legacyHeuristicGuess": 65,
+      "calibrationNote": "护栏扣分两边应接近；检查帽 25 是否合理"
+    },
+    {
+      "id": "T09",
+      "label": "单测例投机",
+      "summary": "只保证 hello，缺少 power/yield 证据却交报告",
+      "eventsSketch": ["output only Hello", "reflection claims done"],
+      "itemScores": { "P1": 1, "P2": 1, "P3": 0, "P5": 1, "R1": 1, "R2": 0, "R3": 0, "R4": 0, "F1": 0, "F2": 0, "G1": 0 },
+      "manualTotalHint": 22,
+      "legacyHeuristicGuess": 50,
+      "calibrationNote": "必须拆断言；禁止单一字符串或单 exit0"
+    },
+    {
+      "id": "T10",
+      "label": "优秀 debug 报告",
+      "summary": "完整排错阶梯；修复 Exited→Ready；反思引用 Yield×5 与代码行",
+      "eventsSketch": ["hypothesis", "fail then pass", "reflection cites path"],
+      "itemScores": { "P1": 1, "P2": 1, "P3": 1, "P4": 1, "P5": 1, "P6": 1, "R1": 1, "R2": 1, "R3": 1, "R4": 1, "F1": 1, "F2": 1, "G1": 0 },
+      "manualTotalHint": 95,
+      "legacyHeuristicGuess": 85,
+      "calibrationNote": "样板满分附近；可作教师校准锚点"
+    }
+  ]
+}

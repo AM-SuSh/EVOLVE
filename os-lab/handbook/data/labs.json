@@ -26,9 +26,10 @@
       "verifyCmd": "cargo run -p kernel --features lab2 --release",
       "expected": ["Hello from user app!", "409684505", "Yield round", "All user apps exited."],
       "checklist": [
-        { "id": "read", "label": "理解 trap 入口与返回路径" },
-        { "id": "run", "label": "跑通 lab2 用户态测例" },
+        { "id": "read", "label": "理解 trap 入口与返回路径（对照课本—项目—证据）" },
+        { "id": "run", "label": "跑通受信验证（四条输出断言）" },
         { "id": "exercise", "label": "完成【任务二】阅读理解" },
+        { "id": "variant", "label": "（若有）完成 fill/debug 变体并写清假设链" },
         { "id": "review", "label": "对照参考答案自查" }
       ]
     },

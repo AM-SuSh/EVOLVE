@@ -83,6 +83,45 @@
 - `TutorLab.documentRoute` 暂保留为教师编辑器的内部源文件映射，不再作为学生端链接；参考答案源文件仍完整保留在仓库，但不进入学生静态站点。
 - 未处理仓库根目录既有的未跟踪中文文档、`papers/`、`artifacts/` 与 `papers.zip`。
 - 回滚方式：还原上述 handbook/learning/progress 文件并删除 `learning/access.mjs`、`learning/access.test.mjs`；重新执行 `npm run sync` 会恢复对应版本的静态产物。
+## 2026-07-28 - Task: 成员 A 第 2–3 天 Lab2 正文增补与变体/UI 文案
+
+### What was done
+
+- 在保留 Lab2 原有叙述的前提下，为正文补上知识路径与分节「课本—项目—实践—证据—迁移」对照表；新增任务四 fill/debug；验证节改为四条输出断言并禁止只认退出码。
+- 升级 fill/debug manifest 的提示阶梯（L0–L3）；完成工作台 UI 文案审核说明；同步 Lab2 的 tutor-model / labs.json checklist / tutor context 为目标与证据导向。
+
+### Testing
+
+- 人工确认 H2 仍为「零、～六、」结构未打乱；新增内容均为文首说明、节内表格或「任务四」H3。
+- 断言文案与 `lab-packages/lab2/lab.yaml`、任务一预期输出一致。
+
+### Notes
+
+- `os-lab/labs/lab2-trap-and-task.md`：增补层次与变体，不改原叙事主干。
+- `os-lab/lab-packages/lab2/variants/*`、`ui-copy-review.md`、`DAY2-3-DELIVERABLE.md`、`lab.yaml`：规格与说明更新。
+- `os-lab/handbook/.vitepress/theme/tutor-model.ts`、`data/labs.json`、`tutor/prompts/lab2/context.md`：Lab2 文案。
+- `progress.md`：追加本轮记录。
+- 回滚方式：对上述文件 `git checkout --` 并删除本条记录。
+
+## 2026-07-28 - Task: 成员 A 第 1 天（M0）Lab2 教学规格与量规草案
+
+### What was done
+
+- 建立 `os-lab/lab-packages/`：完成 Lab1–8 知识盘点索引，选定 Lab2 为样板包。
+- 编写 Lab2 `lab.yaml`、`concepts/trap.yaml`、`concepts/scheduler.yaml`、知识点细表，以及 fill/debug 变体 manifest（含负向测试与反退出码误判说明）。
+- 产出评分量规 v2 可观察细项草案（12 项）与 10 条 Lab2 模拟学习轨迹人工打分，供后续与 event-v2/run 断言对齐。
+
+### Testing
+
+- 人工核对：Lab2 断言文本与 `labs/lab2-trap-and-task.md` / `labs.json` 期望输出一致；debug 埋点与 `scaffold/exercises/lab2/debug/.../task.rs` 中 `mark_current_suspended`→`Exited` 一致；fill 空白为 `find_next_task`。
+- 未改线上评分/运行代码；本轮为教学规格交付，无 QEMU 回归要求。
+
+### Notes
+
+- `os-lab/lab-packages/README.md`、`lab2/**`：M0 样板与 Day1 说明。
+- `os-lab/learning/rubric-v2-draft.md`、`traces-lab2-mock.json`：量规与标注集。
+- `progress.md`：追加本轮记录。
+- 回滚方式：删除 `os-lab/lab-packages/` 与上述 learning 两文件，并移除本条记录。
 
 ## 2026-07-28 - Task: 运行、事件与 trace 契约基线
 
