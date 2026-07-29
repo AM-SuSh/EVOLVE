@@ -2656,3 +2656,22 @@
 - `docs/project_plan.md`：新增项目完成计划文档，明确实施路径、验收方式和三人分工。
 - `progress.md`：新增本轮正式文档交付记录。
 - 回滚方式：删除 `docs/project_plan.md` 和本文件中的本轮记录；若 `docs/` 目录仅包含本轮创建内容，可一并删除 `docs/` 目录。
+
+## 2026-07-29 - Task: 修复 CodePanel 首次打开文件卡在「读取中」需切换才显示
+
+### What was done
+
+- **问题**：在文件树首次点开一个文件，编辑器停在「读取中…」，必须切换到另一个文件再切回才会显示 Monaco 编辑器。
+- **根因**：`CodePanel.vue` 的 `openFile` 把占位 tab `push` 进 `ref<OpenTab[]>` 后，后续 `tab.content = ...` / `tab.loading = false` 改的是原始普通对象，而非 Vue 在 reactive 数组里包出的代理，这些赋值不触发更新；直到 `activePath` 变化（切换文件）使 `activeTab` computed 重算，才通过代理读到新值。`saveEdit` 用的是 `activeTab.value`（代理）所以正常，只有 `openFile` 用了局部原始 `tab` 变量才有此 bug。
+- **修复**：push 占位 tab 后取回数组里的 reactive 代理 `view = openTabs.value[openTabs.value.length - 1]`，后续 `content/draft/truncated/error/loading` 全部通过 `view` 修改，fetch 一结束 loading 立即翻 false，编辑器即时渲染。
+
+### Testing
+
+- `ReadLints` 对 `CodePanel.vue` 无 linter 错误。
+- 前端 `npm run dev` HMR 生效后：首次点开未打开过的文件直接从「读取中…」过渡到 Monaco 编辑器，无需切换；再点开另一个新文件同样一次显示；切回已打开的 tab 立刻显示（走 `existing` 分支，本就正常）。
+
+### Notes
+
+- 改动文件：`os-lab/handbook/.vitepress/theme/components/CodePanel.vue`、`progress.md`（本条）。
+- 本轮提交作者固定为 `SIZN <a18990330371@outlook.com>`（用 `git commit --author` 指定，未改动仓库全局 config），无合作者。
+- 本轮未推送远端（与既往惯例一致）。
