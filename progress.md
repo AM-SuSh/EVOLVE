@@ -88,6 +88,32 @@
 - M0 第一周基线已经冻结；本轮完成成员 C 的 M1 文件状态、诊断持久化与多用户隔离主链。Trace Viewer 的查询与交互仍属于后续工作。
 - 中文文件名 Markdown 保持现有工作区状态，不纳入本轮实现范围。
 
+## 2026-07-29 - Task: 成员B 第2-3周 教学 IDE MVP（多标签 / 文件状态 / Problems / 统一上下文）
+
+### What was done
+
+- **Monaco 多标签编辑器**：`CodePanel.vue` 由单文件模型改造为多标签；`openTabs: OpenTab[]` 每个 tab 独立 `content/draft/truncated/loading/error/saveNote`，切换不丢草稿；新增 tab 栏（文件名 + dirty 圆点 + 关闭按钮，dirty 时 confirm 放弃）；`openAtLine(path, line)` 通过 `editorRef.revealLine` 定位行并 `defineExpose` 暴露给外层。
+- **未保存状态与保存快捷键**：`hasUnsavedChanges` 按 tab 计算（`tab.draft !== tab.content`）；`MonacoEditor.vue` 新增 `@cursor` emit（`onDidChangeCursorPosition`）上报行号与选区；Ctrl+S 保存（已存在）现作用于激活 tab；`warnBeforeUnload` 在任一 tab dirty 时触发离开提醒。
+- **源码行跳转**：`ManualPane.vue` 新增 `source-jump` emit，`onDocClick` 识别手册正文中 `<code>` 文本形如 `kernel/src/trap.rs` 或 `...:42`（正则匹配 `.rs/.asm/.s/.toml/.ld/.c/.h`）；`LabWorkspace.vue` 接 `@source-jump` → `codePanelRef.openAtLine`，并切到实践视图。
+- **文件树 A/M/T/G/! 真实状态（优雅降级）**：新建 `composables/useFileStatus.ts`，调 `GET /fs/status?labId=...`，404/异常回退 `mockFileStatus`，`source` 标记 `server`/`mock`/`none`；`CodePanel` 与 `CodeTreeNode` 改用 `resolveFileStatus()`，`source==='mock'` 时显示「文件状态为本地推测（/fs/status 未就绪）」提示，避免学生误判为权威。
+- **Problems 页签接入真实数据**：`ProblemsPanel.vue` 重写，按 `runId` 调 `GET /runs/:id/diagnostics`（成员 C 待提供），404 保持可信空态（不 mock），200 渲染诊断列表（级别/文件:行/消息），点击 emit `jump` → `LabWorkspace.onProblemJump` → `openAtLine`。
+- **测试结果页签渲染断言**：`LabWorkspace` 新增 `lastAssertions`，`onRunFinished` 存 `payload.assertions`，渲染断言列表（✓/✗ + label + 期望/实际），替换原占位 div。
+- **统一选择上下文**：新建 `composables/useWorkspaceContext.ts`，`provide/inject` 共享 `currentFile/line/selection/lastRunId/lastRecipeId/currentStage/currentSection`；`LabWorkspace` provide 上下文并 watch `activeStage`/`currentSection` 同步；`CodePanel` 通过 `@cursor` 上报光标与选区（`clampSelection` 截到 200 字符）；`chatPayload` 新增 `codeContext: { file, line, selection }`，导师可引用「你刚在 `trap.rs:42`」。
+- **清理**：删除未被任何文件引用的 `BottomDock.vue`（已确认无 import）。
+
+### Testing
+
+- `npm run build`：VitePress 客户端、服务端 bundle 与页面渲染通过（build complete in 33.27s，exit code 0）。
+- `ReadLints`：对 `LabWorkspace.vue`、`CodePanel.vue`、`ManualPane.vue`、`ProblemsPanel.vue`、`MonacoEditor.vue`、`useFileStatus.ts`、`useWorkspaceContext.ts` 检查无 linter 错误。
+- `/fs/status` 与 `/runs/:id/diagnostics` 后端接口尚未由成员 C 提供，前端已就绪：接口未就绪时文件状态降级到 mock 并标注、Problems 保持可信空态，符合计划第 786 行「真实查询 API 接入前不使用 mock 诊断/trace 结果」原则。
+
+### Notes
+
+- 主要文件：`CodePanel.vue`、`MonacoEditor.vue`、`ManualPane.vue`、`LabWorkspace.vue`、`ProblemsPanel.vue`；新建 `composables/useFileStatus.ts`、`composables/useWorkspaceContext.ts`；删除 `components/BottomDock.vue`。
+- 纯前端实现，未新增后端接口（`/fs/status`、`/runs/:id/diagnostics` 属成员 C 第 2-3 周任务）；接口提供后前端即生效，无需再改。
+- 未动评分、事件 v2 入库、PTY、Trace Viewer（后续里程碑）。
+- 本轮没有提交或推送。
+
 ## 2026-07-29 - Task: 第一周 M0 基线与契约全部收口
 
 ### What was done
@@ -108,6 +134,190 @@
 
 - 正式《三人小组后续实验发展实施计划》在本轮开始前已处于工作区删除状态，本轮未恢复或覆盖该既有变更；本地 `.local.md` 副本已同步第一周完成状态。
 - M1 优先缺口仍是 `GET /fs/status`、Cargo JSON 诊断解析和按 `runId` 查询真实 Problems；事件入库、可信 recipe 与按用户运行会话已在 M0 提前完成。
+## 2026-07-29 - Task: 各 Lab 手册开头增加 OSTEP 教材页链接
+
+### What was done
+
+- 在 Lab1–8 实验手册标题后增加「配套教材」链接，指向 `/downloads/ostep-zh.pdf#page=N`（按王海鹏中译 PDF 实际页码定位到相关章节）。
+- 工作台手册渲染时，PDF 链接改为新标签打开，避免挤掉当前实验页。
+
+### Testing
+
+- 抽查 Lab2/3 链接页码：PDF 第 49/60/97 页分别对应第 6/7/13 章正文起始附近。
+- 刷新工作台手册区可见开头教材链接；点击应打开对应 PDF 页。
+
+### Notes
+
+- 改动：`os-lab/labs/lab1`–`lab8-*.md`、`ManualPane.vue`、`progress.md`。
+- 页码随中译 PDF 排版；若更换译本需重核 `#page=`。
+- 回滚：去掉各手册「配套教材」引用块，并还原 ManualPane 链接处理。
+
+## 2026-07-29 - Task: 系统构建路径领取与「我的系统」同步
+
+### What was done
+
+- 点击「系统构建路径」中已解锁层的「领取并开始」时，先按序 `scaffold/upgrade` 再进入该 Lab；顶栏「我的系统 · labN」随发放结果更新。
+- 「我的系统」弹窗去掉「升级到下一层」按钮，改为提示去路径领取；仅保留未初始化时的 Lab1 初始化。
+- 将测试账号 `1002` 的脚手架进度回退到 lab2（学习侧 Lab3 仍解锁），便于验证上述同步。
+
+### Testing
+
+- 预期：登录 `1002` 后顶栏为「我的系统 · lab2」；路径中 Lab3 显示「领取并开始」；点击后升级并进入 Lab3，顶栏变为 lab3。
+
+### Notes
+
+- 改动：`LabWorkspace.vue`、`JourneyRail.vue`、`handbook/docs/workbench-ui.md`、`student-labs/1002/.scaffold-state.json` 与相关 Cargo.toml、`progress.md`。
+- 回滚：还原上述前端与文档；学生进度可再 upgrade 回 lab3。
+
+## 2026-07-29 - Task: 完成账号 1002 的 Lab2 以验证 Lab3 解锁
+
+### What was done
+
+- 为学生工作区 `student-labs/1002` 补全 Lab2 fill 题 `find_next_task`，并补上可信验证所需的 `trace-edu` feature 与 `trace.rs`（原 scaffold 缺此两项会导致 Lab2 可信 recipe 直接失败）。
+- 修正 `scaffold.mjs`：Lab2 发放含 `trace.rs`，生成的 `kernel/Cargo.toml` 固定带 `trace-edu = []`。
+- 以账号 `1002` 跑通可信 Lab2 验证 + `reflection_submitted`；确认 `/learning/access` 中 Lab3 `unlocked=true`，并成功 `scaffold/upgrade` 到 lab3。
+
+### Testing
+
+- 可信运行输出含 hello/power/yield 与 `All user apps exited.`，`verified=true`。
+- access：lab2 completed；lab3 unlocked/current；upgrade 后 applied=`lab1,lab2,lab3`。
+
+### Notes
+
+- 改动：`student-labs/1002/kernel/src/task.rs`、`Cargo.toml`、`trace.rs`；`os-lab/scripts/scaffold.mjs`；`progress.md`。
+- 测试口令：账号 `1002` 密码现为 `TempUnlock1`（请自行改回）。
+- 回滚：还原 scaffold 与学生代码；DB 中删该生 lab2 run/reflection 事件即可收回 Lab3 学习解锁。
+
+## 2026-07-29 - Task: 顶栏末尾增加教材链接
+
+### What was done
+
+- 顶栏导航末尾增加「教材」，指向 `/downloads/ostep-zh.pdf`（与首页教材入口一致）。
+
+### Testing
+
+- 核对 `config.mts` nav 末项；需硬刷新任意页确认右上角出现「教材」并可打开 PDF。
+
+### Notes
+
+- 改动文件：`os-lab/handbook/.vitepress/config.mts`、`progress.md`。
+- 回滚：去掉 nav 中「教材」项。
+
+## 2026-07-29 - Task: 首页删除「怎么开始」栏
+
+### What was done
+
+- 删除首页 `index.md` 中 frontmatter 之后的整块「怎么开始」正文（含入门/PDF/引导式学习说明）。
+
+### Testing
+
+- 核对 `handbook/index.md` 仅保留 home hero + features；需硬刷新 `http://localhost:5173/` 确认该栏消失。
+
+### Notes
+
+- 改动文件：`os-lab/handbook/index.md`、`progress.md`。
+- 回滚：从 git 恢复 `index.md` 中「怎么开始」段落。
+
+## 2026-07-29 - Task: 侧栏分组「入门指南」、首项仍为「认识 os-lab」
+
+### What was done
+
+- 左侧大分组保持「入门指南」；第一个小标题改回「认识 os-lab」；页面 H1 同步为「认识 os-lab」。
+- 顶栏与首页入口仍为「入门指南」。
+
+### Testing
+
+- 核对 `config.mts` 侧栏首项文案与 `guide/start.md` 标题；需硬刷新 `/guide/start` 确认显示。
+
+### Notes
+
+- 改动文件：`os-lab/handbook/.vitepress/config.mts`、`os-lab/handbook/guide/start.md`、`progress.md`。
+- 回滚：还原上述文件。
+
+## 2026-07-29 - Task: 统一「入门指南」命名
+
+### What was done
+
+- 将 `/guide/start` 页标题、顶栏导航、左侧栏分组与条目、首页按钮与正文链接统一为「入门指南」（原「认识 os-lab」「开始学习」）。
+- 同步更新 labs 入口说明中的对应称呼。
+
+### Testing
+
+- 文案检索：handbook 内已无「认识 os-lab」「开始学习」；`config.mts` / `index.md` / `guide/start.md` 已改为「入门指南」。
+- 需在已运行的 `npm run dev` 下硬刷新 `http://localhost:5173/` 与 `/guide/start` 确认顶栏与侧栏显示。
+
+### Notes
+
+- 改动文件：`os-lab/handbook/.vitepress/config.mts`、`os-lab/handbook/index.md`、`os-lab/handbook/guide/start.md`、`os-lab/labs/README.md`、`os-lab/labs/Lab手册复核指南.md`、`progress.md`。
+- 回滚：还原上述文件至本条之前版本。
+
+## 2026-07-29 - Task: 首页增加 OSTEP 教材 PDF 入口
+
+### What was done
+
+- 同步脚本将仓库根目录 OSTEP 中译 PDF 复制到 `handbook/public/downloads/ostep-zh.pdf`。
+- 首页 hero 增加「教材 PDF（OSTEP）」按钮，正文「怎么开始」同步给出链接。
+
+### Testing
+
+- `npm run sync`：同步计数含 PDF；`public/downloads/ostep-zh.pdf` 存在。
+
+### Notes
+
+- `handbook/scripts/sync-content.mjs`、`handbook/index.md`、`progress.md`。
+- PDF 仍在 `public/downloads/`（gitignore），每次 sync/dev/build 从仓库根复制。
+- 回滚：还原上述文件并删除 `public/downloads/ostep-zh.pdf`。
+
+## 2026-07-29 - Task: 精简学生站侧栏并删除无用入门页
+
+### What was done
+
+- 「认识 os-lab」左侧导航只保留：认识 os-lab、引导式学习、环境安装；去掉学习进度、验证命令、完整验证文档与整组项目文档侧栏。
+- 删除学生页 `guide/progress.md`、`guide/verify.md` 及仅被进度页使用的 `LabProgress.vue`；同步脚本为 project/verify-full 页写入 `sidebar: false`，避免误入导航。
+- 更新 `start.md` 与导师资料链接，不再指向已删页面。
+
+### Testing
+
+- `npm run sync && npm run build`：VitePress 构建通过。
+
+### Notes
+
+- 主要文件：`handbook/.vitepress/config.mts`、`theme/index.ts`、`tutor-model.ts`、`guide/start.md`、`scripts/sync-content.mjs`；删除 `guide/progress.md`、`guide/verify.md`、`LabProgress.vue`；`progress.md` 本条。
+- 回滚：还原上述文件并从 git 恢复被删页。
+
+## 2026-07-29 - Task: 成员 A 对照 12 周计划补齐教学规格交付
+
+### What was done
+
+- 在已完成的第 1–3 周 Lab2 教学包基础上，补齐成员 A 后续周次的**可单人交付**产物：Lab3 样板包；可视化视图规格与 OPRE；Lab2/3 检查点与迁移题；量规 T1/T2；标注轨迹扩至 20 条；教师复核门控；Lab 创建模板与审核清单；Lab2 补救变式与 Lab3 debug 规格及难度评估；M5 试用协议。
+- 写明边界：真人试用、完整 mm.rs 植入发放、B/C 实现与共同纵向演示不在本轮宣称完成。
+
+### Testing
+
+- `node -e "JSON.parse(fs.readFileSync('os-lab/learning/traces-lab2-mock.json','utf8'))"`：JSON 可解析；轨迹 id T01–T20。
+- 人工核对新建路径均落在 `lab-packages/`、`learning/`、`scaffold/exercises/lab3/debug/`；未改 tutor-server / Monaco 运行时。
+
+### Notes
+
+- 主要目录：`os-lab/lab-packages/{lab3,visualization,templates,MEMBER-A-DELIVERABLES.md}`，`lab2/checkpoints.md`、`lab2/variants/remedial`，`learning/{teacher-review-gates,trial-protocol-m5,rubric-v2-draft,traces-lab2-mock}`，`scaffold/exercises/lab3/debug/...`，实施计划 §十四成员 A 勾选，`progress.md`。
+- 回滚：删除本轮新增文件并还原被改的 README/`lab2/lab.yaml`/量规/轨迹/计划勾选与本条记录。
+
+## 2026-07-29 - Task: 系统构建路径改用服务端学习进度
+
+### What was done
+
+- 修复工作台「系统构建路径」只读浏览器本地事件、不反映服务端已通过验证/复盘的问题：`buildLabJourney` 已支持 `serverAccess`，但调用处未传入；现改为传入 `/learning/access` 结果，使运行验证、学习复盘与解锁状态与门控一致。
+
+### Testing
+
+- 静态核对：`LabWorkspace.vue` 中 `journey` 计算现为 `buildLabJourney(events, labId, learningAccess)`。
+- 库内账号 `1002` 仍有 Lab1 `verified` run 与 `reflection_submitted`；页面需硬刷新后由前端拉取 access 显示。
+
+### Notes
+
+- `os-lab/handbook/.vitepress/theme/components/LabWorkspace.vue`：journey 接入 `learningAccess`。
+- `progress.md`：本条记录。
+- 回滚：还原上述一行调用并删除本条。
 
 ## 2026-07-29 - Task: 恢复右侧上下实验台并重组完整工作区
 
@@ -242,6 +452,30 @@
 - `os-lab/learning/rubric-v2-draft.md`、`traces-lab2-mock.json`：量规与标注集。
 - `progress.md`：追加本轮记录。
 - 回滚方式：删除 `os-lab/lab-packages/` 与上述 learning 两文件，并移除本条记录。
+
+## 2026-07-28 - Task: 成员 B 第 1 天（M0）工作台与可视化基线
+
+### What was done
+
+- **Monaco 编辑器 PoC**：将 `CodePanel.vue` 的 `<textarea>` 替换为 `monaco-editor`，支持 Rust/TOML/ASM/Markdown 语法高亮、行号、括号匹配、未保存圆点与 `Ctrl+S` 保存；第一阶段不接入语言服务，避免 rust-analyzer 部署负担阻塞 MVP。
+- **IDE 分区布局**：在 `LabWorkspace.vue` 上完成「左手册 + 右实践区（上：报告/导师/工作区；下：终端）」三栏布局原型；实践区窄到 620px 以下时文件目录自动改为遮罩抽屉，移动端降级为标签页，不强行保留四栏；各分区支持拖动调宽/调高、折叠与放大到整页。
+- **文件状态 A/M/T/G/!**：定义五种文件状态组件表现（A 本 Lab 新增 / M 你已修改 / T 待完成 / G 自动生成 / ! 冲突过期），统一使用颜色 + 字母标记 + 文本，兼顾色弱与可解释性；第一周使用 `mockFileStatus()`，第 2 周切换为 `GET /fs/status?labId=...`。
+- **xterm 终端渲染**：用 `xterm.js` 渲染现有 SSE 输出，原样保留 ANSI，支持复制、清屏、自动滚动；`scrollback` 默认 5000 行，运行停止/超时写入醒目提示行；MVP 为只读输出渲染 + 上方命令 textarea，非 PTY。
+- **交互稿与契约**：产出 `docs/workbench-ui.md`，明确 Problems/Trace 页签交互契约与事件 v2 预留字段（`code_open`/`code_save`/`run_started`/`run_finished`/`diagnostic_opened`/`trace_inspected`）；真实查询 API 接入前 Problems/Trace 只显示可信空态，不使用 mock 结果。
+
+### Testing
+
+- `npm run build`：VitePress 客户端、服务端 bundle 与页面渲染通过。
+- `npm test`：Lab2 契约、学习访问控制、SQLite 证据链与模型响应解析等 15 项测试全部通过。
+- 人工核对：Monaco 打开/编辑/保存 Rust 文件正常；窄栏遮罩抽屉与移动端标签降级表现正确；文件状态标记在色弱模式下仍可凭字母与文本区分。
+- 应用内浏览器运行时没有可用浏览器实例，无法完成截图级布局复核；已通过组件层级、响应式约束和生产构建完成静态验证。
+
+### Notes
+
+- 主要文件：`CodePanel.vue`（Monaco 替换 textarea）、`MonacoEditor.vue`（新增）、`LabWorkspace.vue`（三栏布局与拖动/折叠/全页）、`TerminalPanel.vue`（xterm 渲染）、`BottomDock.vue`（下区页签）、`styles/workspace.css`（分区样式）、`docs/workbench-ui.md`（交互契约）。
+- 第一周文件状态使用 mock，第 2 周由成员 C 的 `GET /fs/status` 与基线哈希接替；Problems/Trace 真实查询 API 属后续里程碑，本轮不把空态伪装成已完成可视化。
+- 边界：本轮只做编辑器/终端/布局基线，不接入 rust-analyzer、不开放 PTY 交互式 QEMU；多用户 PTY 隔离由成员 C 后续按计划用容器/worker 承担。
+- 回滚方式：还原上述组件与样式文件，删除 `MonacoEditor.vue` 与 `docs/workbench-ui.md`，并移除本条记录。
 
 ## 2026-07-28 - Task: 运行、事件与 trace 契约基线
 

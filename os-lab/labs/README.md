@@ -14,7 +14,7 @@ labs/
 
 ## 怎么用
 
-1. 从 [overview.md](overview.md) 或手册 [认识 os-lab](../handbook/guide/start.md) 开始。
+1. 从 [overview.md](overview.md) 或手册 [入门指南](../handbook/guide/start.md) 开始。
 2. 按顺序阅读 `labN-*.md`：问题场景 → 背景知识 → 实验任务。
 3. 【任务一】跑通验证；【任务二】先独立作答；【任务三】按需动手修改。
 4. 对照 `answers/labN-answers.md` 查看【任务二】参考答案与代码解读。

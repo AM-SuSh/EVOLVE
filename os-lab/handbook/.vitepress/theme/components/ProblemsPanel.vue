@@ -22,7 +22,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (event: 'open-diagnostic', diagnostic: RunDiagnostic): void
+  (event: 'jump', payload: { path: string; line: number; code: string }): void
 }>()
 
 const diagnostics = ref<RunDiagnostic[]>([])
@@ -59,6 +59,10 @@ async function loadDiagnostics() {
 
 watch(() => props.runId, () => void loadDiagnostics(), { immediate: true })
 onBeforeUnmount(() => requestController?.abort())
+
+function jumpToDiagnostic(diagnostic: RunDiagnostic) {
+  emit('jump', { path: diagnostic.file, line: diagnostic.line, code: diagnostic.code })
+}
 </script>
 
 <template>
@@ -76,7 +80,7 @@ onBeforeUnmount(() => requestController?.abort())
         class="ws-problem-row"
         :data-level="diagnostic.level"
         :title="`${diagnostic.file}:${diagnostic.line}:${diagnostic.column}`"
-        @click="emit('open-diagnostic', diagnostic)"
+        @click="jumpToDiagnostic(diagnostic)"
       >
         <AlertCircle v-if="diagnostic.level === 'error'" :size="15" aria-hidden="true" />
         <AlertTriangle v-else :size="15" aria-hidden="true" />

@@ -1,0 +1,40 @@
+# Sv39 页表机制
+
+id: os.mm.sv39-walk
+title: Sv39 三级页表遍历
+level: mechanism
+textbook: OSTEP Ch.16
+summary: |
+  39 位有效 VA 切成 VPN2|VPN1|VPN0|offset；从 satp 根表逐级索引到叶 PTE，
+  取出 PPN 与权限。
+
+invariants:
+  - 中间级必须是有效目录项；叶级携带 R/W/X 等标志
+  - 切换任务时 satp 指向该任务根页表
+
+source_anchors:
+  - kernel/src/mm.rs
+  - os-vm/
+
+teaching_questions:
+  - 若 VPN1 对应表项无效，硬件在哪一级拒绝？学生应能指出「第二级」
+  - satp 未切换时，新任务用旧页表会观察到什么？
+
+observable_evidence:
+  - 可选 page_walk / page_fault trace（依赖 C 的可视化里程碑）
+  - 运行期用户输出断言（当前可信 recipe）
+
+---
+id: os.mm.pte-flags
+title: PTE 权限与 U 位
+level: mechanism
+summary: |
+  叶 PTE 的 R/W/X/U 决定能否读/写/执行以及用户态是否可访问。
+
+common_mistakes:
+  - 用户页缺 U
+  - 可写页未正确设置 Dirty/相关约定（若实现使用）
+
+source_anchors:
+  - kernel/src/mm.rs
+  - os-vm/

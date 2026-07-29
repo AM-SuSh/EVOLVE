@@ -103,6 +103,106 @@
       "manualTotalHint": 95,
       "legacyHeuristicGuess": 85,
       "calibrationNote": "样板满分附近；可作教师校准锚点"
+    },
+    {
+      "id": "T11",
+      "label": "迁移题优秀",
+      "summary": "结果满分；反思含抢占对比；有 OPRE 调度任务记录",
+      "eventsSketch": ["verified run", "reflection+transfer", "manual_note OPRE"],
+      "itemScores": { "P1": 1, "P2": 1, "P3": 1, "P4": 1, "P5": 1, "P6": 1, "R1": 1, "R2": 1, "R3": 1, "R4": 1, "F1": 1, "F2": 1, "T1": 1, "T2": 1, "G1": 0 },
+      "manualTotalHint": 96,
+      "legacyHeuristicGuess": 88,
+      "calibrationNote": "新增 T1/T2；现网无迁移维会低估"
+    },
+    {
+      "id": "T12",
+      "label": "补救变式通过",
+      "summary": "remedial-yield 路径；提示用到 L2；最终 Yield×5",
+      "eventsSketch": ["hint_requested×2", "fail", "pass", "reflection"],
+      "itemScores": { "P1": 1, "P2": 1, "P3": 1, "P4": 1, "P5": 1, "P6": 1, "R1": 1, "R2": 1, "R3": 1, "R4": 1, "F1": 1, "F2": 1, "G1": 0 },
+      "manualTotalHint": 88,
+      "legacyHeuristicGuess": 82,
+      "calibrationNote": "提示依赖高但最终证据齐；不应因用提示直接零分"
+    },
+    {
+      "id": "T13",
+      "label": "空反思过关企图",
+      "summary": "断言全过；reflection 为空或仅标点",
+      "eventsSketch": ["verified", "reflection empty rejected"],
+      "itemScores": { "P1": 1, "P2": 1, "P3": 1, "P5": 1, "R1": 1, "R2": 1, "R3": 1, "R4": 1, "F1": 0, "F2": 0, "G1": 0 },
+      "manualTotalHint": 55,
+      "legacyHeuristicGuess": 75,
+      "calibrationNote": "解锁应失败；H3 复核"
+    },
+    {
+      "id": "T14",
+      "label": "自定义命令伪装",
+      "summary": "白名单 echo 成功；无 trusted recipe",
+      "eventsSketch": ["custom run exit0", "claim pass"],
+      "itemScores": { "P5": 1, "R1": 0, "R2": 0, "R3": 0, "R4": 0, "F1": 0, "F2": 0, "G1": 0 },
+      "manualTotalHint": 8,
+      "legacyHeuristicGuess": 40,
+      "calibrationNote": "trusted=false 不得解锁；关键负向"
+    },
+    {
+      "id": "T15",
+      "label": "Lab3 预习串台",
+      "summary": "Lab2 会话大量谈页表，未完成 Lab2 断言",
+      "eventsSketch": ["messages about Sv39", "no lab2 verified"],
+      "itemScores": { "P1": 1, "P2": 1, "P3": 1, "P5": 0, "R1": 0, "R2": 0, "R3": 0, "R4": 0, "F1": 1, "F2": 0, "G1": 0 },
+      "manualTotalHint": 20,
+      "legacyHeuristicGuess": 35,
+      "calibrationNote": "不按话题长度给结果分"
+    },
+    {
+      "id": "T16",
+      "label": "截断输出误判风险",
+      "summary": "输出被截断导致少计 Yield；实际应通过",
+      "eventsSketch": ["output truncated", "manual teacher override"],
+      "itemScores": { "P5": 1, "R1": 1, "R2": 1, "R3": 0, "R4": 1, "F1": 1, "F2": 1, "G1": 0 },
+      "manualTotalHint": 50,
+      "legacyHeuristicGuess": 50,
+      "calibrationNote": "H2 强制复核；教师可改 R3"
+    },
+    {
+      "id": "T17",
+      "label": "同伴高水平相似",
+      "summary": "报告与同班另一人高度相似；run 证据独立存在",
+      "eventsSketch": ["verified", "reflection similar"],
+      "itemScores": { "P5": 1, "R1": 1, "R2": 1, "R3": 1, "R4": 1, "F1": 1, "F2": 1, "G1": 0 },
+      "manualTotalHint": 85,
+      "legacyHeuristicGuess": 85,
+      "calibrationNote": "S3 建议复核，不自动判零"
+    },
+    {
+      "id": "T18",
+      "label": "长时间挂机后满分",
+      "summary": "会话跨两天；中段无事件；结束前连续通过",
+      "eventsSketch": ["gap 36h", "burst pass"],
+      "itemScores": { "P1": 1, "P5": 1, "P6": 0, "R1": 1, "R2": 1, "R3": 1, "R4": 1, "F1": 1, "F2": 1, "G1": 0 },
+      "manualTotalHint": 78,
+      "legacyHeuristicGuess": 80,
+      "calibrationNote": "S2 建议复核代做风险"
+    },
+    {
+      "id": "T19",
+      "label": "只修 exit 路径的 debug",
+      "summary": "改了 exit 未改 suspended；Yield 仍为 1",
+      "eventsSketch": ["code_save", "verification fail R3"],
+      "itemScores": { "P3": 1, "P5": 1, "P6": 0, "R1": 1, "R2": 1, "R3": 0, "R4": 1, "F1": 1, "F2": 1, "G1": 0 },
+      "manualTotalHint": 45,
+      "legacyHeuristicGuess": 60,
+      "calibrationNote": "对齐 debug negative_tests"
+    },
+    {
+      "id": "T20",
+      "label": "教师复核后下调",
+      "summary": "自动分高；教师以 H1 下调过程分并留批语",
+      "eventsSketch": ["auto high", "teacher_reviewed"],
+      "itemScores": { "P1": 0, "P2": 0, "P3": 0, "P5": 1, "R1": 1, "R2": 1, "R3": 1, "R4": 1, "F1": 0, "F2": 0, "G1": 0 },
+      "manualTotalHint": 40,
+      "legacyHeuristicGuess": 70,
+      "calibrationNote": "保留自动分与教师分双轨；锚点案"
     }
   ]
 }

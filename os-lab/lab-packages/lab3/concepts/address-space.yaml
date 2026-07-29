@@ -1,0 +1,44 @@
+# Lab3 地址空间概念
+
+id: os.mm.address-space
+title: 独立地址空间
+level: concept
+textbook: OSTEP Ch.13–15
+summary: |
+  每个执行流看见连续的虚拟地址空间；内核维护映射，硬件完成 VA→PA，
+  从而实现隔离与保护。
+
+invariants:
+  - 用户程序不得依赖「加载物理地址碰巧可用」
+  - 内核与用户映射权限分离（U 位、RWX）
+
+source_anchors:
+  - kernel/src/mm.rs
+  - os-vm/
+  - os-alloc/
+
+observable_evidence:
+  - 多用户程序在相近 VA 下互不踩踏
+  - 缺页/权限错误可定位到 PTE 标志
+
+common_mistakes:
+  - 把物理帧号当虚拟页号写入 PTE
+  - 只映射代码不映射用户栈
+
+---
+id: os.mm.frame-alloc
+title: 物理页帧分配
+level: mechanism
+summary: |
+  从可用物理内存池按页分配/回收，供页表页与用户帧使用。
+
+source_anchors:
+  - os-alloc/
+  - kernel/src/mm.rs
+
+invariants:
+  - 同一帧不可同时属于两个所有者（除非显式共享协议）
+  - 分配失败必须可观测，不能静默返回野指针
+
+observable_evidence:
+  - 连续创建映射不耗尽到不可恢复的 panic（教学范围内）

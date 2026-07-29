@@ -2,6 +2,8 @@
 
 > 对应 feature：`lab2`（依赖 `lab1`）。
 
+> **配套教材**（《操作系统导论》OSTEP 中译）：[第 6 章 · 受限的直接执行（PDF 第 49 页）](/downloads/ostep-zh.pdf#page=49) · [第 7 章 · 调度导论（PDF 第 60 页）](/downloads/ostep-zh.pdf#page=60) · [全书入口](/downloads/ostep-zh.pdf)
+
 Lab1 让内核在裸机上活了下来；接下来，我们要让它从「只会说 Hello」变成「能干活」。Lab2 对应《操作系统导论》里的 **CPU 虚拟化**：让用户程序跑在用户态，通过**系统调用**请求内核服务，并在多个程序之间切换。
 
 **本实验知识路径（课本 → 项目 → 实践 → 证据 → 迁移）**：
@@ -260,8 +262,6 @@ All user apps exited.                   ← 全部退出，关机
 3. 处理 `sys_write` 返回用户态时 PC 应指向哪里？为什么必须在恢复前 `advance_sepc()`？
 4. 从 `user/src/syscall.rs` 到 `kernel/src/trap.rs`，按 RISC-V ABI 走一遍 `a7`/`a0`/`a1`/`a2` 的传递链。
 5. 一个 TCB 要记录哪些状态？用户栈与内核栈为何分开？再说明 TrapContext 与 TCB 各解决什么问题。
-
-
 
 ### 任务三：动手小修改
 

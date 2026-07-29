@@ -7,11 +7,16 @@ import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
 import ReportPanel from './ReportPanel.vue'
 import CodePanel from './CodePanel.vue'
-import ProblemsPanel, { type RunDiagnostic } from './ProblemsPanel.vue'
+import ProblemsPanel from './ProblemsPanel.vue'
 import TracePanel from './TracePanel.vue'
 import JourneyRail from './JourneyRail.vue'
 import TeacherDocPanel from './TeacherDocPanel.vue'
 import TeacherPublishPanel from './TeacherPublishPanel.vue'
+import {
+  createWorkspaceContext,
+  provideWorkspaceContext,
+  type WorkspaceContext,
+} from '../composables/useWorkspaceContext'
 import {
   appendEvent,
   buildLabJourney,
@@ -39,6 +44,12 @@ import {
 } from '../tutor-model'
 
 const props = defineProps<{ labId: TutorLabId }>()
+
+const workspaceContext: WorkspaceContext = createWorkspaceContext()
+provideWorkspaceContext(workspaceContext)
+
+/** 代码区 ref：手册「源码引用」与 Problems 诊断点击都通过它跳转。 */
+const codePanelRef = ref<InstanceType<typeof CodePanel> | null>(null)
 
 const endpoint = String(
   import.meta.env.VITE_OS_LAB_TUTOR_ENDPOINT || 'http://127.0.0.1:8787',
@@ -155,7 +166,8 @@ const mobileView = ref<'manual' | 'practice'>('manual')
 const rightTab = ref<'tutor' | 'report' | 'problems' | 'trace' | 'tests'>('tutor')
 /** 最近一次运行的 runId，供 Trace/Problems 查询对应产物。 */
 const lastRunId = ref('')
-const diagnosticRequest = ref<{ id: number; path: string; line: number } | null>(null)
+/** 最近一次运行的断言结果，供「测试结果」页签展示。 */
+const lastAssertions = ref<Array<{ id: string; label: string; passed: boolean; expected: string; observed: string }>>([])
 /** 右上工作区或右下学习支持区可铺满顶栏以下的整个页面。 */
 const maximized = ref<'none' | 'workspace' | 'assistant'>('none')
 
@@ -595,6 +607,11 @@ async function refreshScaffold() {
 
 async function scaffoldUpgrade() {
   if (scaffoldBusy.value) return
+  // 已有工作区时，下一层只允许从「系统构建路径」领取，避免与路径进度脱节。
+  if (scaffold.value?.exists && scaffold.value.next) {
+    toast('请打开「系统构建路径」，在已解锁的下一层点击「领取并开始」。')
+    return
+  }
   scaffoldBusy.value = true
   try {
     const response = await fetch(apiUrl('/scaffold/upgrade'), {
@@ -607,6 +624,64 @@ async function scaffoldUpgrade() {
     if (response.ok) toast(`已发放 ${payload.lab}，去终端跑一跑它。`)
   } catch {
     scaffoldLog.value = ['无法连接导师服务：先在 os-lab/handbook 运行 npm run tutor']
+  } finally {
+    scaffoldBusy.value = false
+  }
+}
+
+/** 进入某 Lab 前：把「我的系统」按序补发到该层（须学习侧已解锁）。 */
+async function ensureScaffoldIssued(labId: TutorLabId): Promise<boolean> {
+  if (!studentId.value || isTeacherRole.value) return true
+  await refreshScaffold()
+  const order = ['lab1', 'lab2', 'lab3', 'lab4', 'lab5', 'lab6', 'lab7', 'lab8'] as const
+  const targetIndex = order.indexOf(labId)
+  if (targetIndex < 0) return true
+
+  for (let step = 0; step < 8; step += 1) {
+    const status = scaffold.value
+    if (!status?.ok) {
+      toast('无法同步我的系统，请确认导师服务已启动。')
+      return false
+    }
+    const currentIndex = status.current ? order.indexOf(status.current as (typeof order)[number]) : -1
+    if (currentIndex >= targetIndex) return true
+
+    if (!status.exists || status.next) {
+      if (status.exists && !status.nextAllowed) {
+        toast((status as { nextBlockedReason?: string }).nextBlockedReason || '下一层代码尚未解锁。')
+        return false
+      }
+      const ok = await requestScaffoldUpgrade()
+      if (!ok) return false
+      continue
+    }
+
+    toast('代码层已全部发放。')
+    return true
+  }
+  toast('同步我的系统超时，请稍后重试。')
+  return false
+}
+
+async function requestScaffoldUpgrade(): Promise<boolean> {
+  if (scaffoldBusy.value) return false
+  scaffoldBusy.value = true
+  try {
+    const response = await fetch(apiUrl('/scaffold/upgrade'), {
+      method: 'POST',
+      headers: authHeaders(),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (payload.status) scaffold.value = { ...scaffold.value, ...payload.status }
+    if (!response.ok) {
+      toast(payload.error || (payload.log && payload.log[0]) || '领取下一层代码失败')
+      return false
+    }
+    if (payload.lab) toast(`我的系统已同步到 ${payload.lab}`)
+    return true
+  } catch {
+    toast('无法连接导师服务：先在 os-lab/handbook 运行 npm run tutor')
+    return false
   } finally {
     scaffoldBusy.value = false
   }
@@ -682,9 +757,16 @@ const connectionDetail = ref('')
 let noticeTimer = 0
 
 const lab = computed(() => getTutorLab(props.labId))
-const journey = computed(() => buildLabJourney(events.value, props.labId))
+const journey = computed(() => buildLabJourney(events.value, props.labId, learningAccess.value))
 const journeyItem = computed(() => journey.value.find((item) => item.lab.id === props.labId))
 const currentAccess = computed(() => learningAccess.value.find((item) => item.labId === props.labId))
+
+watch(activeStage, (stage) => {
+  if (workspaceContext) workspaceContext.currentStage = stage
+})
+watch(currentSection, (section) => {
+  if (workspaceContext) workspaceContext.currentSection = { ...section }
+})
 // 后台刷新解锁状态时保留当前已解锁工作区，避免卸载终端并丢失本次运行结果。
 const workspaceRestricted = computed(
   () => !isTeacherRole.value && (!auth.value || !currentAccess.value?.unlocked),
@@ -705,7 +787,7 @@ const connectionLabel = computed(() => {
 
 function record(
   type: LearningEvent['type'],
-  options: Pick<LearningEvent, 'category' | 'content' | 'metadata' | 'runId' | 'recipeId' | 'assertions' | 'file' | 'line' | 'code'> = {},
+  options: Pick<LearningEvent, 'category' | 'content' | 'metadata' | 'runId' | 'recipeId' | 'assertions'> = {},
 ) {
   const result = appendEvent(events.value, {
     sessionId: sessionId.value,
@@ -853,6 +935,12 @@ function chatPayload(message: string) {
     ...(hasCustomLlmConfig(llmConfig.value) ? { llm: llmConfig.value } : {}),
     // 学生正在读哪一节 —— 导师据此说「你刚读到 sscratch 那节」。
     reading: currentSection.value,
+    // 学生正在编辑哪个文件、光标在哪一行、当前选区 —— 导师据此引用真实代码位置。
+    codeContext: {
+      file: workspaceContext.currentFile,
+      line: workspaceContext.currentLine,
+      selection: workspaceContext.currentSelection,
+    },
     history: messages.value
       .slice(0, -1)
       .slice(-10)
@@ -1068,7 +1156,35 @@ function onRunFinished(payload: {
     },
   })
   if (payload.runId) lastRunId.value = payload.runId
+  if (payload.assertions) lastAssertions.value = payload.assertions
+  if (workspaceContext) {
+    workspaceContext.lastRunId = payload.runId
+    workspaceContext.lastRecipeId = payload.recipeId || ''
+  }
   announceUnlock(wasCompleted)
+}
+
+/** 手册「源码引用」点击：跳到工作区对应文件与行，并切到实践视图。 */
+function onSourceJump(payload: { path: string; line: number }) {
+  mobileView.value = 'practice'
+  panelOpen.value.practice = true
+  persistPanels()
+  void codePanelRef.value?.openAtLine(payload.path, payload.line)
+}
+
+/** Problems 诊断点击：跳到对应文件与行。 */
+function onProblemJump(payload: { path: string; line: number; code: string }) {
+  mobileView.value = 'practice'
+  panelOpen.value.practice = true
+  panelOpen.value.terminal = true
+  persistPanels()
+  void codePanelRef.value?.openAtLine(payload.path, payload.line)
+  record('diagnostic_opened', {
+    runId: lastRunId.value,
+    file: payload.path,
+    line: payload.line,
+    code: payload.code,
+  })
 }
 
 /** 终端输出插入实验报告的「过程记录」。 */
@@ -1079,23 +1195,6 @@ function onInsertReport(text: string) {
   panelOpen.value.terminal = true
   persistPanels()
   toast('输出已插入实验报告。')
-}
-
-function openDiagnostic(diagnostic: RunDiagnostic) {
-  diagnosticRequest.value = {
-    id: (diagnosticRequest.value?.id || 0) + 1,
-    path: diagnostic.file,
-    line: diagnostic.line,
-  }
-  maximized.value = 'none'
-  mobileView.value = 'practice'
-  panelOpen.value.practice = true
-  record('diagnostic_opened', {
-    runId: lastRunId.value,
-    file: diagnostic.file,
-    line: diagnostic.line,
-    code: diagnostic.code,
-  })
 }
 
 /** 报告面板请导师点评：切到对话页签并把报告作为提问发送。 */
@@ -1130,8 +1229,15 @@ function submitReflection(content: string) {
 /* -- 导航与导出 ------------------------------------------------------------- */
 
 function enterLab(labId: TutorLabId) {
-  if (labId === props.labId) return
-  router.go(withBase(`/learn/${labId}`))
+  void (async () => {
+    const issued = await ensureScaffoldIssued(labId)
+    if (!issued) return
+    if (labId === props.labId) {
+      await refreshScaffold()
+      return
+    }
+    router.go(withBase(`/learn/${labId}`))
+  })()
 }
 
 function exportGrowth() {
@@ -1207,7 +1313,12 @@ onBeforeUnmount(() => {
         >
           <Blocks :size="15" aria-hidden="true" /><span>{{ scaffoldLabel }}</span>
         </button>
-        <JourneyRail :journey="journey" @enter-lab="enterLab" @export-growth="exportGrowth" />
+        <JourneyRail
+          :journey="journey"
+          :applied-labs="(scaffold?.applied || []) as TutorLabId[]"
+          @enter-lab="enterLab"
+          @export-growth="exportGrowth"
+        />
         <button
           v-if="!isTeacherRole"
           type="button"
@@ -1336,6 +1447,7 @@ onBeforeUnmount(() => {
             :editable="isTeacherRole"
             @edit="teacherEditing = true"
             @section-change="currentSection = $event"
+            @source-jump="onSourceJump"
           >
             <slot />
           </ManualPane>
@@ -1460,13 +1572,13 @@ onBeforeUnmount(() => {
             :style="workspaceGridStyle"
           >
             <CodePanel
+              ref="codePanelRef"
               class="ws-workspace-code"
               :key="`code-${studentId}`"
               :lab="lab"
               :endpoint="endpoint"
               :student="studentId"
               :dark="isDark"
-              :diagnostic-request="diagnosticRequest"
             />
             <div
               class="ws-workspace-row-resizer"
@@ -1624,15 +1736,22 @@ onBeforeUnmount(() => {
               @submit-teacher="submitReportToTeacher"
               @notice="toast"
             />
-            <ProblemsPanel
-              v-show="rightTab === 'problems'"
-              :endpoint="endpoint"
-              :run-id="lastRunId"
-              @open-diagnostic="openDiagnostic"
-            />
+            <ProblemsPanel v-show="rightTab === 'problems'" :run-id="lastRunId" :endpoint="endpoint" @jump="onProblemJump" />
             <TracePanel v-show="rightTab === 'trace'" :run-id="lastRunId" :lab-id="lab.id" />
             <div v-show="rightTab === 'tests'" class="ws-tests-empty">
               <p v-if="!lastRunId">运行可信验证命令后，断言结果将汇总在此。</p>
+              <ul v-else-if="lastAssertions.length" class="ws-tests-assertions">
+                <li
+                  v-for="item in lastAssertions"
+                  :key="item.id"
+                  :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed }]"
+                >
+                  <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
+                  <span class="ws-test-label">{{ item.label || item.id }}</span>
+                  <span class="ws-test-expected">期望：{{ item.expected }}</span>
+                  <span class="ws-test-observed">实际：{{ item.observed }}</span>
+                </li>
+              </ul>
               <p v-else>最近一次运行 <code>{{ lastRunId }}</code> 的断言详情已记录在运行状态和实验报告证据中。</p>
             </div>
           </div>
@@ -1754,19 +1873,20 @@ onBeforeUnmount(() => {
             <template v-else-if="scaffold.next">
               当前进度：{{ scaffold.applied.join(' → ') }}；下一步 {{ scaffold.next }}（{{ scaffold.nextSummary }}）
               <template v-if="!scaffold.nextAllowed">——老师当前开放到 {{ scaffold.openLab }}，{{ scaffold.next }} 尚未开放。</template>
+              <template v-else>——请到顶栏「系统构建路径」中点击 {{ scaffold.next }} 的「领取并开始」，代码才会发到本机，「我的系统」也会同步显示。</template>
             </template>
             <template v-else>八个 Lab 已全部发放，继续自由完善你的系统吧。</template>
           </p>
 
           <div class="ws-modal-actions">
             <button
-              v-if="scaffold.next"
+              v-if="!scaffold.exists"
               type="button"
               class="ws-modal-primary"
-              :disabled="scaffoldBusy || (scaffold.exists && !scaffold.nextAllowed)"
+              :disabled="scaffoldBusy"
               @click="scaffoldUpgrade"
             >
-              {{ scaffoldBusy ? '发放中…' : scaffold.exists ? (scaffold.nextAllowed ? `升级到 ${scaffold.next}` : `${scaffold.next} 未开放`) : '初始化我的系统（Lab1）' }}
+              {{ scaffoldBusy ? '发放中…' : '初始化我的系统（Lab1）' }}
             </button>
           </div>
 
@@ -2423,6 +2543,65 @@ onBeforeUnmount(() => {
 }
 
 .ws-tests-empty code {
+  font-family: var(--ws-font-mono);
+}
+
+.ws-tests-assertions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ws-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ws-test-assertion {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    'mark label'
+    'mark expected'
+    'mark observed';
+  gap: 2px var(--ws-space-2);
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-test-assertion.passed {
+  border-color: color-mix(in srgb, var(--ws-ok, #1a7f37) 40%, var(--ws-line));
+}
+
+.ws-test-assertion.failed {
+  border-color: color-mix(in srgb, var(--ws-danger, #c0392b) 40%, var(--ws-line));
+}
+
+.ws-test-mark {
+  grid-area: mark;
+  align-self: center;
+  font-weight: var(--ws-weight-bold);
+  font-size: var(--ws-text-sm);
+}
+
+.ws-test-assertion.passed .ws-test-mark {
+  color: var(--ws-ok, #1a7f37);
+}
+
+.ws-test-assertion.failed .ws-test-mark {
+  color: var(--ws-danger, #c0392b);
+}
+
+.ws-test-label {
+  grid-area: label;
+  color: var(--ws-ink);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-test-expected,
+.ws-test-observed {
+  color: var(--ws-ink-muted);
   font-family: var(--ws-font-mono);
 }
 

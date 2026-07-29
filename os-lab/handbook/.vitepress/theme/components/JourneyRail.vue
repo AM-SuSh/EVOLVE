@@ -20,7 +20,12 @@ import { tutorLabs, type LabJourneyItem, type TutorLabId } from '../tutor-model'
  * 一闪而过，学生完全不知道自己为什么进不去下一层。这里改成顶栏常驻 stepper，
  * 锁定原因写成常驻文字。
  */
-const props = defineProps<{ journey: LabJourneyItem[]; compact?: boolean }>()
+const props = defineProps<{
+  journey: LabJourneyItem[]
+  /** 已发放到「我的系统」的 Lab；未发放的解锁层显示「点击解锁」。 */
+  appliedLabs?: TutorLabId[]
+  compact?: boolean
+}>()
 
 const emit = defineEmits<{
   (event: 'enter-lab', labId: TutorLabId): void
@@ -28,6 +33,7 @@ const emit = defineEmits<{
 }>()
 
 const open = ref(false)
+const appliedLabs = computed(() => props.appliedLabs || [])
 
 const completedCount = computed(() => props.journey.filter((item) => item.completed).length)
 const progress = computed(() => Math.round((completedCount.value / tutorLabs.length) * 100))
@@ -39,6 +45,14 @@ function enter(item: LabJourneyItem) {
   if (!item.unlocked) return
   open.value = false
   emit('enter-lab', item.lab.id)
+}
+
+function actionLabel(item: LabJourneyItem) {
+  if (!item.unlocked) return '未解锁'
+  if (!appliedLabs.value.includes(item.lab.id)) return '领取并开始'
+  if (item.current) return '回到学习'
+  if (item.started) return '继续学习'
+  return '开始构建'
 }
 </script>
 
@@ -152,10 +166,7 @@ function enter(item: LabJourneyItem) {
               :disabled="!item.unlocked"
               @click="enter(item)"
             >
-              <template v-if="!item.unlocked">未解锁</template>
-              <template v-else-if="item.current">回到学习</template>
-              <template v-else-if="item.started">继续学习</template>
-              <template v-else>开始构建</template>
+              {{ actionLabel(item) }}
               <ChevronRight v-if="item.unlocked" :size="15" aria-hidden="true" />
             </button>
           </li>

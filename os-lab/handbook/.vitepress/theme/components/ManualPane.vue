@@ -18,6 +18,8 @@ const emit = defineEmits<{
   (event: 'section-change', payload: { h2: string; h3: string }): void
   /** 教师点「编辑手册」：外层把本栏切换成 Markdown 编辑器。 */
   (event: 'edit'): void
+  /** 学生点手册中的源码引用（`kernel/src/trap.rs` 或 `...:42`）：跳到工作区对应文件/行。 */
+  (event: 'source-jump', payload: { path: string; line: number }): void
 }>()
 
 interface ManualSection {
@@ -62,6 +64,14 @@ markdown.renderer.rules.link_open = (tokens, index, options, env, self) => {
     if (answerMatch) tokens[index].attrs![hrefIndex][1] = withBase(`/learn/lab${answerMatch[1]}`)
     else if (labMatch) tokens[index].attrs![hrefIndex][1] = withBase(`/learn/lab${labMatch[1]}${labMatch[2] || ''}`)
     else if (/\/?labs\/overview(?:\.md)?$/.test(raw)) tokens[index].attrs![hrefIndex][1] = withBase('/guide/ai-tutor')
+    // 教材 PDF（含 #page=）在新标签打开，避免挤掉工作台。
+    if (/\/downloads\/.+\.pdf(?:#|$)/i.test(tokens[index].attrs![hrefIndex][1])) {
+      const targetIndex = tokens[index].attrIndex('target')
+      if (targetIndex < 0) tokens[index].attrPush(['target', '_blank'])
+      else tokens[index].attrs![targetIndex][1] = '_blank'
+      const relIndex = tokens[index].attrIndex('rel')
+      if (relIndex < 0) tokens[index].attrPush(['rel', 'noopener noreferrer'])
+    }
   }
   return defaultLinkOpen ? defaultLinkOpen(tokens, index, options, env, self) : self.renderToken(tokens, index, options)
 }
@@ -169,11 +179,33 @@ function applyPromptCollapse() {
   }
 }
 
+/** 识别手册正文里的源码引用：`kernel/src/trap.rs` 或 `kernel/src/trap.rs:42`。 */
+const SOURCE_REF_PATTERN = /^([\w./-]+\/[\w./-]+\.(?:rs|asm|s|toml|ld|c|h))(?::(\d+))?$/
+
+function parseSourceRef(text: string): { path: string; line: number } | null {
+  const value = String(text || '').trim()
+  if (!value || value.includes(' ')) return null
+  const match = value.match(SOURCE_REF_PATTERN)
+  if (!match) return null
+  return { path: match[1], line: match[2] ? Number(match[2]) : 0 }
+}
+
 function onDocClick(event: MouseEvent) {
   const heading = (event.target as HTMLElement | null)?.closest('.ws-section-collapsible')
-  if (!heading) return
-  promptSectionCollapsed.value = !promptSectionCollapsed.value
-  applyPromptCollapse()
+  if (heading) {
+    promptSectionCollapsed.value = !promptSectionCollapsed.value
+    applyPromptCollapse()
+    return
+  }
+  // 源码引用：点 <code>kernel/src/trap.rs:42</code> 跳到编辑器。
+  const codeEl = (event.target as HTMLElement | null)?.closest('code')
+  if (codeEl) {
+    const ref = parseSourceRef(codeEl.textContent || '')
+    if (ref) {
+      event.preventDefault()
+      emit('source-jump', ref)
+    }
+  }
 }
 
 function onDocKeydown(event: KeyboardEvent) {

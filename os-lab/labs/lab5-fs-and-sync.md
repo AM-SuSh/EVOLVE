@@ -2,6 +2,8 @@
 
 > 对应 feature：`lab5`（依赖 `lab4`）。
 
+> **配套教材**（《操作系统导论》OSTEP 中译）：[第 28 章 · 锁（PDF 第 230 页）](/downloads/ostep-zh.pdf#page=230) · [第 36 章 · I/O 设备（PDF 第 313 页）](/downloads/ostep-zh.pdf#page=313) · [第 39 章 · 文件和目录（PDF 第 352 页）](/downloads/ostep-zh.pdf#page=352) · [全书入口](/downloads/ostep-zh.pdf)
+
 读到这里，你已经会创建进程、切换程序、等待子进程了。可日常用电脑时还会遇到两类很「普通」的事：
 
 1. **程序要读一份数据、写一点结果**——不能每次都把内容写死在代码里。

@@ -63,7 +63,7 @@ const LABS = {
   lab2: {
     summary: 'trap、系统调用与任务切换',
     crates: ['os-context', 'os-syscall'],
-    kernel: ['src/cell.rs', 'src/config.rs', 'src/riscv.rs', 'src/trap.rs', 'src/trace.rs', 'src/loader.rs', 'src/task.rs'],
+    kernel: ['src/cell.rs', 'src/config.rs', 'src/riscv.rs', 'src/trap.rs', 'src/loader.rs', 'src/task.rs', 'src/trace.rs'],
     userBase: true,
     userBins: ['hello', 'power', 'yield'],
   },
@@ -388,7 +388,6 @@ lto = true
 
 function kernelCargoToml(applied) {
   const features = applied.map((lab) => KERNEL_FEATURES[lab])
-  if (applied.includes('lab2')) features.push('trace-edu = []')
   const deps = applied.flatMap((lab) => KERNEL_DEPS[lab])
   return `[package]
 name = "kernel"
@@ -402,6 +401,7 @@ description = "My progressive OS kernel (student workspace)"
 [features]
 default = ["${applied[applied.length - 1]}"]
 ${features.join('\n')}
+trace-edu = []
 
 [dependencies]
 ${deps.join('\n')}

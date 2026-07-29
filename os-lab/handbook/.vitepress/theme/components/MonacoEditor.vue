@@ -8,8 +8,6 @@ const props = withDefaults(
     language?: string
     readOnly?: boolean
     dark?: boolean
-    revealLine?: number
-    revealKey?: number
   }>(),
   { language: 'plaintext', readOnly: false, dark: false },
 )
@@ -17,6 +15,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   (event: 'update:modelValue', value: string): void
   (event: 'save'): void
+  (event: 'cursor', payload: { line: number; column: number; selection: string }): void
 }>()
 
 const host = ref<HTMLElement | null>(null)
@@ -24,13 +23,6 @@ let editor: import('monaco-editor').editor.IStandaloneCodeEditor | null = null
 let monacoApi: typeof import('monaco-editor') | null = null
 let resizeObserver: ResizeObserver | null = null
 let syncing = false
-
-function revealRequestedLine() {
-  if (!editor || !props.revealLine) return
-  editor.revealLineInCenter(props.revealLine)
-  editor.setPosition({ lineNumber: props.revealLine, column: 1 })
-  editor.focus()
-}
 
 function applyTheme() {
   if (!monacoApi) return
@@ -70,7 +62,16 @@ onMounted(async () => {
     emit('update:modelValue', editor.getValue())
     syncing = false
   })
-  revealRequestedLine()
+  editor.onDidChangeCursorPosition((event) => {
+    if (!editor) return
+    const selection = editor.getSelection()
+    const selectionText = selection ? editor.getModel()?.getValueInRange(selection) || '' : ''
+    emit('cursor', {
+      line: event.position.lineNumber,
+      column: event.position.column,
+      selection: selectionText,
+    })
+  })
   resizeObserver = new ResizeObserver(() => {
     if (host.value && host.value.offsetHeight > 0) editor?.layout()
   })
@@ -105,11 +106,6 @@ watch(
 watch(
   () => props.dark,
   () => applyTheme(),
-)
-
-watch(
-  () => [props.revealKey, props.revealLine],
-  () => revealRequestedLine(),
 )
 
 onBeforeUnmount(() => {
