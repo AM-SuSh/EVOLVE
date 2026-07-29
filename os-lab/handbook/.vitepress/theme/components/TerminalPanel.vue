@@ -77,12 +77,10 @@ watch(() => props.lab.id, () => {
   exitInfo.value = null
   inserted.value = false
   errorText.value = ''
-  xtermRef.value?.clear()
 }, { immediate: true })
 
 function appendOutput(text: string) {
   output.value += text
-  xtermRef.value?.write(text)
 }
 
 async function scrollToBottom() {
@@ -99,7 +97,6 @@ async function run() {
   if (running.value) return
   running.value = true
   output.value = ''
-  xtermRef.value?.clear()
   exitInfo.value = null
   inserted.value = false
   errorText.value = ''
@@ -169,9 +166,9 @@ async function run() {
           }
           if (frame.runId) emit('run-exit', frame.runId)
           if (frame.stopped === 'timeout') {
-            xtermRef.value?.writeln('\r\n\x1b[33m[已超时终止]\x1b[0m')
+            appendOutput('\r\n\x1b[33m[已超时终止]\x1b[0m\n')
           } else if (frame.stopped) {
-            xtermRef.value?.writeln('\r\n\x1b[33m[已手动停止]\x1b[0m')
+            appendOutput('\r\n\x1b[33m[已手动停止]\x1b[0m\n')
           }
         }
       }
@@ -202,7 +199,7 @@ async function run() {
 async function stop() {
   try {
     await fetch(apiUrl(`/run/stop`), { method: 'POST', headers: authHeaders() })
-    xtermRef.value?.writeln('\r\n\x1b[33m[正在停止…]\x1b[0m')
+    appendOutput('\r\n\x1b[33m[正在停止…]\x1b[0m\n')
   } catch {
     // 服务不在时无事可停。
   }
@@ -257,7 +254,7 @@ onBeforeUnmount(() => {
 
     <p class="ws-terminal-status" :data-ok="exitInfo?.ok">{{ statusLabel }}</p>
 
-    <XtermOutput ref="xtermRef" :dark="dark" />
+    <XtermOutput ref="xtermRef" :content="output" :dark="dark" />
     <p v-if="!output && !running" class="ws-terminal-hint-overlay">点击「运行」在当前账号的实验工作区执行命令，输出会实时显示在这里。</p>
 
     <footer v-if="exitInfo" class="ws-terminal-foot">

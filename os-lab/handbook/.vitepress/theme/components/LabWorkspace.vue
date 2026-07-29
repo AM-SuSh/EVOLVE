@@ -684,8 +684,9 @@ const lab = computed(() => getTutorLab(props.labId))
 const journey = computed(() => buildLabJourney(events.value, props.labId))
 const journeyItem = computed(() => journey.value.find((item) => item.lab.id === props.labId))
 const currentAccess = computed(() => learningAccess.value.find((item) => item.labId === props.labId))
+// 后台刷新解锁状态时保留当前已解锁工作区，避免卸载终端并丢失本次运行结果。
 const workspaceRestricted = computed(
-  () => !isTeacherRole.value && (!auth.value || accessLoading.value || !currentAccess.value?.unlocked),
+  () => !isTeacherRole.value && (!auth.value || !currentAccess.value?.unlocked),
 )
 const sessionEvents = computed(() =>
   events.value.filter((event) => event.sessionId === sessionId.value),
