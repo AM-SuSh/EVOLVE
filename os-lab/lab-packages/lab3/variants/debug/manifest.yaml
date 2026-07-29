@@ -1,0 +1,61 @@
+# Lab3 debug 变体：用户页缺 U 位
+
+id: lab3-debug
+lab: lab3
+variant: debug
+version: 0.1.0-draft
+
+learning_goal: |
+  学生按现象→假设→最小实验排查：用户程序无法正确取指/访存。
+  定位到用户映射 PTE 缺少 U 位（或等价权限错误），修复后跑通 lab3 断言。
+
+target_concepts:
+  - os.mm.pte-flags
+  - os.mm.sv39-walk
+  - os.mm.address-space
+
+student_file: kernel/src/mm.rs
+source_template: ../../../scaffold/exercises/lab3/debug/kernel/src/mm.rs
+manual_anchor: labs/lab3-memory.md
+
+planted_bug:
+  location: 用户段 PTE 标志构造（教学占位）
+  wrong: 映射用户页时未置 User 可访问位
+  correct: 用户页必须置 U（及所需 X/R）
+  symptom: |
+    开启分页后用户程序无法正常输出；可能早故障或反复 trap。
+    与「完全未建页表」相比，内核自身仍可能继续运行一段时间。
+
+success_criteria:
+  recipe: lab3.verify.v1
+  assertions: [hello-output, power-result, yield-five-rounds, all-exited]
+
+negative_tests:
+  - id: unfixed-missing-u
+    description: 未修复时用户态断言失败
+    expect_fail: true
+  - id: kernel-only-mapping
+    description: 只保证内核映射、用户仍缺 U → 仍失败
+    expect_fail_assertions: [hello-output]
+
+common_mistakes:
+  - 以为是调度问题而回退改 task.rs
+  - 给内核页误加 U 造成安全概念混乱
+
+hint_ladder:
+  - level: 0
+    when: 尚未复现
+    say: 先确认 lab2 在同工作区仍能跑通，再开 lab3，隔离「调度回归」与「分页问题」。
+  - level: 1
+    when: 已确认仅 lab3 失败
+    say: 用户取指失败时，更应先查 PTE 权限位还是 VPN 切分？写下假设再读 mm.rs。
+  - level: 2
+    when: 假设停在「没建页表」
+    say: 设计最小对照：若页表项存在但用户仍 fault，还缺什么标志？
+  - level: 3
+    when: 已读到映射代码
+    say: 对照 U 位含义与 OSTEP 权限检查；修复后必须用四条输出断言证明，不要只看内核没 panic。
+
+report_prompts:
+  - 你的第一个假设是什么？哪条证据否定了它？
+  - 若没有用户输出断言，只看「内核还在跑」会如何误判？

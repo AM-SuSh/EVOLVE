@@ -2,6 +2,8 @@
 
 > 对应 feature：`lab4`（依赖 `lab3`）。
 
+> **配套教材**（《操作系统导论》OSTEP 中译）：[第 4 章 · 抽象：进程（PDF 第 31 页）](/downloads/ostep-zh.pdf#page=31) · [第 5 章 · 进程 API（PDF 第 40 页）](/downloads/ostep-zh.pdf#page=40) · [全书入口](/downloads/ostep-zh.pdf)
+
 本实验对接《操作系统导论》里的 **进程抽象** 与 **进程 API**：从「固定数量任务轮转」进化到可动态 `fork` / `exec` / `wait` 的真正进程模型。读懂书中「fork 调用一次、返回两次」，再在内核里把它做出来。
 
 ## 零、开始之前

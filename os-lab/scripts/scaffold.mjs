@@ -59,7 +59,7 @@ const LABS = {
   lab2: {
     summary: 'trap、系统调用与任务切换',
     crates: ['os-context', 'os-syscall'],
-    kernel: ['src/cell.rs', 'src/config.rs', 'src/riscv.rs', 'src/trap.rs', 'src/loader.rs', 'src/task.rs'],
+    kernel: ['src/cell.rs', 'src/config.rs', 'src/riscv.rs', 'src/trap.rs', 'src/loader.rs', 'src/task.rs', 'src/trace.rs'],
     userBase: true,
     userBins: ['hello', 'power', 'yield'],
   },
@@ -397,6 +397,7 @@ description = "My progressive OS kernel (student workspace)"
 [features]
 default = ["${applied[applied.length - 1]}"]
 ${features.join('\n')}
+trace-edu = []
 
 [dependencies]
 ${deps.join('\n')}

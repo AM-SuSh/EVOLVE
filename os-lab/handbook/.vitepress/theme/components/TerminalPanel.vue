@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { FilePlus2, Play, RotateCcw, Square } from 'lucide-vue-next'
+import { Check, Copy, FilePlus2, Play, RotateCcw, Square } from 'lucide-vue-next'
 import { authHeaders, type TutorLab } from '../tutor-model'
 import XtermOutput from './XtermOutput.vue'
 
@@ -51,9 +51,12 @@ const exitInfo = ref<{
   stopped?: string
 } | null>(null)
 const inserted = ref(false)
+const copyState = ref<'idle' | 'copied' | 'failed'>('idle')
 const stepTitle = ref('')
 const errorText = ref('')
+const lastRunCommand = ref('')
 const xtermRef = ref<InstanceType<typeof XtermOutput> | null>(null)
+let copyStateTimer = 0
 
 const statusLabel = computed(() => {
   if (running.value) return stepTitle.value ? `运行中 · ${stepTitle.value}` : '运行中…'
@@ -76,13 +79,13 @@ watch(() => props.lab.id, () => {
   output.value = ''
   exitInfo.value = null
   inserted.value = false
+  copyState.value = 'idle'
   errorText.value = ''
-  xtermRef.value?.clear()
+  lastRunCommand.value = ''
 }, { immediate: true })
 
 function appendOutput(text: string) {
   output.value += text
-  xtermRef.value?.write(text)
 }
 
 async function scrollToBottom() {
@@ -92,28 +95,68 @@ async function scrollToBottom() {
 
 function runSummary() {
   const tail = output.value.length > 2400 ? `…${output.value.slice(-2400)}` : output.value
-  return `$ ${command.value.trim()}\n${tail}`
+  return `$ ${lastRunCommand.value || command.value.trim()}\n${tail}`
+}
+
+function fullRunOutput() {
+  const content = `$ ${lastRunCommand.value || command.value.trim()}\n${output.value}`
+  return content.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
+}
+
+function setCopyState(state: 'copied' | 'failed') {
+  copyState.value = state
+  window.clearTimeout(copyStateTimer)
+  copyStateTimer = window.setTimeout(() => (copyState.value = 'idle'), 1800)
+}
+
+async function copyLatestOutput() {
+  const text = fullRunOutput()
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable')
+    await navigator.clipboard.writeText(text)
+    setCopyState('copied')
+    return
+  } catch {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.setAttribute('readonly', '')
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    let copied = false
+    try {
+      textarea.select()
+      copied = document.execCommand('copy')
+    } catch {
+      copied = false
+    } finally {
+      textarea.remove()
+    }
+    setCopyState(copied ? 'copied' : 'failed')
+  }
 }
 
 async function run() {
   if (running.value) return
   running.value = true
   output.value = ''
-  xtermRef.value?.clear()
   exitInfo.value = null
   inserted.value = false
+  copyState.value = 'idle'
   errorText.value = ''
   stepTitle.value = ''
+  const runCommand = command.value.trim()
+  lastRunCommand.value = runCommand
 
   try {
-    const trustedPreset = command.value.trim() === props.lab.verificationCommand.trim()
+    const trustedPreset = runCommand === props.lab.verificationCommand.trim()
     const response = await fetch(apiUrl(`/run`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...authHeaders() },
       body: JSON.stringify({
         labId: props.lab.id,
         sessionId: props.sessionId || '',
-        ...(trustedPreset ? {} : { command: command.value }),
+        ...(trustedPreset ? {} : { command: runCommand }),
       }),
     })
     if (!response.ok || !response.body) {
@@ -169,9 +212,9 @@ async function run() {
           }
           if (frame.runId) emit('run-exit', frame.runId)
           if (frame.stopped === 'timeout') {
-            xtermRef.value?.writeln('\r\n\x1b[33m[已超时终止]\x1b[0m')
+            appendOutput('\r\n\x1b[33m[已超时终止]\x1b[0m\n')
           } else if (frame.stopped) {
-            xtermRef.value?.writeln('\r\n\x1b[33m[已手动停止]\x1b[0m')
+            appendOutput('\r\n\x1b[33m[已手动停止]\x1b[0m\n')
           }
         }
       }
@@ -202,7 +245,7 @@ async function run() {
 async function stop() {
   try {
     await fetch(apiUrl(`/run/stop`), { method: 'POST', headers: authHeaders() })
-    xtermRef.value?.writeln('\r\n\x1b[33m[正在停止…]\x1b[0m')
+    appendOutput('\r\n\x1b[33m[正在停止…]\x1b[0m\n')
   } catch {
     // 服务不在时无事可停。
   }
@@ -221,6 +264,7 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 onBeforeUnmount(() => {
+  window.clearTimeout(copyStateTimer)
   if (running.value) void stop()
 })
 </script>
@@ -257,10 +301,20 @@ onBeforeUnmount(() => {
 
     <p class="ws-terminal-status" :data-ok="exitInfo?.ok">{{ statusLabel }}</p>
 
-    <XtermOutput ref="xtermRef" :dark="dark" />
+    <XtermOutput ref="xtermRef" :content="output" :dark="dark" />
     <p v-if="!output && !running" class="ws-terminal-hint-overlay">点击「运行」在当前账号的实验工作区执行命令，输出会实时显示在这里。</p>
 
     <footer v-if="exitInfo" class="ws-terminal-foot">
+      <button
+        type="button"
+        :data-state="copyState"
+        :title="copyState === 'failed' ? '复制失败，请重试' : '复制本次命令和完整终端输出'"
+        @click="copyLatestOutput"
+      >
+        <Check v-if="copyState === 'copied'" :size="14" aria-hidden="true" />
+        <Copy v-else :size="14" aria-hidden="true" />
+        {{ copyState === 'copied' ? '已复制' : copyState === 'failed' ? '复制失败' : '复制输出' }}
+      </button>
       <button v-if="!inserted" type="button" @click="insertReport">
         <FilePlus2 :size="14" aria-hidden="true" />把输出插入实验报告
       </button>
@@ -394,6 +448,7 @@ onBeforeUnmount(() => {
 
 .ws-terminal-foot {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--ws-space-2);
   padding: var(--ws-space-2) var(--ws-space-3);
@@ -419,6 +474,16 @@ onBeforeUnmount(() => {
 
 .ws-terminal-foot button:hover {
   border-color: var(--ws-accent);
+}
+
+.ws-terminal-foot button[data-state='copied'] {
+  color: var(--ws-ok, #1a7f37);
+  border-color: var(--ws-ok, #1a7f37);
+}
+
+.ws-terminal-foot button[data-state='failed'] {
+  color: var(--ws-danger, #c0392b);
+  border-color: var(--ws-danger, #c0392b);
 }
 
 .ws-terminal-foot .done {

@@ -6,16 +6,18 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = withDefaults(
   defineProps<{
+    content?: string
     dark?: boolean
     scrollback?: number
   }>(),
-  { dark: false, scrollback: 5000 },
+  { content: '', dark: false, scrollback: 5000 },
 )
 
 const host = ref<HTMLElement | null>(null)
 let terminal: Terminal | null = null
 let fitAddon: FitAddon | null = null
 let resizeObserver: ResizeObserver | null = null
+let renderedContent = ''
 
 function surfaceColor(name: string, fallback: string) {
   if (typeof document === 'undefined') return fallback
@@ -36,7 +38,23 @@ function applyTheme() {
 }
 
 function fit() {
-  fitAddon?.fit()
+  if (!fitAddon || !terminal || !host.value) return
+  if (host.value.clientWidth === 0 || host.value.clientHeight === 0) return
+  fitAddon.fit()
+  terminal.refresh(0, terminal.rows - 1)
+}
+
+function syncContent() {
+  if (!terminal || props.content === renderedContent) return
+
+  if (props.content.startsWith(renderedContent)) {
+    terminal.write(props.content.slice(renderedContent.length))
+  } else {
+    terminal.reset()
+    applyTheme()
+    if (props.content) terminal.write(props.content)
+  }
+  renderedContent = props.content
 }
 
 onMounted(() => {
@@ -53,10 +71,20 @@ onMounted(() => {
   terminal.loadAddon(fitAddon)
   terminal.open(host.value)
   applyTheme()
+  syncContent()
   fit()
-  resizeObserver = new ResizeObserver(() => fit())
-  resizeObserver.observe(host.value)
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(() => fit())
+    resizeObserver.observe(host.value)
+  }
+  requestAnimationFrame(() => fit())
 })
+
+watch(
+  () => props.content,
+  () => syncContent(),
+  { flush: 'post' },
+)
 
 watch(
   () => props.dark,
@@ -71,7 +99,8 @@ onBeforeUnmount(() => {
 })
 
 function clear() {
-  terminal?.clear()
+  terminal?.reset()
+  renderedContent = ''
 }
 
 function write(text: string) {

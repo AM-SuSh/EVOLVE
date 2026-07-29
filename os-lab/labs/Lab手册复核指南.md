@@ -13,7 +13,7 @@
 | Lab 范围 | Lab1–8 **全部开放**，均有实验指导 + 参考答案 |
 | 阅读理解 / 思考题 | 写在各 Lab 正文 **【任务二】**，不再单独维护 `labs/exercises/` |
 | 参考答案 | 只在 `labs/answers/labN-answers.md` |
-| 手册入口 | `handbook/guide/start.md`（认识 os-lab）；工作台 `/learn/labN` |
+| 手册入口 | `handbook/guide/start.md`（入门指南）；工作台 `/learn/labN`；各 Lab 手册开头有 OSTEP 中译 `#page=` 链接 |
 | 验证命令 | Lab1–5：`cargo run -p kernel --features labN --release`；**Lab6–8：`make test-labN`（须 VirtIO）** |
 
 > **不要**再建 `labs/exercises/`，也不要在正文/侧栏/进度清单里链到 `/exercises/...`。  

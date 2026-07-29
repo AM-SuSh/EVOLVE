@@ -64,6 +64,14 @@ markdown.renderer.rules.link_open = (tokens, index, options, env, self) => {
     if (answerMatch) tokens[index].attrs![hrefIndex][1] = withBase(`/learn/lab${answerMatch[1]}`)
     else if (labMatch) tokens[index].attrs![hrefIndex][1] = withBase(`/learn/lab${labMatch[1]}${labMatch[2] || ''}`)
     else if (/\/?labs\/overview(?:\.md)?$/.test(raw)) tokens[index].attrs![hrefIndex][1] = withBase('/guide/ai-tutor')
+    // 教材 PDF（含 #page=）在新标签打开，避免挤掉工作台。
+    if (/\/downloads\/.+\.pdf(?:#|$)/i.test(tokens[index].attrs![hrefIndex][1])) {
+      const targetIndex = tokens[index].attrIndex('target')
+      if (targetIndex < 0) tokens[index].attrPush(['target', '_blank'])
+      else tokens[index].attrs![targetIndex][1] = '_blank'
+      const relIndex = tokens[index].attrIndex('rel')
+      if (relIndex < 0) tokens[index].attrPush(['rel', 'noopener noreferrer'])
+    }
   }
   return defaultLinkOpen ? defaultLinkOpen(tokens, index, options, env, self) : self.renderToken(tokens, index, options)
 }

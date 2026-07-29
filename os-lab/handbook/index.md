@@ -10,8 +10,11 @@ hero:
       text: 进入引导式学习
       link: /guide/ai-tutor
     - theme: alt
-      text: 认识 os-lab
+      text: 入门指南
       link: /guide/start
+    - theme: alt
+      text: 教材 PDF（OSTEP）
+      link: /downloads/ostep-zh.pdf
 
 features:
   - icon: 🧭
@@ -27,9 +30,3 @@ features:
     title: 完整实验材料
     details: 8 个 Lab 的指导与思考题按教师发布和学习进度逐层开放；教师始终可预览、编辑并安排任务。
 ---
-
-## 怎么开始
-
-第一次来：先读 **[认识 os-lab](/guide/start)** 配好环境，然后直接进入 **[引导式学习](/guide/ai-tutor)**——从 [Lab1 工作台](/learn/lab1) 起步，逐层解锁到 Lab8。
-
-学生的实验正文统一放在引导式学习工作台中：教师先开放实验，学生完成当前 Lab 的可信验证与学习复盘后，下一层才可查看和领取。

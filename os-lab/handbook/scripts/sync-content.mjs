@@ -16,17 +16,48 @@ const REPO_ROOT = path.resolve(OS_LAB_ROOT, '..')
 const SYNC_DIRS = ['labs', 'exercises', 'answers', 'project', 'setup', 'learn']
 
 const COPY_JOBS = [
-  { from: path.join(OS_LAB_ROOT, 'docs'), to: path.join(HANDBOOK_ROOT, 'project'), filter: (f) => f.endsWith('.md') },
+  {
+    from: path.join(OS_LAB_ROOT, 'docs'),
+    to: path.join(HANDBOOK_ROOT, 'project'),
+    filter: (f) => f.endsWith('.md'),
+    hideSidebar: true,
+  },
 ]
 
 const SINGLE_FILES = [
   { from: path.join(REPO_ROOT, 'docs', 'environment_setup.md'), to: path.join(HANDBOOK_ROOT, 'setup', 'environment.md') },
-  { from: path.join(REPO_ROOT, 'docs', 'os-lab.md'), to: path.join(HANDBOOK_ROOT, 'setup', 'verify-full.md') },
-  { from: path.join(REPO_ROOT, 'docs', 'reference-report.md'), to: path.join(HANDBOOK_ROOT, 'project', 'reference-report.md') },
-  { from: path.join(REPO_ROOT, 'docs', 'lab6-8.md'), to: path.join(HANDBOOK_ROOT, 'project', 'lab6-8.md') },
-  { from: path.join(REPO_ROOT, '赛题.md'), to: path.join(HANDBOOK_ROOT, 'project', 'competition.md') },
+  {
+    from: path.join(REPO_ROOT, 'docs', 'os-lab.md'),
+    to: path.join(HANDBOOK_ROOT, 'setup', 'verify-full.md'),
+    hideSidebar: true,
+  },
+  {
+    from: path.join(REPO_ROOT, 'docs', 'reference-report.md'),
+    to: path.join(HANDBOOK_ROOT, 'project', 'reference-report.md'),
+    hideSidebar: true,
+  },
+  {
+    from: path.join(REPO_ROOT, 'docs', 'lab6-8.md'),
+    to: path.join(HANDBOOK_ROOT, 'project', 'lab6-8.md'),
+    hideSidebar: true,
+  },
+  {
+    from: path.join(REPO_ROOT, '赛题.md'),
+    to: path.join(HANDBOOK_ROOT, 'project', 'competition.md'),
+    hideSidebar: true,
+  },
   { from: path.join(REPO_ROOT, 'scripts', 'activate-os-env.ps1'), to: path.join(HANDBOOK_ROOT, 'public', 'downloads', 'activate-os-env.ps1'), raw: true },
 ]
+
+/** 仓库根目录 OSTEP 中译 PDF → 站点 /downloads/ostep-zh.pdf（文件名含空格/中文，按内容匹配）。 */
+function resolveOstepPdf() {
+  try {
+    const name = fs.readdirSync(REPO_ROOT).find((f) => /OSTEP/i.test(f) && f.toLowerCase().endsWith('.pdf'))
+    return name ? path.join(REPO_ROOT, name) : null
+  } catch {
+    return null
+  }
+}
 
 function rewriteLinks(text) {
   return (
@@ -52,7 +83,10 @@ function rewriteLinks(text) {
       .replace(/\]\(\.\.\/os-lab\/docs\/([^)]+)\)/g, '](/project/$1)')
       .replace(/\]\(\.\.\/os-lab\/labs\/([^)]+)\)/g, '](/labs/$1)')
       .replace(/\]\(\.\.\/os-lab\/README\.md\)/g, '](/guide/start)')
-      .replace(/\]\(\.\.\/os-lab\/tests\/README\.md\)/g, '](/guide/verify)')
+      .replace(/\]\(\.\.\/os-lab\/tests\/README\.md\)/g, '](/guide/ai-tutor)')
+      .replace(/\]\(\/guide\/verify\)/g, '](/guide/ai-tutor)')
+      .replace(/\]\(\/guide\/progress\)/g, '](/guide/ai-tutor)')
+      .replace(/\]\(\/setup\/verify-full(?:#[^)]*)?\)/g, '](/setup/environment)')
       .replace(/\]\(\.\.\/labs\/([^)]+)\)/g, '](/labs/$1)')
       .replace(/\]\(\.\.\/lab(\d)[^)]*\)/g, (_, n) => {
         const map = {
@@ -129,7 +163,14 @@ function rewriteLinks(text) {
   )
 }
 
-function copyDir(src, dest, filter) {
+function withHiddenSidebar(body) {
+  if (/^---\r?\n[\s\S]*?\r?\n---/.test(body)) {
+    return body.replace(/^---\r?\n/, '---\nsidebar: false\n')
+  }
+  return `---\nsidebar: false\n---\n\n${body}`
+}
+
+function copyDir(src, dest, filter, hideSidebar = false) {
   if (!fs.existsSync(src)) {
     console.warn(`skip missing: ${src}`)
     return 0
@@ -139,7 +180,8 @@ function copyDir(src, dest, filter) {
   for (const name of fs.readdirSync(src)) {
     const srcPath = path.join(src, name)
     if (!fs.statSync(srcPath).isFile() || !filter(name)) continue
-    const body = rewriteLinks(fs.readFileSync(srcPath, 'utf8'))
+    let body = rewriteLinks(fs.readFileSync(srcPath, 'utf8'))
+    if (hideSidebar) body = withHiddenSidebar(body)
     const banner = `<!-- 由 scripts/sync-content.mjs 从 ${path.relative(REPO_ROOT, srcPath)} 同步，请勿直接编辑 -->\n\n`
     fs.writeFileSync(path.join(dest, name), banner + body, 'utf8')
     count++
@@ -147,13 +189,14 @@ function copyDir(src, dest, filter) {
   return count
 }
 
-function copyFile(src, dest) {
+function copyFile(src, dest, hideSidebar = false) {
   if (!fs.existsSync(src)) {
     console.warn(`skip missing: ${src}`)
     return
   }
   fs.mkdirSync(path.dirname(dest), { recursive: true })
-  const body = rewriteLinks(fs.readFileSync(src, 'utf8'))
+  let body = rewriteLinks(fs.readFileSync(src, 'utf8'))
+  if (hideSidebar) body = withHiddenSidebar(body)
   const banner = `<!-- 由 scripts/sync-content.mjs 从 ${path.relative(REPO_ROOT, src)} 同步 -->\n\n`
   fs.writeFileSync(dest, banner + body, 'utf8')
 }
@@ -164,7 +207,7 @@ function copySingleFile(job) {
     return
   }
   if (!job.raw) {
-    copyFile(job.from, job.to)
+    copyFile(job.from, job.to, Boolean(job.hideSidebar))
     return
   }
   fs.mkdirSync(path.dirname(job.to), { recursive: true })
@@ -240,11 +283,23 @@ rmSyncDirs()
 
 let total = 0
 for (const job of COPY_JOBS) {
-  total += copyDir(job.from, job.to, job.filter)
+  total += copyDir(job.from, job.to, job.filter, Boolean(job.hideSidebar))
 }
 for (const job of SINGLE_FILES) {
   copySingleFile(job)
   total++
+}
+
+const ostepPdf = resolveOstepPdf()
+if (ostepPdf) {
+  copySingleFile({
+    from: ostepPdf,
+    to: path.join(HANDBOOK_ROOT, 'public', 'downloads', 'ostep-zh.pdf'),
+    raw: true,
+  })
+  total++
+} else {
+  console.warn('skip missing: OSTEP PDF in repo root')
 }
 
 const workspacePages = writeWorkspacePages()

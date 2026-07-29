@@ -1,15 +1,15 @@
-# Lab2 教学规格草案（成员 A · M0 Day1）
-# schema 意图：单一事实源；第一阶段引用现有路径，不强制搬迁文件。
+# Lab2 教学规格（M0 冻结基线；单一事实源）
 
+schema_version: 1
 id: lab2
 title: 中断处理与多任务
-version: 0.2.0-draft
+version: 1.0.0
 feature: lab2
 prerequisites: [lab1]
 textbook:
   - OSTEP Ch.6 Limited Direct Execution
   - OSTEP Ch.7 Scheduling Introduction
-status: sample
+status: stable
 manual_revision: day2-3-layers-and-variants
 
 manual: ../../labs/lab2-trap-and-task.md
@@ -75,6 +75,9 @@ variants:
     source: ../../scaffold/exercises/lab2/fill/kernel/src/task.rs
   debug:
     manifest: variants/debug/manifest.yaml
+    source: ../../scaffold/exercises/lab2/debug/kernel/src/task.rs
+  remedial:
+    manifest: variants/remedial/manifest.yaml
     source: ../../scaffold/exercises/lab2/debug/kernel/src/task.rs
 
 verification:

@@ -20,6 +20,8 @@ node scripts/verify.mjs qemu --lab lab2
 
 任一步命令退出非零或 Lab 断言未全部通过，统一入口都会退出非零。运行前仍需按环境文档激活 Rust、QEMU 与 RISC-V target。
 
+M0 纵向闭环另由 `handbook/npm run test:smoke` 验证：使用临时 SQLite 和本机 mock 模型串起可信运行、AI 追问、报告与评分证据。完整数据流与人工演示步骤见 `docs/lab2-m0-acceptance.md`。
+
 ## Day 1 验证
 
 完整步骤见仓库 [`docs/os-lab.md`](../../docs/os-lab.md)。
