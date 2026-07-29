@@ -105,11 +105,6 @@ function fileStatusFor(path: string): FileStatusKind | null {
   return resolveFileStatus(props.lab.id, path, statusMap.value, source.value)
 }
 
-function statusSourceLabel(): string {
-  if (source.value === 'mock') return '文件状态为本地推测（/fs/status 未就绪）'
-  return ''
-}
-
 async function loadTree() {
   loading.value = true
   error.value = ''
@@ -366,8 +361,6 @@ defineExpose({ openAtLine, refreshFileStatus })
       class="ws-code-flash"
       :class="{ ok: activeTab.saveNote.startsWith('已保存') }"
     >{{ activeTab.saveNote }}</p>
-    <p v-if="statusSourceLabel()" class="ws-code-source-hint">{{ statusSourceLabel() }}</p>
-
     <div class="ws-code-main">
       <button
         v-if="treeOpen"
@@ -478,7 +471,7 @@ const CodeTreeNode = defineComponent({
     labId: { type: String, required: true },
     studentRoot: { type: Boolean, default: false },
     statusMap: { type: Object as PropType<Record<string, FileStatusKind>>, default: () => ({}) },
-    statusSource: { type: String as PropType<FileStatusSource>, default: 'mock' },
+    statusSource: { type: String as PropType<FileStatusSource>, default: 'none' },
   },
   emits: ['toggle', 'open'],
   setup(props, { emit }) {

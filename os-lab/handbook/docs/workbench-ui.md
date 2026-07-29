@@ -1,6 +1,6 @@
-# 学生工作台 UI 交互说明（第一周原型）
+# 学生工作台 UI 交互说明
 
-本文档描述教学 IDE 各面板的交互契约，供成员 A/C 联调与第 2 周实现参考。
+本文档描述教学 IDE 各面板的交互契约及当前实现，供成员 A/C 联调与回归验收。
 
 ## 布局
 
@@ -19,7 +19,7 @@
 
 ## 文件状态 A/M/T/G/!
 
-| 标记 | 含义 | 数据来源（目标） |
+| 标记 | 含义 | 数据来源 |
 | --- | --- | --- |
 | A | 本 Lab 新增 | `lab.yaml` → `starter_files.added` |
 | M | 你已修改 | `/fs/status` 基线哈希 vs 当前哈希 |
@@ -27,13 +27,13 @@
 | G | 自动生成 | `starter_files.generated` |
 | ! | 冲突/过期 | 基线升级无法合并 |
 
-第一周使用 `mockFileStatus()`；第 2 周切换为 `GET /fs/status?labId=...`。
+工作区通过 `GET /fs/status?labId=...` 获取服务端基线哈希与当前哈希；前端不再维护文件状态 mock 或重复的 Lab 文件清单。
 
 ## Problems 面板
 
 1. 学生运行 `cargo build`（或 recipe 中的构建步骤）后，服务端解析 `--message-format=json`。
 2. 列表项：级别、文件、行列、消息摘要。
-3. **点击条目** → `MonacoEditor.revealLine(line)` 跳转（第 2 周）。
+3. **点击条目** → 打开对应工作区文件，并由 `MonacoEditor.revealLine(line)` 跳转。
 4. 与 `runId` 绑定，避免混入历史构建结果。
 
 ## Trace 面板
@@ -68,4 +68,4 @@
 | 打开诊断 | `diagnostic_opened` |
 | 查看 trace | `trace_inspected` |
 
-第一周前端可不全部上报，但组件应预留 `runId`、`path`、`line` 等 props。
+诊断跳转会上报 `diagnostic_opened`，并携带 `runId`、`file`、`line` 与诊断 `code`。

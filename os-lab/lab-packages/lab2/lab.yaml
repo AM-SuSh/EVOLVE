@@ -57,6 +57,7 @@ starter_files:
   # 相对学生工作区 / 参考实现 os-lab 根
   added:
     - kernel/src/trap.rs
+    - kernel/src/trace.rs
     - kernel/src/task.rs
     - os-context/src/lib.rs
     - os-context/src/trap.asm

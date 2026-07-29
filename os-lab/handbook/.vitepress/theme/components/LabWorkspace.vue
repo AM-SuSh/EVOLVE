@@ -164,7 +164,7 @@ const currentSection = ref({ h2: '', h3: '' })
 const mobileView = ref<'manual' | 'practice'>('manual')
 /** 右栏下半区页签：学习支持与运行诊断。 */
 const rightTab = ref<'tutor' | 'report' | 'problems' | 'trace' | 'tests'>('tutor')
-/** 最近一次可信运行的 runId，供 Trace/Problems 占位关联。 */
+/** 最近一次运行的 runId，供 Trace/Problems 查询对应产物。 */
 const lastRunId = ref('')
 /** 最近一次运行的断言结果，供「测试结果」页签展示。 */
 const lastAssertions = ref<Array<{ id: string; label: string; passed: boolean; expected: string; observed: string }>>([])
@@ -1173,12 +1173,18 @@ function onSourceJump(payload: { path: string; line: number }) {
 }
 
 /** Problems 诊断点击：跳到对应文件与行。 */
-function onProblemJump(payload: { path: string; line: number }) {
+function onProblemJump(payload: { path: string; line: number; code: string }) {
   mobileView.value = 'practice'
   panelOpen.value.practice = true
   panelOpen.value.terminal = true
   persistPanels()
   void codePanelRef.value?.openAtLine(payload.path, payload.line)
+  record('diagnostic_opened', {
+    runId: lastRunId.value,
+    file: payload.path,
+    line: payload.line,
+    code: payload.code,
+  })
 }
 
 /** Trace Viewer 查看：上报 trace_inspected 事件（事件 v2）。 */

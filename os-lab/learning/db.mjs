@@ -133,6 +133,24 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS events_user_time_idx ON events(user_id, occurred_at);
 CREATE INDEX IF NOT EXISTS events_run_idx ON events(run_id);
 `)
+
+applyMigration('20260729_member_c_run_diagnostics_v1', `
+CREATE TABLE IF NOT EXISTS run_diagnostics (
+  run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  diagnostic_index INTEGER NOT NULL,
+  level TEXT NOT NULL,
+  code TEXT NOT NULL,
+  message TEXT NOT NULL,
+  file TEXT NOT NULL,
+  line INTEGER NOT NULL,
+  column_number INTEGER NOT NULL,
+  end_line INTEGER NOT NULL,
+  end_column INTEGER NOT NULL,
+  rendered TEXT NOT NULL,
+  PRIMARY KEY(run_id, diagnostic_index)
+);
+CREATE INDEX IF NOT EXISTS run_diagnostics_run_idx ON run_diagnostics(run_id);
+`)
 try {
   db.exec('ALTER TABLE reports ADD COLUMN feedback TEXT NOT NULL DEFAULT ""')
 } catch {
@@ -344,7 +362,7 @@ export function createRun(input) {
   return { ok: true, runId: input.id }
 }
 
-export function finishRun(userId, result) {
+export function finishRun(userId, result, diagnostics = []) {
   db.exec('BEGIN IMMEDIATE')
   try {
     const changed = db.prepare(
@@ -385,6 +403,27 @@ export function finishRun(userId, result) {
         assertion.observed,
       )
     }
+    const insertDiagnostic = db.prepare(
+      `INSERT INTO run_diagnostics
+        (run_id, diagnostic_index, level, code, message, file, line, column_number, end_line, end_column, rendered)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    db.prepare('DELETE FROM run_diagnostics WHERE run_id = ?').run(result.runId)
+    diagnostics.forEach((diagnostic, index) => {
+      insertDiagnostic.run(
+        result.runId,
+        index,
+        diagnostic.level,
+        diagnostic.code,
+        diagnostic.message,
+        diagnostic.file,
+        diagnostic.line,
+        diagnostic.column,
+        diagnostic.endLine,
+        diagnostic.endColumn,
+        diagnostic.rendered,
+      )
+    })
     db.exec('COMMIT')
     return { ok: true }
   } catch (error) {
@@ -419,6 +458,27 @@ export function getRun(userId, runId) {
     trace: { version: row.trace_version, count: row.trace_count, hash: row.trace_hash, path: row.trace_path },
     verified: Boolean(row.verified),
     status: row.status,
+  }
+}
+
+export function getRunDiagnostics(userId, runId) {
+  const run = db
+    .prepare('SELECT id, lab_id, workspace_version, status FROM runs WHERE id = ? AND user_id = ?')
+    .get(runId, userId)
+  if (!run) return null
+  const diagnostics = db
+    .prepare(
+      `SELECT diagnostic_index AS diagnosticIndex, level, code, message, file, line,
+              column_number AS column, end_line AS endLine, end_column AS endColumn, rendered
+       FROM run_diagnostics WHERE run_id = ? ORDER BY diagnostic_index`,
+    )
+    .all(runId)
+  return {
+    runId: run.id,
+    labId: run.lab_id,
+    workspaceVersion: run.workspace_version,
+    status: run.status,
+    diagnostics,
   }
 }
 

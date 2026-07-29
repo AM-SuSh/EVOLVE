@@ -117,6 +117,27 @@
 - Sv39 page walk 视图未实现：真实 trace 无 `page_walk` 事件，按 `visualization/README.md` 应显示降级空态而非伪造；OPRE 页表任务改走源码降级路径（`opre-tasks.md` 已规定）。
 - 本轮没有提交或推送（与既往轮次一致）。
 
+## 2026-07-29 - Task: 成员 C M1 真实文件状态与编译诊断闭环
+
+### What was done
+
+- **真实文件状态**：实现 `GET /fs/status?labId=...`，由学生脚手架基线统一计算 A/M/T/G/! 状态、基线哈希和当前哈希，移除前端 `mockFileStatus()`。
+- **真实编译诊断**：可信 Cargo recipe 使用 `--message-format=json`；服务端流式解析 rustc 诊断并保留终端可读输出，将结构化诊断按 `runId` 写入 SQLite，通过登录态保护的 `GET /run/diagnostics` 查询。
+- **Problems 跳转**：Problems 面板展示最近一次运行的真实错误和警告；点击后打开对应工作区文件、定位 Monaco 行号，并记录 `diagnostic_opened` 事件。
+- **隔离与闭环回归**：冒烟测试创建两个学生工作区，验证基线状态、诊断归属与跨用户拒绝、文件互不污染，以及“修改 → 编译错误 → 查询/跳转契约 → 修复 → 两用户并发可信通过”。
+- **Lab2 脚手架修复**：Lab2 发放 `kernel/src/trace.rs`，生成的 kernel feature 包含 `trace-edu`，确保学生工作区可以执行可信 Lab2 recipe。
+
+### Testing
+
+- `npm test`：19 项全部通过。
+- `npm run test:smoke`：通过；4 条可信运行、6 条运行事件、12 项通过断言、至少 1 条真实编译诊断与 1 条诊断跳转事件、10 条 Lab2 同会话学习事件、1 份报告。
+- `npx vitepress build` 与 `git diff --check`：通过。
+
+### Notes
+
+- M0 第一周基线已经冻结；本轮完成成员 C 的 M1 文件状态、诊断持久化与多用户隔离主链。Trace Viewer 的查询与交互仍属于后续工作。
+- 中文文件名 Markdown 保持现有工作区状态，不纳入本轮实现范围。
+
 ## 2026-07-29 - Task: 成员B 第2-3周 教学 IDE MVP（多标签 / 文件状态 / Problems / 统一上下文）
 
 ### What was done

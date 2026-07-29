@@ -105,6 +105,9 @@ export interface LearningEvent {
   duration?: number
   outputHash?: string
   assertions?: Array<{ id: string; label: string; passed: boolean; expected: string; observed: string }>
+  file?: string
+  line?: number
+  code?: string
 }
 
 export interface TutorScore {

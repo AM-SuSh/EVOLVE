@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import http from 'node:http'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -10,6 +10,8 @@ import { fileURLToPath } from 'node:url'
 const smokeRoot = mkdtempSync(path.join(tmpdir(), 'os-lab-tutor-smoke-'))
 const dbPath = path.join(smokeRoot, 'learning.db')
 const dataDir = path.join(smokeRoot, 'sessions')
+const studentsRoot = path.join(smokeRoot, 'student-labs')
+const teacherFile = path.join(smokeRoot, 'teacher.json')
 const port = 18_000 + Math.floor(Math.random() * 1_000)
 const endpoint = `http://127.0.0.1:${port}`
 let logs = ''
@@ -54,6 +56,8 @@ const server = spawn(process.execPath, ['tutor-server.mjs'], {
     OS_LAB_DB_PATH: dbPath,
     OS_LAB_TUTOR_DATA_DIR: dataDir,
     OS_LAB_TUTOR_PORT: String(port),
+    OS_LAB_STUDENTS_ROOT: studentsRoot,
+    OS_LAB_TEACHER_FILE: teacherFile,
     OS_LAB_LLM_BASE_URL: mockBaseUrl,
     OS_LAB_LLM_MODEL: 'm0-smoke-model',
   },
@@ -95,6 +99,23 @@ function parseSseFrames(stream) {
     .map((line) => JSON.parse(line.slice('data: '.length)))
 }
 
+async function postJson(pathname, headers, body = {}) {
+  return fetch(`${endpoint}${pathname}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  })
+}
+
+async function runLab(headers, sessionId) {
+  const response = await postJson('/run', { Accept: 'text/event-stream', ...headers }, {
+    labId: 'lab2',
+    sessionId,
+  })
+  assert.equal(response.status, 200)
+  return parseSseFrames(await response.text())
+}
+
 try {
   await waitForServer()
   const registration = await fetch(`${endpoint}/auth/register`, {
@@ -103,11 +124,18 @@ try {
     body: JSON.stringify({ username: 'member-c-smoke', password: 'secret1', className: '计科2301' }),
   }).then((response) => response.json())
   assert.equal(registration.ok, true)
+  const otherRegistration = await postJson('/auth/register', {}, {
+    username: 'member-c-smoke-2',
+    password: 'secret2',
+    className: '计科2301',
+  }).then((response) => response.json())
+  assert.equal(otherRegistration.ok, true)
 
   const unauthenticatedManual = await fetch(`${endpoint}/manual?labId=lab1`)
   assert.equal(unauthenticatedManual.status, 401)
 
   const studentHeaders = { Authorization: `Bearer ${registration.token}` }
+  const otherStudentHeaders = { Authorization: `Bearer ${otherRegistration.token}` }
   const initialAccess = await fetch(`${endpoint}/learning/access`, { headers: studentHeaders })
     .then((response) => response.json())
   assert.equal(initialAccess.labs.find((lab) => lab.labId === 'lab1').unlocked, true)
@@ -117,6 +145,13 @@ try {
   assert.equal(lab1Manual.status, 200)
   assert.match((await lab1Manual.json()).content, /Lab1/)
   assert.equal((await fetch(`${endpoint}/manual?labId=lab2`, { headers: studentHeaders })).status, 403)
+
+  const lab1Upgrade = await postJson('/scaffold/upgrade', studentHeaders)
+  assert.equal(lab1Upgrade.status, 200)
+  assert.equal((await lab1Upgrade.json()).lab, 'lab1')
+  const otherLab1Upgrade = await postJson('/scaffold/upgrade', otherStudentHeaders)
+  assert.equal(otherLab1Upgrade.status, 200)
+  assert.equal((await otherLab1Upgrade.json()).lab, 'lab1')
 
   const teacher = await fetch(`${endpoint}/auth/login`, {
     method: 'POST',
@@ -134,15 +169,24 @@ try {
   // 模拟 Lab1 已产生可信验证；复盘仍通过公开事件接口提交。
   const evidenceDb = new DatabaseSync(dbPath)
   const student = evidenceDb.prepare('SELECT id FROM users WHERE username = ?').get('member-c-smoke')
-  evidenceDb.prepare(
+  const otherStudent = evidenceDb.prepare('SELECT id FROM users WHERE username = ?').get('member-c-smoke-2')
+  const insertVerifiedLab1 = evidenceDb.prepare(
     `INSERT INTO runs
       (id, user_id, learning_session_id, lab_id, recipe_id, command_json, workspace_version,
        trusted, status, started_at, finished_at, exit_code, verified)
      VALUES (?, ?, ?, 'lab1', 'lab1.verify.v1', '[]', 'smoke-workspace', 1, 'finished', ?, ?, 0, 1)`,
-  ).run(
+  )
+  insertVerifiedLab1.run(
     '22222222-2222-4222-8222-222222222222',
     student.id,
     'smoke-lab1-session',
+    '2026-07-28T00:00:00.000Z',
+    '2026-07-28T00:00:01.000Z',
+  )
+  insertVerifiedLab1.run(
+    '33333333-3333-4333-8333-333333333333',
+    otherStudent.id,
+    'smoke-lab1-session-2',
     '2026-07-28T00:00:00.000Z',
     '2026-07-28T00:00:01.000Z',
   )
@@ -164,27 +208,121 @@ try {
     }),
   })
   assert.equal(reflection.status, 202)
+  const otherReflection = await postJson('/events', otherStudentHeaders, {
+    event: {
+      version: 1,
+      id: 'smoke-lab1-reflection-2',
+      sessionId: 'smoke-lab1-session-2',
+      labId: 'lab1',
+      timestamp: '2026-07-28T00:00:02.000Z',
+      type: 'reflection_submitted',
+      stage: 'reflect',
+      content: '我用输出断言验证了启动链。',
+    },
+  })
+  assert.equal(otherReflection.status, 202)
   const progressedAccess = await fetch(`${endpoint}/learning/access`, { headers: studentHeaders })
     .then((response) => response.json())
   assert.equal(progressedAccess.labs.find((lab) => lab.labId === 'lab2').unlocked, true)
   assert.equal((await fetch(`${endpoint}/manual?labId=lab2`, { headers: studentHeaders })).status, 200)
 
-  const response = await fetch(`${endpoint}/run`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
-      ...studentHeaders,
-    },
-    body: JSON.stringify({ labId: 'lab2', sessionId: 'smoke-learning-session' }),
+  const lab2Upgrade = await postJson('/scaffold/upgrade', studentHeaders, { variant: 'fill' })
+  assert.equal(lab2Upgrade.status, 200)
+  assert.equal((await lab2Upgrade.json()).lab, 'lab2')
+  const otherLab2Upgrade = await postJson('/scaffold/upgrade', otherStudentHeaders, { variant: 'fill' })
+  assert.equal(otherLab2Upgrade.status, 200)
+  assert.equal((await otherLab2Upgrade.json()).lab, 'lab2')
+
+  const fsStatus = await fetch(`${endpoint}/fs/status?labId=lab2`, { headers: studentHeaders })
+    .then((response) => response.json())
+  assert.match(fsStatus.workspaceVersion, /^sha256:[a-f0-9]{64}$/)
+  const taskStatus = fsStatus.files.find((file) => file.path === 'kernel/src/task.rs')
+  assert.equal(taskStatus.status, 'todo')
+  assert.match(taskStatus.baselineHash, /^[a-f0-9]{64}$/)
+  const generatedManifest = await fetch(`${endpoint}/fs/file?path=kernel%2FCargo.toml`, { headers: studentHeaders })
+    .then((response) => response.json())
+  assert.match(generatedManifest.content, /trace-edu = \[\]/)
+
+  const correctTask = readFileSync(
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'kernel', 'src', 'task.rs'),
+    'utf8',
+  )
+  const compileMarker = 'm1 smoke diagnostic'
+  const brokenSave = await postJson('/fs/save', studentHeaders, {
+    path: 'kernel/src/task.rs',
+    content: `${correctTask}\ncompile_error!("${compileMarker}");\n`,
   })
-  assert.equal(response.status, 200)
-  const stream = await response.text()
-  const runFrames = parseSseFrames(stream)
+  assert.equal(brokenSave.status, 200)
+
+  const brokenFrames = await runLab(studentHeaders, 'smoke-broken-session')
+  const brokenRun = brokenFrames.find((frame) => frame.type === 'run')
+  const brokenExit = brokenFrames.find((frame) => frame.type === 'exit')
+  const brokenOutput = brokenFrames.filter((frame) => frame.type === 'output').map((frame) => frame.text).join('')
+  assert.equal(brokenExit.verified, false)
+  assert.notEqual(brokenExit.code, 0)
+  const diagnosticResponse = await fetch(
+    `${endpoint}/run/diagnostics?runId=${encodeURIComponent(brokenRun.runId)}`,
+    { headers: studentHeaders },
+  )
+  assert.equal(diagnosticResponse.status, 200)
+  const diagnosticPayload = await diagnosticResponse.json()
+  assert.equal(diagnosticPayload.runId, brokenRun.runId)
+  assert.equal(
+    diagnosticPayload.diagnostics.some((item) => item.message.includes(compileMarker)),
+    true,
+    `${JSON.stringify(diagnosticPayload.diagnostics)}\n${brokenOutput.slice(-5000)}`,
+  )
+  assert.equal(
+    diagnosticPayload.diagnostics.some((item) => item.file === 'kernel/src/task.rs'),
+    true,
+    JSON.stringify(diagnosticPayload.diagnostics),
+  )
+  const openedDiagnostic = diagnosticPayload.diagnostics.find((item) => item.file === 'kernel/src/task.rs')
+  const diagnosticOpened = await postJson('/events', studentHeaders, {
+    event: {
+      version: 2,
+      id: 'smoke-diagnostic-opened',
+      sessionId: 'smoke-broken-session',
+      labId: 'lab2',
+      timestamp: '2026-07-29T00:00:03.000Z',
+      type: 'diagnostic_opened',
+      stage: 'debug',
+      runId: brokenRun.runId,
+      file: openedDiagnostic.file,
+      line: openedDiagnostic.line,
+      code: openedDiagnostic.code,
+    },
+  })
+  assert.equal(diagnosticOpened.status, 202)
+
+  const crossUserDiagnostics = await fetch(
+    `${endpoint}/run/diagnostics?runId=${encodeURIComponent(brokenRun.runId)}`,
+    { headers: otherStudentHeaders },
+  )
+  assert.equal(crossUserDiagnostics.status, 404)
+  const otherTask = await fetch(`${endpoint}/fs/file?path=kernel%2Fsrc%2Ftask.rs`, { headers: otherStudentHeaders })
+    .then((response) => response.json())
+  assert.doesNotMatch(otherTask.content, new RegExp(compileMarker))
+
+  assert.equal((await postJson('/fs/save', studentHeaders, {
+    path: 'kernel/src/task.rs',
+    content: correctTask,
+  })).status, 200)
+  assert.equal((await postJson('/fs/save', otherStudentHeaders, {
+    path: 'kernel/src/task.rs',
+    content: correctTask,
+  })).status, 200)
+
+  const [runFrames, otherRunFrames] = await Promise.all([
+    runLab(studentHeaders, 'smoke-learning-session'),
+    runLab(otherStudentHeaders, 'smoke-learning-session-2'),
+  ])
   const runFrame = runFrames.find((frame) => frame.type === 'run')
   const exitFrame = runFrames.find((frame) => frame.type === 'exit')
+  const otherExitFrame = otherRunFrames.find((frame) => frame.type === 'exit')
   assert.match(runFrame.runId, /^[0-9a-f-]{36}$/)
   assert.equal(exitFrame.verified, true)
+  assert.equal(otherExitFrame.verified, true)
   assert.equal(exitFrame.result.runId, runFrame.runId)
   assert.equal(exitFrame.result.trace.count > 0, true)
   assert.equal(exitFrame.assertions.length, 6)
@@ -317,11 +455,19 @@ try {
     runs: db.prepare('SELECT count(*) AS value FROM runs WHERE verified = 1').get().value,
     events: db.prepare("SELECT count(*) AS value FROM events WHERE type IN ('run_started', 'run_finished')").get().value,
     assertions: db.prepare('SELECT count(*) AS value FROM run_assertions WHERE passed = 1').get().value,
+    diagnostics: db.prepare('SELECT count(*) AS value FROM run_diagnostics').get().value,
+    diagnosticOpens: db.prepare("SELECT count(*) AS value FROM events WHERE type = 'diagnostic_opened'").get().value,
     learningChain: db.prepare("SELECT count(*) AS value FROM events WHERE session_id = 'smoke-learning-session'").get().value,
     reports: db.prepare("SELECT count(*) AS value FROM reports WHERE lab_id = 'lab2'").get().value,
   }
   db.close()
-  assert.deepEqual(counts, { runs: 2, events: 2, assertions: 6, learningChain: 10, reports: 1 })
+  assert.equal(counts.runs, 4)
+  assert.equal(counts.events, 6)
+  assert.equal(counts.assertions, 12)
+  assert.equal(counts.diagnostics > 0, true)
+  assert.equal(counts.diagnosticOpens, 1)
+  assert.equal(counts.learningChain, 10)
+  assert.equal(counts.reports, 1)
   console.log(`tutor smoke passed: ${JSON.stringify(counts)}`)
 } catch (error) {
   console.error(logs)

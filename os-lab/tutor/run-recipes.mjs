@@ -5,7 +5,7 @@ function cargoRunStep(labId, features = labId) {
   return {
     title: `cargo run -p kernel --features ${features} --release`,
     cmd: 'cargo',
-    args: ['run', '-p', 'kernel', '--features', features, '--release'],
+    args: ['run', '-p', 'kernel', '--features', features, '--release', '--message-format=json'],
   }
 }
 
@@ -14,7 +14,7 @@ function diskSteps(labId) {
     {
       title: `cargo build -p kernel --features ${labId} --release`,
       cmd: 'cargo',
-      args: ['build', '-p', 'kernel', '--features', labId, '--release'],
+      args: ['build', '-p', 'kernel', '--features', labId, '--release', '--message-format=json'],
     },
     {
       title: 'qemu-system-riscv64（VirtIO 磁盘）',

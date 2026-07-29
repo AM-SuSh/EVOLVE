@@ -17,22 +17,12 @@ export const FILE_STATUS_META: Record<FileStatusKind, FileStatusMeta> = {
   conflict: { kind: 'conflict', badge: '!', label: '与参考基线冲突或过期' },
 }
 
-/**
- * 第一周 mock：按 Lab 与路径返回状态，待 GET /fs/status 后替换。
- * Lab2 fill/debug：task.rs 为待完成，Cargo.toml 为自动生成。
- */
-export function mockFileStatus(labId: string, path: string): FileStatusKind | null {
-  const normalized = path.replace(/\\/g, '/')
-  if (labId === 'lab2') {
-    if (normalized === 'kernel/src/task.rs') return 'todo'
-    if (normalized.endsWith('Cargo.toml')) return 'generated'
-    if (normalized === 'kernel/src/trap.rs') return 'added'
-  }
-  if (labId === 'lab3') {
-    if (normalized.includes('memory') || normalized.includes('page_table')) return 'todo'
-    if (normalized.endsWith('Cargo.toml')) return 'generated'
-  }
-  return null
+export interface FileStatusRecord {
+  path: string
+  introducedBy: string
+  status: FileStatusKind | null
+  baselineHash: string
+  currentHash: string | null
 }
 
 /** 根据扩展名推断 Monaco 语言 ID。 */
