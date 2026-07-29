@@ -94,4 +94,11 @@
 | 调度 | `task_switch` | 显式状态枚举 |
 | 页表 | （PoC 未承诺） | `page_walk` / `page_fault` |
 
+## 实现状态（成员 B · 第 4-5 周）
+
+- Trap 时序图、任务状态时间线两视图已实现（`TraceViewer.vue` + `TraceTrapView.vue` + `TraceTimelineView.vue` + `useTracePlayback.ts`）。
+- 播放/单步/速度/类型与 pid 过滤/源码跳转/关键帧插入报告/`trace_inspected` 上报/404 优雅降级/移动端堆叠均已落地。
+- 页表视图暂未实现：真实 trace 无 `page_walk` 事件，按本规格应显示降级空态而非伪造，故不交付该视图组件；OPRE 页表任务改走源码降级路径。
+- 后端 `GET /runs/:id/trace` 查询接口属成员 C 第 4-5 周任务；接口提供后前端即生效，无需再改。
+
 A 的验收：B 交付交互后，用 `opre-tasks.md` 三套题走查；任一套无法靠真实数据作答则打回。

@@ -38,10 +38,19 @@
 
 ## Trace 面板
 
-1. 可信运行结束后，按 `runId` 拉取 trace JSONL（`trace-v1` schema）。
-2. 支持播放/暂停/单步/事件过滤/跳到源码。
-3. 空数据与异常 trace 显示明确空态，不展示预设动画。
-4. 关键帧可插入实验报告作为证据。
+1. 可信运行结束后，按 `runId` 调 `GET /runs/:id/trace` 拉取 trace JSONL（`trace-v1` schema）。
+   - 接口由成员 C 提供；未就绪时（404/异常）保持可信空态，文案明确「查询接口尚未返回真实事件」，不 mock、不播放预设动画。
+   - 前端再校验一遍事件形态（`isValidTraceEvent`），异常 trace 不污染视图。
+2. 两个视图（Lab2 主视图）：
+   - **Trap 时序**（`TraceTrapView`）：纵向时间轴按事件顺序排列（不允许前端重排）；`trap_enter` 为主标记，`task_switch` 为上下文；连续 `trap_enter` 之间无 `task_switch` 时标注「单任务 syscall 密集」。
+   - **任务时间线**（`TraceTimelineView`）：每个 pid 一条横向泳道；`task_switch` 画 Running 块（延伸到下一条 switch）；`trap_enter` 画轻量竖线；两次 Running 之间的 Ready/Exited 不伪造，标注「未观测」。
+3. 播放控制：播放/暂停、单步前进/后退、速度（0.5/1/2/4x）、事件类型/pid 过滤、重置；播放头竖线在时间线视图中标出当前位置。
+4. 大数据：事件列表 >200 条时只渲染前 200 条并提示「用过滤或播放控制查看其余」；视图主体靠滚动承载。
+5. 源码跳转：选中事件后「跳到源码」按静态映射跳转（`trap_enter` → `kernel/src/trap.rs`，`task_switch` → `kernel/src/task.rs`），复用 `codePanelRef.openAtLine`。
+6. 关键帧插入报告：选中事件后「插入报告」把事件格式化为证据文本，复用 `LabWorkspace.onInsertReport` → `ReportPanel` 过程记录。
+7. 事件上报：切换视图或移动播放头时上报 `trace_inspected`（事件 v2，字段 `runId`/`view`/`eventRange:{start,end}`）。
+8. 空数据与异常 trace 显示明确空态，不展示预设动画；移动端控制条与视图纵向堆叠。
+9. Sv39 page walk 视图暂未实现：真实 trace 无 `page_walk` 事件，按 `visualization/README.md` 应显示降级空态而非伪造；OPRE 页表任务改为源码降级路径。
 
 ## 终端（xterm）
 
