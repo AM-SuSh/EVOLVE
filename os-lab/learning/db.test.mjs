@@ -54,9 +54,23 @@ test('migration binds events and immutable runs to the authenticated user', () =
     assertions: [{ id: 'a1', label: 'trace', passed: true, expected: '1', observed: '1' }],
     output: { hash: 'a'.repeat(64), bytes: 10, path: 'runs/run.output.log' },
     trace: { version: 1, count: 2, hash: 'b'.repeat(64), path: 'runs/run.trace.jsonl' },
-  })
+  }, [{
+    level: 'error',
+    code: 'E0425',
+    message: 'cannot find value',
+    file: 'kernel/src/main.rs',
+    line: 12,
+    column: 5,
+    endLine: 12,
+    endColumn: 12,
+    rendered: 'error[E0425]: cannot find value',
+  }])
   const stored = learningDb.getRun(session.id, runId)
   assert.equal(stored.verified, true)
   assert.equal(stored.trace.count, 2)
+  const diagnosticResult = learningDb.getRunDiagnostics(session.id, runId)
+  assert.equal(diagnosticResult.diagnostics.length, 1)
+  assert.equal(diagnosticResult.diagnostics[0].code, 'E0425')
+  assert.equal(learningDb.getRunDiagnostics(999999, runId), null)
   assert.throws(() => learningDb.finishRun(999999, { ...stored, stopped: false }), /不属于当前用户/)
 })

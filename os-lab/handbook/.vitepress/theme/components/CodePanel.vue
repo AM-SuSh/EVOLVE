@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { FileCode2, FolderTree, RefreshCw, X } from 'lucide-vue-next'
 import { authHeaders, type TutorLab } from '../tutor-model'
-import { mockFileStatus, monacoLanguageForPath, type FileStatusKind } from '../file-status'
+import { monacoLanguageForPath, type FileStatusKind, type FileStatusRecord } from '../file-status'
 import FileStatusBadge from './FileStatusBadge.vue'
 
 const MonacoEditor = defineAsyncComponent(() => import('./MonacoEditor.vue'))
@@ -12,6 +12,7 @@ const props = defineProps<{
   endpoint: string
   student?: string
   dark?: boolean
+  diagnosticRequest?: { id: number; path: string; line: number }
 }>()
 
 function apiUrl(pathname: string) {
@@ -42,6 +43,9 @@ const clientReady = ref(false)
 const codeRoot = ref<HTMLElement | null>(null)
 /** 桌面端是常驻侧栏，窄屏下由同一状态控制抽屉。 */
 const treeOpen = ref(true)
+const fileStatuses = ref<Record<string, FileStatusKind>>({})
+const revealLine = ref(0)
+const revealKey = ref(0)
 
 const isStudent = computed(() => rootName.value.startsWith('student-labs'))
 const canEdit = computed(() => isStudent.value && !fileTruncated.value && Boolean(activePath.value))
@@ -78,7 +82,28 @@ const labFiles = computed(() => {
 
 function fileStatusFor(path: string): FileStatusKind | null {
   if (!isStudent.value) return null
-  return mockFileStatus(props.lab.id, path)
+  return fileStatuses.value[path] || null
+}
+
+async function loadStatuses() {
+  if (!isStudent.value) {
+    fileStatuses.value = {}
+    return
+  }
+  try {
+    const response = await fetch(apiUrl(`/fs/status?labId=${encodeURIComponent(props.lab.id)}`), {
+      headers: authHeaders(),
+    })
+    if (!response.ok) throw new Error(`导师服务返回 ${response.status}`)
+    const payload = await response.json()
+    fileStatuses.value = Object.fromEntries(
+      (payload.files || [])
+        .filter((item: FileStatusRecord) => item.status)
+        .map((item: FileStatusRecord) => [item.path, item.status]),
+    )
+  } catch {
+    fileStatuses.value = {}
+  }
 }
 
 async function loadTree() {
@@ -91,6 +116,7 @@ async function loadTree() {
     tree.value = payload.tree || []
     rootName.value = payload.root || 'os-lab'
     expanded.value = new Set(tree.value.filter((n) => n.type === 'dir').map((n) => n.path))
+    await loadStatuses()
   } catch (err) {
     error.value =
       err instanceof Error && err.message
@@ -129,7 +155,7 @@ async function openFile(relative: string) {
   if (!allowDiscardDraft(relative)) return
   if (relative === activePath.value) {
     closeTreeOnNarrowScreen()
-    return
+    return true
   }
   fileLoading.value = true
   fileError.value = ''
@@ -151,8 +177,10 @@ async function openFile(relative: string) {
       next.add(parts.slice(0, index).join('/'))
     }
     expanded.value = next
+    return true
   } catch (err) {
     fileError.value = err instanceof Error ? err.message : '读取文件失败'
+    return false
   } finally {
     fileLoading.value = false
   }
@@ -171,6 +199,7 @@ async function saveEdit() {
     if (!response.ok) throw new Error(payload?.error || `导师服务返回 ${response.status}`)
     fileContent.value = draft.value
     saveNote.value = '已保存。可在下方“运行与验证”中检查修改。'
+    await loadStatuses()
   } catch (err) {
     saveNote.value = err instanceof Error ? err.message : '保存失败'
   } finally {
@@ -193,6 +222,18 @@ onMounted(() => {
   window.addEventListener('beforeunload', warnBeforeUnload)
   void loadTree()
 })
+
+watch(
+  () => props.diagnosticRequest,
+  async (request) => {
+    if (!request || !(await openFile(request.path))) return
+    revealLine.value = request.line
+    revealKey.value = request.id
+  },
+  { immediate: true },
+)
+
+watch(() => props.lab.id, () => void loadStatuses())
 
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', warnBeforeUnload)
@@ -273,8 +314,8 @@ onBeforeUnmount(() => {
                 :depth="0"
                 :expanded="expanded"
                 :active-path="activePath"
-                :lab-id="lab.id"
                 :student-root="isStudent"
+                :status-map="fileStatuses"
                 @toggle="toggleDir"
                 @open="openFile"
               />
@@ -311,6 +352,8 @@ onBeforeUnmount(() => {
             :language="editorLanguage"
             :read-only="!canEdit"
             :dark="dark"
+            :reveal-line="revealLine"
+            :reveal-key="revealKey"
             @save="onEditorSave"
           />
         </template>
@@ -329,7 +372,7 @@ import {
   FolderOpen as IconFolderOpen,
 } from 'lucide-vue-next'
 import FileStatusBadge from './FileStatusBadge.vue'
-import { mockFileStatus, type FileStatusKind } from '../file-status'
+import { type FileStatusKind } from '../file-status'
 
 interface FsNodeShape {
   name: string
@@ -346,14 +389,14 @@ const CodeTreeNode = defineComponent({
     depth: { type: Number, required: true },
     expanded: { type: Object as PropType<Set<string>>, required: true },
     activePath: { type: String, required: true },
-    labId: { type: String, required: true },
     studentRoot: { type: Boolean, default: false },
+    statusMap: { type: Object as PropType<Record<string, FileStatusKind>>, required: true },
   },
   emits: ['toggle', 'open'],
   setup(props, { emit }) {
     function status(): FileStatusKind | null {
       if (!props.studentRoot || props.node.type !== 'file') return null
-      return mockFileStatus(props.labId, props.node.path)
+      return props.statusMap[props.node.path] || null
     }
     return () => {
       const { node, depth } = props
@@ -400,8 +443,8 @@ const CodeTreeNode = defineComponent({
                 depth: depth + 1,
                 expanded: props.expanded,
                 activePath: props.activePath,
-                labId: props.labId,
                 studentRoot: props.studentRoot,
+                statusMap: props.statusMap,
                 onToggle: (value: FsNodeShape) => emit('toggle', value),
                 onOpen: (value: string) => emit('open', value),
               }),

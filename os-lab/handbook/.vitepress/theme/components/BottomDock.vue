@@ -17,6 +17,7 @@ defineProps<{
   runId?: string
 
   labId?: string
+  endpoint: string
 
 }>()
 
@@ -96,7 +97,7 @@ function selectTab(tab: DockTab) {
 
       <div v-show="activeTab === 'problems'" class="ws-dock-pane ws-dock-scroll">
 
-        <ProblemsPanel :run-id="runId" />
+        <ProblemsPanel :endpoint="endpoint" :run-id="runId" />
 
       </div>
 

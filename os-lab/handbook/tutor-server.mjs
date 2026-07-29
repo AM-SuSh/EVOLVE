@@ -15,6 +15,7 @@ import {
 import { scoreLearningEvents } from '../learning/rubric.mjs'
 import { accessForLab, buildLearningAccess } from '../learning/access.mjs'
 import { collectTraceEvents, validateInteractionEvent, validateRunResult } from '../tutor/contracts.mjs'
+import { createCargoJsonCollector } from '../tutor/cargo-diagnostics.mjs'
 import { evaluateRunAssertions, getRunRecipe } from '../tutor/run-recipes.mjs'
 import {
   EXERCISES,
@@ -27,6 +28,7 @@ import {
   sanitizeUser,
   scaffoldStatus,
   studentRootFor,
+  workspaceBaselines,
   writeAssignment,
   writeTeacherConfig,
 } from '../scripts/scaffold.mjs'
@@ -35,6 +37,7 @@ import {
   createRun,
   finishRun,
   getLearningEvidence,
+  getRunDiagnostics,
   insertLearningEvents,
   listAllReports,
   listMyReports,
@@ -691,8 +694,7 @@ function runStep(step, response, run, cwd) {
     sendFrame(response, { type: 'step', title: step.title })
     const child = spawn(step.cmd, step.args, { cwd, env: process.env })
     run.child = child
-    const forward = (chunk) => {
-      const text = chunk.toString('utf8')
+    const forwardText = (text) => {
       if (run.outputLength >= RUN_OUTPUT_CAP) return
       const remaining = RUN_OUTPUT_CAP - run.outputLength
       const accepted = text.slice(0, remaining)
@@ -704,13 +706,20 @@ function runStep(step, response, run, cwd) {
         sendFrame(response, { type: 'output', text: '\n[输出过长，已截断……]\n' })
       }
     }
-    child.stdout.on('data', forward)
-    child.stderr.on('data', forward)
+    const cargoJson = step.cmd === 'cargo' && step.args.some((arg) => arg.startsWith('--message-format=json'))
+    const collector = cargoJson
+      ? createCargoJsonCollector(cwd, forwardText, (diagnostic) => run.diagnostics.push(diagnostic))
+      : null
+    child.stdout.on('data', (chunk) => collector ? collector.push(chunk) : forwardText(chunk.toString('utf8')))
+    child.stderr.on('data', (chunk) => forwardText(chunk.toString('utf8')))
     child.on('error', (error) => {
       sendFrame(response, { type: 'output', text: `无法启动 ${step.cmd}：${error.message}\n` })
       resolve(-1)
     })
-    child.on('close', (code) => resolve(code ?? -1))
+    child.on('close', (code) => {
+      collector?.flush()
+      resolve(code ?? -1)
+    })
   })
 }
 
@@ -845,6 +854,7 @@ async function handleRun(body, request, response, origin, session) {
     output: [],
     outputLength: 0,
     outputTruncated: false,
+    diagnostics: [],
   }
   createRun({
     id: run.id,
@@ -910,7 +920,7 @@ async function handleRun(body, request, response, origin, session) {
     const contractResult = { ...result }
     delete contractResult.stopped
     if (!validateRunResult(contractResult)) throw new Error('run-result-v1 内部契约校验失败')
-    finishRun(run.userId, result)
+    finishRun(run.userId, result, run.diagnostics)
     const finishedEvent = runEvent(run, 'run_finished', result)
     insertLearningEvents(run.userId, [finishedEvent])
     await persistEvents([finishedEvent])
@@ -1017,6 +1027,43 @@ async function handleFsFile(rootDir, relative, response, origin) {
   } catch {
     json(response, 404, { error: '文件不存在或不可读' }, origin)
   }
+}
+
+async function fsStatusFor(workRoot, labId) {
+  const workspaceVersion = await workspaceVersionFor(workRoot)
+  if (!workRoot.user) return { workspaceVersion, files: [] }
+
+  const files = []
+  for (const baseline of await workspaceBaselines(workRoot.user)) {
+    if (!isViewableFile(path.basename(baseline.path))) continue
+    const baselineContent = baseline.content ?? await readFile(baseline.source)
+    const baselineHash = sha256(baselineContent)
+    const full = resolveFsPath(workRoot.root, baseline.path)
+    let currentHash = null
+    if (full) {
+      try {
+        currentHash = sha256(await readFile(full))
+      } catch {
+        currentHash = null
+      }
+    }
+
+    let status = null
+    if (!currentHash) status = 'conflict'
+    else if (baseline.kind === 'generated') status = currentHash === baselineHash ? 'generated' : 'conflict'
+    else if (currentHash !== baselineHash) status = 'modified'
+    else if (baseline.kind === 'todo') status = 'todo'
+    else if (baseline.labId === labId) status = 'added'
+
+    files.push({
+      path: baseline.path,
+      introducedBy: baseline.labId,
+      status,
+      baselineHash,
+      currentHash,
+    })
+  }
+  return { workspaceVersion, files }
 }
 
 const server = http.createServer(async (request, response) => {
@@ -1180,6 +1227,21 @@ const server = http.createServer(async (request, response) => {
       return
     }
 
+    if (request.method === 'GET' && pathname === '/run/diagnostics') {
+      if (!session) {
+        json(response, 401, { error: '请先登录' }, origin)
+        return
+      }
+      const runId = String(requestUrl.searchParams.get('runId') || '')
+      const result = runId ? getRunDiagnostics(session.id, runId) : null
+      if (!result) {
+        json(response, 404, { error: '运行不存在或不属于当前账号' }, origin)
+        return
+      }
+      json(response, 200, { ok: true, ...result }, origin)
+      return
+    }
+
     if (request.method === 'GET' && pathname === '/fs/tree') {
       const workRoot = await resolveWorkRoot(reqUser)
       const counter = { count: 0 }
@@ -1192,6 +1254,17 @@ const server = http.createServer(async (request, response) => {
       const workRoot = await resolveWorkRoot(reqUser)
       const relative = requestUrl.searchParams.get('path')
       await handleFsFile(workRoot.root, relative, response, origin)
+      return
+    }
+
+    if (request.method === 'GET' && pathname === '/fs/status') {
+      const labId = String(requestUrl.searchParams.get('labId') || '')
+      if (!labIds.has(labId)) {
+        json(response, 400, { error: 'labId 必须是 lab1 到 lab8 之一' }, origin)
+        return
+      }
+      const workRoot = await resolveWorkRoot(reqUser)
+      json(response, 200, { root: workRoot.name, ...(await fsStatusFor(workRoot, labId)) }, origin)
       return
     }
 
@@ -1475,7 +1548,9 @@ const server = http.createServer(async (request, response) => {
       return
     }
 
-    json(response, 404, { error: '可用接口：GET|POST /health，POST /chat、/run、/run/stop、/events、/report' }, origin)
+    json(response, 404, {
+      error: '可用接口包括：GET|POST /health，GET /fs/status、/run/diagnostics，POST /chat、/run、/run/stop、/events、/report',
+    }, origin)
   } catch (error) {
     const message = error instanceof Error ? error.message : '导师服务发生未知错误'
     json(response, message.includes('aborted') ? 504 : 500, { error: message }, origin)

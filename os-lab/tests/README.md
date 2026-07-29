@@ -22,6 +22,8 @@ node scripts/verify.mjs qemu --lab lab2
 
 M0 纵向闭环另由 `handbook/npm run test:smoke` 验证：使用临时 SQLite 和本机 mock 模型串起可信运行、AI 追问、报告与评分证据。完整数据流与人工演示步骤见 `docs/lab2-m0-acceptance.md`。
 
+M1 冒烟回归继续使用该入口，并在临时学生目录中创建两个账号，覆盖工作区隔离、`GET /fs/status` 基线哈希、真实 Rust 编译错误采集、按 `runId` 查询及越权拒绝，以及两个学生并发运行到可信通过。
+
 ## Day 1 验证
 
 完整步骤见仓库 [`docs/os-lab.md`](../../docs/os-lab.md)。

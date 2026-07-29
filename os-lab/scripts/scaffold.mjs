@@ -29,9 +29,13 @@ import { cp, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 
 const OS_LAB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const REPO_ROOT = path.resolve(OS_LAB_ROOT, '..')
-const STUDENTS_ROOT = path.join(REPO_ROOT, 'student-labs')
+const STUDENTS_ROOT = process.env.OS_LAB_STUDENTS_ROOT
+  ? path.resolve(process.env.OS_LAB_STUDENTS_ROOT)
+  : path.join(REPO_ROOT, 'student-labs')
 const EXERCISE_ROOT = path.join(OS_LAB_ROOT, 'scaffold', 'exercises')
-const TEACHER_FILE = path.join(OS_LAB_ROOT, 'scaffold', 'teacher.json')
+const TEACHER_FILE = process.env.OS_LAB_TEACHER_FILE
+  ? path.resolve(process.env.OS_LAB_TEACHER_FILE)
+  : path.join(OS_LAB_ROOT, 'scaffold', 'teacher.json')
 const STATE_FILE = '.scaffold-state.json'
 
 export const LAB_ORDER = ['lab1', 'lab2', 'lab3', 'lab4', 'lab5', 'lab6', 'lab7', 'lab8']
@@ -59,7 +63,7 @@ const LABS = {
   lab2: {
     summary: 'trap、系统调用与任务切换',
     crates: ['os-context', 'os-syscall'],
-    kernel: ['src/cell.rs', 'src/config.rs', 'src/riscv.rs', 'src/trap.rs', 'src/loader.rs', 'src/task.rs'],
+    kernel: ['src/cell.rs', 'src/config.rs', 'src/riscv.rs', 'src/trap.rs', 'src/trace.rs', 'src/loader.rs', 'src/task.rs'],
     userBase: true,
     userBins: ['hello', 'power', 'yield'],
   },
@@ -384,6 +388,7 @@ lto = true
 
 function kernelCargoToml(applied) {
   const features = applied.map((lab) => KERNEL_FEATURES[lab])
+  if (applied.includes('lab2')) features.push('trace-edu = []')
   const deps = applied.flatMap((lab) => KERNEL_DEPS[lab])
   return `[package]
 name = "kernel"
@@ -403,6 +408,9 @@ ${deps.join('\n')}
 
 [build-dependencies]
 easy-fs = { package = "tg-rcore-tutorial-easy-fs", version = "0.4.8" }
+
+[lints.rust]
+unexpected_cfgs = "allow"
 `
 }
 
@@ -438,6 +446,100 @@ async function regenerateManifests(studentRoot, state, log) {
     await writeFile(path.join(studentRoot, 'user', 'Cargo.toml'), userCargoToml(applied, extraBins), 'utf8')
   }
   log.push('更新 Cargo.toml 清单（框架文件，按进度生成）')
+}
+
+async function collectBaselineDirectory(sourceDir, targetPrefix, labId, files) {
+  for (const entry of await readdir(sourceDir, { withFileTypes: true })) {
+    if (entry.name === 'target' || entry.name.startsWith('.')) continue
+    const source = path.join(sourceDir, entry.name)
+    const target = `${targetPrefix}/${entry.name}`.replace(/\\/g, '/')
+    if (entry.isDirectory()) {
+      await collectBaselineDirectory(source, target, labId, files)
+    } else if (entry.isFile()) {
+      files.set(target, { path: target, labId, kind: 'baseline', source })
+    }
+  }
+}
+
+/**
+ * 返回脚手架实际发给某个学生的文件基线。调用方据此计算 A/M/T/G/!，
+ * 不再在前端复制一份容易漂移的 Lab 文件清单。
+ */
+export async function workspaceBaselines(user) {
+  const safe = sanitizeUser(user)
+  if (!safe) return []
+  const studentRoot = studentRootFor(safe)
+  const state = await readState(studentRoot)
+  const files = new Map()
+
+  for (const labId of state.applied) {
+    const lab = LABS[labId]
+    const variant = state.variants[labId]
+    const variantInfo = variant ? EXERCISES[labId]?.variants[variant] : null
+    const exercisePaths = new Set(variantInfo?.files || [])
+
+    for (const file of lab.rootFiles || []) {
+      files.set(file, { path: file, labId, kind: 'baseline', source: path.join(OS_LAB_ROOT, file) })
+    }
+    for (const crate of lab.crates || []) {
+      await collectBaselineDirectory(path.join(OS_LAB_ROOT, crate), crate, labId, files)
+    }
+    for (const file of lab.kernel || []) {
+      const target = `kernel/${file}`
+      if (!exercisePaths.has(target)) {
+        files.set(target, { path: target, labId, kind: 'baseline', source: path.join(OS_LAB_ROOT, target) })
+      }
+    }
+    if (lab.userBase) {
+      for (const file of ['build.rs', 'linker.ld', 'src/entry.asm', 'src/lib.rs', 'src/syscall.rs']) {
+        const target = `user/${file}`
+        if (await exists(path.join(OS_LAB_ROOT, target))) {
+          files.set(target, { path: target, labId, kind: 'baseline', source: path.join(OS_LAB_ROOT, target) })
+        }
+      }
+    }
+    for (const bin of lab.userBins || []) {
+      const target = `user/src/bin/${bin}.rs`
+      if (!exercisePaths.has(target)) {
+        files.set(target, { path: target, labId, kind: 'baseline', source: path.join(OS_LAB_ROOT, target) })
+      }
+    }
+    for (const target of exercisePaths) {
+      const overlay = path.join(EXERCISE_ROOT, labId, variant, target)
+      files.set(target, {
+        path: target,
+        labId,
+        kind: 'todo',
+        source: (await exists(overlay)) ? overlay : path.join(OS_LAB_ROOT, target),
+      })
+    }
+  }
+
+  if (state.applied.length) {
+    const currentLab = state.applied[state.applied.length - 1]
+    files.set('Cargo.toml', {
+      path: 'Cargo.toml',
+      labId: currentLab,
+      kind: 'generated',
+      content: rootCargoToml(state.applied),
+    })
+    files.set('kernel/Cargo.toml', {
+      path: 'kernel/Cargo.toml',
+      labId: currentLab,
+      kind: 'generated',
+      content: kernelCargoToml(state.applied),
+    })
+    if (state.applied.includes('lab2')) {
+      files.set('user/Cargo.toml', {
+        path: 'user/Cargo.toml',
+        labId: currentLab,
+        kind: 'generated',
+        content: userCargoToml(state.applied, state.extraBins),
+      })
+    }
+  }
+
+  return [...files.values()].sort((left, right) => left.path.localeCompare(right.path))
 }
 
 /* -- 应用一个 Lab ------------------------------------------------------------ */

@@ -7,7 +7,7 @@ import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
 import ReportPanel from './ReportPanel.vue'
 import CodePanel from './CodePanel.vue'
-import ProblemsPanel from './ProblemsPanel.vue'
+import ProblemsPanel, { type RunDiagnostic } from './ProblemsPanel.vue'
 import TracePanel from './TracePanel.vue'
 import JourneyRail from './JourneyRail.vue'
 import TeacherDocPanel from './TeacherDocPanel.vue'
@@ -153,8 +153,9 @@ const currentSection = ref({ h2: '', h3: '' })
 const mobileView = ref<'manual' | 'practice'>('manual')
 /** 右栏下半区页签：学习支持与运行诊断。 */
 const rightTab = ref<'tutor' | 'report' | 'problems' | 'trace' | 'tests'>('tutor')
-/** 最近一次可信运行的 runId，供 Trace/Problems 占位关联。 */
+/** 最近一次运行的 runId，供 Trace/Problems 查询对应产物。 */
 const lastRunId = ref('')
+const diagnosticRequest = ref<{ id: number; path: string; line: number } | null>(null)
 /** 右上工作区或右下学习支持区可铺满顶栏以下的整个页面。 */
 const maximized = ref<'none' | 'workspace' | 'assistant'>('none')
 
@@ -704,7 +705,7 @@ const connectionLabel = computed(() => {
 
 function record(
   type: LearningEvent['type'],
-  options: Pick<LearningEvent, 'category' | 'content' | 'metadata' | 'runId' | 'recipeId' | 'assertions'> = {},
+  options: Pick<LearningEvent, 'category' | 'content' | 'metadata' | 'runId' | 'recipeId' | 'assertions' | 'file' | 'line' | 'code'> = {},
 ) {
   const result = appendEvent(events.value, {
     sessionId: sessionId.value,
@@ -1080,6 +1081,23 @@ function onInsertReport(text: string) {
   toast('输出已插入实验报告。')
 }
 
+function openDiagnostic(diagnostic: RunDiagnostic) {
+  diagnosticRequest.value = {
+    id: (diagnosticRequest.value?.id || 0) + 1,
+    path: diagnostic.file,
+    line: diagnostic.line,
+  }
+  maximized.value = 'none'
+  mobileView.value = 'practice'
+  panelOpen.value.practice = true
+  record('diagnostic_opened', {
+    runId: lastRunId.value,
+    file: diagnostic.file,
+    line: diagnostic.line,
+    code: diagnostic.code,
+  })
+}
+
 /** 报告面板请导师点评：切到对话页签并把报告作为提问发送。 */
 function reviewReport(content: string) {
   rightTab.value = 'tutor'
@@ -1448,6 +1466,7 @@ onBeforeUnmount(() => {
               :endpoint="endpoint"
               :student="studentId"
               :dark="isDark"
+              :diagnostic-request="diagnosticRequest"
             />
             <div
               class="ws-workspace-row-resizer"
@@ -1605,7 +1624,12 @@ onBeforeUnmount(() => {
               @submit-teacher="submitReportToTeacher"
               @notice="toast"
             />
-            <ProblemsPanel v-show="rightTab === 'problems'" :run-id="lastRunId" />
+            <ProblemsPanel
+              v-show="rightTab === 'problems'"
+              :endpoint="endpoint"
+              :run-id="lastRunId"
+              @open-diagnostic="openDiagnostic"
+            />
             <TracePanel v-show="rightTab === 'trace'" :run-id="lastRunId" :lab-id="lab.id" />
             <div v-show="rightTab === 'tests'" class="ws-tests-empty">
               <p v-if="!lastRunId">运行可信验证命令后，断言结果将汇总在此。</p>

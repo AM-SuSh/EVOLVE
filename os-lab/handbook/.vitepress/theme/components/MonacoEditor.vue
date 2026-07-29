@@ -8,6 +8,8 @@ const props = withDefaults(
     language?: string
     readOnly?: boolean
     dark?: boolean
+    revealLine?: number
+    revealKey?: number
   }>(),
   { language: 'plaintext', readOnly: false, dark: false },
 )
@@ -22,6 +24,13 @@ let editor: import('monaco-editor').editor.IStandaloneCodeEditor | null = null
 let monacoApi: typeof import('monaco-editor') | null = null
 let resizeObserver: ResizeObserver | null = null
 let syncing = false
+
+function revealRequestedLine() {
+  if (!editor || !props.revealLine) return
+  editor.revealLineInCenter(props.revealLine)
+  editor.setPosition({ lineNumber: props.revealLine, column: 1 })
+  editor.focus()
+}
 
 function applyTheme() {
   if (!monacoApi) return
@@ -61,6 +70,7 @@ onMounted(async () => {
     emit('update:modelValue', editor.getValue())
     syncing = false
   })
+  revealRequestedLine()
   resizeObserver = new ResizeObserver(() => {
     if (host.value && host.value.offsetHeight > 0) editor?.layout()
   })
@@ -95,6 +105,11 @@ watch(
 watch(
   () => props.dark,
   () => applyTheme(),
+)
+
+watch(
+  () => [props.revealKey, props.revealLine],
+  () => revealRequestedLine(),
 )
 
 onBeforeUnmount(() => {
