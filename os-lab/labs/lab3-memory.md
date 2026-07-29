@@ -2,6 +2,8 @@
 
 > 对应 feature：`lab3`（依赖 `lab2`）。
 
+> **配套教材**（《操作系统导论》OSTEP 中译）：[第 13 章 · 地址空间（PDF 第 97 页）](/downloads/ostep-zh.pdf#page=97) · [第 15 章 · 地址翻译（PDF 第 112 页）](/downloads/ostep-zh.pdf#page=112) · [第 16 章 · 分段（PDF 第 123 页）](/downloads/ostep-zh.pdf#page=123) · [第 18 章 · 分页引言（PDF 第 144 页）](/downloads/ostep-zh.pdf#page=144) · [全书入口](/downloads/ostep-zh.pdf)
+
 本实验对应《操作系统导论》里的 **内存虚拟化**：给每个程序一套自己以为的、独立的**地址空间**，由内核把虚拟地址翻译成物理地址。这是概念最绕、也最关键的一步——学完后，内核才能真正隔离程序、保护自己。
 
 ## 零、开始之前

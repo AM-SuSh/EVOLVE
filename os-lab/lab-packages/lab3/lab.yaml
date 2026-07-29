@@ -1,0 +1,97 @@
+# Lab3 教学规格草案（成员 A · Lab2/3 样板）
+
+id: lab3
+title: 内存管理与虚存
+version: 0.1.0-draft
+feature: lab3
+prerequisites: [lab1, lab2]
+textbook:
+  - OSTEP Ch.13 Address Spaces
+  - OSTEP Ch.14 Memory API
+  - OSTEP Ch.15 Address Translation
+  - OSTEP Ch.16 Paging
+status: sample
+manual: ../../labs/lab3-memory.md
+answers: ../../labs/answers/lab3-answers.md
+
+knowledge:
+  - id: os.mm.address-space
+    level: concept
+    concept_ref: concepts/address-space.yaml#os.mm.address-space
+  - id: os.mm.sv39-walk
+    level: mechanism
+    concept_ref: concepts/sv39.yaml#os.mm.sv39-walk
+  - id: os.mm.pte-flags
+    level: mechanism
+    concept_ref: concepts/sv39.yaml#os.mm.pte-flags
+  - id: os.mm.frame-alloc
+    level: mechanism
+    concept_ref: concepts/address-space.yaml#os.mm.frame-alloc
+
+tasks:
+  - id: orient
+    stage: orient
+    goal: 说明 Lab2 物理直访为何不够，为何需要独立地址空间
+  - id: read
+    stage: read
+    goal: 解释 VPN 切分、三级页表与 PTE 权限位
+  - id: run
+    stage: run
+    goal: 在独立地址空间下跑通用户程序输出断言
+  - id: debug
+    stage: debug
+    goal: 用最小实验区分「映射缺失 / 权限错误 / satp 未切换」
+  - id: reflect
+    stage: reflect
+    goal: 对照课本地址翻译与本项目 MemorySet 证据
+  - id: transfer
+    stage: reflect
+    goal: 迁移到 mmap / COW / 二级地址翻译场景
+
+starter_files:
+  added:
+    - kernel/src/mm.rs
+    - os-alloc/
+    - os-vm/
+  editable_by_variant:
+    debug: [kernel/src/mm.rs]
+  generated: [Cargo.toml, kernel/Cargo.toml, user/Cargo.toml]
+
+variants:
+  debug:
+    manifest: variants/debug/manifest.yaml
+    source: ../../scaffold/exercises/lab3/debug/kernel/src/mm.rs
+    note: 变体源文件随本包交付；接入 scaffold 发放由教师/C 在 Lab 工厂阶段合入。
+
+verification:
+  recipe: lab3.verify.v1
+  command: cargo run -p kernel --features lab3 --release
+  assertions:
+    - id: hello-output
+      kind: output-contains
+      text: "Hello from user app!"
+    - id: power-result
+      kind: output-contains
+      text: "409684505"
+    - id: yield-five-rounds
+      kind: output-count
+      text: "Yield round"
+      min: 5
+    - id: all-exited
+      kind: output-contains
+      text: "All user apps exited."
+
+misconceptions:
+  - id: va-equals-pa
+    statement: 开分页后仍把用户指针当物理地址用
+    counter: 必须经页表翻译；内核访问用户缓冲要走映射或显式翻译
+  - id: missing-u-bit
+    statement: 用户页未置 U 位仍期望 U-mode 可访问
+    counter: 缺 U 会在用户取指/访存时 fault
+  - id: forget-sfence
+    statement: 改页表后不刷新 TLB/指令屏障
+    counter: 映射变更后需要 sfence.vma（实现层约定）
+
+views_ref: ../visualization/README.md
+rubric_ref: ../../learning/rubric-v2-draft.md
+checkpoints_ref: checkpoints.md

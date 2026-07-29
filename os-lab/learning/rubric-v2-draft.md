@@ -28,6 +28,10 @@
 | R4 | result | 全退出断言 | `all-exited` | passed | 同上 |
 | F1 | reflection | 独立判断 | `reflection_submitted` 含自我理解表述 | 命中 | 空反思 |
 | F2 | reflection | AI 与验证分工 | 反思同时提及 AI 帮助点 + 验证/输出/代码路径 | 两类都有 | 只夸 AI 或只贴输出 |
+| T1 | reflection | 迁移对照 | 报告/反思含抢占、VM Exit 或协程等对照之一 | 命中且不自相矛盾 | 未写迁移 |
+| T2 | reflection | 反例意识 | 能说明「仅退出码 0」为何不够 | 点名 Yield/断言 | 未提及 |
+
+> 第 6–7 周起细项由 12 扩至 **14**（+T1/T2）。标注集见 `traces-lab2-mock.json`（20 条）。强制复核见 `teacher-review-gates.md`。
 
 ### 护栏
 

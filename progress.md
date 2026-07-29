@@ -87,6 +87,190 @@
 
 - 正式《三人小组后续实验发展实施计划》在本轮开始前已处于工作区删除状态，本轮未恢复或覆盖该既有变更；本地 `.local.md` 副本已同步第一周完成状态。
 - M1 优先缺口仍是 `GET /fs/status`、Cargo JSON 诊断解析和按 `runId` 查询真实 Problems；事件入库、可信 recipe 与按用户运行会话已在 M0 提前完成。
+## 2026-07-29 - Task: 各 Lab 手册开头增加 OSTEP 教材页链接
+
+### What was done
+
+- 在 Lab1–8 实验手册标题后增加「配套教材」链接，指向 `/downloads/ostep-zh.pdf#page=N`（按王海鹏中译 PDF 实际页码定位到相关章节）。
+- 工作台手册渲染时，PDF 链接改为新标签打开，避免挤掉当前实验页。
+
+### Testing
+
+- 抽查 Lab2/3 链接页码：PDF 第 49/60/97 页分别对应第 6/7/13 章正文起始附近。
+- 刷新工作台手册区可见开头教材链接；点击应打开对应 PDF 页。
+
+### Notes
+
+- 改动：`os-lab/labs/lab1`–`lab8-*.md`、`ManualPane.vue`、`progress.md`。
+- 页码随中译 PDF 排版；若更换译本需重核 `#page=`。
+- 回滚：去掉各手册「配套教材」引用块，并还原 ManualPane 链接处理。
+
+## 2026-07-29 - Task: 系统构建路径领取与「我的系统」同步
+
+### What was done
+
+- 点击「系统构建路径」中已解锁层的「领取并开始」时，先按序 `scaffold/upgrade` 再进入该 Lab；顶栏「我的系统 · labN」随发放结果更新。
+- 「我的系统」弹窗去掉「升级到下一层」按钮，改为提示去路径领取；仅保留未初始化时的 Lab1 初始化。
+- 将测试账号 `1002` 的脚手架进度回退到 lab2（学习侧 Lab3 仍解锁），便于验证上述同步。
+
+### Testing
+
+- 预期：登录 `1002` 后顶栏为「我的系统 · lab2」；路径中 Lab3 显示「领取并开始」；点击后升级并进入 Lab3，顶栏变为 lab3。
+
+### Notes
+
+- 改动：`LabWorkspace.vue`、`JourneyRail.vue`、`handbook/docs/workbench-ui.md`、`student-labs/1002/.scaffold-state.json` 与相关 Cargo.toml、`progress.md`。
+- 回滚：还原上述前端与文档；学生进度可再 upgrade 回 lab3。
+
+## 2026-07-29 - Task: 完成账号 1002 的 Lab2 以验证 Lab3 解锁
+
+### What was done
+
+- 为学生工作区 `student-labs/1002` 补全 Lab2 fill 题 `find_next_task`，并补上可信验证所需的 `trace-edu` feature 与 `trace.rs`（原 scaffold 缺此两项会导致 Lab2 可信 recipe 直接失败）。
+- 修正 `scaffold.mjs`：Lab2 发放含 `trace.rs`，生成的 `kernel/Cargo.toml` 固定带 `trace-edu = []`。
+- 以账号 `1002` 跑通可信 Lab2 验证 + `reflection_submitted`；确认 `/learning/access` 中 Lab3 `unlocked=true`，并成功 `scaffold/upgrade` 到 lab3。
+
+### Testing
+
+- 可信运行输出含 hello/power/yield 与 `All user apps exited.`，`verified=true`。
+- access：lab2 completed；lab3 unlocked/current；upgrade 后 applied=`lab1,lab2,lab3`。
+
+### Notes
+
+- 改动：`student-labs/1002/kernel/src/task.rs`、`Cargo.toml`、`trace.rs`；`os-lab/scripts/scaffold.mjs`；`progress.md`。
+- 测试口令：账号 `1002` 密码现为 `TempUnlock1`（请自行改回）。
+- 回滚：还原 scaffold 与学生代码；DB 中删该生 lab2 run/reflection 事件即可收回 Lab3 学习解锁。
+
+## 2026-07-29 - Task: 顶栏末尾增加教材链接
+
+### What was done
+
+- 顶栏导航末尾增加「教材」，指向 `/downloads/ostep-zh.pdf`（与首页教材入口一致）。
+
+### Testing
+
+- 核对 `config.mts` nav 末项；需硬刷新任意页确认右上角出现「教材」并可打开 PDF。
+
+### Notes
+
+- 改动文件：`os-lab/handbook/.vitepress/config.mts`、`progress.md`。
+- 回滚：去掉 nav 中「教材」项。
+
+## 2026-07-29 - Task: 首页删除「怎么开始」栏
+
+### What was done
+
+- 删除首页 `index.md` 中 frontmatter 之后的整块「怎么开始」正文（含入门/PDF/引导式学习说明）。
+
+### Testing
+
+- 核对 `handbook/index.md` 仅保留 home hero + features；需硬刷新 `http://localhost:5173/` 确认该栏消失。
+
+### Notes
+
+- 改动文件：`os-lab/handbook/index.md`、`progress.md`。
+- 回滚：从 git 恢复 `index.md` 中「怎么开始」段落。
+
+## 2026-07-29 - Task: 侧栏分组「入门指南」、首项仍为「认识 os-lab」
+
+### What was done
+
+- 左侧大分组保持「入门指南」；第一个小标题改回「认识 os-lab」；页面 H1 同步为「认识 os-lab」。
+- 顶栏与首页入口仍为「入门指南」。
+
+### Testing
+
+- 核对 `config.mts` 侧栏首项文案与 `guide/start.md` 标题；需硬刷新 `/guide/start` 确认显示。
+
+### Notes
+
+- 改动文件：`os-lab/handbook/.vitepress/config.mts`、`os-lab/handbook/guide/start.md`、`progress.md`。
+- 回滚：还原上述文件。
+
+## 2026-07-29 - Task: 统一「入门指南」命名
+
+### What was done
+
+- 将 `/guide/start` 页标题、顶栏导航、左侧栏分组与条目、首页按钮与正文链接统一为「入门指南」（原「认识 os-lab」「开始学习」）。
+- 同步更新 labs 入口说明中的对应称呼。
+
+### Testing
+
+- 文案检索：handbook 内已无「认识 os-lab」「开始学习」；`config.mts` / `index.md` / `guide/start.md` 已改为「入门指南」。
+- 需在已运行的 `npm run dev` 下硬刷新 `http://localhost:5173/` 与 `/guide/start` 确认顶栏与侧栏显示。
+
+### Notes
+
+- 改动文件：`os-lab/handbook/.vitepress/config.mts`、`os-lab/handbook/index.md`、`os-lab/handbook/guide/start.md`、`os-lab/labs/README.md`、`os-lab/labs/Lab手册复核指南.md`、`progress.md`。
+- 回滚：还原上述文件至本条之前版本。
+
+## 2026-07-29 - Task: 首页增加 OSTEP 教材 PDF 入口
+
+### What was done
+
+- 同步脚本将仓库根目录 OSTEP 中译 PDF 复制到 `handbook/public/downloads/ostep-zh.pdf`。
+- 首页 hero 增加「教材 PDF（OSTEP）」按钮，正文「怎么开始」同步给出链接。
+
+### Testing
+
+- `npm run sync`：同步计数含 PDF；`public/downloads/ostep-zh.pdf` 存在。
+
+### Notes
+
+- `handbook/scripts/sync-content.mjs`、`handbook/index.md`、`progress.md`。
+- PDF 仍在 `public/downloads/`（gitignore），每次 sync/dev/build 从仓库根复制。
+- 回滚：还原上述文件并删除 `public/downloads/ostep-zh.pdf`。
+
+## 2026-07-29 - Task: 精简学生站侧栏并删除无用入门页
+
+### What was done
+
+- 「认识 os-lab」左侧导航只保留：认识 os-lab、引导式学习、环境安装；去掉学习进度、验证命令、完整验证文档与整组项目文档侧栏。
+- 删除学生页 `guide/progress.md`、`guide/verify.md` 及仅被进度页使用的 `LabProgress.vue`；同步脚本为 project/verify-full 页写入 `sidebar: false`，避免误入导航。
+- 更新 `start.md` 与导师资料链接，不再指向已删页面。
+
+### Testing
+
+- `npm run sync && npm run build`：VitePress 构建通过。
+
+### Notes
+
+- 主要文件：`handbook/.vitepress/config.mts`、`theme/index.ts`、`tutor-model.ts`、`guide/start.md`、`scripts/sync-content.mjs`；删除 `guide/progress.md`、`guide/verify.md`、`LabProgress.vue`；`progress.md` 本条。
+- 回滚：还原上述文件并从 git 恢复被删页。
+
+## 2026-07-29 - Task: 成员 A 对照 12 周计划补齐教学规格交付
+
+### What was done
+
+- 在已完成的第 1–3 周 Lab2 教学包基础上，补齐成员 A 后续周次的**可单人交付**产物：Lab3 样板包；可视化视图规格与 OPRE；Lab2/3 检查点与迁移题；量规 T1/T2；标注轨迹扩至 20 条；教师复核门控；Lab 创建模板与审核清单；Lab2 补救变式与 Lab3 debug 规格及难度评估；M5 试用协议。
+- 写明边界：真人试用、完整 mm.rs 植入发放、B/C 实现与共同纵向演示不在本轮宣称完成。
+
+### Testing
+
+- `node -e "JSON.parse(fs.readFileSync('os-lab/learning/traces-lab2-mock.json','utf8'))"`：JSON 可解析；轨迹 id T01–T20。
+- 人工核对新建路径均落在 `lab-packages/`、`learning/`、`scaffold/exercises/lab3/debug/`；未改 tutor-server / Monaco 运行时。
+
+### Notes
+
+- 主要目录：`os-lab/lab-packages/{lab3,visualization,templates,MEMBER-A-DELIVERABLES.md}`，`lab2/checkpoints.md`、`lab2/variants/remedial`，`learning/{teacher-review-gates,trial-protocol-m5,rubric-v2-draft,traces-lab2-mock}`，`scaffold/exercises/lab3/debug/...`，实施计划 §十四成员 A 勾选，`progress.md`。
+- 回滚：删除本轮新增文件并还原被改的 README/`lab2/lab.yaml`/量规/轨迹/计划勾选与本条记录。
+
+## 2026-07-29 - Task: 系统构建路径改用服务端学习进度
+
+### What was done
+
+- 修复工作台「系统构建路径」只读浏览器本地事件、不反映服务端已通过验证/复盘的问题：`buildLabJourney` 已支持 `serverAccess`，但调用处未传入；现改为传入 `/learning/access` 结果，使运行验证、学习复盘与解锁状态与门控一致。
+
+### Testing
+
+- 静态核对：`LabWorkspace.vue` 中 `journey` 计算现为 `buildLabJourney(events, labId, learningAccess)`。
+- 库内账号 `1002` 仍有 Lab1 `verified` run 与 `reflection_submitted`；页面需硬刷新后由前端拉取 access 显示。
+
+### Notes
+
+- `os-lab/handbook/.vitepress/theme/components/LabWorkspace.vue`：journey 接入 `learningAccess`。
+- `progress.md`：本条记录。
+- 回滚：还原上述一行调用并删除本条。
 
 ## 2026-07-29 - Task: 恢复右侧上下实验台并重组完整工作区
 

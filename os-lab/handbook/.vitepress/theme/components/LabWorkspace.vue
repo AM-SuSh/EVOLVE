@@ -594,6 +594,11 @@ async function refreshScaffold() {
 
 async function scaffoldUpgrade() {
   if (scaffoldBusy.value) return
+  // 已有工作区时，下一层只允许从「系统构建路径」领取，避免与路径进度脱节。
+  if (scaffold.value?.exists && scaffold.value.next) {
+    toast('请打开「系统构建路径」，在已解锁的下一层点击「领取并开始」。')
+    return
+  }
   scaffoldBusy.value = true
   try {
     const response = await fetch(apiUrl('/scaffold/upgrade'), {
@@ -606,6 +611,64 @@ async function scaffoldUpgrade() {
     if (response.ok) toast(`已发放 ${payload.lab}，去终端跑一跑它。`)
   } catch {
     scaffoldLog.value = ['无法连接导师服务：先在 os-lab/handbook 运行 npm run tutor']
+  } finally {
+    scaffoldBusy.value = false
+  }
+}
+
+/** 进入某 Lab 前：把「我的系统」按序补发到该层（须学习侧已解锁）。 */
+async function ensureScaffoldIssued(labId: TutorLabId): Promise<boolean> {
+  if (!studentId.value || isTeacherRole.value) return true
+  await refreshScaffold()
+  const order = ['lab1', 'lab2', 'lab3', 'lab4', 'lab5', 'lab6', 'lab7', 'lab8'] as const
+  const targetIndex = order.indexOf(labId)
+  if (targetIndex < 0) return true
+
+  for (let step = 0; step < 8; step += 1) {
+    const status = scaffold.value
+    if (!status?.ok) {
+      toast('无法同步我的系统，请确认导师服务已启动。')
+      return false
+    }
+    const currentIndex = status.current ? order.indexOf(status.current as (typeof order)[number]) : -1
+    if (currentIndex >= targetIndex) return true
+
+    if (!status.exists || status.next) {
+      if (status.exists && !status.nextAllowed) {
+        toast((status as { nextBlockedReason?: string }).nextBlockedReason || '下一层代码尚未解锁。')
+        return false
+      }
+      const ok = await requestScaffoldUpgrade()
+      if (!ok) return false
+      continue
+    }
+
+    toast('代码层已全部发放。')
+    return true
+  }
+  toast('同步我的系统超时，请稍后重试。')
+  return false
+}
+
+async function requestScaffoldUpgrade(): Promise<boolean> {
+  if (scaffoldBusy.value) return false
+  scaffoldBusy.value = true
+  try {
+    const response = await fetch(apiUrl('/scaffold/upgrade'), {
+      method: 'POST',
+      headers: authHeaders(),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (payload.status) scaffold.value = { ...scaffold.value, ...payload.status }
+    if (!response.ok) {
+      toast(payload.error || (payload.log && payload.log[0]) || '领取下一层代码失败')
+      return false
+    }
+    if (payload.lab) toast(`我的系统已同步到 ${payload.lab}`)
+    return true
+  } catch {
+    toast('无法连接导师服务：先在 os-lab/handbook 运行 npm run tutor')
+    return false
   } finally {
     scaffoldBusy.value = false
   }
@@ -681,7 +744,7 @@ const connectionDetail = ref('')
 let noticeTimer = 0
 
 const lab = computed(() => getTutorLab(props.labId))
-const journey = computed(() => buildLabJourney(events.value, props.labId))
+const journey = computed(() => buildLabJourney(events.value, props.labId, learningAccess.value))
 const journeyItem = computed(() => journey.value.find((item) => item.lab.id === props.labId))
 const currentAccess = computed(() => learningAccess.value.find((item) => item.labId === props.labId))
 // 后台刷新解锁状态时保留当前已解锁工作区，避免卸载终端并丢失本次运行结果。
@@ -1112,8 +1175,15 @@ function submitReflection(content: string) {
 /* -- 导航与导出 ------------------------------------------------------------- */
 
 function enterLab(labId: TutorLabId) {
-  if (labId === props.labId) return
-  router.go(withBase(`/learn/${labId}`))
+  void (async () => {
+    const issued = await ensureScaffoldIssued(labId)
+    if (!issued) return
+    if (labId === props.labId) {
+      await refreshScaffold()
+      return
+    }
+    router.go(withBase(`/learn/${labId}`))
+  })()
 }
 
 function exportGrowth() {
@@ -1189,7 +1259,12 @@ onBeforeUnmount(() => {
         >
           <Blocks :size="15" aria-hidden="true" /><span>{{ scaffoldLabel }}</span>
         </button>
-        <JourneyRail :journey="journey" @enter-lab="enterLab" @export-growth="exportGrowth" />
+        <JourneyRail
+          :journey="journey"
+          :applied-labs="(scaffold?.applied || []) as TutorLabId[]"
+          @enter-lab="enterLab"
+          @export-growth="exportGrowth"
+        />
         <button
           v-if="!isTeacherRole"
           type="button"
@@ -1730,19 +1805,20 @@ onBeforeUnmount(() => {
             <template v-else-if="scaffold.next">
               当前进度：{{ scaffold.applied.join(' → ') }}；下一步 {{ scaffold.next }}（{{ scaffold.nextSummary }}）
               <template v-if="!scaffold.nextAllowed">——老师当前开放到 {{ scaffold.openLab }}，{{ scaffold.next }} 尚未开放。</template>
+              <template v-else>——请到顶栏「系统构建路径」中点击 {{ scaffold.next }} 的「领取并开始」，代码才会发到本机，「我的系统」也会同步显示。</template>
             </template>
             <template v-else>八个 Lab 已全部发放，继续自由完善你的系统吧。</template>
           </p>
 
           <div class="ws-modal-actions">
             <button
-              v-if="scaffold.next"
+              v-if="!scaffold.exists"
               type="button"
               class="ws-modal-primary"
-              :disabled="scaffoldBusy || (scaffold.exists && !scaffold.nextAllowed)"
+              :disabled="scaffoldBusy"
               @click="scaffoldUpgrade"
             >
-              {{ scaffoldBusy ? '发放中…' : scaffold.exists ? (scaffold.nextAllowed ? `升级到 ${scaffold.next}` : `${scaffold.next} 未开放`) : '初始化我的系统（Lab1）' }}
+              {{ scaffoldBusy ? '发放中…' : '初始化我的系统（Lab1）' }}
             </button>
           </div>
 
