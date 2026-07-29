@@ -16,14 +16,18 @@ target/
 os-lab/qemu*.txt
 os-lab/qemu*.txt.*
 
-# 临时日志与本机输出（正式证据放 artifacts/）
+# 临时日志与本机输出
 _fetch*
 _handbook-build.log
 _tmp-*
 os-lab/_tmp-*
 os-lab/*.log
-.artifacts/
+artifacts/
 os-lab/handbook/.vitepress/.temp/
+
+# 论文与调研材料
+papers/
+
 
 # AI 导师学习事件数据与账号数据库
 os-lab/learning/sessions/
