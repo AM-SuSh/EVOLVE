@@ -13,6 +13,11 @@ import JourneyRail from './JourneyRail.vue'
 import TeacherDocPanel from './TeacherDocPanel.vue'
 import TeacherPublishPanel from './TeacherPublishPanel.vue'
 import {
+  createWorkspaceContext,
+  provideWorkspaceContext,
+  type WorkspaceContext,
+} from '../composables/useWorkspaceContext'
+import {
   appendEvent,
   buildLabJourney,
   createId,
@@ -39,6 +44,12 @@ import {
 } from '../tutor-model'
 
 const props = defineProps<{ labId: TutorLabId }>()
+
+const workspaceContext: WorkspaceContext = createWorkspaceContext()
+provideWorkspaceContext(workspaceContext)
+
+/** 代码区 ref：手册「源码引用」与 Problems 诊断点击都通过它跳转。 */
+const codePanelRef = ref<InstanceType<typeof CodePanel> | null>(null)
 
 const endpoint = String(
   import.meta.env.VITE_OS_LAB_TUTOR_ENDPOINT || 'http://127.0.0.1:8787',
@@ -155,6 +166,8 @@ const mobileView = ref<'manual' | 'practice'>('manual')
 const rightTab = ref<'tutor' | 'report' | 'problems' | 'trace' | 'tests'>('tutor')
 /** 最近一次可信运行的 runId，供 Trace/Problems 占位关联。 */
 const lastRunId = ref('')
+/** 最近一次运行的断言结果，供「测试结果」页签展示。 */
+const lastAssertions = ref<Array<{ id: string; label: string; passed: boolean; expected: string; observed: string }>>([])
 /** 右上工作区或右下学习支持区可铺满顶栏以下的整个页面。 */
 const maximized = ref<'none' | 'workspace' | 'assistant'>('none')
 
@@ -684,6 +697,13 @@ const lab = computed(() => getTutorLab(props.labId))
 const journey = computed(() => buildLabJourney(events.value, props.labId))
 const journeyItem = computed(() => journey.value.find((item) => item.lab.id === props.labId))
 const currentAccess = computed(() => learningAccess.value.find((item) => item.labId === props.labId))
+
+watch(activeStage, (stage) => {
+  if (workspaceContext) workspaceContext.currentStage = stage
+})
+watch(currentSection, (section) => {
+  if (workspaceContext) workspaceContext.currentSection = { ...section }
+})
 const workspaceRestricted = computed(
   () => !isTeacherRole.value && (!auth.value || accessLoading.value || !currentAccess.value?.unlocked),
 )
@@ -851,6 +871,12 @@ function chatPayload(message: string) {
     ...(hasCustomLlmConfig(llmConfig.value) ? { llm: llmConfig.value } : {}),
     // 学生正在读哪一节 —— 导师据此说「你刚读到 sscratch 那节」。
     reading: currentSection.value,
+    // 学生正在编辑哪个文件、光标在哪一行、当前选区 —— 导师据此引用真实代码位置。
+    codeContext: {
+      file: workspaceContext.currentFile,
+      line: workspaceContext.currentLine,
+      selection: workspaceContext.currentSelection,
+    },
     history: messages.value
       .slice(0, -1)
       .slice(-10)
@@ -1066,7 +1092,29 @@ function onRunFinished(payload: {
     },
   })
   if (payload.runId) lastRunId.value = payload.runId
+  if (payload.assertions) lastAssertions.value = payload.assertions
+  if (workspaceContext) {
+    workspaceContext.lastRunId = payload.runId
+    workspaceContext.lastRecipeId = payload.recipeId || ''
+  }
   announceUnlock(wasCompleted)
+}
+
+/** 手册「源码引用」点击：跳到工作区对应文件与行，并切到实践视图。 */
+function onSourceJump(payload: { path: string; line: number }) {
+  mobileView.value = 'practice'
+  panelOpen.value.practice = true
+  persistPanels()
+  void codePanelRef.value?.openAtLine(payload.path, payload.line)
+}
+
+/** Problems 诊断点击：跳到对应文件与行。 */
+function onProblemJump(payload: { path: string; line: number }) {
+  mobileView.value = 'practice'
+  panelOpen.value.practice = true
+  panelOpen.value.terminal = true
+  persistPanels()
+  void codePanelRef.value?.openAtLine(payload.path, payload.line)
 }
 
 /** 终端输出插入实验报告的「过程记录」。 */
@@ -1317,6 +1365,7 @@ onBeforeUnmount(() => {
             :editable="isTeacherRole"
             @edit="teacherEditing = true"
             @section-change="currentSection = $event"
+            @source-jump="onSourceJump"
           >
             <slot />
           </ManualPane>
@@ -1441,6 +1490,7 @@ onBeforeUnmount(() => {
             :style="workspaceGridStyle"
           >
             <CodePanel
+              ref="codePanelRef"
               class="ws-workspace-code"
               :key="`code-${studentId}`"
               :lab="lab"
@@ -1604,10 +1654,22 @@ onBeforeUnmount(() => {
               @submit-teacher="submitReportToTeacher"
               @notice="toast"
             />
-            <ProblemsPanel v-show="rightTab === 'problems'" :run-id="lastRunId" />
+            <ProblemsPanel v-show="rightTab === 'problems'" :run-id="lastRunId" :endpoint="endpoint" @jump="onProblemJump" />
             <TracePanel v-show="rightTab === 'trace'" :run-id="lastRunId" :lab-id="lab.id" />
             <div v-show="rightTab === 'tests'" class="ws-tests-empty">
               <p v-if="!lastRunId">运行可信验证命令后，断言结果将汇总在此。</p>
+              <ul v-else-if="lastAssertions.length" class="ws-tests-assertions">
+                <li
+                  v-for="item in lastAssertions"
+                  :key="item.id"
+                  :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed }]"
+                >
+                  <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
+                  <span class="ws-test-label">{{ item.label || item.id }}</span>
+                  <span class="ws-test-expected">期望：{{ item.expected }}</span>
+                  <span class="ws-test-observed">实际：{{ item.observed }}</span>
+                </li>
+              </ul>
               <p v-else>最近一次运行 <code>{{ lastRunId }}</code> 的断言详情已记录在运行状态和实验报告证据中。</p>
             </div>
           </div>
@@ -2398,6 +2460,65 @@ onBeforeUnmount(() => {
 }
 
 .ws-tests-empty code {
+  font-family: var(--ws-font-mono);
+}
+
+.ws-tests-assertions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ws-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ws-test-assertion {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    'mark label'
+    'mark expected'
+    'mark observed';
+  gap: 2px var(--ws-space-2);
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-test-assertion.passed {
+  border-color: color-mix(in srgb, var(--ws-ok, #1a7f37) 40%, var(--ws-line));
+}
+
+.ws-test-assertion.failed {
+  border-color: color-mix(in srgb, var(--ws-danger, #c0392b) 40%, var(--ws-line));
+}
+
+.ws-test-mark {
+  grid-area: mark;
+  align-self: center;
+  font-weight: var(--ws-weight-bold);
+  font-size: var(--ws-text-sm);
+}
+
+.ws-test-assertion.passed .ws-test-mark {
+  color: var(--ws-ok, #1a7f37);
+}
+
+.ws-test-assertion.failed .ws-test-mark {
+  color: var(--ws-danger, #c0392b);
+}
+
+.ws-test-label {
+  grid-area: label;
+  color: var(--ws-ink);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-test-expected,
+.ws-test-observed {
+  color: var(--ws-ink-muted);
   font-family: var(--ws-font-mono);
 }
 

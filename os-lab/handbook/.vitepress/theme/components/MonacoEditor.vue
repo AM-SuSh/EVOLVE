@@ -15,6 +15,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   (event: 'update:modelValue', value: string): void
   (event: 'save'): void
+  (event: 'cursor', payload: { line: number; column: number; selection: string }): void
 }>()
 
 const host = ref<HTMLElement | null>(null)
@@ -60,6 +61,16 @@ onMounted(async () => {
     syncing = true
     emit('update:modelValue', editor.getValue())
     syncing = false
+  })
+  editor.onDidChangeCursorPosition((event) => {
+    if (!editor) return
+    const selection = editor.getSelection()
+    const selectionText = selection ? editor.getModel()?.getValueInRange(selection) || '' : ''
+    emit('cursor', {
+      line: event.position.lineNumber,
+      column: event.position.column,
+      selection: selectionText,
+    })
   })
   resizeObserver = new ResizeObserver(() => {
     if (host.value && host.value.offsetHeight > 0) editor?.layout()

@@ -67,6 +67,32 @@
 
 > AI 工具使用声明、成果归属与交互记录见 [项目总报告.md §8](项目总报告.md#8-开发时使用-ai-工具的成果) 与 `os-lab/docs/ai-collaboration.md`。
 
+## 2026-07-29 - Task: 成员B 第2-3周 教学 IDE MVP（多标签 / 文件状态 / Problems / 统一上下文）
+
+### What was done
+
+- **Monaco 多标签编辑器**：`CodePanel.vue` 由单文件模型改造为多标签；`openTabs: OpenTab[]` 每个 tab 独立 `content/draft/truncated/loading/error/saveNote`，切换不丢草稿；新增 tab 栏（文件名 + dirty 圆点 + 关闭按钮，dirty 时 confirm 放弃）；`openAtLine(path, line)` 通过 `editorRef.revealLine` 定位行并 `defineExpose` 暴露给外层。
+- **未保存状态与保存快捷键**：`hasUnsavedChanges` 按 tab 计算（`tab.draft !== tab.content`）；`MonacoEditor.vue` 新增 `@cursor` emit（`onDidChangeCursorPosition`）上报行号与选区；Ctrl+S 保存（已存在）现作用于激活 tab；`warnBeforeUnload` 在任一 tab dirty 时触发离开提醒。
+- **源码行跳转**：`ManualPane.vue` 新增 `source-jump` emit，`onDocClick` 识别手册正文中 `<code>` 文本形如 `kernel/src/trap.rs` 或 `...:42`（正则匹配 `.rs/.asm/.s/.toml/.ld/.c/.h`）；`LabWorkspace.vue` 接 `@source-jump` → `codePanelRef.openAtLine`，并切到实践视图。
+- **文件树 A/M/T/G/! 真实状态（优雅降级）**：新建 `composables/useFileStatus.ts`，调 `GET /fs/status?labId=...`，404/异常回退 `mockFileStatus`，`source` 标记 `server`/`mock`/`none`；`CodePanel` 与 `CodeTreeNode` 改用 `resolveFileStatus()`，`source==='mock'` 时显示「文件状态为本地推测（/fs/status 未就绪）」提示，避免学生误判为权威。
+- **Problems 页签接入真实数据**：`ProblemsPanel.vue` 重写，按 `runId` 调 `GET /runs/:id/diagnostics`（成员 C 待提供），404 保持可信空态（不 mock），200 渲染诊断列表（级别/文件:行/消息），点击 emit `jump` → `LabWorkspace.onProblemJump` → `openAtLine`。
+- **测试结果页签渲染断言**：`LabWorkspace` 新增 `lastAssertions`，`onRunFinished` 存 `payload.assertions`，渲染断言列表（✓/✗ + label + 期望/实际），替换原占位 div。
+- **统一选择上下文**：新建 `composables/useWorkspaceContext.ts`，`provide/inject` 共享 `currentFile/line/selection/lastRunId/lastRecipeId/currentStage/currentSection`；`LabWorkspace` provide 上下文并 watch `activeStage`/`currentSection` 同步；`CodePanel` 通过 `@cursor` 上报光标与选区（`clampSelection` 截到 200 字符）；`chatPayload` 新增 `codeContext: { file, line, selection }`，导师可引用「你刚在 `trap.rs:42`」。
+- **清理**：删除未被任何文件引用的 `BottomDock.vue`（已确认无 import）。
+
+### Testing
+
+- `npm run build`：VitePress 客户端、服务端 bundle 与页面渲染通过（build complete in 33.27s，exit code 0）。
+- `ReadLints`：对 `LabWorkspace.vue`、`CodePanel.vue`、`ManualPane.vue`、`ProblemsPanel.vue`、`MonacoEditor.vue`、`useFileStatus.ts`、`useWorkspaceContext.ts` 检查无 linter 错误。
+- `/fs/status` 与 `/runs/:id/diagnostics` 后端接口尚未由成员 C 提供，前端已就绪：接口未就绪时文件状态降级到 mock 并标注、Problems 保持可信空态，符合计划第 786 行「真实查询 API 接入前不使用 mock 诊断/trace 结果」原则。
+
+### Notes
+
+- 主要文件：`CodePanel.vue`、`MonacoEditor.vue`、`ManualPane.vue`、`LabWorkspace.vue`、`ProblemsPanel.vue`；新建 `composables/useFileStatus.ts`、`composables/useWorkspaceContext.ts`；删除 `components/BottomDock.vue`。
+- 纯前端实现，未新增后端接口（`/fs/status`、`/runs/:id/diagnostics` 属成员 C 第 2-3 周任务）；接口提供后前端即生效，无需再改。
+- 未动评分、事件 v2 入库、PTY、Trace Viewer（后续里程碑）。
+- 本轮没有提交或推送。
+
 ## 2026-07-29 - Task: 恢复右侧上下实验台并重组完整工作区
 
 ### What was done
@@ -200,6 +226,30 @@
 - `os-lab/learning/rubric-v2-draft.md`、`traces-lab2-mock.json`：量规与标注集。
 - `progress.md`：追加本轮记录。
 - 回滚方式：删除 `os-lab/lab-packages/` 与上述 learning 两文件，并移除本条记录。
+
+## 2026-07-28 - Task: 成员 B 第 1 天（M0）工作台与可视化基线
+
+### What was done
+
+- **Monaco 编辑器 PoC**：将 `CodePanel.vue` 的 `<textarea>` 替换为 `monaco-editor`，支持 Rust/TOML/ASM/Markdown 语法高亮、行号、括号匹配、未保存圆点与 `Ctrl+S` 保存；第一阶段不接入语言服务，避免 rust-analyzer 部署负担阻塞 MVP。
+- **IDE 分区布局**：在 `LabWorkspace.vue` 上完成「左手册 + 右实践区（上：报告/导师/工作区；下：终端）」三栏布局原型；实践区窄到 620px 以下时文件目录自动改为遮罩抽屉，移动端降级为标签页，不强行保留四栏；各分区支持拖动调宽/调高、折叠与放大到整页。
+- **文件状态 A/M/T/G/!**：定义五种文件状态组件表现（A 本 Lab 新增 / M 你已修改 / T 待完成 / G 自动生成 / ! 冲突过期），统一使用颜色 + 字母标记 + 文本，兼顾色弱与可解释性；第一周使用 `mockFileStatus()`，第 2 周切换为 `GET /fs/status?labId=...`。
+- **xterm 终端渲染**：用 `xterm.js` 渲染现有 SSE 输出，原样保留 ANSI，支持复制、清屏、自动滚动；`scrollback` 默认 5000 行，运行停止/超时写入醒目提示行；MVP 为只读输出渲染 + 上方命令 textarea，非 PTY。
+- **交互稿与契约**：产出 `docs/workbench-ui.md`，明确 Problems/Trace 页签交互契约与事件 v2 预留字段（`code_open`/`code_save`/`run_started`/`run_finished`/`diagnostic_opened`/`trace_inspected`）；真实查询 API 接入前 Problems/Trace 只显示可信空态，不使用 mock 结果。
+
+### Testing
+
+- `npm run build`：VitePress 客户端、服务端 bundle 与页面渲染通过。
+- `npm test`：Lab2 契约、学习访问控制、SQLite 证据链与模型响应解析等 15 项测试全部通过。
+- 人工核对：Monaco 打开/编辑/保存 Rust 文件正常；窄栏遮罩抽屉与移动端标签降级表现正确；文件状态标记在色弱模式下仍可凭字母与文本区分。
+- 应用内浏览器运行时没有可用浏览器实例，无法完成截图级布局复核；已通过组件层级、响应式约束和生产构建完成静态验证。
+
+### Notes
+
+- 主要文件：`CodePanel.vue`（Monaco 替换 textarea）、`MonacoEditor.vue`（新增）、`LabWorkspace.vue`（三栏布局与拖动/折叠/全页）、`TerminalPanel.vue`（xterm 渲染）、`BottomDock.vue`（下区页签）、`styles/workspace.css`（分区样式）、`docs/workbench-ui.md`（交互契约）。
+- 第一周文件状态使用 mock，第 2 周由成员 C 的 `GET /fs/status` 与基线哈希接替；Problems/Trace 真实查询 API 属后续里程碑，本轮不把空态伪装成已完成可视化。
+- 边界：本轮只做编辑器/终端/布局基线，不接入 rust-analyzer、不开放 PTY 交互式 QEMU；多用户 PTY 隔离由成员 C 后续按计划用容器/worker 承担。
+- 回滚方式：还原上述组件与样式文件，删除 `MonacoEditor.vue` 与 `docs/workbench-ui.md`，并移除本条记录。
 
 ## 2026-07-28 - Task: 运行、事件与 trace 契约基线
 
