@@ -1,0 +1,28 @@
+{
+  "baseline": "m0-contract-baseline-v1",
+  "status": "frozen",
+  "frozenAt": "2026-07-29",
+  "compatibility": {
+    "rule": "Published versions are immutable. Additive compatible changes require a new schema revision; breaking changes require a new major contract name.",
+    "legacyEventRead": [1, 2]
+  },
+  "contracts": {
+    "labSpec": {
+      "version": 1,
+      "schema": "lab-spec-v1.schema.json",
+      "source": "../../lab-packages/lab2/lab.yaml"
+    },
+    "learningEvent": {
+      "version": 2,
+      "schema": "event-v2.schema.json"
+    },
+    "runResult": {
+      "version": 1,
+      "schema": "run-result-v1.schema.json"
+    },
+    "teachingTrace": {
+      "version": 1,
+      "schema": "trace-v1.schema.json"
+    }
+  }
+}

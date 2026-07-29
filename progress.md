@@ -67,6 +67,27 @@
 
 > AI 工具使用声明、成果归属与交互记录见 [项目总报告.md §8](项目总报告.md#8-开发时使用-ai-工具的成果) 与 `os-lab/docs/ai-collaboration.md`。
 
+## 2026-07-29 - Task: 第一周 M0 基线与契约全部收口
+
+### What was done
+
+- **冻结四个公共契约**：新增 `lab-spec-v1.schema.json` 和 `m0-contract-baseline-v1.json`；Lab2 `lab.yaml` 从 `0.2.0-draft` 提升为 `1.0.0/stable`。冻结清单明确 Lab spec v1、event v2、run-result v1、trace v1 的权威源与兼容规则。
+- **增加防漂移验收**：契约测试校验四份 schema 的公开版本、Lab2 全部文件引用、recipe ID、输出断言 ID 与 trace 类型；修改任一侧而未同步会直接失败。
+- **完成共同数据流图**：新增 `os-lab/docs/lab2-m0-acceptance.md`，用一张图串起知识点、源码修改、可信运行、trace、AI 追问、报告、评分证据与教师复核，并给出人工演示步骤。
+- **打通自动纵向 smoke**：本机 mock 模型替代外部依赖，真实执行 Lab2 可信 recipe，再同步 code/run/trace/AI/report 事件、提交报告并生成评分；临时 SQLite 验证运行、断言、事件和报告全部落库。
+- **M0 状态**：成员 A/B/C 第一周个人项与三项周末共同评审均完成，下一阶段进入 M1 教学 IDE MVP。
+
+### Testing
+
+- `npm test`：16 项全部通过。
+- `npm run test:smoke`：通过；2 条可信运行、6 项通过断言、10 条 Lab2 同会话事件、1 份报告。
+- `node scripts/verify.mjs baseline`：handbook 构建通过；`os-context` 3 项与 `os-syscall` 4 项 host 测试通过；Lab2 QEMU 采集 28 条 `trap_enter`、6 条 `task_switch`，6 项可信断言全部通过。
+
+### Notes
+
+- 正式《三人小组后续实验发展实施计划》在本轮开始前已处于工作区删除状态，本轮未恢复或覆盖该既有变更；本地 `.local.md` 副本已同步第一周完成状态。
+- M1 优先缺口仍是 `GET /fs/status`、Cargo JSON 诊断解析和按 `runId` 查询真实 Problems；事件入库、可信 recipe 与按用户运行会话已在 M0 提前完成。
+
 ## 2026-07-29 - Task: 恢复右侧上下实验台并重组完整工作区
 
 ### What was done

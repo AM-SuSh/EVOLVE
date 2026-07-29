@@ -1,8 +1,8 @@
-# Lab 包（教学规格样板）
+# Lab 包（教学规格）
 
 > 成员 A · M0 第 1 天交付。  
-> 目标：把分散的 Markdown / scaffold / prompt / 验证命令收敛为**可版本化、可机器读**的 Lab 包草案。  
-> **第一阶段**：用 manifest 引用现有路径，不强制立刻搬迁全部文件。
+> 目标：把分散的 Markdown / scaffold / prompt / 验证命令收敛为**可版本化、可机器读**的 Lab 包。
+> Lab2 已在 M0 收口为 Lab spec v1；仍用 manifest 引用现有路径，不强制搬迁全部文件。
 
 ## 目录
 
@@ -15,6 +15,9 @@
 | `lab2/knowledge-table.md` | Lab2 知识点细表（六层次 + 误区） |
 | `../learning/rubric-v2-draft.md` | 评分细项草案 |
 | `../learning/traces-lab2-mock.json` | 10 条模拟轨迹人工打分 |
+| `../tutor/schema/lab-spec-v1.schema.json` | 冻结的 Lab spec v1 schema |
+| `../tutor/schema/m0-contract-baseline-v1.json` | M0 四契约版本清单与兼容规则 |
+| `../docs/lab2-m0-acceptance.md` | Lab2 纵向数据流图、演示步骤与验收命令 |
 
 ## Lab1–8 课程知识盘点（第一层索引）
 
@@ -43,6 +46,6 @@
 
 ## 协作约定（与 B/C）
 
-- **证据命名**先冻结：`trap_enter`、`trap_exit`、`task_switch`（与 C 的 `trace-v1` 对齐）。
-- **验证**：Lab2 受信 recipe 建议为 `test-lab2` / `cargo run -p kernel --features lab2 --release`，断言看输出串而非「任意退出码 0」。
+- **证据命名**已冻结：M0 trace v1 为 `trap_enter`、`task_switch`；新增事件以后续兼容版本扩展。
+- **验证**：Lab2 受信 recipe 为 `lab2.verify-trace.v1`，断言看行为输出与 trace，而非「任意退出码 0」。
 - **A 不改** Monaco / SQLite / tutor-server；Day1 只交教学规格与量规草案。
