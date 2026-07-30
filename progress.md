@@ -67,6 +67,56 @@
 
 > AI 工具使用声明、成果归属与交互记录见 [项目总报告.md §8](项目总报告.md#8-开发时使用-ai-工具的成果) 与 `os-lab/docs/ai-collaboration.md`。
 
+## 2026-07-29 - Task: 提交成员B 第4-5周 Trace Viewer
+
+### What was done
+
+- 将本轮成员 B 第 4-5 周交付（TraceViewer/TraceTrapView/TraceTimelineView/useTracePlayback、LabWorkspace 接入、workbench-ui.md 与 visualization/README.md 更新、progress.md 记录）一并提交。
+- 提交作者固定为 `SIZN <a18990330371@outlook.com>`（用 `git commit --author` 指定，未改动仓库全局 config）。
+- 应要求把本条提交记录补入 progress.md 并 amend 合并进同一 commit（commit 未推送，符合 amend 条件）。
+
+### Testing
+
+- `git commit` 成功，11 files changed，+1201 / −910。
+- `git log -1` 确认作者为 SIZN；`git status --short` 干净。
+
+### Notes
+
+- 改动文件：`progress.md`（本条）、`os-lab/handbook/.vitepress/theme/components/{LabWorkspace,TracePanel,TraceTimelineView,TraceTrapView,TraceViewer}.vue`、`os-lab/handbook/.vitepress/theme/composables/useTracePlayback.ts`、`os-lab/handbook/docs/workbench-ui.md`、`os-lab/lab-packages/visualization/README.md`。
+- 本轮未推送远端（与既往惯例一致）。
+
+## 2026-07-29 - Task: 成员B 第4-5周 Trace Viewer（Trap 时序 + 任务时间线 + 播放/过滤/跳源码/插入报告）
+
+### What was done
+
+- **前置核查**：跑 `npm run build` 与 `npm test`（16 项全绿）+ `ReadLints` 确认第 1-3 周 Monaco 多标签、文件状态、Problems、统一上下文无回归。确认 ProblemsPanel 与 useFileStatus 的 404 降级仍按设计工作（属预期，不打补丁）。
+- **补 `trace_inspected` 事件缺口**：事件 v2 已定义该类型（`contracts.mjs`），原 `TracePanel.vue` 占位未上报；本轮随 Trace Viewer 一并补上——切换视图或移动播放头时由 LabWorkspace `record('trace_inspected', ...)` 入库。
+- **`useTracePlayback.ts`**：抽取播放状态机（`playhead`/`playing`/`speed`/`step`/`seek`/`reset`/定时器），含 `filterTraceEvents`、`collectPids`、`isValidTraceEvent`（前端再校验防异常 trace）、`sourceAnchorFor`（静态源码映射）、`formatTraceEvidence`（关键帧格式化）。
+- **`TraceTrapView.vue`**：Trap 分层时序图。纵向时间轴按事件顺序排列（不允许前端重排）；`trap_enter` 为主标记（syscall cause 高亮），`task_switch` 为上下文标记；连续 `trap_enter` 之间无 `task_switch` 时标注「单任务 syscall 密集」（对应 `visualization/README.md` 教学问题 3）。点击事件 → emit select → 父组件 seek 并联动。
+- **`TraceTimelineView.vue`**：任务状态时间线泳道。每个 pid 一条横向泳道，x 轴为事件序号；`task_switch` 画 Running 块（延伸到下一条 switch，协作式同一时刻只有一个 Running）；`trap_enter` 画轻量竖线；两次 Running 之间的 Ready/Exited 不伪造，标注「未观测」（对应规格「禁止把协作式画成硬抢占」「禁止用动画掩盖空洞」）。播放头竖线标当前位置；移动端隐藏未观测提示避免拥挤。
+- **`TraceViewer.vue`**（重构原 `TracePanel.vue` 占位）：容器组件。
+  - 按 `runId` 调 `GET /runs/:id/trace` 拉取真实事件；404/异常 → `unavailable=true`，文案明确「查询接口尚未返回真实事件」，不 mock、不播放预设动画。
+  - 视图切换 Trap/任务时间线（默认 Trap，Lab2 主视图）；播放/暂停、单步前进/后退、速度 0.5/1/2/4x、类型与 pid 过滤、重置。
+  - 事件列表 >200 条时只渲染前 200 条并提示「用过滤或播放控制查看其余」。
+  - 选中事件详情：「跳到源码」（`trap_enter`→`kernel/src/trap.rs`，`task_switch`→`kernel/src/task.rs`）、「插入报告」（格式化为证据文本）。
+  - 上报 `trace_inspected`（`runId`/`view`/`eventRange:{start,end}`）；移动端控制条与视图纵向堆叠。
+- **`LabWorkspace.vue` 接入**：删除 `TracePanel.vue`，改 import `TraceViewer.vue`；接 `@jump`→复用 `onProblemJump`（跳源码并切实践视图）、`@insert-report`→复用 `onInsertReport`（插入实验报告过程记录）、`@trace-inspected`→新增 `onTraceInspected` 调 `record`；传 `:endpoint` 与 ProblemsPanel 一致；`.ws-trace-viewer` 加入 assistant-body grid 选择器。
+- **文档**：更新 `docs/workbench-ui.md` Trace 面板章节（两视图、播放控制、源码跳转映射、关键帧插入、`trace_inspected` 上报、404 降级、Sv39 降级说明）；`lab-packages/visualization/README.md` 增加「实现状态」段落，注记 B 已实现 Trap/调度两视图、页表视图待 page_walk trace。
+
+### Testing
+
+- `npm run build`：VitePress 客户端、服务端 bundle 与页面渲染通过（build complete in 154.82s，exit code 0）。
+- `npm test`：16 项全部通过。
+- `ReadLints`：对 `TraceViewer.vue`、`TraceTrapView.vue`、`TraceTimelineView.vue`、`useTracePlayback.ts`、`LabWorkspace.vue`、`workbench-ui.md`、`visualization/README.md` 检查无 linter 错误。
+- 后端 `GET /runs/:id/trace` 接口尚未由成员 C 提供，前端已就绪：接口未就绪时 Trace Viewer 保持可信空态（unavailable），符合计划「真实查询 API 接入前不使用 mock 诊断/trace 结果」原则。
+
+### Notes
+
+- 主要文件：新建 `composables/useTracePlayback.ts`、`components/TraceTrapView.vue`、`components/TraceTimelineView.vue`、`components/TraceViewer.vue`；删除 `components/TracePanel.vue`；改 `components/LabWorkspace.vue`；更新 `docs/workbench-ui.md`、`lab-packages/visualization/README.md`、`progress.md`。
+- 真实 trace 事件仅 `trap_enter`（含 `cause`）与 `task_switch`（含 `from`/`to`/`reason`），见 `os-lab/tutor/schema/trace-v1.schema.json` 与 `os-lab/kernel/src/trace.rs`。
+- Sv39 page walk 视图未实现：真实 trace 无 `page_walk` 事件，按 `visualization/README.md` 应显示降级空态而非伪造；OPRE 页表任务改走源码降级路径（`opre-tasks.md` 已规定）。
+- 本轮没有提交或推送（与既往轮次一致）。
+
 ## 2026-07-29 - Task: 成员 C M1 真实文件状态与编译诊断闭环
 
 ### What was done
@@ -2627,3 +2677,22 @@
 - `docs/project_plan.md`：新增项目完成计划文档，明确实施路径、验收方式和三人分工。
 - `progress.md`：新增本轮正式文档交付记录。
 - 回滚方式：删除 `docs/project_plan.md` 和本文件中的本轮记录；若 `docs/` 目录仅包含本轮创建内容，可一并删除 `docs/` 目录。
+
+## 2026-07-29 - Task: 修复 CodePanel 首次打开文件卡在「读取中」需切换才显示
+
+### What was done
+
+- **问题**：在文件树首次点开一个文件，编辑器停在「读取中…」，必须切换到另一个文件再切回才会显示 Monaco 编辑器。
+- **根因**：`CodePanel.vue` 的 `openFile` 把占位 tab `push` 进 `ref<OpenTab[]>` 后，后续 `tab.content = ...` / `tab.loading = false` 改的是原始普通对象，而非 Vue 在 reactive 数组里包出的代理，这些赋值不触发更新；直到 `activePath` 变化（切换文件）使 `activeTab` computed 重算，才通过代理读到新值。`saveEdit` 用的是 `activeTab.value`（代理）所以正常，只有 `openFile` 用了局部原始 `tab` 变量才有此 bug。
+- **修复**：push 占位 tab 后取回数组里的 reactive 代理 `view = openTabs.value[openTabs.value.length - 1]`，后续 `content/draft/truncated/error/loading` 全部通过 `view` 修改，fetch 一结束 loading 立即翻 false，编辑器即时渲染。
+
+### Testing
+
+- `ReadLints` 对 `CodePanel.vue` 无 linter 错误。
+- 前端 `npm run dev` HMR 生效后：首次点开未打开过的文件直接从「读取中…」过渡到 Monaco 编辑器，无需切换；再点开另一个新文件同样一次显示；切回已打开的 tab 立刻显示（走 `existing` 分支，本就正常）。
+
+### Notes
+
+- 改动文件：`os-lab/handbook/.vitepress/theme/components/CodePanel.vue`、`progress.md`（本条）。
+- 本轮提交作者固定为 `SIZN <a18990330371@outlook.com>`（用 `git commit --author` 指定，未改动仓库全局 config），无合作者。
+- 本轮未推送远端（与既往惯例一致）。

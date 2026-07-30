@@ -183,6 +183,8 @@ async function openFile(relative: string) {
     saveNote: '',
   }
   openTabs.value.push(tab)
+  // 取回 reactive 代理：后续必须通过代理修改，直接改原始 tab 不触发更新。
+  const view = openTabs.value[openTabs.value.length - 1]
   activePath.value = relative
   closeTreeOnNarrowScreen()
   expandToPath(relative)
@@ -192,14 +194,14 @@ async function openFile(relative: string) {
     })
     const payload = await response.json()
     if (!response.ok) throw new Error(payload?.error || `导师服务返回 ${response.status}`)
-    tab.content = payload.content || ''
-    tab.draft = tab.content
-    tab.truncated = Boolean(payload.truncated)
-    tab.error = ''
+    view.content = payload.content || ''
+    view.draft = view.content
+    view.truncated = Boolean(payload.truncated)
+    view.error = ''
   } catch (err) {
-    tab.error = err instanceof Error ? err.message : '读取文件失败'
+    view.error = err instanceof Error ? err.message : '读取文件失败'
   } finally {
-    tab.loading = false
+    view.loading = false
   }
 }
 

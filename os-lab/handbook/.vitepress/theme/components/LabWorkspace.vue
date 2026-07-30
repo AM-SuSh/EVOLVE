@@ -8,7 +8,7 @@ import TerminalPanel from './TerminalPanel.vue'
 import ReportPanel from './ReportPanel.vue'
 import CodePanel from './CodePanel.vue'
 import ProblemsPanel from './ProblemsPanel.vue'
-import TracePanel from './TracePanel.vue'
+import TraceViewer from './TraceViewer.vue'
 import JourneyRail from './JourneyRail.vue'
 import TeacherDocPanel from './TeacherDocPanel.vue'
 import TeacherPublishPanel from './TeacherPublishPanel.vue'
@@ -1189,6 +1189,15 @@ function onProblemJump(payload: { path: string; line: number; code: string }) {
   })
 }
 
+/** Trace Viewer 查看：上报 trace_inspected 事件（事件 v2）。 */
+function onTraceInspected(payload: { runId: string; view: string; eventRange: { start: number; end: number } }) {
+  record('trace_inspected', {
+    content: '查看 trace',
+    runId: payload.runId,
+    metadata: { view: payload.view, eventRange: payload.eventRange },
+  })
+}
+
 /** 终端输出插入实验报告的「过程记录」。 */
 function onInsertReport(text: string) {
   reportInsert.value = { id: (reportInsert.value?.id ?? 0) + 1, text }
@@ -1751,7 +1760,15 @@ onBeforeUnmount(() => {
           </header>
           <div class="ws-zone-body ws-assistant-body">
             <ProblemsPanel v-show="rightTab === 'problems'" :run-id="lastRunId" :endpoint="endpoint" @jump="onProblemJump" />
-            <TracePanel v-show="rightTab === 'trace'" :run-id="lastRunId" :lab-id="lab.id" />
+            <TraceViewer
+              v-show="rightTab === 'trace'"
+              :run-id="lastRunId"
+              :lab-id="lab.id"
+              :endpoint="endpoint"
+              @jump="onProblemJump"
+              @insert-report="onInsertReport"
+              @trace-inspected="onTraceInspected"
+            />
             <div v-show="rightTab === 'tests'" class="ws-tests-empty">
               <p v-if="!lastRunId">运行可信验证命令后，断言结果将汇总在此。</p>
               <ul v-else-if="lastAssertions.length" class="ws-tests-assertions">
@@ -2594,6 +2611,7 @@ onBeforeUnmount(() => {
 .ws-assistant-body > :deep(.ws-tutor-pane),
 .ws-assistant-body > :deep(.ws-problems),
 .ws-assistant-body > :deep(.ws-trace),
+.ws-assistant-body > :deep(.ws-trace-viewer),
 .ws-assistant-body > .ws-tests-empty {
   grid-area: 1 / 1;
   min-width: 0;
