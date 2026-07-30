@@ -236,6 +236,17 @@ function writeWorkspacePages() {
     return 0
   }
   const { labs } = JSON.parse(fs.readFileSync(dataPath, 'utf8'))
+  const catalogPath = process.env.OS_LAB_FACTORY_CATALOG_PATH || path.join(OS_LAB_ROOT, 'lab-packages', 'published.json')
+  let published = { labs: {} }
+  try { published = JSON.parse(fs.readFileSync(catalogPath, 'utf8')) } catch { /* no published Lab packages */ }
+  for (const lab of labs) {
+    const release = published.labs?.[lab.id]
+    if (!release) continue
+    lab.title = release.title
+    lab.feature = release.feature
+    lab.verifyCmd = release.verification?.command || lab.verifyCmd
+    lab.expected = (release.verification?.assertions || []).map((item) => item.text).filter(Boolean)
+  }
   const outDir = path.join(HANDBOOK_ROOT, 'learn')
   fs.mkdirSync(outDir, { recursive: true })
   let count = 0

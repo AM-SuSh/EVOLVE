@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "labId": "lab3",
+  "version": "0.1.2-draft",
+  "title": "内存管理与虚存",
+  "status": "sample",
+  "feature": "lab3",
+  "manual": "labs/lab3-memory.md",
+  "answers": "labs/answers/lab3-answers.md",
+  "tutorContext": "tutor/prompts/lab3/context.md",
+  "verification": {
+    "recipe": "lab3.verify.v1",
+    "command": "cargo run -p kernel --features lab3 --release",
+    "assertions": [
+      {
+        "id": "hello-output",
+        "kind": "output-contains",
+        "text": "Hello from user app!"
+      },
+      {
+        "id": "power-result",
+        "kind": "output-contains",
+        "text": "409684505"
+      },
+      {
+        "id": "yield-five-rounds",
+        "kind": "output-count",
+        "text": "Yield round",
+        "min": 5
+      },
+      {
+        "id": "all-exited",
+        "kind": "output-contains",
+        "text": "All user apps exited."
+      }
+    ],
+    "observable_trace": []
+  },
+  "variants": {
+    "debug": {
+      "label": "学生按现象→假设→最小实验排查：用户程序无法正确取指/访存。",
+      "files": [
+        "kernel/src/mm.rs"
+      ],
+      "sources": {
+        "kernel/src/mm.rs": "scaffold/exercises/lab3/debug/kernel/src/mm.rs"
+      },
+      "manifest": "lab-packages/lab3/variants/debug/manifest.yaml"
+    }
+  },
+  "source": {
+    "specHash": "5a5d98e926dd06e7e619077ea5c937429d231ae9e86b825f9c2c99fd27d935bd",
+    "specPath": "lab-packages/lab3/lab.yaml"
+  },
+  "test": {
+    "runId": "bf677b5a-4a23-46b3-b14b-96348fed1491",
+    "labId": "lab3",
+    "version": "0.1.2-draft",
+    "variant": "debug",
+    "specHash": "5a5d98e926dd06e7e619077ea5c937429d231ae9e86b825f9c2c99fd27d935bd",
+    "status": "passed",
+    "isolated": true,
+    "commands": [
+      {
+        "kind": "baseline-build",
+        "exitCode": 0,
+        "outputHash": "551fbfaca12b6451985697260d3c2c8fbb9be4ec5a652f30eb13f9ba535673d5"
+      },
+      {
+        "kind": "baseline-trusted-test",
+        "exitCode": 0,
+        "outputHash": "0df4165f6d5f5167c58ef39fd45cc2878d11cd4bbe1a7e67c457e8c01769ea34"
+      },
+      {
+        "kind": "variant-build",
+        "exitCode": 0,
+        "outputHash": "4007edd08effb60525adb9ed01ca89226e99621387651283bd5d9490ce5ce011"
+      },
+      {
+        "kind": "variant-trusted-test",
+        "exitCode": 0,
+        "outputHash": "94cc84941753c2e6fbd0bd1837d197c955d15f900c6f7a53fcea192339803c0a"
+      }
+    ],
+    "baselineAssertions": [
+      {
+        "id": "hello-output",
+        "passed": true
+      },
+      {
+        "id": "power-result",
+        "passed": true
+      },
+      {
+        "id": "yield-five-rounds",
+        "passed": true
+      },
+      {
+        "id": "all-exited",
+        "passed": true
+      }
+    ],
+    "variantAssertions": [
+      {
+        "id": "hello-output",
+        "passed": false
+      },
+      {
+        "id": "power-result",
+        "passed": false
+      },
+      {
+        "id": "yield-five-rounds",
+        "passed": false
+      },
+      {
+        "id": "all-exited",
+        "passed": false
+      }
+    ],
+    "negativeMatched": true,
+    "startedAt": "2026-07-30T05:30:20.881Z",
+    "finishedAt": "2026-07-30T05:30:30.163Z",
+    "author": "AM-SuSh"
+  },
+  "approval": {
+    "approved": true,
+    "teacher": "AM-SuSh",
+    "note": "0.1.2 发布审计快照完成路径脱敏；schema、dry-run、隔离基线正向验证与缺 U 位负向验证均通过，批准发布到测试班。",
+    "approvedAt": "2026-07-30T05:30:54.287Z"
+  },
+  "author": "AM-SuSh",
+  "publishedAt": "2026-07-30T05:30:54.287Z"
+}

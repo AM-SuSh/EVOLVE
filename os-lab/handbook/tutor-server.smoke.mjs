@@ -160,6 +160,15 @@ try {
   }).then((response) => response.json())
   assert.equal(teacher.ok, true)
   const teacherHeaders = { Authorization: `Bearer ${teacher.token}` }
+  assert.equal((await fetch(`${endpoint}/teacher/lab-factory?labId=lab3`, { headers: studentHeaders })).status, 401)
+  const factoryValidation = await postJson('/teacher/lab-factory/validate', teacherHeaders, {
+    labId: 'lab3',
+    variant: 'debug',
+  })
+  assert.equal(factoryValidation.status, 200)
+  const factoryPayload = await factoryValidation.json()
+  assert.equal(factoryPayload.stage, 'dry-run')
+  assert.equal(factoryPayload.variants[0].variant, 'debug')
   assert.equal(
     (await fetch(`${endpoint}/manual?labId=lab8`, {
       headers: { Authorization: `Bearer ${teacher.token}` },

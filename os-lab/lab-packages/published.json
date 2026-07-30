@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "labs": {
+    "lab3": {
+      "version": "0.1.2-draft",
+      "title": "内存管理与虚存",
+      "feature": "lab3",
+      "status": "sample",
+      "manual": "labs/lab3-memory.md",
+      "answers": "labs/answers/lab3-answers.md",
+      "tutorContext": "tutor/prompts/lab3/context.md",
+      "verification": {
+        "recipe": "lab3.verify.v1",
+        "command": "cargo run -p kernel --features lab3 --release",
+        "assertions": [
+          {
+            "id": "hello-output",
+            "kind": "output-contains",
+            "text": "Hello from user app!"
+          },
+          {
+            "id": "power-result",
+            "kind": "output-contains",
+            "text": "409684505"
+          },
+          {
+            "id": "yield-five-rounds",
+            "kind": "output-count",
+            "text": "Yield round",
+            "min": 5
+          },
+          {
+            "id": "all-exited",
+            "kind": "output-contains",
+            "text": "All user apps exited."
+          }
+        ],
+        "observable_trace": []
+      },
+      "variants": {
+        "debug": {
+          "label": "学生按现象→假设→最小实验排查：用户程序无法正确取指/访存。",
+          "files": [
+            "kernel/src/mm.rs"
+          ],
+          "sources": {
+            "kernel/src/mm.rs": "scaffold/exercises/lab3/debug/kernel/src/mm.rs"
+          },
+          "manifest": "lab-packages/lab3/variants/debug/manifest.yaml"
+        }
+      },
+      "release": "releases/lab3/0.1.2-draft/release.json"
+    }
+  }
+}

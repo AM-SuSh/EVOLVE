@@ -68,6 +68,7 @@ starter_files:
   editable_by_variant:
     fill: [kernel/src/task.rs]
     debug: [kernel/src/task.rs]
+    remedial: [kernel/src/task.rs]
   generated: [Cargo.toml, kernel/Cargo.toml, user/Cargo.toml]
 
 variants:

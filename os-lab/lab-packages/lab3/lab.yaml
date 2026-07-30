@@ -1,8 +1,9 @@
 # Lab3 教学规格草案（成员 A · Lab2/3 样板）
 
+schema_version: 1
 id: lab3
 title: 内存管理与虚存
-version: 0.1.0-draft
+version: 0.1.2-draft
 feature: lab3
 prerequisites: [lab1, lab2]
 textbook:
@@ -11,8 +12,10 @@ textbook:
   - OSTEP Ch.15 Address Translation
   - OSTEP Ch.16 Paging
 status: sample
+manual_revision: lab3-debug-factory-sample
 manual: ../../labs/lab3-memory.md
 answers: ../../labs/answers/lab3-answers.md
+tutor_context: ../../tutor/prompts/lab3/context.md
 
 knowledge:
   - id: os.mm.address-space
@@ -61,7 +64,6 @@ variants:
   debug:
     manifest: variants/debug/manifest.yaml
     source: ../../scaffold/exercises/lab3/debug/kernel/src/mm.rs
-    note: 变体源文件随本包交付；接入 scaffold 发放由教师/C 在 Lab 工厂阶段合入。
 
 verification:
   recipe: lab3.verify.v1
@@ -80,6 +82,7 @@ verification:
     - id: all-exited
       kind: output-contains
       text: "All user apps exited."
+  observable_trace: []
 
 misconceptions:
   - id: va-equals-pa
@@ -92,6 +95,4 @@ misconceptions:
     statement: 改页表后不刷新 TLB/指令屏障
     counter: 映射变更后需要 sfence.vma（实现层约定）
 
-views_ref: ../visualization/README.md
 rubric_ref: ../../learning/rubric-v2-draft.md
-checkpoints_ref: checkpoints.md

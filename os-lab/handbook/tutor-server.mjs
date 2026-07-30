@@ -2,6 +2,7 @@ import http from 'node:http'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { appendFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { parse as parseYaml } from 'yaml'
@@ -12,6 +13,13 @@ import {
   extractReasoningText,
   extractStreamText,
 } from './llm-response.mjs'
+import {
+  inspectLabPackage,
+  listPublishedLabs,
+  publishLabPackage,
+  scaffoldDryRun,
+  testLabPackage,
+} from './lab-factory.mjs'
 import { scoreLearningEvents } from '../learning/rubric.mjs'
 import { assessLearningV2 } from '../learning/rubric-v2.mjs'
 import { deriveMasteryUpdates } from '../learning/mastery.mjs'
@@ -23,11 +31,11 @@ import { evaluateRunAssertions, getRunRecipe } from '../tutor/run-recipes.mjs'
 import { parseTraceQuery, readTracePage, TraceIntegrityError } from '../tutor/trace-store.mjs'
 import { decideTutorTurn, enforceTutorOutput, tutorPolicyPrompt } from '../tutor/state-machine.mjs'
 import {
-  EXERCISES,
   LAB_ORDER,
   addUserBin,
   applyNext,
   effectiveConfigFor,
+  getExerciseCatalog,
   listStudents,
   readTeacherConfig,
   sanitizeUser,
@@ -78,6 +86,18 @@ const manualFiles = {
   lab6: 'lab6-disk-fs.md',
   lab7: 'lab7-ipc-signal.md',
   lab8: 'lab8-thread-sync.md',
+}
+
+function publishedLabMetadata() {
+  const catalogPath = process.env.OS_LAB_FACTORY_CATALOG_PATH || path.join(osLabRoot, 'lab-packages', 'published.json')
+  try { return JSON.parse(readFileSync(catalogPath, 'utf8')).labs || {} } catch { return {} }
+}
+
+function publishedContentPath(labId, field, fallback) {
+  const relative = publishedLabMetadata()[labId]?.[field]
+  if (!relative) return fallback
+  const resolved = path.resolve(osLabRoot, relative)
+  return resolved.startsWith(`${osLabRoot}${path.sep}`) ? resolved : fallback
 }
 
 /** 该学生的生效教学配置（学生覆盖 > 班级覆盖 > 全局）。 */
@@ -199,7 +219,7 @@ const [systemPrompt, guardrailSource] = await Promise.all([
   readPrompt(promptFiles.system),
   readPrompt(promptFiles.guardrails),
 ])
-const labPrompts = Object.fromEntries(
+const fallbackLabPrompts = Object.fromEntries(
   await Promise.all(
     [...labIds].map(async (labId) => [
       labId,
@@ -300,6 +320,8 @@ function frameworkFor(labId, stage, reading, policyPrompt = '') {
     ? `tutor/prompts/lab2/stage-${safeStage}.md`
     : `tutor/prompts/stages/stage-${safeStage}.md`
   const reading_ = readingLayer(reading)
+  const publishedContext = publishedContentPath(safeLabId, 'tutorContext', '')
+  const labPrompt = publishedContext ? readFileSync(publishedContext, 'utf8') : fallbackLabPrompts[safeLabId]
   const layers = [
     { id: 'system', label: '教学边界', source: 'tutor/prompts/system.md' },
     { id: 'lab', label: `${labLabels[safeLabId]} 上下文`, source: `tutor/prompts/${safeLabId}/context.md` },
@@ -312,7 +334,7 @@ function frameworkFor(labId, stage, reading, policyPrompt = '') {
     labId: safeLabId,
     stage: safeStage,
     layers,
-    prompt: [systemPrompt, labPrompts[safeLabId], stagePrompt, reading_, policyPrompt]
+    prompt: [systemPrompt, labPrompt, stagePrompt, reading_, policyPrompt]
       .filter(Boolean)
       .join('\n\n---\n\n'),
   }
@@ -1246,8 +1268,9 @@ const server = http.createServer(async (request, response) => {
         return
       }
       const labId = String(requestUrl.searchParams.get('labId') || '')
-      const file = manualFiles[labId]
-      if (!file) {
+      const fallback = manualFiles[labId] ? path.join(osLabRoot, 'labs', manualFiles[labId]) : ''
+      const manualPath = publishedContentPath(labId, 'manual', fallback)
+      if (!manualPath) {
         json(response, 404, { error: '实验手册不存在' }, origin)
         return
       }
@@ -1257,8 +1280,8 @@ const server = http.createServer(async (request, response) => {
         json(response, 403, { error: labAccess?.reason || '该实验尚未解锁', access: labAccess }, origin)
         return
       }
-      const content = await readFile(path.join(osLabRoot, 'labs', file), 'utf8')
-      json(response, 200, { ok: true, labId, file, content, access: labAccess }, origin)
+      const content = await readFile(manualPath, 'utf8')
+      json(response, 200, { ok: true, labId, file: path.relative(osLabRoot, manualPath).replaceAll('\\', '/'), content, access: labAccess }, origin)
       return
     }
 
@@ -1479,6 +1502,43 @@ const server = http.createServer(async (request, response) => {
         return
       }
 
+      if (request.method === 'GET' && pathname === '/teacher/lab-factory') {
+        const labId = String(requestUrl.searchParams.get('labId') || '')
+        const inspected = labId ? await inspectLabPackage(labId) : null
+        json(response, 200, { ok: true, published: await listPublishedLabs(), inspected }, origin)
+        return
+      }
+
+      if (request.method === 'POST' && pathname === '/teacher/lab-factory/validate') {
+        const body = await readBody(request)
+        const result = await scaffoldDryRun(String(body.labId || ''), { variant: body.variant || undefined })
+        json(response, result.ok ? 200 : 400, result, origin)
+        return
+      }
+
+      if (request.method === 'POST' && pathname === '/teacher/lab-factory/test') {
+        const body = await readBody(request)
+        const result = await testLabPackage(String(body.labId || ''), {
+          variant: body.variant || undefined,
+          author: session.username,
+        })
+        json(response, result.ok ? 200 : 400, result, origin)
+        return
+      }
+
+      if (request.method === 'POST' && pathname === '/teacher/lab-factory/publish') {
+        const body = await readBody(request)
+        const result = await publishLabPackage(String(body.labId || ''), {
+          testRunId: String(body.testRunId || ''),
+          approved: body.approved === true,
+          approvalNote: body.approvalNote,
+          teacher: session.username,
+          author: session.username,
+        })
+        json(response, result.ok ? 200 : 400, result, origin)
+        return
+      }
+
       if (request.method === 'GET' && pathname === '/teacher/reports') {
         json(response, 200, { ok: true, reports: listAllReports() }, origin)
         return
@@ -1519,7 +1579,7 @@ const server = http.createServer(async (request, response) => {
           students,
           labs: LAB_ORDER,
           exercises: Object.fromEntries(
-            Object.entries(EXERCISES).map(([labId, exercise]) => [
+            Object.entries(getExerciseCatalog()).map(([labId, exercise]) => [
               labId,
               {
                 default: exercise.default,
@@ -1539,7 +1599,7 @@ const server = http.createServer(async (request, response) => {
         if (body.assignment && typeof body.assignment === 'object') {
           const labId = String(body.assignment.labId || '')
           const variant = String(body.assignment.variant || '')
-          const exercise = EXERCISES[labId]
+          const exercise = getExerciseCatalog()[labId]
           if (!exercise || (variant !== 'random' && !exercise.variants[variant])) {
             json(response, 400, { error: `无效的任务分配（${labId} / ${variant}）` }, origin)
             return

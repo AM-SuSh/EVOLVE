@@ -25,6 +25,7 @@
  */
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
 import { cp, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 
 const OS_LAB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -141,7 +142,7 @@ const KERNEL_DEPS = {
  * 发放时替代参考实现。教师在控制台（或 assign 命令）指定各 Lab 用哪个变体，
  * "random" 表示随机——不同学生拿到不同任务。
  */
-export const EXERCISES = {
+const LEGACY_EXERCISES = {
   lab2: {
     default: 'fill',
     variants: {
@@ -150,6 +151,25 @@ export const EXERCISES = {
     },
   },
 }
+
+/** Published Lab packages extend scaffold from one generated catalog. */
+export function getExerciseCatalog() {
+  let published = { labs: {} }
+  const packageRoot = process.env.OS_LAB_FACTORY_PACKAGE_ROOT
+    ? path.resolve(process.env.OS_LAB_FACTORY_PACKAGE_ROOT)
+    : path.join(OS_LAB_ROOT, 'lab-packages')
+  const catalogPath = process.env.OS_LAB_FACTORY_CATALOG_PATH
+    ? path.resolve(process.env.OS_LAB_FACTORY_CATALOG_PATH)
+    : path.join(packageRoot, 'published.json')
+  try { published = JSON.parse(readFileSync(catalogPath, 'utf8')) } catch { /* no published packages yet */ }
+  const generated = Object.fromEntries(Object.entries(published.labs || {}).map(([labId, lab]) => {
+    const variants = lab.variants || {}
+    return [labId, { default: Object.keys(variants)[0], variants }]
+  }))
+  return { ...LEGACY_EXERCISES, ...generated }
+}
+
+export const EXERCISES = LEGACY_EXERCISES
 
 /* -- 教师配置 ---------------------------------------------------------------- */
 
@@ -216,7 +236,7 @@ export async function writeTeacherConfig(patch) {
 }
 
 export async function writeAssignment(labId, variant) {
-  const exercise = EXERCISES[labId]
+  const exercise = getExerciseCatalog()[labId]
   if (!exercise) return { ok: false, log: [`${labId} 目前没有任务变体（先在 EXERCISES 表登记）`] }
   if (variant !== 'random' && !exercise.variants[variant]) {
     return {
@@ -232,7 +252,7 @@ export async function writeAssignment(labId, variant) {
 
 /** 解析某个 Lab 实际发放的变体：显式指定 > 生效分配表（学生>班级>全局）> 该 Lab 默认。 */
 async function resolveVariant(labId, explicit, effectiveAssignments) {
-  const exercise = EXERCISES[labId]
+  const exercise = getExerciseCatalog()[labId]
   if (!exercise) return null
   const names = Object.keys(exercise.variants)
   const pick = (value) =>
@@ -475,7 +495,7 @@ export async function workspaceBaselines(user) {
   for (const labId of state.applied) {
     const lab = LABS[labId]
     const variant = state.variants[labId]
-    const variantInfo = variant ? EXERCISES[labId]?.variants[variant] : null
+    const variantInfo = variant ? getExerciseCatalog()[labId]?.variants[variant] : null
     const exercisePaths = new Set(variantInfo?.files || [])
 
     for (const file of lab.rootFiles || []) {
@@ -505,7 +525,9 @@ export async function workspaceBaselines(user) {
       }
     }
     for (const target of exercisePaths) {
-      const overlay = path.join(EXERCISE_ROOT, labId, variant, target)
+      const overlay = variantInfo.sources?.[target]
+        ? path.join(OS_LAB_ROOT, variantInfo.sources[target])
+        : path.join(EXERCISE_ROOT, labId, variant, target)
       files.set(target, {
         path: target,
         labId,
@@ -547,7 +569,7 @@ export async function workspaceBaselines(user) {
 async function applyLab(studentRoot, labId, state, log, explicitVariant, effectiveAssignments) {
   const lab = LABS[labId]
   const variant = await resolveVariant(labId, explicitVariant, effectiveAssignments)
-  const variantInfo = variant ? EXERCISES[labId].variants[variant] : null
+  const variantInfo = variant ? getExerciseCatalog()[labId].variants[variant] : null
   const exercisePaths = new Set(variantInfo ? variantInfo.files : [])
 
   for (const file of lab.rootFiles || []) {
@@ -576,7 +598,9 @@ async function applyLab(studentRoot, labId, state, log, explicitVariant, effecti
   }
   // 任务文件：来自 scaffold/exercises/<lab>/<variant>/，替代参考实现发放。
   for (const rel of exercisePaths) {
-    const overlay = path.join(EXERCISE_ROOT, labId, variant, rel)
+    const overlay = variantInfo.sources?.[rel]
+      ? path.join(OS_LAB_ROOT, variantInfo.sources[rel])
+      : path.join(EXERCISE_ROOT, labId, variant, rel)
     if (await exists(overlay)) {
       await copyFileNoOverwrite(overlay, path.join(studentRoot, rel), studentRoot, log, `（任务：${variantInfo.label}）`)
     } else {
