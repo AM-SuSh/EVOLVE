@@ -17,6 +17,7 @@ import { accessForLab, buildLearningAccess } from '../learning/access.mjs'
 import { collectTraceEvents, validateInteractionEvent, validateRunResult } from '../tutor/contracts.mjs'
 import { createCargoJsonCollector } from '../tutor/cargo-diagnostics.mjs'
 import { evaluateRunAssertions, getRunRecipe } from '../tutor/run-recipes.mjs'
+import { parseTraceQuery, readTracePage, TraceIntegrityError } from '../tutor/trace-store.mjs'
 import {
   EXERCISES,
   LAB_ORDER,
@@ -37,6 +38,7 @@ import {
   createRun,
   finishRun,
   getLearningEvidence,
+  getRun,
   getRunDiagnostics,
   insertLearningEvents,
   listAllReports,
@@ -1242,6 +1244,35 @@ const server = http.createServer(async (request, response) => {
       return
     }
 
+    const traceRoute = pathname.match(/^\/runs\/([^/]+)\/trace$/)
+    if (request.method === 'GET' && traceRoute) {
+      if (!session) {
+        json(response, 401, { error: '请先登录' }, origin)
+        return
+      }
+      const runId = decodeURIComponent(traceRoute[1])
+      const run = getRun(session.id, runId)
+      if (!run) {
+        json(response, 404, { error: '运行不存在或不属于当前账号' }, origin)
+        return
+      }
+      const query = parseTraceQuery(requestUrl.searchParams)
+      if (!query) {
+        json(response, 400, { error: 'trace 分页或范围参数无效' }, origin)
+        return
+      }
+      try {
+        json(response, 200, { ok: true, ...(await readTracePage(dataDir, run, query)) }, origin)
+      } catch (error) {
+        if (error instanceof TraceIntegrityError) {
+          json(response, 409, { error: error.message, integrity: { valid: false } }, origin)
+          return
+        }
+        throw error
+      }
+      return
+    }
+
     if (request.method === 'GET' && pathname === '/fs/tree') {
       const workRoot = await resolveWorkRoot(reqUser)
       const counter = { count: 0 }
@@ -1522,6 +1553,15 @@ const server = http.createServer(async (request, response) => {
         json(response, 400, { error: '事件不符合 event v1/v2 契约，或属于只能由服务端生成的运行事件' }, origin)
         return
       }
+      const invalidTraceEvidence = events.find((event) => {
+        if (event.type !== 'trace_inspected') return false
+        const run = getRun(session.id, event.runId)
+        return !run || run.labId !== event.labId || event.eventRange.end >= run.trace.count
+      })
+      if (invalidTraceEvidence) {
+        json(response, 400, { error: 'trace_inspected 必须引用当前账号同一 Lab 的有效运行范围' }, origin)
+        return
+      }
       const stored = insertLearningEvents(session.id, events)
       await persistEvents(events)
       json(response, 202, { accepted: stored.accepted }, origin)
@@ -1549,7 +1589,7 @@ const server = http.createServer(async (request, response) => {
     }
 
     json(response, 404, {
-      error: '可用接口包括：GET|POST /health，GET /fs/status、/run/diagnostics，POST /chat、/run、/run/stop、/events、/report',
+      error: '可用接口包括：GET|POST /health，GET /fs/status、/run/diagnostics、/runs/:id/trace，POST /chat、/run、/run/stop、/events、/report',
     }, origin)
   } catch (error) {
     const message = error instanceof Error ? error.message : '导师服务发生未知错误'

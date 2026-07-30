@@ -789,7 +789,7 @@ const connectionLabel = computed(() => {
 
 function record(
   type: LearningEvent['type'],
-  options: Pick<LearningEvent, 'category' | 'content' | 'metadata' | 'runId' | 'recipeId' | 'assertions'> = {},
+  options: Pick<LearningEvent, 'category' | 'content' | 'metadata' | 'runId' | 'recipeId' | 'assertions' | 'file' | 'line' | 'code' | 'view' | 'eventRange'> = {},
 ) {
   const result = appendEvent(events.value, {
     sessionId: sessionId.value,
@@ -1194,7 +1194,8 @@ function onTraceInspected(payload: { runId: string; view: string; eventRange: { 
   record('trace_inspected', {
     content: '查看 trace',
     runId: payload.runId,
-    metadata: { view: payload.view, eventRange: payload.eventRange },
+    view: payload.view,
+    eventRange: payload.eventRange,
   })
 }
 

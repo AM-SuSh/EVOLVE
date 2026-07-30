@@ -108,6 +108,8 @@ export interface LearningEvent {
   file?: string
   line?: number
   code?: string
+  view?: string
+  eventRange?: { start: number; end: number }
 }
 
 export interface TutorScore {

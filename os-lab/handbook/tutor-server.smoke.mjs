@@ -343,6 +343,19 @@ try {
   assert.match(mockChatRequests[0].messages[0].content, /Lab2/)
 
   const runId = runFrame.runId
+  const traceResponse = await fetch(`${endpoint}/runs/${encodeURIComponent(runId)}/trace?offset=0&limit=2`, {
+    headers: studentHeaders,
+  })
+  assert.equal(traceResponse.status, 200)
+  const tracePayload = await traceResponse.json()
+  assert.equal(tracePayload.integrity.valid, true)
+  assert.equal(tracePayload.total, exitFrame.result.trace.count)
+  assert.equal(tracePayload.events.length, Math.min(2, tracePayload.total))
+  assert.equal(
+    (await fetch(`${endpoint}/runs/${encodeURIComponent(runId)}/trace`, { headers: otherStudentHeaders })).status,
+    404,
+  )
+
   const eventCommon = {
     version: 2,
     sessionId: 'smoke-learning-session',
@@ -422,6 +435,10 @@ try {
       evidenceRefs: [`run:${runId}`, `trace:${runId}`],
     },
   ]
+  const crossUserTraceEvent = await postJson('/events', otherStudentHeaders, {
+    event: { ...learningEvents[5], id: 'smoke-cross-user-trace' },
+  })
+  assert.equal(crossUserTraceEvent.status, 400)
   const eventSync = await fetch(`${endpoint}/events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...studentHeaders },
