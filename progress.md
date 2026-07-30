@@ -1,5 +1,51 @@
 # os-lab 项目进度总览
 
+## 2026-07-31 - 实验报告面板改造（格式下拉 / 图片库 / 上传修复）
+
+### 产品行为
+
+- **编写格式**改为下拉：**模板填写** / **Markdown 自由编写**；提交、预览、导出一律以当前选项为准，避免交错稿。
+- **移除 Word 编辑页**；需要 Word/PDF 时用「上传附件」。旧 `word` / `free` 草稿自动迁入 Markdown。
+- **图片库**常驻可浏览：上传 → 输入框改名并点「改名」→ 勾选 →「插入选中」。
+  - 模板：插入**当前段**末尾，段下显示「本段已插入」缩略图。
+  - Markdown：正文末尾插入，下方「插入结果」可见图；可手改 `![](attachment:…)` 调位置。
+  - 缩略图可点开大图浏览；「预览最终稿」看完整排版（含图）。
+- 上传只进图片库，**不自动写入正文**，由学生勾选插入，减少插错段。
+
+### 缺陷修复
+
+- **上传没反应**：`onImagePick` 先清空 `input.value` 会同步清空仍引用的 `FileList`，`addImages` 拿到空列表静默返回；改为先 `Array.from(files)` 再清空。
+- **上传后图片消失**：页面加载时 `hydrateAttachmentUrls` 整表覆盖刚写入的预览 URL；改为合并已有 URL，并用 generation 取消过期 hydrate。
+- **压缩/类型过严**：`compressImageFile` 失败不再抛错阻断；无扩展名截图、`image/*` 也可入库；强制图片 mime，避免误进「文档附件」。
+- **预览丢图**：`renderReportHtml` 用占位符注入真实 `<img>`；引用改用稳定 `attachment:id`（避免文件名空格导致 Markdown 解析失败）。
+- **persist 配额满**：localStorage 写失败不再误报成上传失败（二进制已在 IndexedDB）。
+- tutor `EADDRINUSE :8787`：释放占用 node 进程后重启 `npm run tutor`。
+
+### 主要文件
+
+- `os-lab/handbook/.vitepress/theme/components/ReportPanel.vue`
+- `os-lab/handbook/.vitepress/theme/report-markdown.ts`
+- `os-lab/handbook/.vitepress/theme/report-attachments.ts`
+- `os-lab/handbook/docs/workbench-ui.md`
+
+### 说明（相对此前条目）
+
+- 同日较早记录的「三种模式含 Word」「仅 data URL 预览」已被本轮取代：现为模板/Markdown 两档 + 图片库勾选插入；预览以占位符渲染 + blob/object URL 为主。
+
+---
+
+## 2026-07-31 - 实验报告：自由编写、插图、附件与教师可配版式（基线）
+
+- **痛点**：原报告面板过死板；提示词只在 placeholder，提交稿里看不见；教师无法布置格式。
+- **学生端**：模板 / 自由编写起步；「预览最终稿」= 提交稿；插图嵌正文；填写提示写入 Markdown。
+- **教师端**：教学安排「报告版式布置」；`GET /report-template`；`teacher.json` 的 `reportTemplates`。
+- **服务端**：报告附件上传与教师下载；`reports.attachments`。
+- **主要文件**：`ReportPanel.vue`、`TeacherPublishPanel.vue`、`report-template.ts|mjs`、`LabWorkspace.vue`、`tutor-server.mjs`、`scaffold.mjs`。
+- 后续迭代见上方「实验报告面板改造」条目。
+
+---
+
+
 ## 一、项目概览与团队分工
 
 | 项目 | 内容 |

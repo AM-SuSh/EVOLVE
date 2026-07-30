@@ -2,7 +2,7 @@ import http from 'node:http'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { appendFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises'
 import { existsSync as existsSyncSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { parse as parseYaml } from 'yaml'
@@ -15,6 +15,7 @@ import {
 } from './llm-response.mjs'
 import { scoreLearningEvents } from '../learning/rubric.mjs'
 import { accessForLab, buildLearningAccess } from '../learning/access.mjs'
+import { getReportTemplate, normalizeReportTemplate } from '../learning/report-template.mjs'
 import { collectTraceEvents, validateInteractionEvent, validateRunResult } from '../tutor/contracts.mjs'
 import { createCargoJsonCollector } from '../tutor/cargo-diagnostics.mjs'
 import { evaluateRunAssertions, getRunRecipe } from '../tutor/run-recipes.mjs'
@@ -38,6 +39,7 @@ import {
   createRun,
   finishRun,
   getLearningEvidence,
+  getReportAttachmentMeta,
   getRun,
   getRunDiagnostics,
   insertLearningEvents,
@@ -95,10 +97,11 @@ async function learningContextFor(session, effectiveOverride) {
   }
 }
 
-/** 从请求头解析登录会话（Authorization: Bearer <token> 或 X-Auth-Token）。 */
-function sessionOf(request) {
+/** 从请求头解析登录会话（Authorization / X-Auth-Token；附件直链可带 ?token=）。 */
+function sessionOf(request, requestUrl) {
   const auth = String(request.headers.authorization || '')
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : String(request.headers['x-auth-token'] || '')
+  let token = auth.startsWith('Bearer ') ? auth.slice(7) : String(request.headers['x-auth-token'] || '')
+  if (!token && requestUrl) token = String(requestUrl.searchParams.get('token') || '')
   return resolveSession(token)
 }
 
@@ -219,14 +222,14 @@ function json(response, status, payload, origin) {
   response.end(status === 204 ? undefined : JSON.stringify(payload))
 }
 
-function readBody(request) {
+function readBody(request, maxBytes = 256_000) {
   return new Promise((resolve, reject) => {
     let body = ''
     request.setEncoding('utf8')
     request.on('data', (chunk) => {
       body += chunk
-      if (body.length > 256_000) {
-        reject(new Error('请求内容超过 256 KiB'))
+      if (body.length > maxBytes) {
+        reject(new Error(`请求内容超过 ${Math.floor(maxBytes / 1024)} KiB`))
         request.destroy()
       }
     })
@@ -239,6 +242,65 @@ function readBody(request) {
     })
     request.on('error', reject)
   })
+}
+
+const REPORT_UPLOAD_ROOT = path.resolve(osLabRoot, 'learning', 'uploads', 'reports')
+const REPORT_MAX_BODY = 8 * 1024 * 1024
+const REPORT_MAX_FILE = 4 * 1024 * 1024
+const REPORT_MAX_FILES = 8
+const REPORT_ALLOWED_EXT = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.txt',
+  '.md',
+])
+
+function safeAttachmentName(name) {
+  const base = path.basename(String(name || 'file')).replace(/[^\w.\u4e00-\u9fff()-]+/g, '_')
+  return base.slice(0, 120) || 'file'
+}
+
+async function saveReportAttachments(userId, labId, attachments) {
+  const dir = path.join(REPORT_UPLOAD_ROOT, String(userId), String(labId))
+  await mkdir(dir, { recursive: true })
+  // 覆盖提交：清空旧附件目录内容。
+  try {
+    const existing = await readdir(dir)
+    await Promise.all(existing.map((file) => unlink(path.join(dir, file)).catch(() => {})))
+  } catch {
+    /* 目录可能尚不存在 */
+  }
+  const saved = []
+  const list = Array.isArray(attachments) ? attachments.slice(0, REPORT_MAX_FILES) : []
+  for (const item of list) {
+    const name = safeAttachmentName(item?.name)
+    const ext = path.extname(name).toLowerCase()
+    if (!REPORT_ALLOWED_EXT.has(ext)) continue
+    const raw = String(item?.dataBase64 || '')
+    if (!raw || raw.length > REPORT_MAX_FILE * 1.4) continue
+    let buffer
+    try {
+      buffer = Buffer.from(raw, 'base64')
+    } catch {
+      continue
+    }
+    if (!buffer.length || buffer.length > REPORT_MAX_FILE) continue
+    const storedName = `${saved.length + 1}-${name}`
+    await writeFile(path.join(dir, storedName), buffer)
+    saved.push({
+      name,
+      mime: String(item?.mime || 'application/octet-stream').slice(0, 120),
+      size: buffer.length,
+      storedName,
+    })
+  }
+  return saved
 }
 
 function resolveOrigin(origin) {
@@ -1154,7 +1216,7 @@ const server = http.createServer(async (request, response) => {
   const requestUrl = new URL(request.url || '/', 'http://localhost')
   const pathname = requestUrl.pathname
   // 身份只来自登录会话（不再信任 ?user=，防止冒名）；未登录 = 游客只读。
-  const session = sessionOf(request)
+  const session = sessionOf(request, requestUrl)
   const reqUser = session?.username || ''
   try {
     /* -- 账号 --------------------------------------------------------------- */
@@ -1234,6 +1296,19 @@ const server = http.createServer(async (request, response) => {
       return
     }
 
+    /* -- 实验报告版式（教师布置，学生只读拉取） ------------------------------ */
+
+    if (request.method === 'GET' && pathname === '/report-template') {
+      const labId = String(requestUrl.searchParams.get('labId') || '')
+      if (!labIds.has(labId)) {
+        json(response, 400, { error: '未知实验' }, origin)
+        return
+      }
+      const config = await readTeacherConfig()
+      json(response, 200, { ok: true, labId, template: getReportTemplate(config, labId) }, origin)
+      return
+    }
+
     /* -- 学生报告提交 -------------------------------------------------------- */
 
     if (request.method === 'POST' && pathname === '/reports') {
@@ -1241,15 +1316,22 @@ const server = http.createServer(async (request, response) => {
         json(response, 401, { error: '请先登录再提交报告' }, origin)
         return
       }
-      const body = await readBody(request)
-      const labId = String(body.labId || '')
-      const content = typeof body.content === 'string' ? body.content : ''
-      if (!labIds.has(labId) || !content.trim() || content.length > 262_144) {
-        json(response, 400, { error: '报告内容为空或过大（上限 256 KiB）' }, origin)
+      let body
+      try {
+        body = await readBody(request, REPORT_MAX_BODY)
+      } catch (error) {
+        json(response, 400, { error: error instanceof Error ? error.message : '请求过大' }, origin)
         return
       }
-      submitReport(session.id, labId, content)
-      json(response, 200, { ok: true, mine: listMyReports(session.id) }, origin)
+      const labId = String(body.labId || '')
+      const content = typeof body.content === 'string' ? body.content : ''
+      if (!labIds.has(labId) || !content.trim() || content.length > 524_288) {
+        json(response, 400, { error: '报告内容为空或过大（正文上限 512 KiB）' }, origin)
+        return
+      }
+      const savedAttachments = await saveReportAttachments(session.id, labId, body.attachments)
+      submitReport(session.id, labId, content, savedAttachments)
+      json(response, 200, { ok: true, mine: listMyReports(session.id), attachments: savedAttachments }, origin)
       return
     }
 
@@ -1460,6 +1542,38 @@ const server = http.createServer(async (request, response) => {
         return
       }
 
+      if (request.method === 'GET' && pathname === '/teacher/report-attachment') {
+        const username = String(requestUrl.searchParams.get('user') || '')
+        const labId = String(requestUrl.searchParams.get('labId') || '')
+        const file = path.basename(String(requestUrl.searchParams.get('file') || ''))
+        const meta = getReportAttachmentMeta(username, labId)
+        if (!meta) {
+          json(response, 404, { error: '报告不存在' }, origin)
+          return
+        }
+        const item = meta.attachments.find((att) => att.storedName === file || att.name === file)
+        if (!item) {
+          json(response, 404, { error: '附件不存在' }, origin)
+          return
+        }
+        const filePath = path.join(REPORT_UPLOAD_ROOT, String(meta.userId), labId, item.storedName)
+        try {
+          const data = await readFile(filePath)
+          response.writeHead(200, {
+            'Content-Type': item.mime || 'application/octet-stream',
+            'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(item.name)}`,
+            'Content-Length': data.length,
+            'Access-Control-Allow-Origin': origin || Array.from(allowedOrigins)[0] || '*',
+            'Cache-Control': 'no-store',
+            Vary: 'Origin',
+          })
+          response.end(data)
+        } catch {
+          json(response, 404, { error: '附件文件缺失' }, origin)
+        }
+        return
+      }
+
       if (request.method === 'POST' && pathname === '/teacher/report-feedback') {
         const body = await readBody(request)
         const result = setReportFeedback(body.user, body.labId, body.feedback)
@@ -1528,6 +1642,17 @@ const server = http.createServer(async (request, response) => {
           }
           if (body.assignment) {
             await writeAssignment(String(body.assignment.labId), String(body.assignment.variant))
+          }
+          if (body.reportTemplate && typeof body.reportTemplate === 'object') {
+            const labId = String(body.reportTemplate.labId || '')
+            if (!labIds.has(labId)) {
+              json(response, 400, { error: '报告版式缺少有效 labId' }, origin)
+              return
+            }
+            const current = await readTeacherConfig()
+            const reportTemplates = { ...(current.reportTemplates || {}) }
+            reportTemplates[labId] = normalizeReportTemplate(body.reportTemplate)
+            patch.reportTemplates = reportTemplates
           }
           const config = await writeTeacherConfig(patch)
           json(response, 200, { ok: true, config: { ...config, llm: { ...config.llm, apiKey: config.llm?.apiKey ? '（已设置）' : '' } } }, origin)

@@ -7,7 +7,7 @@
 | 区域 | 组件 | 职责 |
 | --- | --- | --- |
 | 左栏 | `ManualPane` | 实验手册、知识路径、阶段任务 |
-| 右上半 | `ReportPanel` / `TutorPane` / `CodePanel` | 实验报告、AI 导师、**工作区**（三页签切换） |
+| 右上半 | `ReportPanel` / `TutorPane` / `CodePanel` | 实验报告（模板 / Markdown 下拉、图片库与附件）、AI 导师、**工作区**（三页签切换） |
 | 右下半 | `BottomDock` + `TerminalPanel` | 终端、Problems、Trace、测试结果 |
 
 桌面端为「左手册 + 右实践区（上：报告/导师/工作区；下：终端）」三栏布局。
@@ -47,10 +47,18 @@
 3. 播放控制：播放/暂停、单步前进/后退、速度（0.5/1/2/4x）、事件类型/pid 过滤、重置；播放头竖线在时间线视图中标出当前位置。
 4. 大数据：事件列表 >200 条时只渲染前 200 条并提示「用过滤或播放控制查看其余」；视图主体靠滚动承载。
 5. 源码跳转：选中事件后「跳到源码」按静态映射跳转（`trap_enter` → `kernel/src/trap.rs`，`task_switch` → `kernel/src/task.rs`），复用 `codePanelRef.openAtLine`。
-6. 关键帧插入报告：选中事件后「插入报告」把事件格式化为证据文本，复用 `LabWorkspace.onInsertReport` → `ReportPanel` 过程记录。
+6. 关键帧插入报告：选中事件后「插入报告」把事件格式化为证据文本，复用 `LabWorkspace.onInsertReport` → `ReportPanel`（模板写入当前节；Markdown 追加到正文）。
 7. 事件上报：切换视图或移动播放头时上报 `trace_inspected`（事件 v2，字段 `runId`/`view`/`eventRange:{start,end}`）。
 8. 空数据与异常 trace 显示明确空态，不展示预设动画；移动端控制条与视图纵向堆叠。
 9. Sv39 page walk 视图暂未实现：真实 trace 无 `page_walk` 事件，按 `visualization/README.md` 应显示降级空态而非伪造；OPRE 页表任务改为源码降级路径。
+
+## 实验报告面板
+
+- **编写格式下拉**：**模板填写** / **Markdown 自由编写**。提交、预览、导出一律以当前下拉选项为准。已移除 Word 编辑页；Word/PDF 用「上传附件」。
+- **图片库**（始终可浏览）：上传 → 改名 → 勾选 → 插入；缩略图可放大预览。模板插入**当前段**末尾并在段下显示；Markdown 下方有「插入结果」；完整排版看「预览最终稿」。
+- 「收获与反思」系统固定。终端插入当前正在编辑的位置。
+- **预览最终稿**：与导出 / `POST /reports` 使用同一份 Markdown。
+- **教师布置 UI**：弹窗编辑；可导入 Markdown；无需配置「用途 / 行数」。
 
 ## 终端（xterm）
 

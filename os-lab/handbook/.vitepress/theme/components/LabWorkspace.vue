@@ -12,6 +12,7 @@ import TraceViewer from './TraceViewer.vue'
 import JourneyRail from './JourneyRail.vue'
 import TeacherDocPanel from './TeacherDocPanel.vue'
 import TeacherPublishPanel from './TeacherPublishPanel.vue'
+import { DEFAULT_REPORT_TEMPLATE, cloneTemplate, type ReportTemplate } from '../report-template'
 import {
   createWorkspaceContext,
   provideWorkspaceContext,
@@ -724,6 +725,8 @@ async function scaffoldAddBin() {
 
 /** 老师对本 Lab 报告的批语（学生在报告面板看到）。 */
 const teacherFeedback = ref('')
+/** 教师布置的报告版式与填写提示。 */
+const reportTemplate = ref<ReportTemplate>(cloneTemplate(DEFAULT_REPORT_TEMPLATE))
 
 async function loadMyFeedback() {
   if (!auth.value || isTeacherRole.value) return
@@ -738,8 +741,25 @@ async function loadMyFeedback() {
   }
 }
 
-/** 报告面板「提交给老师」：入库，教师端可见。 */
-async function submitReportToTeacher(content: string) {
+async function loadReportTemplate() {
+  try {
+    const response = await fetch(apiUrl(`/report-template?labId=${encodeURIComponent(props.labId)}`))
+    if (!response.ok) {
+      reportTemplate.value = cloneTemplate(DEFAULT_REPORT_TEMPLATE)
+      return
+    }
+    const payload = await response.json()
+    reportTemplate.value = cloneTemplate(payload.template || DEFAULT_REPORT_TEMPLATE)
+  } catch {
+    reportTemplate.value = cloneTemplate(DEFAULT_REPORT_TEMPLATE)
+  }
+}
+
+/** 报告面板「提交给老师」：正文 + 附件入库，教师端可见。 */
+async function submitReportToTeacher(payload: {
+  content: string
+  attachments: Array<{ name: string; mime: string; dataBase64: string }>
+}) {
   if (!auth.value) {
     toast('先登录再提交报告。')
     showIdentity.value = true
@@ -749,11 +769,16 @@ async function submitReportToTeacher(content: string) {
     const response = await fetch(apiUrl('/reports'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ labId: props.labId, content }),
+      body: JSON.stringify({
+        labId: props.labId,
+        content: payload.content,
+        attachments: payload.attachments,
+      }),
     })
-    const payload = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(payload?.error || `服务返回 ${response.status}`)
-    toast('报告已提交给老师（重复提交会覆盖旧版本）。')
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(result?.error || `服务返回 ${response.status}`)
+    const n = payload.attachments?.length || 0
+    toast(n ? `报告已提交给老师（含 ${n} 个附件）。` : '报告已提交给老师（重复提交会覆盖旧版本）。')
   } catch (err) {
     toast(err instanceof Error ? err.message : '提交失败，稍后再试。')
   }
@@ -1315,7 +1340,16 @@ onMounted(async () => {
   startSession()
   void refreshScaffold()
   void loadMyFeedback()
+  void loadReportTemplate()
 })
+
+watch(
+  () => props.labId,
+  () => {
+    void loadMyFeedback()
+    void loadReportTemplate()
+  },
+)
 
 onBeforeUnmount(() => {
   document.documentElement.classList.remove('ws-lock')
@@ -1852,6 +1886,7 @@ onBeforeUnmount(() => {
               :lab="lab"
               :insert-payload="reportInsert"
               :teacher-feedback="teacherFeedback"
+              :report-template="reportTemplate"
               @reflect="submitReflection"
               @review="reviewReport"
               @submit-teacher="submitReportToTeacher"

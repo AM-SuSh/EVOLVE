@@ -175,6 +175,9 @@ export async function readTeacherConfig() {
     llm: raw.llm && typeof raw.llm === 'object' ? raw.llm : {},
     allowStudentLlm: raw.allowStudentLlm !== false,
     notice: typeof raw.notice === 'string' ? raw.notice : '',
+    /** 各 Lab 实验报告版式与填写提示（教师布置）。 */
+    reportTemplates:
+      raw.reportTemplates && typeof raw.reportTemplates === 'object' ? raw.reportTemplates : {},
     /** 班级级覆盖：{ 班级名: { openLab?, assignments?, notice? } } */
     classes: mapOf(raw.classes),
     /** 学生级覆盖（优先级最高）：{ 用户名: { openLab?, assignments?, notice? } } */

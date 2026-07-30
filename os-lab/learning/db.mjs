@@ -156,6 +156,11 @@ try {
 } catch {
   /* 列已存在 */
 }
+try {
+  db.exec("ALTER TABLE reports ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]'")
+} catch {
+  /* 列已存在 */
+}
 
 function insertUser(name, password, role, className) {
   const salt = randomBytes(16).toString('hex')
@@ -245,29 +250,64 @@ export function resolveSession(token) {
 
 /* -- 学生报告 ---------------------------------------------------------------- */
 
-export function submitReport(userId, labId, content) {
+function parseAttachments(raw) {
+  try {
+    const list = JSON.parse(raw || '[]')
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
+  }
+}
+
+export function submitReport(userId, labId, content, attachments = []) {
+  const meta = JSON.stringify(
+    (Array.isArray(attachments) ? attachments : []).map((item) => ({
+      name: String(item.name || ''),
+      mime: String(item.mime || 'application/octet-stream'),
+      size: Number(item.size) || 0,
+      storedName: String(item.storedName || item.name || ''),
+    })),
+  )
   db.prepare(
-    `INSERT INTO reports (user_id, lab_id, content, updated_at) VALUES (?, ?, ?, ?)
-     ON CONFLICT(user_id, lab_id) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at`,
-  ).run(userId, labId, content, now())
+    `INSERT INTO reports (user_id, lab_id, content, updated_at, attachments) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, lab_id) DO UPDATE SET
+       content = excluded.content,
+       updated_at = excluded.updated_at,
+       attachments = excluded.attachments`,
+  ).run(userId, labId, content, now(), meta)
   return { ok: true }
 }
 
 export function listMyReports(userId) {
   return db
     .prepare(
-      'SELECT lab_id AS labId, updated_at AS updatedAt, feedback FROM reports WHERE user_id = ? ORDER BY lab_id',
+      'SELECT lab_id AS labId, updated_at AS updatedAt, feedback, attachments FROM reports WHERE user_id = ? ORDER BY lab_id',
     )
     .all(userId)
+    .map((row) => ({ ...row, attachments: parseAttachments(row.attachments) }))
 }
 
 export function listAllReports() {
   return db
     .prepare(
-      `SELECT u.username AS user, u.class_name AS className, r.lab_id AS labId, r.updated_at AS updatedAt, r.content, r.feedback
+      `SELECT u.username AS user, u.class_name AS className, r.lab_id AS labId, r.updated_at AS updatedAt, r.content, r.feedback, r.attachments
        FROM reports r JOIN users u ON u.id = r.user_id ORDER BY u.class_name, u.username, r.lab_id`,
     )
     .all()
+    .map((row) => ({ ...row, attachments: parseAttachments(row.attachments) }))
+}
+
+/** 按用户名取某份报告的附件元数据（教师下载用）。 */
+export function getReportAttachmentMeta(username, labId) {
+  const row = db
+    .prepare(
+      `SELECT u.id AS userId, r.attachments
+       FROM reports r JOIN users u ON u.id = r.user_id
+       WHERE u.username = ? AND r.lab_id = ?`,
+    )
+    .get(String(username || ''), String(labId || ''))
+  if (!row) return null
+  return { userId: row.userId, attachments: parseAttachments(row.attachments) }
 }
 
 /** 教师批阅：给某学生某 Lab 的报告写批语。 */
