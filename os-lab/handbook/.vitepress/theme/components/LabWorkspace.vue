@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useData, useRouter, withBase } from 'vitepress'
-import { Blocks, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, Code2, LockKeyhole, Maximize2, MessagesSquare, Minimize2, Moon, PanelLeftClose, PanelLeftOpen, Play, Settings, Sun, UserRound } from 'lucide-vue-next'
+import { Activity, Blocks, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, Code2, LockKeyhole, Maximize2, MessagesSquare, Minimize2, Moon, PanelLeftClose, PanelLeftOpen, Play, Settings, Sun, UserRound } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
 import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
@@ -162,13 +162,15 @@ const modelName = ref('')
 const notice = ref('')
 const currentSection = ref({ h2: '', h3: '' })
 const mobileView = ref<'manual' | 'practice'>('manual')
-/** 右栏下半区页签：学习支持与运行诊断。 */
-const rightTab = ref<'tutor' | 'report' | 'problems' | 'trace' | 'tests'>('tutor')
+/** 左栏页签：实验指导、导师对话与实验记录。 */
+const leftTab = ref<'manual' | 'tutor' | 'report'>('manual')
+/** 右栏下半区页签：运行诊断与测试结果。 */
+const rightTab = ref<'problems' | 'trace' | 'tests'>('problems')
 /** 最近一次运行的 runId，供 Trace/Problems 查询对应产物。 */
 const lastRunId = ref('')
 /** 最近一次运行的断言结果，供「测试结果」页签展示。 */
 const lastAssertions = ref<Array<{ id: string; label: string; passed: boolean; expected: string; observed: string }>>([])
-/** 右上工作区或右下学习支持区可铺满顶栏以下的整个页面。 */
+/** 右上工作区或右下运行反馈区可铺满顶栏以下的整个页面。 */
 const maximized = ref<'none' | 'workspace' | 'assistant'>('none')
 
 function toggleMaximized(target: 'workspace' | 'assistant') {
@@ -178,7 +180,7 @@ function toggleMaximized(target: 'workspace' | 'assistant') {
 /** 终端 → 报告「过程记录」的插入载荷（id 递增触发）。 */
 const reportInsert = ref<{ id: number; text: string } | null>(null)
 
-/* -- 三栏开关与纵向比例（手册 / 工作区 / 学习支持） ------------------------ */
+/* -- 三栏开关与纵向比例（学习与记录 / 工作区 / 运行反馈） ------------------- */
 
 const PANEL_STORAGE_KEY = 'os-lab-panels-v1'
 const PRACTICE_SPLIT_KEY = 'os-lab-workspace-support-split-v2'
@@ -1190,18 +1192,18 @@ function onProblemJump(payload: { path: string; line: number; code: string }) {
 /** 终端输出插入实验报告的「过程记录」。 */
 function onInsertReport(text: string) {
   reportInsert.value = { id: (reportInsert.value?.id ?? 0) + 1, text }
-  rightTab.value = 'report'
-  mobileView.value = 'practice'
-  panelOpen.value.terminal = true
+  leftTab.value = 'report'
+  mobileView.value = 'manual'
+  panelOpen.value.manual = true
   persistPanels()
   toast('输出已插入实验报告。')
 }
 
 /** 报告面板请导师点评：切到对话页签并把报告作为提问发送。 */
 function reviewReport(content: string) {
-  rightTab.value = 'tutor'
-  mobileView.value = 'practice'
-  panelOpen.value.terminal = true
+  leftTab.value = 'tutor'
+  mobileView.value = 'manual'
+  panelOpen.value.manual = true
   persistPanels()
   if (sending.value) {
     toast('导师正在回复上一条消息，稍后再试。')
@@ -1324,10 +1326,10 @@ onBeforeUnmount(() => {
           type="button"
           class="ws-topbar-link"
           :class="{ 'ws-topbar-link--active': panelOpen.manual }"
-          title="显示/隐藏实验手册"
+          title="显示/隐藏学习与记录"
           @click="togglePanel('manual')"
         >
-          <BookOpen :size="15" aria-hidden="true" /><span>手册</span>
+          <BookOpen :size="15" aria-hidden="true" /><span>学习与记录</span>
         </button>
         <button
           v-if="!isTeacherRole"
@@ -1344,10 +1346,10 @@ onBeforeUnmount(() => {
           type="button"
           class="ws-topbar-link"
           :class="{ 'ws-topbar-link--active': panelOpen.terminal }"
-          title="显示/隐藏 AI 导师、报告与诊断"
+          title="显示/隐藏运行诊断与测试结果"
           @click="togglePanel('terminal')"
         >
-          <MessagesSquare :size="15" aria-hidden="true" /><span>学习支持</span>
+          <Activity :size="15" aria-hidden="true" /><span>运行反馈</span>
         </button>
         <button
           class="ws-topbar-icon"
@@ -1379,7 +1381,7 @@ onBeforeUnmount(() => {
         :class="{ active: mobileView === 'manual' }"
         @click="mobileView = 'manual'"
       >
-        <BookOpen :size="15" aria-hidden="true" />手册
+        <BookOpen :size="15" aria-hidden="true" />学习与记录
       </button>
       <button
         v-if="!isTeacherRole"
@@ -1409,39 +1411,63 @@ onBeforeUnmount(() => {
       :class="panesLayoutClass"
       :style="paneGridStyle"
     >
-      <!-- 手册收起后：左侧展开条（仅桌面） -->
+      <!-- 学习与记录收起后：左侧展开条（仅桌面） -->
       <button
         v-if="!isTeacherRole && !isMobileLayout && !panelOpen.manual"
         type="button"
         class="ws-panel-rail ws-panel-rail--manual"
-        title="展开实验手册"
+        title="展开学习与记录"
         @click="togglePanel('manual')"
       >
         <PanelLeftOpen :size="16" aria-hidden="true" />
-        <span>手册</span>
+        <span>学习与记录</span>
       </button>
 
-      <!-- 左栏：指导书 -->
+      <!-- 左栏：实验手册、AI 导师与实验报告 -->
       <div
         v-if="showManualPane"
         class="ws-zone ws-zone-manual ws-left-pane"
         :class="{ 'ws-mobile-hidden': isMobileLayout && mobileView !== 'manual' }"
       >
         <header class="ws-zone-head">
-          <span class="ws-zone-title"><BookOpen :size="14" aria-hidden="true" />实验手册</span>
+          <span class="ws-zone-title"><BookOpen :size="14" aria-hidden="true" />学习与记录</span>
           <button
             v-if="!isTeacherRole && !isMobileLayout"
             type="button"
             class="ws-zone-toggle"
-            title="收起手册"
-            aria-label="收起手册"
+            title="收起学习与记录"
+            aria-label="收起学习与记录"
             @click="togglePanel('manual')"
           >
             <PanelLeftClose :size="14" aria-hidden="true" />
           </button>
         </header>
-        <div class="ws-zone-body">
+        <div v-if="!isTeacherRole" class="ws-learning-tabs" role="tablist" aria-label="学习与记录视图">
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="leftTab === 'manual'"
+            :class="{ active: leftTab === 'manual' }"
+            @click="leftTab = 'manual'"
+          >实验手册</button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="leftTab === 'tutor'"
+            :class="{ active: leftTab === 'tutor' }"
+            @click="leftTab = 'tutor'"
+          >AI 导师</button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="leftTab === 'report'"
+            :class="{ active: leftTab === 'report' }"
+            @click="leftTab = 'report'"
+          >实验报告</button>
+        </div>
+        <div class="ws-zone-body ws-learning-body">
           <ManualPane
+            v-show="isTeacherRole || leftTab === 'manual'"
             :key="manualKey"
             :lab="lab"
             :editable="isTeacherRole"
@@ -1451,6 +1477,31 @@ onBeforeUnmount(() => {
           >
             <slot />
           </ManualPane>
+          <TutorPane
+            v-if="!isTeacherRole"
+            v-show="leftTab === 'tutor'"
+            :lab="lab"
+            :messages="messages"
+            :sending="sending"
+            :streaming-id="streamingId"
+            :connection="connection"
+            :connection-label="connectionLabel"
+            @send="sendMessage"
+            @new-session="startSession"
+            @check-connection="checkConnection"
+            @use-prompt="usePrompt"
+          />
+          <ReportPanel
+            v-if="!isTeacherRole"
+            v-show="leftTab === 'report'"
+            :lab="lab"
+            :insert-payload="reportInsert"
+            :teacher-feedback="teacherFeedback"
+            @reflect="submitReflection"
+            @review="reviewReport"
+            @submit-teacher="submitReportToTeacher"
+            @notice="toast"
+          />
         </div>
       </div>
       <div
@@ -1514,7 +1565,7 @@ onBeforeUnmount(() => {
         <a :href="withBase('/guide/ai-tutor')">返回学习路径</a>
       </div>
 
-      <!-- 右栏（学生）：右上完整工作区，右下学习支持与诊断。 -->
+      <!-- 右栏（学生）：右上工作区，右下汇总同一次运行的反馈。 -->
       <div
         v-else-if="showRightPane"
         ref="rightElement"
@@ -1622,7 +1673,7 @@ onBeforeUnmount(() => {
           class="ws-row-resizer"
           :class="{ active: rowResizing }"
           role="separator"
-          aria-label="调整工作区与学习支持区高度"
+          aria-label="调整工作区与运行反馈区高度"
           aria-orientation="horizontal"
           tabindex="0"
           title="拖动调整上下高度"
@@ -1639,11 +1690,11 @@ onBeforeUnmount(() => {
           v-if="!isMobileLayout && !showTerminalPane"
           type="button"
           class="ws-panel-rail ws-panel-rail--inline"
-          title="展开学习支持区"
+          title="展开运行反馈区"
           @click="togglePanel('terminal')"
         >
-          <MessagesSquare :size="14" aria-hidden="true" />
-          <span>展开学习支持（AI 导师 / 报告 / 诊断）</span>
+          <Activity :size="14" aria-hidden="true" />
+          <span>展开运行反馈（Problems / Trace / 测试结果）</span>
           <ChevronUp :size="14" aria-hidden="true" />
         </button>
 
@@ -1653,22 +1704,8 @@ onBeforeUnmount(() => {
           :class="{ 'ws-zone-maximized': maximized === 'assistant' }"
         >
           <header class="ws-zone-head ws-zone-head--tabs">
-            <span class="ws-zone-title"><MessagesSquare :size="14" aria-hidden="true" />学习支持</span>
-            <div class="ws-right-tabs" role="tablist" aria-label="学习支持与诊断视图">
-              <button
-                type="button"
-                role="tab"
-                :aria-selected="rightTab === 'tutor'"
-                :class="{ active: rightTab === 'tutor' }"
-                @click="rightTab = 'tutor'"
-              >AI 导师</button>
-              <button
-                type="button"
-                role="tab"
-                :aria-selected="rightTab === 'report'"
-                :class="{ active: rightTab === 'report' }"
-                @click="rightTab = 'report'"
-              >实验报告</button>
+            <span class="ws-zone-title"><Activity :size="14" aria-hidden="true" />运行反馈</span>
+            <div class="ws-right-tabs" role="tablist" aria-label="运行诊断与测试结果视图">
               <button
                 type="button"
                 role="tab"
@@ -1695,7 +1732,7 @@ onBeforeUnmount(() => {
               type="button"
               class="ws-zone-toggle"
               :title="maximized === 'assistant' ? '恢复布局' : '铺满页面'"
-              :aria-label="maximized === 'assistant' ? '恢复学习支持区布局' : '将学习支持区铺满页面'"
+              :aria-label="maximized === 'assistant' ? '恢复运行反馈区布局' : '将运行反馈区铺满页面'"
               @click="toggleMaximized('assistant')"
             >
               <Minimize2 v-if="maximized === 'assistant'" :size="14" aria-hidden="true" />
@@ -1705,37 +1742,14 @@ onBeforeUnmount(() => {
               v-if="!isMobileLayout"
               type="button"
               class="ws-zone-toggle ws-zone-collapse"
-              title="收起学习支持区"
-              aria-label="收起学习支持区"
+              title="收起运行反馈区"
+              aria-label="收起运行反馈区"
               @click="togglePanel('terminal')"
             >
               <ChevronDown :size="14" aria-hidden="true" />
             </button>
           </header>
           <div class="ws-zone-body ws-assistant-body">
-            <TutorPane
-              v-show="rightTab === 'tutor'"
-              :lab="lab"
-              :messages="messages"
-              :sending="sending"
-              :streaming-id="streamingId"
-              :connection="connection"
-              :connection-label="connectionLabel"
-              @send="sendMessage"
-              @new-session="startSession"
-              @check-connection="checkConnection"
-              @use-prompt="usePrompt"
-            />
-            <ReportPanel
-              v-show="rightTab === 'report'"
-              :lab="lab"
-              :insert-payload="reportInsert"
-              :teacher-feedback="teacherFeedback"
-              @reflect="submitReflection"
-              @review="reviewReport"
-              @submit-teacher="submitReportToTeacher"
-              @notice="toast"
-            />
             <ProblemsPanel v-show="rightTab === 'problems'" :run-id="lastRunId" :endpoint="endpoint" @jump="onProblemJump" />
             <TracePanel v-show="rightTab === 'trace'" :run-id="lastRunId" :lab-id="lab.id" />
             <div v-show="rightTab === 'tests'" class="ws-tests-empty">
@@ -2353,6 +2367,61 @@ onBeforeUnmount(() => {
   min-height: 0;
 }
 
+.ws-learning-tabs {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ws-space-1);
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border-bottom: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
+}
+
+.ws-learning-tabs button {
+  min-width: 0;
+  min-height: var(--ws-control-md);
+  padding: var(--ws-space-1) var(--ws-space-2);
+  overflow: hidden;
+  color: var(--ws-ink-muted);
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius-md);
+  background: transparent;
+  font: inherit;
+  font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ws-learning-tabs button:hover {
+  color: var(--ws-accent);
+}
+
+.ws-learning-tabs button.active {
+  color: var(--ws-accent);
+  border-color: var(--ws-line);
+  background: var(--ws-surface);
+}
+
+.ws-learning-body {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ws-learning-body > :deep(.ws-manual-pane),
+.ws-learning-body > :deep(.ws-report),
+.ws-learning-body > :deep(.ws-tutor-pane) {
+  grid-area: 1 / 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
 .ws-zone-workspace .ws-workspace-body {
   display: grid;
   flex: 1 1 auto;
@@ -2423,7 +2492,7 @@ onBeforeUnmount(() => {
   outline-offset: -2px;
 }
 
-/* 右栏：工作区 + 学习支持纵向 grid */
+/* 右栏：工作区 + 运行反馈纵向 grid */
 .ws-access-blocked {
   display: grid;
   align-content: center;

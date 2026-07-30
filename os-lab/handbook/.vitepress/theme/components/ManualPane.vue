@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, withBase } from 'vitepress'
 import MarkdownIt from 'markdown-it'
 import mermaid from 'mermaid'
-import { BookOpen, LockKeyhole, Pencil, RefreshCw, TableOfContents } from 'lucide-vue-next'
+import { LockKeyhole, Pencil, RefreshCw, TableOfContents } from 'lucide-vue-next'
 import { authHeaders, collapsedSectionPrefix, sectionPrefixOf, type TutorLab } from '../tutor-model'
 
 /**
@@ -263,6 +263,11 @@ function jumpTo(section: ManualSection) {
   tocOpen.value = false
 }
 
+function closeTocAfterFocus(event: FocusEvent) {
+  const drawer = event.currentTarget as HTMLElement
+  if (!drawer.contains(event.relatedTarget as Node | null)) tocOpen.value = false
+}
+
 watch(
   () => route.path,
   () => void loadManual(),
@@ -282,55 +287,55 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="ws-manual-pane" aria-label="实验手册">
-    <header class="ws-manual-toolbar">
-      <div class="ws-manual-lead">
-        <button
-          class="ws-toc-toggle"
-          type="button"
-          :class="{ open: tocOpen }"
-          :aria-expanded="tocOpen"
-          title="章节目录"
-          @click="tocOpen = !tocOpen"
-        >
-          <TableOfContents :size="15" aria-hidden="true" />
-          <span>目录</span>
-        </button>
-        <div class="ws-manual-where">
-          <span><BookOpen :size="14" aria-hidden="true" />{{ lab.label }} · {{ lab.systemLayer }}</span>
-          <strong>
-            {{ activeH2?.title || lab.title }}
-            <em v-if="activeH3">› {{ activeH3.title }}</em>
-          </strong>
-        </div>
-      </div>
-      <div class="ws-manual-tools">
-        <button
-          v-if="props.editable"
-          class="ws-manual-edit"
-          type="button"
-          title="编辑本实验指导书，增补知识点"
-          @click="emit('edit')"
-        >
-          <Pencil :size="15" aria-hidden="true" />
-          <span>编辑手册</span>
-        </button>
-      </div>
+  <section
+    class="ws-manual-pane"
+    :class="{ 'ws-manual-pane--editable': props.editable }"
+    aria-label="实验手册"
+  >
+    <header v-if="props.editable" class="ws-manual-toolbar">
+      <button
+        class="ws-manual-edit"
+        type="button"
+        title="编辑本实验指导书，增补知识点"
+        @click="emit('edit')"
+      >
+        <Pencil :size="15" aria-hidden="true" />
+        <span>编辑手册</span>
+      </button>
+    </header>
 
-      <!-- 目录下拉：挂在工具条下方，点外部关闭 -->
-      <div v-if="tocOpen" class="ws-toc-backdrop" @click="tocOpen = false" />
-      <nav v-if="tocOpen" class="ws-toc-pop" aria-label="章节目录">
+    <div
+      class="ws-toc-drawer"
+      :class="{ open: tocOpen }"
+      @mouseenter="tocOpen = true"
+      @mouseleave="tocOpen = false"
+      @focusin="tocOpen = true"
+      @focusout="closeTocAfterFocus"
+    >
+      <nav class="ws-toc-panel" aria-label="章节目录" :aria-hidden="!tocOpen">
+        <strong>目录</strong>
         <button
           v-for="(section, index) in sections"
           :key="section.id"
           type="button"
+          :tabindex="tocOpen ? 0 : -1"
           :class="{ active: index === activeIndex, sub: section.level === 3 }"
           @click="jumpTo(section)"
         >
           {{ section.title }}
         </button>
       </nav>
-    </header>
+      <button
+        class="ws-toc-edge"
+        type="button"
+        :aria-expanded="tocOpen"
+        title="章节目录"
+        :aria-label="tocOpen ? '收起章节目录' : '展开章节目录'"
+        @click="tocOpen = !tocOpen"
+      >
+        <TableOfContents :size="16" aria-hidden="true" />
+      </button>
+    </div>
 
     <div ref="scroller" class="ws-manual-scroll">
       <div
@@ -360,82 +365,78 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .ws-manual-pane {
+  position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   border-right: 1px solid var(--ws-line);
   background: var(--ws-surface);
 }
 
-/* -- 工具条 ---------------------------------------------------------------- */
+.ws-manual-pane--editable {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+/* 教师编辑入口；学生阅读态不再占用一整行工具条。 */
 .ws-manual-toolbar {
-  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--ws-space-4);
-  min-width: 0;
+  justify-content: flex-end;
   padding: var(--ws-space-2) var(--ws-space-4);
   border-bottom: 1px solid var(--ws-line);
   background: var(--ws-surface-alt);
 }
 
-.ws-manual-lead {
-  display: flex;
-  align-items: center;
-  gap: var(--ws-space-3);
-  min-width: 0;
-}
-
-.ws-toc-toggle {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: var(--ws-space-1);
-  min-height: var(--ws-control-md);
-  padding: var(--ws-space-1) var(--ws-space-3);
-  color: var(--ws-ink-muted);
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-md);
-  background: var(--ws-surface);
-  font: inherit;
-  font-size: var(--ws-text-sm);
-  font-weight: var(--ws-weight-semibold);
-  cursor: pointer;
-}
-
-.ws-toc-toggle:hover,
-.ws-toc-toggle.open {
-  color: var(--ws-accent);
-  border-color: var(--ws-accent);
-}
-
-.ws-toc-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 8;
-}
-
-.ws-toc-pop {
+/* 目录覆盖在正文之上，不占用纵向空间。 */
+.ws-toc-drawer {
   position: absolute;
-  top: calc(100% + 4px);
-  left: var(--ws-space-4);
-  z-index: 9;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 7;
+  width: 30px;
+  transition: width 160ms ease;
+}
+
+.ws-toc-drawer.open,
+.ws-toc-drawer:focus-within {
+  width: min(300px, calc(100% - var(--ws-space-4)));
+}
+
+.ws-toc-panel {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   gap: 1px;
-  width: min(300px, 78vw);
-  max-height: min(58vh, 480px);
-  padding: var(--ws-space-2);
+  min-width: 0;
+  padding: var(--ws-space-3) var(--ws-space-2);
   overflow-y: auto;
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-md);
+  border-right: 1px solid var(--ws-line);
   background: var(--ws-surface);
   box-shadow: var(--ws-shadow-3);
+  opacity: 0;
+  transform: translateX(-100%);
+  transition: opacity 140ms ease, transform 160ms ease;
+  pointer-events: none;
 }
 
-.ws-toc-pop button {
+.ws-toc-drawer.open .ws-toc-panel,
+.ws-toc-drawer:focus-within .ws-toc-panel {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.ws-toc-panel > strong {
+  padding: var(--ws-space-1) var(--ws-space-2) var(--ws-space-2);
+  color: var(--ws-ink);
+  font-size: var(--ws-text-sm);
+}
+
+.ws-toc-panel button {
   display: block;
   overflow: hidden;
   width: 100%;
@@ -454,57 +455,54 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.ws-toc-pop button.sub {
+.ws-toc-panel button.sub {
   padding-left: var(--ws-space-6);
   font-size: var(--ws-text-xs);
 }
 
-.ws-toc-pop button:hover {
+.ws-toc-panel button:hover {
   color: var(--ws-accent);
   background: var(--ws-surface-alt);
 }
 
-.ws-toc-pop button.active {
+.ws-toc-panel button.active {
   color: var(--ws-accent);
   border-left-color: var(--ws-accent);
   background: var(--ws-accent-soft);
   font-weight: var(--ws-weight-semibold);
 }
 
-.ws-manual-where {
-  min-width: 0;
-}
-
-.ws-manual-where span {
-  display: flex;
-  align-items: center;
-  gap: var(--ws-space-1);
-  color: var(--ws-accent);
-  font-size: var(--ws-text-xs);
-  font-weight: var(--ws-weight-bold);
-}
-
-.ws-manual-where strong {
-  display: block;
-  margin-top: 2px;
-  overflow: hidden;
-  color: var(--ws-ink);
-  font-size: var(--ws-text-base);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ws-manual-where em {
+.ws-toc-edge {
+  position: absolute;
+  top: var(--ws-space-4);
+  left: 0;
+  z-index: 2;
+  display: grid;
+  width: 30px;
+  height: 44px;
   color: var(--ws-ink-muted);
-  font-style: normal;
-  font-weight: var(--ws-weight-medium);
+  border: 1px solid var(--ws-line);
+  border-left: 0;
+  border-radius: 0 var(--ws-radius-md) var(--ws-radius-md) 0;
+  background: var(--ws-surface);
+  box-shadow: var(--ws-shadow-1);
+  place-items: center;
+  cursor: pointer;
+  transition: left 160ms ease, color 140ms ease, border-color 140ms ease;
 }
 
-.ws-manual-tools {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: var(--ws-space-2);
+.ws-toc-drawer.open .ws-toc-edge,
+.ws-toc-drawer:focus-within .ws-toc-edge {
+  left: calc(100% - 30px);
+  color: var(--ws-accent);
+  border-color: var(--ws-accent);
+}
+
+.ws-toc-edge:hover,
+.ws-toc-edge:focus-visible {
+  color: var(--ws-accent);
+  border-color: var(--ws-accent);
+  outline: none;
 }
 
 .ws-manual-edit {
@@ -597,6 +595,14 @@ onBeforeUnmount(() => {
 
   .ws-manual-edit span {
     display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-toc-drawer,
+  .ws-toc-panel,
+  .ws-toc-edge {
+    transition: none;
   }
 }
 </style>
