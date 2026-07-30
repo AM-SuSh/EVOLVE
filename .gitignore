@@ -35,6 +35,8 @@ os-lab/learning/sessions/
 os-lab/learning/*.db
 os-lab/learning/*.db-journal
 os-lab/learning/factory-runs/
+os-lab/learning/backups/
+os-lab/learning/exports/
 
 # 学生个人工作区（账号制，由 scaffold 按 Lab 渐进生成，属于每个学生自己）
 student-lab/

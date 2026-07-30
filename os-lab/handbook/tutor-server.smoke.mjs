@@ -58,6 +58,7 @@ const server = spawn(process.execPath, ['tutor-server.mjs'], {
     OS_LAB_TUTOR_PORT: String(port),
     OS_LAB_STUDENTS_ROOT: studentsRoot,
     OS_LAB_TEACHER_FILE: teacherFile,
+    OS_LAB_BACKUP_ROOT: path.join(smokeRoot, 'backups'),
     OS_LAB_LLM_BASE_URL: mockBaseUrl,
     OS_LAB_LLM_MODEL: 'm0-smoke-model',
   },
@@ -494,6 +495,19 @@ try {
   const reviewed = await fetch(`${endpoint}/teacher/reviews`, { headers: teacherHeaders }).then((response) => response.json())
   assert.equal(reviewed.reviews[0].automaticResult.total, assessmentPayload.assessment.total)
   assert.equal(reviewed.reviews[0].decisions[0].correctedResult.total, 90)
+
+  assert.equal((await fetch(`${endpoint}/teacher/trial/analysis`, { headers: studentHeaders })).status, 401)
+  const trialAnalysis = await fetch(`${endpoint}/teacher/trial/analysis?participants=true`, { headers: teacherHeaders })
+    .then((response) => response.json())
+  assert.equal(trialAnalysis.analysis.cohortSize, 2)
+  assert.deepEqual(trialAnalysis.analysis.participants, [])
+  assert.equal(trialAnalysis.analysis.privacy.participantRowsIncluded, false)
+  assert.equal(trialAnalysis.analysis.labs.lab2.verifiedParticipants, 2)
+  const backupResponse = await postJson('/teacher/trial/backup', teacherHeaders)
+  assert.equal(backupResponse.status, 200)
+  const backupPayload = await backupResponse.json()
+  assert.equal(backupPayload.manifest.integrity, 'ok')
+  assert.equal(backupPayload.manifest.counts.assessments, 1)
 
   const reportContent = `# Lab2 报告\n\n可信运行：run:${runId}\n\nTrace：trace:${runId}\n\n${learningEvents[6].content}`
   const reportSubmit = await fetch(`${endpoint}/reports`, {

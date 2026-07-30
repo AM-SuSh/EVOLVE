@@ -24,6 +24,7 @@ import { scoreLearningEvents } from '../learning/rubric.mjs'
 import { assessLearningV2 } from '../learning/rubric-v2.mjs'
 import { deriveMasteryUpdates } from '../learning/mastery.mjs'
 import { evaluateReviewGates } from '../learning/review-gates.mjs'
+import { createLearningBackup, generateAnonymousAnalysis } from '../learning/trial-operations.mjs'
 import { accessForLab, buildLearningAccess } from '../learning/access.mjs'
 import { collectTraceEvents, validateInteractionEvent, validateRunResult } from '../tutor/contracts.mjs'
 import { createCargoJsonCollector } from '../tutor/cargo-diagnostics.mjs'
@@ -1506,6 +1507,22 @@ const server = http.createServer(async (request, response) => {
         const labId = String(requestUrl.searchParams.get('labId') || '')
         const inspected = labId ? await inspectLabPackage(labId) : null
         json(response, 200, { ok: true, published: await listPublishedLabs(), inspected }, origin)
+        return
+      }
+
+      if (request.method === 'GET' && pathname === '/teacher/trial/analysis') {
+        const includeParticipants = requestUrl.searchParams.get('participants') === 'true'
+        json(response, 200, { ok: true, analysis: generateAnonymousAnalysis({ includeParticipants }) }, origin)
+        return
+      }
+
+      if (request.method === 'POST' && pathname === '/teacher/trial/backup') {
+        const result = await createLearningBackup()
+        json(response, 200, {
+          ok: true,
+          file: path.basename(result.backupPath),
+          manifest: result.manifest,
+        }, origin)
         return
       }
 

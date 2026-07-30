@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "status": "advisory-only",
+  "dataset": "traces-lab2-mock.json",
+  "datasetSize": 20,
+  "manualReadinessThreshold": 70,
+  "before": {
+    "threshold": 70,
+    "accuracy": 0.8,
+    "sensitivity": 0.875,
+    "specificity": 0.75,
+    "balancedAccuracy": 0.8125,
+    "falsePositive": 3,
+    "falseNegative": 1
+  },
+  "after": {
+    "threshold": 76,
+    "accuracy": 0.95,
+    "sensitivity": 0.875,
+    "specificity": 1,
+    "balancedAccuracy": 0.9375,
+    "falsePositive": 0,
+    "falseNegative": 1
+  },
+  "constraints": [
+    "Only labels aggregate analysis and teacher recommendations",
+    "Never unlocks a Lab or assigns a final grade",
+    "Must be recalibrated after real participant data is collected"
+  ]
+}
