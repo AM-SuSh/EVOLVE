@@ -9,8 +9,9 @@ const props = withDefaults(
     content?: string
     dark?: boolean
     scrollback?: number
+    interactive?: boolean
   }>(),
-  { content: '', dark: false, scrollback: 5000 },
+  { content: '', dark: false, scrollback: 5000, interactive: false },
 )
 
 const host = ref<HTMLElement | null>(null)
@@ -35,6 +36,8 @@ function applyTheme() {
     cursor: fg,
     selectionBackground: props.dark ? '#264f78' : '#add6ff',
   }
+  // 让 host 容器背景与 xterm canvas 背景严格一致，避免拉长后底部空隙色差。
+  if (host.value) host.value.style.background = bg
 }
 
 function fit() {
@@ -62,10 +65,14 @@ onMounted(() => {
   terminal = new Terminal({
     convertEol: true,
     scrollback: props.scrollback,
-    fontFamily: 'var(--ws-font-mono), Consolas, monospace',
-    fontSize: 12,
-    disableStdin: true,
-    cursorBlink: false,
+    fontFamily:
+      "'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, 'Courier New', monospace",
+    fontSize: 13,
+    lineHeight: 1.25,
+    letterSpacing: 0.3,
+    disableStdin: !props.interactive,
+    cursorBlink: props.interactive,
+    cursorStyle: props.interactive ? 'bar' : 'block',
   })
   fitAddon = new FitAddon()
   terminal.loadAddon(fitAddon)
@@ -77,8 +84,16 @@ onMounted(() => {
     resizeObserver = new ResizeObserver(() => fit())
     resizeObserver.observe(host.value)
   }
+  // 交互模式下拦截 Tab，避免浏览器把焦点切走，让 onData 能收到 '\t' 用于命令补全。
+  if (props.interactive) {
+    host.value.addEventListener('keydown', onHostKeydown)
+  }
   requestAnimationFrame(() => fit())
 })
+
+function onHostKeydown(event: KeyboardEvent) {
+  if (event.key === 'Tab') event.preventDefault()
+}
 
 watch(
   () => props.content,
@@ -92,6 +107,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  if (host.value) host.value.removeEventListener('keydown', onHostKeydown)
   resizeObserver?.disconnect()
   terminal?.dispose()
   terminal = null
@@ -111,7 +127,15 @@ function writeln(text: string) {
   terminal?.writeln(text)
 }
 
-defineExpose({ clear, write, writeln, fit })
+function onData(cb: (data: string) => void) {
+  terminal?.onData(cb)
+}
+
+function focus() {
+  terminal?.focus()
+}
+
+defineExpose({ clear, write, writeln, fit, onData, focus })
 </script>
 
 <template>

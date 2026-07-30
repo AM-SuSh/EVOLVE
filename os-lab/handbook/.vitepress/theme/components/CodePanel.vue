@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { FileCode2, FolderTree, RefreshCw, X } from 'lucide-vue-next'
+import { FileCode2, FolderTree, RefreshCw, SquareTerminal, X } from 'lucide-vue-next'
 import { authHeaders, type TutorLab } from '../tutor-model'
 import { monacoLanguageForPath, type FileStatusKind } from '../file-status'
 import { resolveFileStatus, useFileStatus } from '../composables/useFileStatus'
@@ -14,6 +14,12 @@ const props = defineProps<{
   endpoint: string
   student?: string
   dark?: boolean
+  terminalOpen?: boolean
+}>()
+
+const emit = defineEmits<{
+  /** 用户点击终端开关图标，请求切换终端面板开合。 */
+  (event: 'toggle-terminal'): void
 }>()
 
 function apiUrl(pathname: string) {
@@ -319,6 +325,16 @@ defineExpose({ openAtLine, refreshFileStatus })
           @click="saveEdit"
         >
           {{ saving ? '保存中…' : '保存' }}
+        </button>
+        <button
+          type="button"
+          class="ws-code-icon-btn"
+          :class="{ 'ws-code-icon-btn--active': terminalOpen }"
+          :title="terminalOpen ? '隐藏终端' : '显示终端'"
+          :aria-label="terminalOpen ? '隐藏终端' : '显示终端'"
+          @click="emit('toggle-terminal')"
+        >
+          <SquareTerminal :size="14" aria-hidden="true" />
         </button>
         <button type="button" class="ws-code-icon-btn" title="重新加载目录" @click="loadTree">
           <RefreshCw :size="14" aria-hidden="true" />
@@ -667,6 +683,12 @@ export default { components: { CodeTreeNode } }
 .ws-code-icon-btn:hover {
   color: var(--ws-accent);
   border-color: var(--ws-accent);
+}
+
+.ws-code-icon-btn--active {
+  color: var(--ws-accent);
+  border-color: var(--ws-accent);
+  background: var(--ws-surface-alt, var(--ws-surface));
 }
 
 .ws-code-flash {

@@ -2696,3 +2696,38 @@
 - 改动文件：`os-lab/handbook/.vitepress/theme/components/CodePanel.vue`、`progress.md`（本条）。
 - 本轮提交作者固定为 `SIZN <a18990330371@outlook.com>`（用 `git commit --author` 指定，未改动仓库全局 config），无合作者。
 - 本轮未推送远端（与既往惯例一致）。
+
+## 2026-07-31 - Task: 工作台终端面板 VSCode 化改造（可开合 + 命令融入终端 + 指令库 + 快捷键）
+
+### What was done
+
+本轮对 `os-lab/handbook` 前端工作台的终端区做了一系列仿 VSCode 的交互改造，全部集中在 `LabWorkspace.vue`、`TerminalPanel.vue`、`XtermOutput.vue`、`CodePanel.vue`、`tutor-model.ts` 五个文件，未触碰后端 `tutor-server.mjs` 与内核代码。
+
+- **终端独立可开合（VSCode 风格）**：在 `LabWorkspace.vue` 新增独立状态 `terminalDockOpen`（不复用 `panelOpen.terminal`，后者语义是「学习支持」区，避免连锁影响 `showTerminalPane`/`togglePanel`/移动端逻辑）。`workspaceGridStyle` 在终端关闭时退化为 `gridTemplateRows: 1fr`，`CodePanel` 占满工作区；打开时恢复「代码 / 分割条 / 终端」三行 grid，拖拽比例沿用 `workspaceCodeSplit`。分割条与终端容器用 `v-show` 而非 `v-if`，保留 xterm 实例与 SSE 输出历史。
+- **命令输入融入终端**：去掉 `TerminalPanel.vue` 上方单独的命令输入行（textarea + 运行按钮），命令直接在 xterm 区域输入。`XtermOutput.vue` 新增 `interactive` prop（开启时 `disableStdin: false`、`cursorBlink: true`、`cursorStyle: 'bar'`），暴露 `onData`/`focus`。`TerminalPanel.vue` 新增 `inputBuffer` 与 `handleData`：xterm 显示 `$ ` prompt，用户在 prompt 后直接键入命令，回车提交运行，退格删字，Ctrl+C 清行（运行中则停止）。`run()` 重构为直接 `writeTerm()` 写 xterm 并累积到 `output` ref（供复制/插入报告），运行结束 `renderPrompt()` 重新显示输入行。右上角保留浮动控件（重置/停止/帮助）。
+- **ghost text 虚写推荐命令**：`ghostText` computed 在输入是推荐命令前缀时显示剩余部分，偏离即消失。`renderPrompt()` 用 `\r\x1b[2K` 清行重绘 `$ ` + 输入 + ghost，并把光标退回输入末尾（`\x1b[nD`）。三层颜色区分：`$ ` 青色（`\x1b[36m`）、用户输入默认前景色、ghost 斜体浅灰（`\x1b[3m\x1b[38;5;245m`）。
+- **字体美化**：`XtermOutput.vue` 字体配置从失效的 `var(--ws-font-mono)`（xterm canvas 不解析 CSS 变量）改为真实字体栈 `'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, 'Courier New', monospace`，字号 12→13，`lineHeight: 1.25`，`letterSpacing: 0.3`。
+- **终端背景统一**：`applyTheme` 同步把 host 元素 `style.background` 设为同一个解析后的 bg 值，消除 xterm 行数不足填满 host 时底部空隙色差；`.ws-terminal` 容器背景从 `--ws-surface` 改为 `--ws-surface-soft`，与 xterm 区一致。
+- **Tab 一键补全**：`handleData` 新增 Tab（`\t`）分支，把 ghost 剩余部分一次性追加到 `inputBuffer`。`XtermOutput` 交互模式下在 host 挂 `keydown` 监听拦截 Tab 默认行为（避免浏览器切走焦点），让 xterm 收到 `\t`。
+- **常用推荐指令库**：`tutor-model.ts` 给 `TutorLab` 接口新增 `commands: { label: string; command: string }[]` 字段，为 8 个 lab 各编排 6 条常用命令（基于项目 `Makefile` 真实目标确认：lab1-5 用 cargo 系，lab6-8 用 make 系）。`TerminalPanel.vue` 新增 `commandLibrary` computed、`histIdx` 指针与 `historyUp/Down`，`handleData` 拦截方向键转义序列 `\x1b[A`/`\x1b[B` 在指令库中循环切换（像 shell 历史），回车/lab 切换/重置时重置 `histIdx`。
+- **终端开关按钮位置演进**：从顶栏「终端」文字按钮 → 工作区标题栏图标 → 最终落到 `CodePanel` 代码工具栏「重新加载目录」按钮左侧，纯图标式（`SquareTerminal`），通过 `terminalOpen` prop + `toggle-terminal` emit 与 `LabWorkspace` 的 `terminalDockOpen` 双向通信。代码工具栏始终可见，终端关闭后也能随时点图标重新展开。
+- **快捷键帮助面板**：`TerminalPanel.vue` 终端右上角控件组加 `HelpCircle` 帮助按钮，点击弹出快捷键说明面板（`<dl>` + `<kbd>` 键帽样式），列出 ↑/↓ 循环命令、Tab 补全、Enter 运行、Ctrl+C 清行/停止、重置/终端开关图标说明；透明遮罩点击外部关闭。
+
+### Testing
+
+- 全程 `npm run dev` HMR 热更新验证，每轮改动后无 VitePress 编译错误（中途一次 `tutor-model.ts` 编辑中间态报 `Unexpected "}"`，补回 `resources: {` 后立即恢复，00:49:41 全组件批量 HMR 更新确认恢复）。
+- 每轮改动后 `ReadLints` 对涉及文件无 linter 错误。
+- 人工验证点：终端开合、拖拽比例保留、ghost 随输入收缩/消失、Tab 补全、上下方向键循环指令库、回车运行、Ctrl+C 清行、帮助面板开合、代码工具栏终端图标开合终端。
+
+### Notes
+
+- 改动文件：
+  - `os-lab/handbook/.vitepress/theme/components/LabWorkspace.vue`：`terminalDockOpen` 状态、`showTerminalDock`、`workspaceGridStyle` 适配、顶栏按钮移除、`CodePanel` 传 `terminal-open`/`@toggle-terminal`。
+  - `os-lab/handbook/.vitepress/theme/components/TerminalPanel.vue`：命令融入 xterm、ghost text、`handleData`、指令库循环、Tab 补全、帮助面板、`hide-requested` emit（后移除）。
+  - `os-lab/handbook/.vitepress/theme/components/XtermOutput.vue`：`interactive` prop、`onData`/`focus` 暴露、字体配置、host 背景同步、Tab 拦截。
+  - `os-lab/handbook/.vitepress/theme/components/CodePanel.vue`：`terminalOpen` prop + `toggle-terminal` emit、代码工具栏终端开关按钮、`ws-code-icon-btn--active` 样式。
+  - `os-lab/handbook/.vitepress/theme/tutor-model.ts`：`TutorLab.commands` 字段 + 8 个 lab 指令库数据。
+  - `progress.md`（本条）。
+- 设计边界：不引入多终端 Tab、不持久化 `terminalDockOpen`（每次进入默认打开）、不改 `panelOpen.terminal` 语义、不动 `tutor-server.mjs` 与内核。
+- 回滚方式：按上述文件逐个 `git checkout` 对应历史版本，或反向应用各改动点；指令库字段为新增可选数据，移除后 `commandLibrary` 会回退到 `[verificationCommand]` 单条。
+

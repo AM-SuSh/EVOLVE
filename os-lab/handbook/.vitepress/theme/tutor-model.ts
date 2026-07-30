@@ -54,6 +54,8 @@ export interface TutorLab {
   documentRoute: string
   initialQuestion: string
   verificationCommand: string
+  /** 本 Lab 常用推荐指令库，供终端上下方向键循环选用；首条约定为验证命令。 */
+  commands: { label: string; command: string }[]
   resources: Record<TutorStageId, StageResource>
 }
 
@@ -198,6 +200,14 @@ export const tutorLabs: TutorLab[] = [
     documentRoute: '/labs/lab1-bare-metal',
     initialQuestion: '从机器上电到内核打印第一行文字，中间至少经过哪些环节？先写下你的判断，我们再沿入口和链接地址逐层验证。',
     verificationCommand: 'cargo run -p kernel --features lab1 --release',
+    commands: [
+      { label: '验证运行', command: 'cargo run -p kernel --features lab1 --release' },
+      { label: '运行（debug）', command: 'cargo run -p kernel --features lab1' },
+      { label: '构建（release）', command: 'cargo build -p kernel --features lab1 --release' },
+      { label: '构建（debug）', command: 'cargo build -p kernel --features lab1' },
+      { label: '检查', command: 'cargo check -p kernel --features lab1' },
+      { label: '清理', command: 'cargo clean -p kernel' },
+    ],
     resources: {
       orient: { paths: ['labs/lab1-bare-metal.md', 'kernel/src/entry.asm'], docs: [{ title: 'Lab1 实验指导', description: '建立裸机启动、SBI 与内核入口的整体认识', href: '/labs/lab1-bare-metal' }, { title: '实验知识地图', description: '查看八个 Lab 的递进关系', href: '/labs/overview' }] },
       read: { paths: ['kernel/linker.ld', 'kernel/src/entry.asm', 'kernel/src/main.rs'], docs: [{ title: 'Lab1 启动链路', description: '沿链接地址、入口汇编与 Rust 主函数阅读', href: '/labs/lab1-bare-metal' }, { title: '系统架构', description: '理解工作区中各模块的职责边界', href: '/project/architecture' }] },
@@ -218,6 +228,14 @@ export const tutorLabs: TutorLab[] = [
     documentRoute: '/labs/lab2-trap-and-task',
     initialQuestion: '用户程序为什么不能直接调用内核里的普通函数？先写下你的判断（不必完美），我们再把它对到代码路径，并用 QEMU 输出验证。',
     verificationCommand: 'cargo run -p kernel --features lab2 --release',
+    commands: [
+      { label: '验证运行', command: 'cargo run -p kernel --features lab2 --release' },
+      { label: '运行（debug）', command: 'cargo run -p kernel --features lab2' },
+      { label: '构建（release）', command: 'cargo build -p kernel --features lab2 --release' },
+      { label: '构建（debug）', command: 'cargo build -p kernel --features lab2' },
+      { label: '检查', command: 'cargo check -p kernel --features lab2' },
+      { label: '清理', command: 'cargo clean -p kernel' },
+    ],
     resources: {
       orient: { paths: ['labs/lab2-trap-and-task.md', 'kernel/src/trap.rs'], docs: [{ title: 'Lab2 实验指导', description: '看清本实验目标：用户态、trap 与多任务', href: '/labs/lab2-trap-and-task' }, { title: '实验知识地图', description: 'Lab2 在八个 Lab 中的位置', href: '/labs/overview' }] },
       read: { paths: ['os-context/src/trap.asm', 'kernel/src/trap.rs', 'os-context/src/lib.rs'], docs: [{ title: '沿着控制流读', description: 'ecall → TrapContext → sret；对照正文知识层次表', href: '/labs/lab2-trap-and-task' }, { title: '系统架构', description: 'kernel 与 os-context 的职责边界', href: '/project/architecture' }] },
@@ -238,6 +256,14 @@ export const tutorLabs: TutorLab[] = [
     documentRoute: '/labs/lab3-memory',
     initialQuestion: '虚拟地址为什么不能直接当作物理地址使用？先画出你理解中的地址转换链路，再用代码和运行结果检查它。',
     verificationCommand: 'cargo run -p kernel --features lab3 --release',
+    commands: [
+      { label: '验证运行', command: 'cargo run -p kernel --features lab3 --release' },
+      { label: '运行（debug）', command: 'cargo run -p kernel --features lab3' },
+      { label: '构建（release）', command: 'cargo build -p kernel --features lab3 --release' },
+      { label: '构建（debug）', command: 'cargo build -p kernel --features lab3' },
+      { label: '检查', command: 'cargo check -p kernel --features lab3' },
+      { label: '清理', command: 'cargo clean -p kernel' },
+    ],
     resources: {
       orient: { paths: ['labs/lab3-memory.md', 'kernel/src/mm.rs'], docs: [{ title: 'Lab3 实验指导', description: '建立物理内存、页表与地址空间的整体模型', href: '/labs/lab3-memory' }, { title: '实验知识地图', description: '查看内存机制与前后 Lab 的关系', href: '/labs/overview' }] },
       read: { paths: ['kernel/src/mm.rs', 'kernel/src/config.rs', 'kernel/src/riscv.rs'], docs: [{ title: 'Lab3 机制说明', description: '沿页分配、映射与地址转换阅读代码', href: '/labs/lab3-memory' }, { title: '系统架构', description: '定位内存模块在内核中的职责', href: '/project/architecture' }] },
@@ -258,6 +284,14 @@ export const tutorLabs: TutorLab[] = [
     documentRoute: '/labs/lab4-process',
     initialQuestion: '一个正在运行的程序与一个进程控制块有什么区别？先列出进程必须拥有的状态，再沿 fork 或 exec 验证。',
     verificationCommand: 'cargo run -p kernel --features lab4 --release',
+    commands: [
+      { label: '验证运行', command: 'cargo run -p kernel --features lab4 --release' },
+      { label: '运行（debug）', command: 'cargo run -p kernel --features lab4' },
+      { label: '构建（release）', command: 'cargo build -p kernel --features lab4 --release' },
+      { label: '构建（debug）', command: 'cargo build -p kernel --features lab4' },
+      { label: '检查', command: 'cargo check -p kernel --features lab4' },
+      { label: '清理', command: 'cargo clean -p kernel' },
+    ],
     resources: {
       orient: { paths: ['labs/lab4-process.md', 'kernel/src/process.rs'], docs: [{ title: 'Lab4 实验指导', description: '建立进程生命周期和调度状态模型', href: '/labs/lab4-process' }, { title: '实验知识地图', description: '查看进程与内存、文件系统的关系', href: '/labs/overview' }] },
       read: { paths: ['kernel/src/process.rs', 'kernel/src/task.rs', 'kernel/src/loader.rs'], docs: [{ title: 'Lab4 机制说明', description: '沿创建、装载、切换和回收阅读实现', href: '/labs/lab4-process' }, { title: '系统架构', description: '理解进程模块与其他子系统的边界', href: '/project/architecture' }] },
@@ -278,6 +312,14 @@ export const tutorLabs: TutorLab[] = [
     documentRoute: '/labs/lab5-fs-and-sync',
     initialQuestion: '两个执行流同时访问同一份内核状态时，错误最可能出现在哪里？先描述一个竞态场景，再寻找可观察证据。',
     verificationCommand: 'cargo run -p kernel --features lab5 --release',
+    commands: [
+      { label: '验证运行', command: 'cargo run -p kernel --features lab5 --release' },
+      { label: '运行（debug）', command: 'cargo run -p kernel --features lab5' },
+      { label: '构建（release）', command: 'cargo build -p kernel --features lab5 --release' },
+      { label: '构建（debug）', command: 'cargo build -p kernel --features lab5' },
+      { label: '检查', command: 'cargo check -p kernel --features lab5' },
+      { label: '清理', command: 'cargo clean -p kernel' },
+    ],
     resources: {
       orient: { paths: ['labs/lab5-fs-and-sync.md', 'kernel/src/fs.rs'], docs: [{ title: 'Lab5 实验指导', description: '建立文件、管道和同步机制的整体认识', href: '/labs/lab5-fs-and-sync' }, { title: '实验知识地图', description: '查看完整实验能力链', href: '/labs/overview' }] },
       read: { paths: ['kernel/src/fs.rs', 'kernel/src/sync.rs', 'kernel/src/cell.rs'], docs: [{ title: 'Lab5 机制说明', description: '沿文件操作、共享状态和同步路径阅读', href: '/labs/lab5-fs-and-sync' }, { title: '系统架构', description: '理解文件系统与进程模块的接口', href: '/project/architecture' }] },
@@ -298,6 +340,14 @@ export const tutorLabs: TutorLab[] = [
     documentRoute: '/labs/lab6-disk-fs',
     initialQuestion: '内存里的文件和磁盘上的文件，本质差别是什么？先写下你认为一次 write 落盘要经过哪些层，再沿块设备接口逐层验证。',
     verificationCommand: 'make test-lab6',
+    commands: [
+      { label: '验证测试', command: 'make test-lab6' },
+      { label: '构建', command: 'cargo build -p kernel --features lab6 --release' },
+      { label: '运行（debug）', command: 'cargo run -p kernel --features lab6' },
+      { label: '检查', command: 'cargo check -p kernel --features lab6' },
+      { label: '全量检查', command: 'make check' },
+      { label: '清理', command: 'cargo clean -p kernel' },
+    ],
     resources: {
       orient: { paths: ['labs/lab6-disk-fs.md', 'kernel/src/virtio_block.rs'], docs: [{ title: 'Lab6 实验指导', description: '建立块设备、磁盘布局与文件系统分层的整体认识', href: '/labs/lab6-disk-fs' }, { title: '实验知识地图', description: '查看八个 Lab 的递进关系', href: '/labs/overview' }] },
       read: { paths: ['kernel/src/fs/disk.rs', 'os-fs/src/disk.rs', 'kernel/src/virtio_block.rs'], docs: [{ title: 'Lab6 机制说明', description: '沿块缓存、inode 和目录项阅读磁盘文件系统', href: '/labs/lab6-disk-fs' }, { title: '系统架构', description: '理解 os-fs 与内核文件层的职责边界', href: '/project/architecture' }] },
@@ -318,6 +368,14 @@ export const tutorLabs: TutorLab[] = [
     documentRoute: '/labs/lab7-ipc-signal',
     initialQuestion: '内核在什么时机检查并投递信号最合适？先写下你的候选时机和理由，我们再对照 trap 返回路径验证。',
     verificationCommand: 'make test-lab7',
+    commands: [
+      { label: '验证测试', command: 'make test-lab7' },
+      { label: '构建', command: 'cargo build -p kernel --features lab7 --release' },
+      { label: '运行（debug）', command: 'cargo run -p kernel --features lab7' },
+      { label: '检查', command: 'cargo check -p kernel --features lab7' },
+      { label: '全量检查', command: 'make check' },
+      { label: '清理', command: 'cargo clean -p kernel' },
+    ],
     resources: {
       orient: { paths: ['labs/lab7-ipc-signal.md', 'kernel/src/signal.rs'], docs: [{ title: 'Lab7 实验指导', description: '建立统一 fd 与信号机制的整体认识', href: '/labs/lab7-ipc-signal' }, { title: '实验知识地图', description: '查看 IPC 在系统能力链中的位置', href: '/labs/overview' }] },
       read: { paths: ['os-fs/src/fd_kind.rs', 'kernel/src/signal.rs', 'os-signal/src/lib.rs'], docs: [{ title: 'Lab7 机制说明', description: '沿 fd 表、dup 与信号投递路径阅读实现', href: '/labs/lab7-ipc-signal' }, { title: '系统架构', description: '理解 os-signal 组件与内核的边界', href: '/project/architecture' }] },
@@ -338,6 +396,14 @@ export const tutorLabs: TutorLab[] = [
     documentRoute: '/labs/lab8-thread-sync',
     initialQuestion: '自旋锁和阻塞锁在内核里的代价差在哪里？先描述一个线程拿不到锁之后应该发生什么，再沿 wait queue 验证。',
     verificationCommand: 'make test-lab8',
+    commands: [
+      { label: '验证测试', command: 'make test-lab8' },
+      { label: '构建', command: 'cargo build -p kernel --features lab8 --release' },
+      { label: '运行（debug）', command: 'cargo run -p kernel --features lab8' },
+      { label: '检查', command: 'cargo check -p kernel --features lab8' },
+      { label: '全量检查', command: 'make check' },
+      { label: '清理', command: 'cargo clean -p kernel' },
+    ],
     resources: {
       orient: { paths: ['labs/lab8-thread-sync.md', 'kernel/src/processor.rs'], docs: [{ title: 'Lab8 实验指导', description: '建立线程模型与同步原语的整体认识', href: '/labs/lab8-thread-sync' }, { title: '实验知识地图', description: '查看完整八层系统能力链', href: '/labs/overview' }] },
       read: { paths: ['kernel/src/processor.rs', 'kernel/src/sync_syscall.rs', 'os-sync/src/mutex.rs'], docs: [{ title: 'Lab8 机制说明', description: '沿线程创建、阻塞唤醒与死锁检测阅读实现', href: '/labs/lab8-thread-sync' }, { title: '系统架构', description: '理解 os-sync 组件与内核调度的接口', href: '/project/architecture' }] },

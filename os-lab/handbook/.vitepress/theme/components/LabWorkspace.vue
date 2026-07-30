@@ -224,6 +224,8 @@ function loadWorkspaceCodeSplit() {
 const panelOpen = ref(loadPanelState())
 const practiceSplit = ref(loadPracticeSplit())
 const workspaceCodeSplit = ref(loadWorkspaceCodeSplit())
+/** xterm 终端面板是否展开（独立于「学习支持」区，不持久化）。 */
+const terminalDockOpen = ref(true)
 const rightElement = ref<HTMLElement | null>(null)
 const workspaceBodyElement = ref<HTMLElement | null>(null)
 const rowResizing = ref(false)
@@ -252,6 +254,9 @@ const showTerminalPane = computed(() => {
   if (isMobileLayout.value && mobileView.value === 'practice') return true
   return panelOpen.value.terminal
 })
+
+/** xterm 运行终端是否展开：仅当工作区可见且用户未收起终端时为真。 */
+const showTerminalDock = computed(() => showPracticePane.value && terminalDockOpen.value)
 
 /** 右栏（实践 + 终端）是否有任一可见。 */
 const showRightPane = computed(() => {
@@ -384,6 +389,7 @@ function resizeWorkspaceByKeyboard(event: KeyboardEvent) {
 }
 
 const workspaceGridStyle = computed<Record<string, string>>(() => {
+  if (!showTerminalDock.value) return { gridTemplateRows: '1fr' }
   const terminal = 100 - workspaceCodeSplit.value
   return {
     gridTemplateRows: `minmax(140px, ${workspaceCodeSplit.value}fr) 6px minmax(100px, ${terminal}fr)`,
@@ -1588,8 +1594,11 @@ onBeforeUnmount(() => {
               :endpoint="endpoint"
               :student="studentId"
               :dark="isDark"
+              :terminal-open="terminalDockOpen"
+              @toggle-terminal="terminalDockOpen = !terminalDockOpen"
             />
             <div
+              v-show="showTerminalDock"
               class="ws-workspace-row-resizer"
               :class="{ active: workspaceRowResizing }"
               role="separator"
@@ -1610,7 +1619,7 @@ onBeforeUnmount(() => {
             >
               <span aria-hidden="true" />
             </div>
-            <div class="ws-workspace-terminal">
+            <div v-show="showTerminalDock" class="ws-workspace-terminal">
               <TerminalPanel
                 :key="`terminal-${studentId}`"
                 :lab="lab"
