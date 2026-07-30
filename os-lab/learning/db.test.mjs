@@ -5,6 +5,7 @@ import path from 'node:path'
 import test, { after } from 'node:test'
 import { assessLearningV2 } from './rubric-v2.mjs'
 import { deriveMasteryUpdates } from './mastery.mjs'
+import { evaluateReviewGates } from './review-gates.mjs'
 
 const tempRoot = mkdtempSync(path.join(tmpdir(), 'os-lab-db-'))
 process.env.OS_LAB_DB_PATH = path.join(tempRoot, 'learning.db')
@@ -94,6 +95,43 @@ test('migration binds events and immutable runs to the authenticated user', () =
   const assessment = assessLearningV2({ labId: 'lab2', sessionId: 'learning-1', ...assessmentInput })
   const saved = learningDb.saveAssessment(session.id, assessment, deriveMasteryUpdates(assessment))
   assert.match(saved.assessmentId, /^[0-9a-f-]{36}$/)
+  const gateResult = evaluateReviewGates(assessment, { appeal: true, appealRefs: [`run:${runId}`] })
+  const queued = learningDb.enqueueAssessmentReview(session.id, saved.assessmentId, assessment, gateResult)
+  assert.equal(queued.priority, 'hard')
+  const reviews = learningDb.listAssessmentReviews('pending')
+  assert.equal(reviews.length, 1)
+  assert.equal(reviews[0].assessmentId, saved.assessmentId)
+  assert.equal(reviews[0].automaticResult.total, assessment.total)
+
+  const teacher = learningDb.resolveSession(learningDb.login('admin', 'admin123').token)
+  const rejected = learningDb.submitAssessmentReview(teacher.id, {
+    reviewId: queued.reviewId,
+    decision: 'confirmed',
+    rationale: '引用不属于原始评价的证据',
+    evidenceRefs: ['run:not-owned'],
+  })
+  assert.equal(rejected.ok, false)
+  const corrected = learningDb.submitAssessmentReview(teacher.id, {
+    reviewId: queued.reviewId,
+    decision: 'corrected',
+    rationale: '复核可信运行后修正过程维度',
+    evidenceRefs: [`run:${runId}`],
+    correctedResult: { total: 88, dimensions: { process: 82, result: 100, reflection: 70 } },
+  })
+  assert.equal(corrected.ok, true)
+  assert.equal(corrected.revision, 1)
+  const confirmed = learningDb.submitAssessmentReview(teacher.id, {
+    reviewId: queued.reviewId,
+    decision: 'confirmed',
+    rationale: '第二位次复核确认修正记录与原证据一致',
+    evidenceRefs: [`run:${runId}`],
+  })
+  assert.equal(confirmed.revision, 2)
+  const audited = learningDb.listAssessmentReviews()[0]
+  assert.equal(audited.automaticResult.total, assessment.total)
+  assert.deepEqual(audited.decisions.map((decision) => decision.revision), [1, 2])
+  assert.equal(audited.decisions[0].correctedResult.total, 88)
+  assert.equal(learningDb.getAssessmentInput(session.id, 'learning-1', 'lab2').events.some((event) => event.type === 'teacher_reviewed'), true)
   const mastery = learningDb.listMastery(session.id)
   assert.equal(mastery.length, 4)
   assert.equal(mastery.every((item) => item.assessmentId === saved.assessmentId), true)

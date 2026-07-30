@@ -15,6 +15,7 @@ import {
 import { scoreLearningEvents } from '../learning/rubric.mjs'
 import { assessLearningV2 } from '../learning/rubric-v2.mjs'
 import { deriveMasteryUpdates } from '../learning/mastery.mjs'
+import { evaluateReviewGates } from '../learning/review-gates.mjs'
 import { accessForLab, buildLearningAccess } from '../learning/access.mjs'
 import { collectTraceEvents, validateInteractionEvent, validateRunResult } from '../tutor/contracts.mjs'
 import { createCargoJsonCollector } from '../tutor/cargo-diagnostics.mjs'
@@ -47,6 +48,8 @@ import {
   getTutorEvidenceSummary,
   getTutorSessionState,
   insertLearningEvents,
+  enqueueAssessmentReview,
+  listAssessmentReviews,
   listAllReports,
   listMastery,
   listMyReports,
@@ -57,6 +60,7 @@ import {
   resolveSession,
   saveAssessment,
   saveTutorSessionState,
+  submitAssessmentReview,
   setReportFeedback,
   submitReport,
 } from '../learning/db.mjs'
@@ -1218,7 +1222,12 @@ const server = http.createServer(async (request, response) => {
       const input = getAssessmentInput(session.id, learningSessionId, labId)
       const assessment = assessLearningV2({ labId, sessionId: learningSessionId, ...input })
       const saved = saveAssessment(session.id, assessment, deriveMasteryUpdates(assessment))
-      json(response, 200, { ok: true, assessmentId: saved.assessmentId, assessment }, origin)
+      const reviewGates = evaluateReviewGates(assessment, {
+        guardrailCount: input.events.filter((event) => event.type === 'guardrail_triggered').length,
+        guardrailRefs: input.events.filter((event) => event.type === 'guardrail_triggered').map((event) => `event:${event.id}`),
+      })
+      const review = enqueueAssessmentReview(session.id, saved.assessmentId, assessment, reviewGates)
+      json(response, 200, { ok: true, assessmentId: saved.assessmentId, assessment, reviewGates, review }, origin)
       return
     }
 
@@ -1472,6 +1481,19 @@ const server = http.createServer(async (request, response) => {
 
       if (request.method === 'GET' && pathname === '/teacher/reports') {
         json(response, 200, { ok: true, reports: listAllReports() }, origin)
+        return
+      }
+
+      if (request.method === 'GET' && pathname === '/teacher/reviews') {
+        const status = String(requestUrl.searchParams.get('status') || '')
+        json(response, 200, { ok: true, reviews: listAssessmentReviews(status) }, origin)
+        return
+      }
+
+      if (request.method === 'POST' && pathname === '/teacher/review') {
+        const body = await readBody(request)
+        const result = submitAssessmentReview(session.id, body)
+        json(response, result.ok ? 200 : 400, result, origin)
         return
       }
 

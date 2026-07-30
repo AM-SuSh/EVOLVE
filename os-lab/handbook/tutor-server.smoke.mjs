@@ -159,6 +159,7 @@ try {
     body: JSON.stringify({ username: 'admin', password: 'admin123' }),
   }).then((response) => response.json())
   assert.equal(teacher.ok, true)
+  const teacherHeaders = { Authorization: `Bearer ${teacher.token}` }
   assert.equal(
     (await fetch(`${endpoint}/manual?labId=lab8`, {
       headers: { Authorization: `Bearer ${teacher.token}` },
@@ -458,12 +459,32 @@ try {
   const assessmentPayload = await assessmentResponse.json()
   assert.equal(assessmentPayload.assessment.version, 'rubric-v2.0.0')
   assert.equal(assessmentPayload.assessment.items.length, 14)
+  assert.equal(assessmentPayload.reviewGates.requiresReview, true)
+  assert.equal(assessmentPayload.review.status, 'pending')
   assert.equal(
     assessmentPayload.assessment.items.find((item) => item.id === 'R3').evidenceRefs.includes(`run:${runId}`),
     true,
   )
   const masteryPayload = await fetch(`${endpoint}/mastery`, { headers: studentHeaders }).then((response) => response.json())
   assert.equal(masteryPayload.mastery.length, 4)
+
+  assert.equal((await fetch(`${endpoint}/teacher/reviews`, { headers: studentHeaders })).status, 401)
+  const reviewPayload = await fetch(`${endpoint}/teacher/reviews?status=pending`, { headers: teacherHeaders })
+    .then((response) => response.json())
+  assert.equal(reviewPayload.reviews.length, 1)
+  assert.equal(reviewPayload.reviews[0].assessmentId, assessmentPayload.assessmentId)
+  const teacherReview = await postJson('/teacher/review', teacherHeaders, {
+    reviewId: assessmentPayload.review.reviewId,
+    decision: 'corrected',
+    rationale: '复核运行与 trace 后修正反思维度',
+    evidenceRefs: [`run:${runId}`],
+    correctedResult: { total: 90, dimensions: { process: 90, result: 100, reflection: 70 } },
+  })
+  assert.equal(teacherReview.status, 200)
+  assert.equal((await teacherReview.json()).revision, 1)
+  const reviewed = await fetch(`${endpoint}/teacher/reviews`, { headers: teacherHeaders }).then((response) => response.json())
+  assert.equal(reviewed.reviews[0].automaticResult.total, assessmentPayload.assessment.total)
+  assert.equal(reviewed.reviews[0].decisions[0].correctedResult.total, 90)
 
   const reportContent = `# Lab2 报告\n\n可信运行：run:${runId}\n\nTrace：trace:${runId}\n\n${learningEvents[6].content}`
   const reportSubmit = await fetch(`${endpoint}/reports`, {
@@ -497,6 +518,9 @@ try {
     tutorSessions: db.prepare("SELECT count(*) AS value FROM tutor_sessions WHERE session_id = 'smoke-learning-session'").get().value,
     assessments: db.prepare("SELECT count(*) AS value FROM assessments WHERE session_id = 'smoke-learning-session'").get().value,
     mastery: db.prepare('SELECT count(*) AS value FROM mastery_evidence').get().value,
+    reviews: db.prepare('SELECT count(*) AS value FROM review_queue').get().value,
+    reviewDecisions: db.prepare('SELECT count(*) AS value FROM review_decisions').get().value,
+    teacherReviews: db.prepare("SELECT count(*) AS value FROM events WHERE type = 'teacher_reviewed'").get().value,
     reports: db.prepare("SELECT count(*) AS value FROM reports WHERE lab_id = 'lab2'").get().value,
   }
   db.close()
@@ -505,11 +529,14 @@ try {
   assert.equal(counts.assertions, 12)
   assert.equal(counts.diagnostics > 0, true)
   assert.equal(counts.diagnosticOpens, 1)
-  assert.equal(counts.learningChain, 11)
+  assert.equal(counts.learningChain, 12)
   assert.equal(counts.serverStages, 1)
   assert.equal(counts.tutorSessions, 1)
   assert.equal(counts.assessments, 1)
   assert.equal(counts.mastery, 4)
+  assert.equal(counts.reviews, 1)
+  assert.equal(counts.reviewDecisions, 1)
+  assert.equal(counts.teacherReviews, 1)
   assert.equal(counts.reports, 1)
   console.log(`tutor smoke passed: ${JSON.stringify(counts)}`)
 } catch (error) {

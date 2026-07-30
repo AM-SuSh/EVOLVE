@@ -195,6 +195,38 @@ CREATE TABLE IF NOT EXISTS mastery_evidence (
   PRIMARY KEY(user_id, concept_id)
 );
 `)
+applyMigration('20260730_member_c_review_queue_v1', `
+CREATE TABLE IF NOT EXISTS review_queue (
+  id TEXT PRIMARY KEY,
+  assessment_id TEXT NOT NULL UNIQUE REFERENCES assessments(id),
+  student_user_id INTEGER NOT NULL REFERENCES users(id),
+  status TEXT NOT NULL DEFAULT 'pending',
+  priority TEXT NOT NULL,
+  gate_version TEXT NOT NULL,
+  rubric_version TEXT NOT NULL,
+  model_version TEXT NOT NULL,
+  prompt_version TEXT NOT NULL,
+  gates_json TEXT NOT NULL,
+  evidence_refs_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS review_queue_status_created_idx ON review_queue(status, created_at);
+
+CREATE TABLE IF NOT EXISTS review_decisions (
+  id TEXT PRIMARY KEY,
+  review_id TEXT NOT NULL REFERENCES review_queue(id),
+  revision INTEGER NOT NULL,
+  teacher_user_id INTEGER NOT NULL REFERENCES users(id),
+  decision TEXT NOT NULL,
+  corrected_result_json TEXT,
+  rationale TEXT NOT NULL,
+  evidence_refs_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(review_id, revision)
+);
+CREATE INDEX IF NOT EXISTS review_decisions_review_revision_idx ON review_decisions(review_id, revision);
+`)
 try {
   db.exec('ALTER TABLE reports ADD COLUMN feedback TEXT NOT NULL DEFAULT ""')
 } catch {
@@ -499,6 +531,171 @@ export function saveAssessment(userId, assessment, masteryUpdates = []) {
     }
     db.exec('COMMIT')
     return { ok: true, assessmentId, createdAt }
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+}
+
+function parseReviewRow(row) {
+  if (!row) return null
+  return {
+    reviewId: row.reviewId,
+    assessmentId: row.assessmentId,
+    student: row.student,
+    className: row.className || '',
+    sessionId: row.sessionId,
+    labId: row.labId,
+    status: row.status,
+    priority: row.priority,
+    gateVersion: row.gateVersion,
+    rubricVersion: row.rubricVersion,
+    modelVersion: row.modelVersion,
+    promptVersion: row.promptVersion,
+    gates: JSON.parse(row.gatesJson),
+    evidenceRefs: JSON.parse(row.evidenceRefsJson),
+    automaticResult: {
+      total: row.total,
+      dimensions: JSON.parse(row.dimensionsJson),
+      items: JSON.parse(row.itemsJson),
+      uncertainty: row.uncertainty,
+    },
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }
+}
+
+const reviewSelect = `
+  SELECT q.id AS reviewId, q.assessment_id AS assessmentId, u.username AS student,
+         u.class_name AS className, a.session_id AS sessionId, a.lab_id AS labId,
+         q.status, q.priority, q.gate_version AS gateVersion, q.rubric_version AS rubricVersion,
+         q.model_version AS modelVersion, q.prompt_version AS promptVersion,
+         q.gates_json AS gatesJson, q.evidence_refs_json AS evidenceRefsJson,
+         a.total, a.dimensions_json AS dimensionsJson, a.items_json AS itemsJson,
+         a.uncertainty, q.created_at AS createdAt, q.updated_at AS updatedAt
+  FROM review_queue q JOIN assessments a ON a.id = q.assessment_id
+  JOIN users u ON u.id = q.student_user_id`
+
+/** Enqueue gate results without modifying the immutable automatic assessment. */
+export function enqueueAssessmentReview(userId, assessmentId, assessment, review) {
+  if (!review?.gates?.length) return null
+  const owner = db.prepare('SELECT id FROM assessments WHERE id = ? AND user_id = ?').get(assessmentId, userId)
+  if (!owner) throw new Error('评价不存在或不属于当前学生')
+  const reviewId = randomUUID()
+  const timestamp = now()
+  const evidenceRefs = [...new Set(review.gates.flatMap((gate) => gate.evidenceRefs || []))]
+  const llm = assessment.llmSuggestion || {}
+  db.prepare(
+    `INSERT INTO review_queue
+      (id, assessment_id, student_user_id, status, priority, gate_version, rubric_version,
+       model_version, prompt_version, gates_json, evidence_refs_json, created_at, updated_at)
+     VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    reviewId,
+    assessmentId,
+    userId,
+    review.requiresReview ? 'hard' : 'soft',
+    review.version,
+    assessment.version,
+    String(llm.model || 'not-requested'),
+    String(llm.promptVersion || 'not-requested'),
+    JSON.stringify(review.gates),
+    JSON.stringify(evidenceRefs),
+    timestamp,
+    timestamp,
+  )
+  return { reviewId, status: 'pending', priority: review.requiresReview ? 'hard' : 'soft' }
+}
+
+function listReviewDecisions(reviewId) {
+  return db.prepare(
+    `SELECT d.id AS decisionId, d.revision, u.username AS teacher, d.decision,
+            d.corrected_result_json AS correctedResultJson, d.rationale,
+            d.evidence_refs_json AS evidenceRefsJson, d.created_at AS createdAt
+     FROM review_decisions d JOIN users u ON u.id = d.teacher_user_id
+     WHERE d.review_id = ? ORDER BY d.revision`,
+  ).all(reviewId).map((row) => ({
+    decisionId: row.decisionId,
+    revision: row.revision,
+    teacher: row.teacher,
+    decision: row.decision,
+    correctedResult: row.correctedResultJson ? JSON.parse(row.correctedResultJson) : null,
+    rationale: row.rationale,
+    evidenceRefs: JSON.parse(row.evidenceRefsJson),
+    createdAt: row.createdAt,
+  }))
+}
+
+export function listAssessmentReviews(status = '') {
+  const allowedStatus = ['pending', 'confirmed', 'corrected', 'dismissed']
+  const rows = allowedStatus.includes(status)
+    ? db.prepare(`${reviewSelect} WHERE q.status = ? ORDER BY q.created_at`).all(status)
+    : db.prepare(`${reviewSelect} ORDER BY CASE q.status WHEN 'pending' THEN 0 ELSE 1 END, q.created_at`).all()
+  return rows.map((row) => {
+    const review = parseReviewRow(row)
+    return { ...review, decisions: listReviewDecisions(review.reviewId) }
+  })
+}
+
+export function submitAssessmentReview(teacherUserId, input) {
+  const teacher = db.prepare("SELECT id FROM users WHERE id = ? AND role = 'teacher'").get(teacherUserId)
+  if (!teacher) return { ok: false, error: '只有教师可以提交复核决定' }
+  const row = db.prepare(`${reviewSelect} WHERE q.id = ?`).get(input.reviewId)
+  const review = parseReviewRow(row)
+  if (!review) return { ok: false, error: '复核项不存在' }
+  const decisions = new Set(['confirmed', 'corrected', 'dismissed'])
+  if (!decisions.has(input.decision)) return { ok: false, error: '复核决定无效' }
+  const rationale = String(input.rationale || '').trim().slice(0, 4000)
+  if (!rationale) return { ok: false, error: '复核必须填写理由' }
+  const evidenceRefs = [...new Set(Array.isArray(input.evidenceRefs) ? input.evidenceRefs.map(String) : [])]
+  const validRefs = new Set(review.automaticResult.items.flatMap((item) => item.evidenceRefs || []))
+  if (evidenceRefs.some((ref) => !validRefs.has(ref))) return { ok: false, error: '复核引用包含不属于原评价的证据' }
+  let correctedResult = null
+  if (input.decision === 'corrected') {
+    const total = Number(input.correctedResult?.total)
+    const dimensions = input.correctedResult?.dimensions
+    if (!Number.isInteger(total) || total < 0 || total > 100 || !dimensions ||
+        ['process', 'result', 'reflection'].some((key) => !Number.isInteger(dimensions[key]) || dimensions[key] < 0 || dimensions[key] > 100)) {
+      return { ok: false, error: '教师修正分数必须是 0-100 的整数' }
+    }
+    correctedResult = { total, dimensions: { process: dimensions.process, result: dimensions.result, reflection: dimensions.reflection } }
+  }
+  const timestamp = now()
+  const revision = Number(db.prepare('SELECT coalesce(max(revision), 0) + 1 AS value FROM review_decisions WHERE review_id = ?').get(review.reviewId).value)
+  const decisionId = randomUUID()
+  const eventId = randomUUID()
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    db.prepare(
+      `INSERT INTO review_decisions
+        (id, review_id, revision, teacher_user_id, decision, corrected_result_json, rationale, evidence_refs_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(decisionId, review.reviewId, revision, teacherUserId, input.decision,
+      correctedResult ? JSON.stringify(correctedResult) : null, rationale, JSON.stringify(evidenceRefs), timestamp)
+    db.prepare('UPDATE review_queue SET status = ?, updated_at = ? WHERE id = ?')
+      .run(input.decision, timestamp, review.reviewId)
+    const event = {
+      version: 2,
+      id: eventId,
+      sessionId: review.sessionId,
+      labId: review.labId,
+      type: 'teacher_reviewed',
+      stage: 'reflect',
+      timestamp,
+      assessmentId: review.assessmentId,
+      reviewId: review.reviewId,
+      revision,
+      decision: input.decision,
+      evidenceRefs,
+    }
+    db.prepare(
+      `INSERT INTO events
+        (id, user_id, schema_version, session_id, lab_id, run_id, type, stage, occurred_at, payload_json, created_at)
+       VALUES (?, ?, 2, ?, ?, NULL, 'teacher_reviewed', 'reflect', ?, ?, ?)`,
+    ).run(eventId, row ? db.prepare('SELECT student_user_id AS id FROM review_queue WHERE id = ?').get(review.reviewId).id : null,
+      review.sessionId, review.labId, timestamp, JSON.stringify(event), timestamp)
+    db.exec('COMMIT')
+    return { ok: true, reviewId: review.reviewId, decisionId, revision, status: input.decision, eventId }
   } catch (error) {
     db.exec('ROLLBACK')
     throw error
