@@ -30,15 +30,25 @@ function applyTheme() {
 }
 
 function onKeydown(event: KeyboardEvent) {
-  if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-    event.preventDefault()
+  if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+  if (event.key.toLowerCase() !== 's') return
+  // 仅当焦点在本编辑器内时处理，避免多实例互相抢
+  if (!host.value?.contains(document.activeElement) && document.activeElement !== host.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (!props.readOnly) emit('save')
+}
+
+function bindSaveShortcut() {
+  if (!editor || !monacoApi || props.readOnly) return
+  editor.addCommand(monacoApi.KeyMod.CtrlCmd | monacoApi.KeyCode.KeyS, () => {
     emit('save')
-  }
+  })
 }
 
 onMounted(async () => {
   if (!host.value || typeof window === 'undefined') return
-  window.addEventListener('keydown', onKeydown)
+  window.addEventListener('keydown', onKeydown, true)
   const monaco = await import('monaco-editor')
   loader.config({ monaco })
   monacoApi = await loader.init()
@@ -56,6 +66,7 @@ onMounted(async () => {
     tabSize: 4,
     renderLineHighlight: props.readOnly ? 'none' : 'line',
   })
+  bindSaveShortcut()
   editor.onDidChangeModelContent(() => {
     if (!editor || props.readOnly) return
     syncing = true
@@ -100,6 +111,7 @@ watch(
   () => props.readOnly,
   (readOnly) => {
     editor?.updateOptions({ readOnly })
+    if (!readOnly) bindSaveShortcut()
   },
 )
 
@@ -110,7 +122,7 @@ watch(
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
-  window.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('keydown', onKeydown, true)
   editor?.dispose()
   editor = null
   monacoApi = null

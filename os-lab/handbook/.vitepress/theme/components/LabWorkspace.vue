@@ -162,16 +162,21 @@ const modelName = ref('')
 const notice = ref('')
 const currentSection = ref({ h2: '', h3: '' })
 const mobileView = ref<'manual' | 'practice'>('manual')
-/** 右栏下半区页签：学习支持与运行诊断。 */
-const rightTab = ref<'tutor' | 'report' | 'problems' | 'trace' | 'tests'>('tutor')
+/** 右栏学习支持页签（AI / 报告 / Trace）；Problems 与测试结果在底部面板。 */
+const rightTab = ref<'tutor' | 'report' | 'trace'>('tutor')
+/** 工作区底部面板页签：终端 | Problems | 测试结果。 */
+const bottomTab = ref<'terminal' | 'problems' | 'tests'>('terminal')
 /** 最近一次运行的 runId，供 Trace/Problems 查询对应产物。 */
 const lastRunId = ref('')
 /** 最近一次运行的断言结果，供「测试结果」页签展示。 */
 const lastAssertions = ref<Array<{ id: string; label: string; passed: boolean; expected: string; observed: string }>>([])
-/** 右上工作区或右下学习支持区可铺满顶栏以下的整个页面。 */
-const maximized = ref<'none' | 'workspace' | 'assistant'>('none')
+/** 最近一次诊断条数，用于 Problems 页签角标。 */
+const lastDiagnosticCount = ref(0)
+/** 右上工作区、右下学习支持区或底部面板可铺满顶栏以下的整个页面。 */
+const maximized = ref<'none' | 'workspace' | 'assistant' | 'dock'>('none')
 
-function toggleMaximized(target: 'workspace' | 'assistant') {
+function toggleMaximized(target: 'workspace' | 'assistant' | 'dock') {
+  if (target === 'dock') terminalDockOpen.value = true
   maximized.value = maximized.value === target ? 'none' : target
 }
 
@@ -226,6 +231,9 @@ const practiceSplit = ref(loadPracticeSplit())
 const workspaceCodeSplit = ref(loadWorkspaceCodeSplit())
 /** xterm 终端面板是否展开（独立于「学习支持」区，不持久化）。 */
 const terminalDockOpen = ref(true)
+watch(terminalDockOpen, (open) => {
+  if (!open && maximized.value === 'dock') maximized.value = 'none'
+})
 const rightElement = ref<HTMLElement | null>(null)
 const workspaceBodyElement = ref<HTMLElement | null>(null)
 const rowResizing = ref(false)
@@ -293,7 +301,7 @@ function persistPanels() {
 
 function togglePanel(key: PanelKey) {
   if (
-    (key === 'practice' && maximized.value === 'workspace') ||
+    (key === 'practice' && (maximized.value === 'workspace' || maximized.value === 'dock')) ||
     (key === 'terminal' && maximized.value === 'assistant')
   ) {
     maximized.value = 'none'
@@ -1170,6 +1178,23 @@ function onRunFinished(payload: {
   announceUnlock(wasCompleted)
 }
 
+/** Problems 诊断加载完成：有条目时自动展开底部面板并切到 Problems。 */
+function onDiagnosticsLoaded(payload: { runId: string; count: number }) {
+  lastDiagnosticCount.value = payload.count
+  if (payload.count <= 0 || !payload.runId) return
+  terminalDockOpen.value = true
+  bottomTab.value = 'problems'
+}
+
+/** 终端 exit 帧直接带回诊断时，立即切换，不依赖二次拉取。 */
+function onRunDiagnostics(payload: { runId: string; diagnostics: unknown[] }) {
+  if (payload.runId) lastRunId.value = payload.runId
+  lastDiagnosticCount.value = payload.diagnostics.length
+  if (payload.diagnostics.length <= 0) return
+  terminalDockOpen.value = true
+  bottomTab.value = 'problems'
+}
+
 /** 手册「源码引用」点击：跳到工作区对应文件与行，并切到实践视图。 */
 function onSourceJump(payload: { path: string; line: number }) {
   mobileView.value = 'practice'
@@ -1178,11 +1203,12 @@ function onSourceJump(payload: { path: string; line: number }) {
   void codePanelRef.value?.openAtLine(payload.path, payload.line)
 }
 
-/** Problems 诊断点击：跳到对应文件与行。 */
+/** Problems 诊断点击：跳到对应文件与行，并确保底部 Problems 可见。 */
 function onProblemJump(payload: { path: string; line: number; code: string }) {
   mobileView.value = 'practice'
   panelOpen.value.practice = true
-  panelOpen.value.terminal = true
+  terminalDockOpen.value = true
+  bottomTab.value = 'problems'
   persistPanels()
   void codePanelRef.value?.openAtLine(payload.path, payload.line)
   record('diagnostic_opened', {
@@ -1191,6 +1217,14 @@ function onProblemJump(payload: { path: string; line: number; code: string }) {
     line: payload.line,
     code: payload.code,
   })
+}
+
+/** Trace / 手册源码跳转：只打开文件行，不强制切到底部 Problems。 */
+function onTraceJump(payload: { path: string; line: number }) {
+  mobileView.value = 'practice'
+  panelOpen.value.practice = true
+  persistPanels()
+  void codePanelRef.value?.openAtLine(payload.path, payload.line)
 }
 
 /** Trace Viewer 查看：上报 trace_inspected 事件（事件 v2）。 */
@@ -1619,18 +1653,100 @@ onBeforeUnmount(() => {
             >
               <span aria-hidden="true" />
             </div>
-            <div v-show="showTerminalDock" class="ws-workspace-terminal">
-              <TerminalPanel
-                :key="`terminal-${studentId}`"
-                :lab="lab"
-                :endpoint="endpoint"
-                :student="studentId"
-                :session-id="sessionId"
-                :dark="isDark"
-                @run-finished="onRunFinished"
-                @run-exit="lastRunId = $event"
-                @insert-report="onInsertReport"
-              />
+            <div
+              v-show="showTerminalDock"
+              class="ws-workspace-terminal"
+              :class="{ 'ws-dock-maximized': maximized === 'dock' }"
+            >
+              <header class="ws-bottom-dock-head">
+                <div class="ws-bottom-tabs" role="tablist" aria-label="底部面板：终端、Problems、测试结果">
+                  <button
+                    type="button"
+                    role="tab"
+                    :aria-selected="bottomTab === 'terminal'"
+                    :class="{ active: bottomTab === 'terminal' }"
+                    @click="bottomTab = 'terminal'"
+                  >终端</button>
+                  <button
+                    type="button"
+                    role="tab"
+                    :aria-selected="bottomTab === 'problems'"
+                    :class="{ active: bottomTab === 'problems' }"
+                    :title="'编译错误与警告列表；点击可跳到源码'"
+                    @click="bottomTab = 'problems'"
+                  >
+                    Problems
+                    <span v-if="lastDiagnosticCount > 0" class="ws-bottom-tab-badge" aria-label="诊断条数">{{ lastDiagnosticCount }}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    :aria-selected="bottomTab === 'tests'"
+                    :class="{ active: bottomTab === 'tests' }"
+                    title="可信验证命令的断言汇总"
+                    @click="bottomTab = 'tests'"
+                  >测试结果</button>
+                </div>
+                <div class="ws-bottom-dock-actions">
+                  <button
+                    type="button"
+                    class="ws-zone-toggle"
+                    :title="maximized === 'dock' ? '恢复布局' : '将底部面板铺满页面'"
+                    :aria-label="maximized === 'dock' ? '恢复底部面板布局' : '将底部面板铺满页面'"
+                    @click="toggleMaximized('dock')"
+                  >
+                    <Minimize2 v-if="maximized === 'dock'" :size="14" aria-hidden="true" />
+                    <Maximize2 v-else :size="14" aria-hidden="true" />
+                  </button>
+                </div>
+              </header>
+              <div class="ws-bottom-dock-body">
+                <TerminalPanel
+                  v-show="bottomTab === 'terminal'"
+                  :key="`terminal-${studentId}`"
+                  :lab="lab"
+                  :endpoint="endpoint"
+                  :student="studentId"
+                  :session-id="sessionId"
+                  :dark="isDark"
+                  @run-finished="onRunFinished"
+                  @run-exit="lastRunId = $event"
+                  @run-diagnostics="onRunDiagnostics"
+                  @insert-report="onInsertReport"
+                />
+                <ProblemsPanel
+                  v-show="bottomTab === 'problems'"
+                  :run-id="lastRunId"
+                  :endpoint="endpoint"
+                  @jump="onProblemJump"
+                  @diagnostics-loaded="onDiagnosticsLoaded"
+                />
+                <div v-show="bottomTab === 'tests'" class="ws-tests-panel">
+                  <header class="ws-tests-intro">
+                    <strong>测试结果 · 可信断言</strong>
+                    <p>
+                      汇总最近一次<strong>可信验证命令</strong>的断言（期望 vs 实际）。
+                      与 Problems（编译诊断）、Trace（运行时事件回放）互补：这里回答的是「验证有没有过」。
+                    </p>
+                  </header>
+                  <div class="ws-tests-body">
+                    <p v-if="!lastRunId">在「终端」页签运行可信验证命令后，断言结果将汇总在此。</p>
+                    <ul v-else-if="lastAssertions.length" class="ws-tests-assertions">
+                      <li
+                        v-for="item in lastAssertions"
+                        :key="item.id"
+                        :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed }]"
+                      >
+                        <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
+                        <span class="ws-test-label">{{ item.label || item.id }}</span>
+                        <span class="ws-test-expected">期望：{{ item.expected }}</span>
+                        <span class="ws-test-observed">实际：{{ item.observed }}</span>
+                      </li>
+                    </ul>
+                    <p v-else>最近一次运行 <code>{{ lastRunId }}</code> 的断言详情已记录在运行状态和实验报告证据中。</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -1661,7 +1777,7 @@ onBeforeUnmount(() => {
           @click="togglePanel('terminal')"
         >
           <MessagesSquare :size="14" aria-hidden="true" />
-          <span>展开学习支持（AI 导师 / 报告 / 诊断）</span>
+          <span>展开学习支持（AI 导师 / 报告 / Trace）</span>
           <ChevronUp :size="14" aria-hidden="true" />
         </button>
 
@@ -1672,7 +1788,7 @@ onBeforeUnmount(() => {
         >
           <header class="ws-zone-head ws-zone-head--tabs">
             <span class="ws-zone-title"><MessagesSquare :size="14" aria-hidden="true" />学习支持</span>
-            <div class="ws-right-tabs" role="tablist" aria-label="学习支持与诊断视图">
+            <div class="ws-right-tabs" role="tablist" aria-label="学习支持视图">
               <button
                 type="button"
                 role="tab"
@@ -1690,24 +1806,11 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 role="tab"
-                :aria-selected="rightTab === 'problems'"
-                :class="{ active: rightTab === 'problems' }"
-                @click="rightTab = 'problems'"
-              >Problems</button>
-              <button
-                type="button"
-                role="tab"
                 :aria-selected="rightTab === 'trace'"
                 :class="{ active: rightTab === 'trace' }"
+                title="运行时 trap / 任务切换事件回放"
                 @click="rightTab = 'trace'"
               >Trace</button>
-              <button
-                type="button"
-                role="tab"
-                :aria-selected="rightTab === 'tests'"
-                :class="{ active: rightTab === 'tests' }"
-                @click="rightTab = 'tests'"
-              >测试结果</button>
             </div>
             <button
               type="button"
@@ -1754,32 +1857,15 @@ onBeforeUnmount(() => {
               @submit-teacher="submitReportToTeacher"
               @notice="toast"
             />
-            <ProblemsPanel v-show="rightTab === 'problems'" :run-id="lastRunId" :endpoint="endpoint" @jump="onProblemJump" />
             <TraceViewer
               v-show="rightTab === 'trace'"
               :run-id="lastRunId"
               :lab-id="lab.id"
               :endpoint="endpoint"
-              @jump="onProblemJump"
+              @jump="onTraceJump"
               @insert-report="onInsertReport"
               @trace-inspected="onTraceInspected"
             />
-            <div v-show="rightTab === 'tests'" class="ws-tests-empty">
-              <p v-if="!lastRunId">运行可信验证命令后，断言结果将汇总在此。</p>
-              <ul v-else-if="lastAssertions.length" class="ws-tests-assertions">
-                <li
-                  v-for="item in lastAssertions"
-                  :key="item.id"
-                  :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed }]"
-                >
-                  <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
-                  <span class="ws-test-label">{{ item.label || item.id }}</span>
-                  <span class="ws-test-expected">期望：{{ item.expected }}</span>
-                  <span class="ws-test-observed">实际：{{ item.observed }}</span>
-                </li>
-              </ul>
-              <p v-else>最近一次运行 <code>{{ lastRunId }}</code> 的断言详情已记录在运行状态和实验报告证据中。</p>
-            </div>
           </div>
         </section>
       </div>
@@ -2390,14 +2476,177 @@ onBeforeUnmount(() => {
 
 .ws-workspace-code,
 .ws-workspace-terminal,
-.ws-workspace-terminal :deep(.ws-terminal) {
+.ws-workspace-terminal :deep(.ws-terminal),
+.ws-workspace-terminal :deep(.ws-problems),
+.ws-workspace-terminal .ws-tests-panel {
   min-width: 0;
   min-height: 0;
   height: 100%;
 }
 
 .ws-workspace-terminal {
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+  background: var(--ws-surface-soft, var(--ws-surface));
+}
+
+.ws-workspace-terminal.ws-dock-maximized {
+  position: fixed;
+  top: var(--ws-topbar-height);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 41;
+  width: auto;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: var(--ws-surface);
+  box-shadow: var(--ws-shadow-3);
+}
+
+.ws-bottom-dock-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--ws-space-2);
+  min-height: 32px;
+  padding: 0 var(--ws-space-2);
+  border-bottom: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
+}
+
+.ws-bottom-dock-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  align-self: center;
+  gap: var(--ws-space-1);
+}
+
+.ws-bottom-tabs {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.ws-bottom-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ws-space-1);
+  min-height: 30px;
+  padding: 0 var(--ws-space-3);
+  color: var(--ws-ink-muted);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font: inherit;
+  font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-semibold);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ws-bottom-tabs button:hover {
+  color: var(--ws-ink);
+}
+
+.ws-bottom-tabs button.active {
+  color: var(--ws-accent);
+  border-bottom-color: var(--ws-accent);
+}
+
+.ws-bottom-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.1rem;
+  padding: 0 0.3rem;
+  border-radius: var(--ws-radius-full);
+  background: var(--ws-danger, #c0392b);
+  color: #fff;
+  font-size: 10px;
+  font-weight: var(--ws-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.ws-bottom-dock-body {
+  position: relative;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ws-bottom-dock-body > :deep(.ws-terminal) {
+  grid-area: 1 / 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.ws-bottom-dock-body > :deep(.ws-problems),
+.ws-bottom-dock-body > .ws-tests-panel {
+  grid-area: 1 / 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.ws-tests-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--ws-surface);
+}
+
+.ws-tests-intro {
+  flex: 0 0 auto;
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border-bottom: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
+}
+
+.ws-tests-intro strong {
+  color: var(--ws-ink);
+  font-size: var(--ws-text-sm);
+}
+
+.ws-tests-intro p {
+  margin: var(--ws-space-1) 0 0;
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+  line-height: var(--ws-leading-normal);
+}
+
+.ws-tests-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--ws-space-3);
+  color: var(--ws-ink-faint);
+  font-size: var(--ws-text-xs);
+  -webkit-overflow-scrolling: touch;
+}
+
+.ws-tests-body p {
+  margin: 0;
+}
+
+.ws-tests-body code {
+  font-family: var(--ws-font-mono);
 }
 
 .ws-zone-assistant .ws-zone-body {
@@ -2549,10 +2798,8 @@ onBeforeUnmount(() => {
 
 .ws-assistant-body > :deep(.ws-report),
 .ws-assistant-body > :deep(.ws-tutor-pane),
-.ws-assistant-body > :deep(.ws-problems),
 .ws-assistant-body > :deep(.ws-trace),
-.ws-assistant-body > :deep(.ws-trace-viewer),
-.ws-assistant-body > .ws-tests-empty {
+.ws-assistant-body > :deep(.ws-trace-viewer) {
   grid-area: 1 / 1;
   min-width: 0;
   min-height: 0;

@@ -272,6 +272,18 @@ function warnBeforeUnload(event: BeforeUnloadEvent) {
   event.returnValue = ''
 }
 
+function onWorkspaceSaveShortcut(event: KeyboardEvent) {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+  if (event.key.toLowerCase() !== 's') return
+  const root = codeRoot.value
+  if (!root) return
+  const target = event.target
+  if (!(target instanceof Node) || !root.contains(target)) return
+  event.preventDefault()
+  if (!canEdit.value || !activePath.value) return
+  void saveEdit()
+}
+
 watch(activePath, (path) => {
   if (workspaceContext) workspaceContext.currentFile = path
 })
@@ -279,11 +291,13 @@ watch(activePath, (path) => {
 onMounted(() => {
   clientReady.value = true
   window.addEventListener('beforeunload', warnBeforeUnload)
+  window.addEventListener('keydown', onWorkspaceSaveShortcut, true)
   void loadTree()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', warnBeforeUnload)
+  window.removeEventListener('keydown', onWorkspaceSaveShortcut, true)
 })
 
 defineExpose({ openAtLine, refreshFileStatus })
@@ -322,6 +336,8 @@ defineExpose({ openAtLine, refreshFileStatus })
           type="button"
           class="ws-code-save"
           :disabled="saving || !hasUnsavedChanges"
+          title="保存当前文件（Ctrl+S）"
+          aria-keyshortcuts="Control+s Meta+s"
           @click="saveEdit"
         >
           {{ saving ? '保存中…' : '保存' }}
@@ -330,8 +346,8 @@ defineExpose({ openAtLine, refreshFileStatus })
           type="button"
           class="ws-code-icon-btn"
           :class="{ 'ws-code-icon-btn--active': terminalOpen }"
-          :title="terminalOpen ? '隐藏终端' : '显示终端'"
-          :aria-label="terminalOpen ? '隐藏终端' : '显示终端'"
+          :title="terminalOpen ? '隐藏底部面板' : '显示底部面板（终端 / Problems / 测试结果）'"
+          :aria-label="terminalOpen ? '隐藏底部面板' : '显示底部面板'"
           @click="emit('toggle-terminal')"
         >
           <SquareTerminal :size="14" aria-hidden="true" />

@@ -3,6 +3,7 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { appendFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { existsSync as existsSyncSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { parse as parseYaml } from 'yaml'
 import {
@@ -37,6 +38,7 @@ import {
   createRun,
   finishRun,
   getLearningEvidence,
+  getRun,
   getRunDiagnostics,
   insertLearningEvents,
   listAllReports,
@@ -644,6 +646,55 @@ const RUN_ALLOWED_BINS = new Set([
   'rust-objcopy',
 ])
 
+/** 常见本机工具路径：tutor 若未 activate 实验环境，仍能找到 cargo/qemu。 */
+const TOOL_BIN_DIRS = [
+  process.env.CARGO_HOME ? path.join(process.env.CARGO_HOME, 'bin') : '',
+  'D:\\AppGallery\\Rust\\cargo\\bin',
+  'D:\\Rust\\cargo\\bin',
+  path.join(process.env.USERPROFILE || '', '.cargo', 'bin'),
+  process.env.OS_LAB_QEMU_DIR || '',
+  'D:\\AppGallery\\QEMU',
+  'D:\\QEMU',
+].filter(Boolean)
+
+const resolvedBinCache = new Map()
+
+function enrichRunEnv() {
+  const env = { ...process.env }
+  if (!env.CARGO_HOME) {
+    if (existsSyncSync('D:\\AppGallery\\Rust\\cargo\\bin\\cargo.exe')) {
+      env.CARGO_HOME = 'D:\\AppGallery\\Rust\\cargo'
+      env.RUSTUP_HOME = env.RUSTUP_HOME || 'D:\\AppGallery\\Rust\\rustup'
+    } else if (existsSyncSync('D:\\Rust\\cargo\\bin\\cargo.exe')) {
+      env.CARGO_HOME = 'D:\\Rust\\cargo'
+      env.RUSTUP_HOME = env.RUSTUP_HOME || 'D:\\Rust\\rustup'
+    }
+  }
+  const extra = TOOL_BIN_DIRS.filter((dir) => Boolean(dir) && existsSyncSync(dir))
+  if (extra.length) {
+    const merged = [...extra, env.Path || env.PATH || ''].join(path.delimiter)
+    env.Path = merged
+    env.PATH = merged
+  }
+  return env
+}
+
+function resolveToolBin(cmd) {
+  if (resolvedBinCache.has(cmd)) return resolvedBinCache.get(cmd)
+  const exe = process.platform === 'win32' && !cmd.endsWith('.exe') ? `${cmd}.exe` : cmd
+  const pathDirs = `${process.env.Path || process.env.PATH || ''}`.split(path.delimiter)
+  for (const dir of [...TOOL_BIN_DIRS, ...pathDirs]) {
+    if (!dir) continue
+    const candidate = path.join(dir, exe)
+    if (existsSyncSync(candidate)) {
+      resolvedBinCache.set(cmd, candidate)
+      return candidate
+    }
+  }
+  resolvedBinCache.set(cmd, cmd)
+  return cmd
+}
+
 function parseCommandLine(line) {
   const trimmed = line.trim()
   if (!trimmed) return null
@@ -654,7 +705,12 @@ function parseCommandLine(line) {
   if (!RUN_ALLOWED_BINS.has(tokens[0])) {
     return { error: `仅允许运行：${[...RUN_ALLOWED_BINS].join(' / ')}（收到 ${tokens[0]}）` }
   }
-  return { title: trimmed, cmd: tokens[0], args: tokens.slice(1) }
+  const args = tokens.slice(1)
+  // cargo 自动附带 JSON 诊断，供 Problems 面板解析（学生不必手写 --message-format）。
+  if (tokens[0] === 'cargo' && !args.some((arg) => arg.startsWith('--message-format'))) {
+    args.push('--message-format=json')
+  }
+  return { title: trimmed, cmd: tokens[0], args }
 }
 
 function parseCommandInput(command) {
@@ -692,8 +748,16 @@ function killActiveRun(userId, reason) {
 function runStep(step, response, run, cwd) {
   return new Promise((resolve) => {
     sendFrame(response, { type: 'step', title: step.title })
-    const child = spawn(step.cmd, step.args, { cwd, env: process.env })
+    const bin = resolveToolBin(step.cmd)
+    const env = enrichRunEnv()
+    const child = spawn(bin, step.args, { cwd, env, windowsHide: true })
     run.child = child
+    let settled = false
+    const finish = (code) => {
+      if (settled) return
+      settled = true
+      resolve(code)
+    }
     const forwardText = (text) => {
       if (run.outputLength >= RUN_OUTPUT_CAP) return
       const remaining = RUN_OUTPUT_CAP - run.outputLength
@@ -706,19 +770,26 @@ function runStep(step, response, run, cwd) {
         sendFrame(response, { type: 'output', text: '\n[输出过长，已截断……]\n' })
       }
     }
-    const cargoJson = step.cmd === 'cargo' && step.args.some((arg) => arg.startsWith('--message-format=json'))
+    if (bin !== step.cmd) {
+      forwardText(`[工具] 使用 ${bin}\n`)
+    }
+    const cargoJson =
+      (step.cmd === 'cargo' || path.basename(bin).toLowerCase().startsWith('cargo')) &&
+      step.args.some((arg) => arg.startsWith('--message-format=json'))
     const collector = cargoJson
       ? createCargoJsonCollector(cwd, forwardText, (diagnostic) => run.diagnostics.push(diagnostic))
       : null
-    child.stdout.on('data', (chunk) => collector ? collector.push(chunk) : forwardText(chunk.toString('utf8')))
+    child.stdout.on('data', (chunk) => (collector ? collector.push(chunk) : forwardText(chunk.toString('utf8'))))
     child.stderr.on('data', (chunk) => forwardText(chunk.toString('utf8')))
     child.on('error', (error) => {
-      sendFrame(response, { type: 'output', text: `无法启动 ${step.cmd}：${error.message}\n` })
-      resolve(-1)
+      forwardText(
+        `无法启动 ${step.cmd}：${error.message}\n请确认已安装 Rust，并先执行 . \\scripts\\activate-os-env.ps1 后再 npm run tutor。\n`,
+      )
+      finish(-1)
     })
     child.on('close', (code) => {
       collector?.flush()
-      resolve(code ?? -1)
+      finish(code ?? -1)
     })
   })
 }
@@ -933,6 +1004,9 @@ async function handleRun(body, request, response, origin, session) {
       recipeId: run.recipeId,
       trusted: run.trusted,
       assertions,
+      diagnostics: run.diagnostics,
+      diagnosticCount: run.diagnostics.length,
+      traceCount: traceEvents.length,
       result,
       stopped: run.stopped || undefined,
     })
@@ -1239,6 +1313,43 @@ const server = http.createServer(async (request, response) => {
         return
       }
       json(response, 200, { ok: true, ...result }, origin)
+      return
+    }
+
+    const traceMatch = pathname.match(/^\/runs\/([^/]+)\/trace$/)
+    if (request.method === 'GET' && traceMatch) {
+      if (!session) {
+        json(response, 401, { error: '请先登录' }, origin)
+        return
+      }
+      const runId = decodeURIComponent(traceMatch[1])
+      const run = getRun(session.id, runId)
+      if (!run) {
+        json(response, 404, { error: '运行不存在或不属于当前账号' }, origin)
+        return
+      }
+      if (!run.trace?.path) {
+        json(response, 200, { version: 1, events: [] }, origin)
+        return
+      }
+      try {
+        const full = path.join(dataDir, run.trace.path)
+        const text = await readFile(full, 'utf8')
+        const events = text
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .flatMap((line) => {
+            try {
+              return [JSON.parse(line)]
+            } catch {
+              return []
+            }
+          })
+        json(response, 200, { version: run.trace.version || 1, events }, origin)
+      } catch {
+        json(response, 404, { error: '轨迹文件不存在或无法读取' }, origin)
+      }
       return
     }
 
@@ -1549,7 +1660,7 @@ const server = http.createServer(async (request, response) => {
     }
 
     json(response, 404, {
-      error: '可用接口包括：GET|POST /health，GET /fs/status、/run/diagnostics，POST /chat、/run、/run/stop、/events、/report',
+      error: '可用接口包括：GET|POST /health，GET /fs/status、/run/diagnostics、/runs/:id/trace，POST /chat、/run、/run/stop、/events、/report',
     }, origin)
   } catch (error) {
     const message = error instanceof Error ? error.message : '导师服务发生未知错误'

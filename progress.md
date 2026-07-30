@@ -2731,3 +2731,35 @@
 - 设计边界：不引入多终端 Tab、不持久化 `terminalDockOpen`（每次进入默认打开）、不改 `panelOpen.terminal` 语义、不动 `tutor-server.mjs` 与内核。
 - 回滚方式：按上述文件逐个 `git checkout` 对应历史版本，或反向应用各改动点；指令库字段为新增可选数据，移除后 `commandLibrary` 会回退到 `[verificationCommand]` 单条。
 
+## 2026-07-31 - Task: 底部面板 VS Code 化收口与 Problems/Trace 运行闭环
+
+### What was done
+
+承接同日前一条「终端面板 VS Code 化」：把底部区做成真正的 VS Code 式多 Tab，并打通 Problems / Trace 从「跑命令 → 出诊断/事件 → 前端展示」的整条链路；测完后清理 stu 临时演示文件，产品功能保留。
+
+- **底部多 Tab（终端 | Problems | 测试结果）**：`LabWorkspace.vue` 新增 `bottomTab`；Problems 与测试结果从右侧学习支持迁到底部 dock。右侧只保留 **AI 导师 | 实验报告 | Trace**。代码工具栏终端图标语义改为开合整块底部面板。
+- **作用说明文案**：Problems / Trace / 测试结果面板补简介——Problems 是编译诊断列表（点跳源码），Trace 是运行时 trap/调度回放，测试结果是断言汇总；避免与「终端原文」混淆。
+- **有诊断自动切 Problems**：`TerminalPanel` 在 run 结束 SSE 带 `diagnostics` 时 emit `run-diagnostics`；`ProblemsPanel` 加载成功 emit `diagnostics-loaded`。父组件展开 dock、切到 Problems，并用角标显示条数；点击诊断仍 `openAtLine` 跳源码。
+- **底部面板全屏**：`maximized` 扩展 `'dock'`；dock 头加最大化/恢复按钮，Esc 恢复；Problems / 测试结果可滚动，xterm 保留 scrollback。
+- **编辑器与终端快捷键**：Monaco / CodePanel 补齐 **Ctrl+S** 保存；终端 **Ctrl+C**（有选区则复制，否则中断/清行）、**Ctrl+V** 粘贴（`XtermOutput` host paste 监听）。
+- **运行历史不清屏**：每次运行不再整屏清空，改为分隔线续写，保留上一轮输出便于对照。
+- **tutor-server 诊断/Trace 闭环**：
+  - 新增 `GET /runs/:id/trace`（按 run 读真实 trace 事件，无则可信空态）。
+  - cargo 命令自动补 `--message-format=json`，exit 帧携带 `diagnostics` / `diagnosticCount` / `traceCount`。
+  - Windows 下解析已知 `CARGO_HOME` / cargo、qemu 路径并 enrich `PATH`；spawn 失败写入运行输出，避免「静默 exit -1、Problems/Trace 全空」。
+- **`cargo-diagnostics.mjs`**：Windows / 非规范路径时尽量从 `file_name` / rendered 抽出可跳转诊断，避免有错误码却不出 Problems。
+- **Trace 播放跟随**：`TraceViewer` 播放头变化时对 Trap 列表、时间线、事件列表 `scrollIntoView`，避免播到后面看不见当前帧。
+- **测试残留清理**（测完还原）：删除 stu 临时 `_tmp_demo_problem.rs`、`_tmp_find_next_task.inc.rs`、`_TMP_DEMO_STEPS.md`、演示用 `trace.rs`、`qemu-check-trace.txt`；`task.rs` 改回 `todo!`；`Cargo.toml` 去掉临时 `trace-edu`。正式 UI / tutor 改动未回滚。
+
+### Testing
+
+- `npm run dev` HMR 验证底部 Tab 切换、有诊断自动切 Problems、dock 全屏/Esc、Ctrl+S/C/V、运行分隔线续写。
+- 配合 activate-os-env 后的 tutor：`cargo check` 能产出 Problems；带 `trace-edu` 的演示跑通后 Trace Viewer 能拉到真实事件（演示脚手架已拆除）。
+- 清理后确认仓库内无 `TEMP_DEMO` / `_tmp_*` / `_TMP_DEMO` 残留引用。
+
+### Notes
+
+- 主要文件：`LabWorkspace.vue`、`CodePanel.vue`、`MonacoEditor.vue`、`ProblemsPanel.vue`、`TerminalPanel.vue`、`XtermOutput.vue`、`TraceViewer.vue`、`TraceTrapView.vue`、`TraceTimelineView.vue`、`tutor-server.mjs`、`tutor/cargo-diagnostics.mjs`；`progress.md`（本条）。
+- 与前一条边界变化：本轮**已改** `tutor-server.mjs` 与诊断解析；底部从「仅终端」升级为多 Tab dock。
+- 本轮未提交/未推送（与既往惯例一致）；前一条终端 VSCode 化已有本地 commit `3688d22`。
+

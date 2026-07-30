@@ -33,6 +33,8 @@ const emit = defineEmits<{
   (event: 'run-finished', payload: RunFinishedPayload): void
   /** 运行结束（含手动停止），用于关联 trace / Problems。 */
   (event: 'run-exit', runId: string): void
+  /** 运行结束时附带的编译诊断（若有），供立即切换 Problems。 */
+  (event: 'run-diagnostics', payload: { runId: string; diagnostics: unknown[] }): void
   /** 学生把本次输出插进实验报告的「过程记录」。 */
   (event: 'insert-report', text: string): void
 }>()
@@ -282,7 +284,6 @@ async function copyLatestOutput() {
 async function run() {
   if (running.value) return
   running.value = true
-  output.value = ''
   exitInfo.value = null
   inserted.value = false
   copyState.value = 'idle'
@@ -290,7 +291,9 @@ async function run() {
   stepTitle.value = ''
   const runCommand = command.value.trim()
   lastRunCommand.value = runCommand
-  xtermRef.value?.clear()
+  // 保留历史输出：只追加分隔线，不再 clear 整屏。
+  writeTerm(`\r\n\x1b[90m──── ${new Date().toLocaleTimeString()} · ${runCommand} ────\x1b[0m\r\n`)
+  output.value = ''
 
   try {
     const trustedPreset = runCommand === props.lab.verificationCommand.trim()
@@ -332,6 +335,9 @@ async function run() {
           recipeId?: string | null
           trusted?: boolean
           assertions?: RunAssertion[]
+          diagnostics?: unknown[]
+          diagnosticCount?: number
+          traceCount?: number
         }
         try {
           frame = JSON.parse(line.slice(5).trim())
@@ -355,6 +361,15 @@ async function run() {
             stopped: frame.stopped,
           }
           if (frame.runId) emit('run-exit', frame.runId)
+          if (frame.runId && Array.isArray(frame.diagnostics) && frame.diagnostics.length > 0) {
+            emit('run-diagnostics', { runId: frame.runId, diagnostics: frame.diagnostics })
+          }
+          if (typeof frame.traceCount === 'number' && frame.traceCount > 0) {
+            writeTerm(`\r\n\x1b[36m[Trace] 采集到 ${frame.traceCount} 条事件，可在右侧学习支持 → Trace 查看\x1b[0m\n`)
+          }
+          if (typeof frame.diagnosticCount === 'number' && frame.diagnosticCount > 0) {
+            writeTerm(`\r\n\x1b[33m[Problems] 采集到 ${frame.diagnosticCount} 条编译诊断，已切换到底部 Problems\x1b[0m\n`)
+          }
           if (frame.stopped === 'timeout') {
             writeTerm('\r\n\x1b[33m[已超时终止]\x1b[0m\n')
           } else if (frame.stopped) {
@@ -457,9 +472,11 @@ onBeforeUnmount(() => {
           <div><dt><kbd>↑</kbd> / <kbd>↓</kbd></dt><dd>循环切换本 Lab 常用命令</dd></div>
           <div><dt><kbd>Tab</kbd></dt><dd>一键补全推荐命令（虚写部分）</dd></div>
           <div><dt><kbd>Enter</kbd></dt><dd>运行当前命令</dd></div>
-          <div><dt><kbd>Ctrl</kbd>+<kbd>C</kbd></dt><dd>清空当前行；运行中则停止</dd></div>
+          <div><dt><kbd>Ctrl</kbd>+<kbd>C</kbd></dt><dd>有选中文本则复制；否则清空当前行 / 停止运行</dd></div>
+          <div><dt><kbd>Ctrl</kbd>+<kbd>V</kbd></dt><dd>粘贴到当前输入行</dd></div>
           <div><dt>⟲ 图标</dt><dd>恢复本 Lab 默认验证命令</dd></div>
-          <div><dt><SquareTerminal :size="12" aria-hidden="true" /> 图标</dt><dd>工作区标题栏：显示/隐藏终端面板</dd></div>
+          <div><dt><SquareTerminal :size="12" aria-hidden="true" /> 图标</dt><dd>代码工具栏：显示/隐藏底部面板（终端 / Problems / 测试结果）</dd></div>
+          <div><dt>⛶ 图标</dt><dd>底部面板标题栏：铺满 / 恢复页面</dd></div>
         </dl>
       </div>
     </div>
@@ -496,6 +513,8 @@ onBeforeUnmount(() => {
 .ws-terminal {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   background: var(--ws-surface-soft, var(--ws-surface-alt));
@@ -507,10 +526,13 @@ onBeforeUnmount(() => {
   display: flex;
   min-height: 0;
   min-width: 0;
+  overflow: hidden;
 }
 
 .ws-terminal-stage :deep(.ws-xterm-host) {
   flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
 }
 
 .ws-terminal-controls {

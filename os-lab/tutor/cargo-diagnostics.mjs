@@ -33,11 +33,16 @@ export function parseCargoMessageLine(line, workspaceRoot) {
   const diagnostic = message.message || {}
   const spans = Array.isArray(diagnostic.spans) ? diagnostic.spans : []
   const span = spans.find((item) => item?.is_primary) || spans[0]
-  const file = workspacePath(span?.file_name, workspaceRoot)
+  let file = workspacePath(span?.file_name, workspaceRoot)
   const rendered = String(diagnostic.rendered || '').replace(ANSI_CSI_RE, '')
-  if (!file || !Number.isInteger(span?.line_start) || span.line_start < 1) {
-    return { handled: true, output: rendered }
+  // Windows / 短路径解析失败时，尽量从 rendered 或 file_name 兜底，避免 Problems 空白。
+  if (!file && span?.file_name) {
+    const raw = String(span.file_name).replace(/\\/g, '/')
+    const cratePath = raw.match(/(?:^|\/)((?:kernel|user|os-[^/]+)\/.+)$/)?.[1]
+    file = cratePath || raw.split('/').slice(-3).join('/')
   }
+  if (!file) file = 'unknown'
+  const lineStart = Number.isInteger(span?.line_start) && span.line_start > 0 ? span.line_start : 1
 
   return {
     handled: true,
@@ -47,10 +52,10 @@ export function parseCargoMessageLine(line, workspaceRoot) {
       code: String(diagnostic.code?.code || diagnostic.level || 'rustc').slice(0, 80),
       message: String(diagnostic.message || 'Rust 编译诊断').slice(0, 8000),
       file,
-      line: span.line_start,
-      column: Number.isInteger(span.column_start) ? Math.max(1, span.column_start) : 1,
-      endLine: Number.isInteger(span.line_end) ? Math.max(span.line_start, span.line_end) : span.line_start,
-      endColumn: Number.isInteger(span.column_end) ? Math.max(1, span.column_end) : 1,
+      line: lineStart,
+      column: Number.isInteger(span?.column_start) ? Math.max(1, span.column_start) : 1,
+      endLine: Number.isInteger(span?.line_end) ? Math.max(lineStart, span.line_end) : lineStart,
+      endColumn: Number.isInteger(span?.column_end) ? Math.max(1, span.column_end) : 1,
       rendered: rendered.slice(0, 32_768),
     },
   }

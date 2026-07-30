@@ -9,7 +9,7 @@
  * 「未观测」，对应规格「禁止把协作式画成硬抢占」「禁止用动画掩盖空洞」。
  * 点击 Running 块或 trap 标记 → emit('select', index)。
  */
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import type { TraceEvent } from '../composables/useTracePlayback'
 
 const props = defineProps<{
@@ -20,6 +20,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (event: 'select', index: number): void
 }>()
+
+const scrollRef = ref<HTMLElement | null>(null)
 
 interface Lane {
   pid: number
@@ -103,6 +105,22 @@ function playheadX() {
 function onSelect(index: number) {
   emit('select', index)
 }
+
+watch(
+  () => props.playhead,
+  async (index) => {
+    await nextTick()
+    const scroller = scrollRef.value
+    if (!scroller) return
+    const x = xForIndex(index)
+    const left = scroller.scrollLeft
+    const right = left + scroller.clientWidth
+    const margin = Math.min(80, scroller.clientWidth * 0.25)
+    if (x < left + margin || x > right - margin) {
+      scroller.scrollTo({ left: Math.max(0, x - scroller.clientWidth / 2), behavior: 'smooth' })
+    }
+  },
+)
 </script>
 
 <template>
@@ -110,7 +128,7 @@ function onSelect(index: number) {
     <div v-if="events.length === 0" class="ws-trace-timeline-empty">
       本次运行没有 <code>task_switch</code> 事件。若未启用 <code>trace-edu</code> feature，重开 trace 后再查看。
     </div>
-    <div v-else class="ws-trace-timeline-scroll">
+    <div v-else ref="scrollRef" class="ws-trace-timeline-scroll">
       <div class="ws-trace-timeline-canvas" :style="{ width: `${svgWidth}px`, height: `${svgHeight}px` }">
         <!-- 泳道标签与底纹 -->
         <div
