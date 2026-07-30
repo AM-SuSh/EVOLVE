@@ -13,6 +13,8 @@ import {
   extractStreamText,
 } from './llm-response.mjs'
 import { scoreLearningEvents } from '../learning/rubric.mjs'
+import { assessLearningV2 } from '../learning/rubric-v2.mjs'
+import { deriveMasteryUpdates } from '../learning/mastery.mjs'
 import { accessForLab, buildLearningAccess } from '../learning/access.mjs'
 import { collectTraceEvents, validateInteractionEvent, validateRunResult } from '../tutor/contracts.mjs'
 import { createCargoJsonCollector } from '../tutor/cargo-diagnostics.mjs'
@@ -38,6 +40,7 @@ import {
   changePassword,
   createRun,
   finishRun,
+  getAssessmentInput,
   getLearningEvidence,
   getRun,
   getRunDiagnostics,
@@ -45,12 +48,14 @@ import {
   getTutorSessionState,
   insertLearningEvents,
   listAllReports,
+  listMastery,
   listMyReports,
   listUsers,
   login,
   logout,
   register,
   resolveSession,
+  saveAssessment,
   saveTutorSessionState,
   setReportFeedback,
   submitReport,
@@ -1198,6 +1203,34 @@ const server = http.createServer(async (request, response) => {
       return
     }
 
+    if (request.method === 'POST' && pathname === '/assessment') {
+      if (!session || session.role !== 'student') {
+        json(response, 401, { error: '请以学生账号登录后生成评价' }, origin)
+        return
+      }
+      const body = await readBody(request)
+      const labId = String(body.labId || '')
+      const learningSessionId = String(body.sessionId || '').trim().slice(0, 160)
+      if (!labIds.has(labId) || !learningSessionId) {
+        json(response, 400, { error: 'labId 或 sessionId 无效' }, origin)
+        return
+      }
+      const input = getAssessmentInput(session.id, learningSessionId, labId)
+      const assessment = assessLearningV2({ labId, sessionId: learningSessionId, ...input })
+      const saved = saveAssessment(session.id, assessment, deriveMasteryUpdates(assessment))
+      json(response, 200, { ok: true, assessmentId: saved.assessmentId, assessment }, origin)
+      return
+    }
+
+    if (request.method === 'GET' && pathname === '/mastery') {
+      if (!session || session.role !== 'student') {
+        json(response, 401, { error: '请以学生账号登录后查看掌握状态' }, origin)
+        return
+      }
+      json(response, 200, { ok: true, mastery: listMastery(session.id) }, origin)
+      return
+    }
+
     if (request.method === 'GET' && pathname === '/manual') {
       if (!session) {
         json(response, 401, { error: '请先登录后阅读实验手册' }, origin)
@@ -1651,7 +1684,7 @@ const server = http.createServer(async (request, response) => {
     }
 
     json(response, 404, {
-      error: '可用接口包括：GET|POST /health，GET /fs/status、/run/diagnostics、/runs/:id/trace，POST /chat、/run、/run/stop、/events、/report',
+      error: '可用接口包括：GET|POST /health，GET /fs/status、/run/diagnostics、/runs/:id/trace、/mastery，POST /chat、/run、/run/stop、/events、/assessment、/report',
     }, origin)
   } catch (error) {
     const message = error instanceof Error ? error.message : '导师服务发生未知错误'

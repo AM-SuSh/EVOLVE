@@ -164,6 +164,37 @@ CREATE TABLE IF NOT EXISTS tutor_sessions (
 );
 CREATE INDEX IF NOT EXISTS tutor_sessions_user_updated_idx ON tutor_sessions(user_id, updated_at DESC);
 `)
+applyMigration('20260730_member_c_assessment_v2', `
+CREATE TABLE IF NOT EXISTS assessments (
+  id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  session_id TEXT NOT NULL,
+  lab_id TEXT NOT NULL,
+  rubric_version TEXT NOT NULL,
+  total INTEGER NOT NULL,
+  dimensions_json TEXT NOT NULL,
+  items_json TEXT NOT NULL,
+  trajectory_json TEXT NOT NULL,
+  llm_suggestion_json TEXT NOT NULL,
+  uncertainty TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS assessments_user_session_idx ON assessments(user_id, session_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS mastery_evidence (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  concept_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  evidence_refs_json TEXT NOT NULL,
+  independent_success INTEGER NOT NULL DEFAULT 0,
+  hint_level_used INTEGER NOT NULL DEFAULT 0,
+  misconceptions_json TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  assessment_id TEXT NOT NULL REFERENCES assessments(id),
+  last_assessed_at TEXT NOT NULL,
+  PRIMARY KEY(user_id, concept_id)
+);
+`)
 try {
   db.exec('ALTER TABLE reports ADD COLUMN feedback TEXT NOT NULL DEFAULT ""')
 } catch {
@@ -382,6 +413,119 @@ export function getTutorEvidenceSummary(userId, sessionId, labId) {
     hasSaveAfterLatestFailure,
     eventIds: eventRows.slice(-20).map((event) => event.id),
   }
+}
+
+export function getAssessmentInput(userId, sessionId, labId) {
+  const events = db
+    .prepare(
+      `SELECT payload_json AS payloadJson FROM events
+       WHERE user_id = ? AND session_id = ? AND lab_id = ? ORDER BY occurred_at, row_id`,
+    )
+    .all(userId, sessionId, labId)
+    .map((row) => JSON.parse(row.payloadJson))
+  const runs = db
+    .prepare(
+      `SELECT id AS runId, trusted, verified, status, started_at AS startedAt, finished_at AS finishedAt
+       FROM runs WHERE user_id = ? AND learning_session_id = ? AND lab_id = ? ORDER BY started_at`,
+    )
+    .all(userId, sessionId, labId)
+    .map((run) => ({
+      ...run,
+      trusted: Boolean(run.trusted),
+      verified: Boolean(run.verified),
+      assertions: db
+        .prepare(
+          `SELECT assertion_id AS id, label, passed, expected, observed
+           FROM run_assertions WHERE run_id = ? ORDER BY assertion_id`,
+        )
+        .all(run.runId)
+        .map((assertion) => ({ ...assertion, passed: Boolean(assertion.passed) })),
+    }))
+  return { events, runs }
+}
+
+export function saveAssessment(userId, assessment, masteryUpdates = []) {
+  const assessmentId = randomUUID()
+  const createdAt = now()
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    db.prepare(
+      `INSERT INTO assessments
+        (id, user_id, session_id, lab_id, rubric_version, total, dimensions_json, items_json,
+         trajectory_json, llm_suggestion_json, uncertainty, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      assessmentId,
+      userId,
+      assessment.sessionId,
+      assessment.labId,
+      assessment.version,
+      assessment.total,
+      JSON.stringify(assessment.dimensions),
+      JSON.stringify(assessment.items),
+      JSON.stringify(assessment.trajectory),
+      JSON.stringify(assessment.llmSuggestion),
+      assessment.uncertainty,
+      createdAt,
+    )
+    const upsert = db.prepare(
+      `INSERT INTO mastery_evidence
+        (user_id, concept_id, status, evidence_refs_json, independent_success, hint_level_used,
+         misconceptions_json, confidence, assessment_id, last_assessed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, concept_id) DO UPDATE SET
+         status = excluded.status,
+         evidence_refs_json = excluded.evidence_refs_json,
+         independent_success = excluded.independent_success,
+         hint_level_used = excluded.hint_level_used,
+         misconceptions_json = excluded.misconceptions_json,
+         confidence = excluded.confidence,
+         assessment_id = excluded.assessment_id,
+         last_assessed_at = excluded.last_assessed_at`,
+    )
+    for (const update of masteryUpdates) {
+      upsert.run(
+        userId,
+        update.conceptId,
+        update.status,
+        JSON.stringify(update.evidenceRefs),
+        update.independentSuccess,
+        update.hintLevelUsed,
+        JSON.stringify(update.misconceptions),
+        update.confidence,
+        assessmentId,
+        createdAt,
+      )
+    }
+    db.exec('COMMIT')
+    return { ok: true, assessmentId, createdAt }
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+}
+
+export function listMastery(userId) {
+  return db
+    .prepare(
+      `SELECT concept_id AS conceptId, status, evidence_refs_json AS evidenceRefsJson,
+              independent_success AS independentSuccess, hint_level_used AS hintLevelUsed,
+              misconceptions_json AS misconceptionsJson, confidence, assessment_id AS assessmentId,
+              last_assessed_at AS lastAssessedAt
+       FROM mastery_evidence WHERE user_id = ? ORDER BY concept_id`,
+    )
+    .all(userId)
+    .map((row) => ({
+      conceptId: row.conceptId,
+      status: row.status,
+      evidenceRefs: JSON.parse(row.evidenceRefsJson),
+      independentSuccess: Number(row.independentSuccess),
+      hintLevelUsed: Number(row.hintLevelUsed),
+      misconceptions: JSON.parse(row.misconceptionsJson),
+      confidence: row.confidence,
+      assessmentId: row.assessmentId,
+      lastAssessedAt: row.lastAssessedAt,
+    }))
 }
 
 /* -- 学习事件与可信运行链 ---------------------------------------------------- */

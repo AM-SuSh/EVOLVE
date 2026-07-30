@@ -450,6 +450,21 @@ try {
   assert.equal(eventSync.status, 202)
   assert.equal((await eventSync.json()).accepted, learningEvents.length)
 
+  const assessmentResponse = await postJson('/assessment', studentHeaders, {
+    sessionId: 'smoke-learning-session',
+    labId: 'lab2',
+  })
+  assert.equal(assessmentResponse.status, 200)
+  const assessmentPayload = await assessmentResponse.json()
+  assert.equal(assessmentPayload.assessment.version, 'rubric-v2.0.0')
+  assert.equal(assessmentPayload.assessment.items.length, 14)
+  assert.equal(
+    assessmentPayload.assessment.items.find((item) => item.id === 'R3').evidenceRefs.includes(`run:${runId}`),
+    true,
+  )
+  const masteryPayload = await fetch(`${endpoint}/mastery`, { headers: studentHeaders }).then((response) => response.json())
+  assert.equal(masteryPayload.mastery.length, 4)
+
   const reportContent = `# Lab2 报告\n\n可信运行：run:${runId}\n\nTrace：trace:${runId}\n\n${learningEvents[6].content}`
   const reportSubmit = await fetch(`${endpoint}/reports`, {
     method: 'POST',
@@ -480,6 +495,8 @@ try {
     learningChain: db.prepare("SELECT count(*) AS value FROM events WHERE session_id = 'smoke-learning-session'").get().value,
     serverStages: db.prepare("SELECT count(*) AS value FROM events WHERE session_id = 'smoke-learning-session' AND type = 'stage_enter'").get().value,
     tutorSessions: db.prepare("SELECT count(*) AS value FROM tutor_sessions WHERE session_id = 'smoke-learning-session'").get().value,
+    assessments: db.prepare("SELECT count(*) AS value FROM assessments WHERE session_id = 'smoke-learning-session'").get().value,
+    mastery: db.prepare('SELECT count(*) AS value FROM mastery_evidence').get().value,
     reports: db.prepare("SELECT count(*) AS value FROM reports WHERE lab_id = 'lab2'").get().value,
   }
   db.close()
@@ -491,6 +508,8 @@ try {
   assert.equal(counts.learningChain, 11)
   assert.equal(counts.serverStages, 1)
   assert.equal(counts.tutorSessions, 1)
+  assert.equal(counts.assessments, 1)
+  assert.equal(counts.mastery, 4)
   assert.equal(counts.reports, 1)
   console.log(`tutor smoke passed: ${JSON.stringify(counts)}`)
 } catch (error) {

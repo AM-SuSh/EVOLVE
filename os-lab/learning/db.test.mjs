@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test, { after } from 'node:test'
+import { assessLearningV2 } from './rubric-v2.mjs'
+import { deriveMasteryUpdates } from './mastery.mjs'
 
 const tempRoot = mkdtempSync(path.join(tmpdir(), 'os-lab-db-'))
 process.env.OS_LAB_DB_PATH = path.join(tempRoot, 'learning.db')
@@ -87,4 +89,12 @@ test('migration binds events and immutable runs to the authenticated user', () =
   assert.equal(evidence.latestRun.runId, runId)
   assert.equal(evidence.latestRun.verified, true)
   assert.equal(evidence.diagnosticCount, 1)
+
+  const assessmentInput = learningDb.getAssessmentInput(session.id, 'learning-1', 'lab2')
+  const assessment = assessLearningV2({ labId: 'lab2', sessionId: 'learning-1', ...assessmentInput })
+  const saved = learningDb.saveAssessment(session.id, assessment, deriveMasteryUpdates(assessment))
+  assert.match(saved.assessmentId, /^[0-9a-f-]{36}$/)
+  const mastery = learningDb.listMastery(session.id)
+  assert.equal(mastery.length, 4)
+  assert.equal(mastery.every((item) => item.assessmentId === saved.assessmentId), true)
 })
