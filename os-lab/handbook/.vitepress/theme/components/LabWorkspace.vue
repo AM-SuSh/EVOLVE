@@ -925,6 +925,7 @@ interface ReplyOutcome {
   reply: string
   guardrail: boolean
   rule?: string
+  tutorState?: { stage?: TutorStageId; hintLevel?: number; gate?: string; actions?: string[] }
 }
 
 function chatPayload(message: string) {
@@ -959,7 +960,7 @@ async function requestReply(
 
   const response = await fetch(`${endpoint}/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...authHeaders() },
     body: JSON.stringify(chatPayload(message)),
   })
   if (!response.ok) throw new Error(`导师服务返回 ${response.status}`)
@@ -970,12 +971,14 @@ async function requestReply(
       reply?: string
       error?: string
       guardrail?: { triggered?: boolean; rule?: string }
+      tutorState?: ReplyOutcome['tutorState']
     }
     if (!payload.reply) throw new Error(payload.error || '导师服务没有返回 reply')
     return {
       reply: payload.reply,
       guardrail: Boolean(payload.guardrail?.triggered),
       rule: payload.guardrail?.rule,
+      tutorState: payload.tutorState,
     }
   }
 
@@ -985,6 +988,7 @@ async function requestReply(
   let reply = ''
   let guardrail = false
   let rule: string | undefined
+  let tutorState: ReplyOutcome['tutorState']
 
   for (;;) {
     const { value, done } = await reader.read()
@@ -995,7 +999,7 @@ async function requestReply(
     for (const chunk of chunks) {
       const line = chunk.split('\n').find((item) => item.startsWith('data:'))
       if (!line) continue
-      let frame: { type?: string; text?: string; reply?: string; error?: string; rule?: string; triggered?: boolean }
+      let frame: { type?: string; text?: string; reply?: string; error?: string; rule?: string; triggered?: boolean; tutorState?: ReplyOutcome['tutorState'] }
       try {
         frame = JSON.parse(line.slice(5).trim())
       } catch {
@@ -1006,6 +1010,7 @@ async function requestReply(
         guardrail = true
         rule = frame.rule
       }
+      if (frame.tutorState) tutorState = frame.tutorState
       if (frame.type === 'delta' && frame.text) {
         reply += frame.text
         onDelta(reply)
@@ -1015,7 +1020,7 @@ async function requestReply(
   }
 
   if (!reply.trim()) throw new Error('导师服务没有返回文本')
-  return { reply, guardrail, rule }
+  return { reply, guardrail, rule, tutorState }
 }
 
 async function sendMessage(text: string) {
@@ -1057,6 +1062,10 @@ async function sendMessage(text: string) {
     })
 
     const serverGuardrail = outcome?.guardrail ?? false
+    const serverStage = outcome?.tutorState?.stage
+    if (serverStage && tutorStages.some((stage) => stage.id === serverStage)) {
+      activeStage.value = serverStage
+    }
     if (serverGuardrail && !guarded) {
       record('guardrail_triggered', { metadata: { rule: outcome?.rule } })
     }

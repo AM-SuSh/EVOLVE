@@ -332,13 +332,16 @@ try {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...studentHeaders },
     body: JSON.stringify({
+      sessionId: 'smoke-learning-session',
       labId: 'lab2',
       stage: 'reflect',
       message: '我观察到 trace 中发生了 task_switch，这能说明调度器做了什么？',
     }),
   }).then((chatResponse) => chatResponse.json())
-  assert.equal(chat.mode, 'remote')
+  assert.equal(chat.mode, 'remote', JSON.stringify(chat))
   assert.match(chat.reply, /请结合.*解释/)
+  assert.equal(chat.tutorState.stage, 'read')
+  assert.equal(chat.tutorState.requestedStage, 'reflect')
   assert.equal(mockChatRequests.length, 1)
   assert.match(mockChatRequests[0].messages[0].content, /Lab2/)
 
@@ -475,6 +478,8 @@ try {
     diagnostics: db.prepare('SELECT count(*) AS value FROM run_diagnostics').get().value,
     diagnosticOpens: db.prepare("SELECT count(*) AS value FROM events WHERE type = 'diagnostic_opened'").get().value,
     learningChain: db.prepare("SELECT count(*) AS value FROM events WHERE session_id = 'smoke-learning-session'").get().value,
+    serverStages: db.prepare("SELECT count(*) AS value FROM events WHERE session_id = 'smoke-learning-session' AND type = 'stage_enter'").get().value,
+    tutorSessions: db.prepare("SELECT count(*) AS value FROM tutor_sessions WHERE session_id = 'smoke-learning-session'").get().value,
     reports: db.prepare("SELECT count(*) AS value FROM reports WHERE lab_id = 'lab2'").get().value,
   }
   db.close()
@@ -483,7 +488,9 @@ try {
   assert.equal(counts.assertions, 12)
   assert.equal(counts.diagnostics > 0, true)
   assert.equal(counts.diagnosticOpens, 1)
-  assert.equal(counts.learningChain, 10)
+  assert.equal(counts.learningChain, 11)
+  assert.equal(counts.serverStages, 1)
+  assert.equal(counts.tutorSessions, 1)
   assert.equal(counts.reports, 1)
   console.log(`tutor smoke passed: ${JSON.stringify(counts)}`)
 } catch (error) {

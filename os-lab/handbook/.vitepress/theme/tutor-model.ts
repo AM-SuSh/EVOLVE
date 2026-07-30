@@ -4,7 +4,7 @@ import { scoreLearningEvents } from '../../../learning/rubric.mjs'
 // 护栏规则单一事实源：与 tutor-server 读同一份 YAML
 import guardrailSource from '../../../tutor/prompts/guardrails.yaml?raw'
 
-export type TutorStageId = 'orient' | 'read' | 'run' | 'debug' | 'reflect'
+export type TutorStageId = 'orient' | 'read' | 'run' | 'debug' | 'reflect' | 'transfer'
 
 export type TutorLabId = 'lab1' | 'lab2' | 'lab3' | 'lab4' | 'lab5' | 'lab6' | 'lab7' | 'lab8'
 
@@ -54,7 +54,7 @@ export interface TutorLab {
   documentRoute: string
   initialQuestion: string
   verificationCommand: string
-  resources: Record<TutorStageId, StageResource>
+  resources: Record<Exclude<TutorStageId, 'transfer'>, StageResource> & { transfer?: StageResource }
 }
 
 export interface TutorMessage {
@@ -184,6 +184,16 @@ export const tutorStages: TutorStage[] = [
     goal: '形成答辩时可展示的学习过程证据。',
     evidence: '三句话复盘与导出记录',
     checkpoint: '我能说明 AI 帮了哪里，以及我自己验证了哪里。',
+  },
+  {
+    id: 'transfer',
+    index: '05',
+    title: '完成迁移检验',
+    shortTitle: '迁移',
+    description: '改变一个关键条件，重新预测并解释机制。',
+    goal: '确认理解能够迁移，而不是只复述原实验答案。',
+    evidence: '一条带预测和验证方案的迁移回答',
+    checkpoint: '我能在条件变化后重新解释机制，并指出如何验证。',
   },
 ]
 
@@ -376,6 +386,7 @@ export const stageManualSection: Record<TutorStageId, ManualSectionTarget> = {
   run: { prefixes: ['三、'], label: '实验任务' },
   debug: { prefixes: ['四、'], label: '验证' },
   reflect: { prefixes: ['六、', '四、'], label: '思考题与复盘' },
+  transfer: { prefixes: ['六、', '二、'], label: '迁移与反例' },
 }
 
 /** 「五、AI 提问模板」的内容已经是导师栏的快捷提问按钮，手册里默认折叠。 */
@@ -389,7 +400,7 @@ export function sectionPrefixOf(title: string): string {
 /** 哪些阶段需要在手册底部就地收集证据。 */
 export function evidenceKindFor(stage: TutorStageId): 'verification' | 'reflection' | null {
   if (stage === 'run' || stage === 'debug') return 'verification'
-  if (stage === 'reflect') return 'reflection'
+  if (stage === 'reflect' || stage === 'transfer') return 'reflection'
   return null
 }
 
@@ -524,6 +535,10 @@ export function tutorPromptsFor(lab: TutorLab, stage: TutorStageId): TutorPrompt
     reflect: [
       { category: 'exploration', label: '整理答辩证据', text: '请追问我三个问题，帮我分别写清独立判断、AI 提醒和实际验证证据。' },
       { category: 'comparison', label: '复盘前后变化', text: `请引导我比较学习 ${lab.label} 前后的理解变化，并指出还缺少哪条可验证证据。` },
+    ],
+    transfer: [
+      { category: 'comparison', label: '改变关键条件', text: `请改变 ${lab.label} 的一个关键前提，只问我一个迁移问题，让我先预测再设计验证。` },
+      { category: 'exploration', label: '构造反例', text: '请给出一个会让原结论失效的边界条件，让我说明需要观察什么证据。' },
     ],
   }
   return prompts[stage].map((prompt, index) => ({
@@ -717,6 +732,7 @@ export function offlineTutorReply(
     run: `先写下你预测的三个关键输出，再运行 ${lab.verificationCommand}。完成后只贴与预测不同的部分，我们用差异定位环节。`,
     debug: '把排错拆成证据链：精确现象、当前假设、能证伪它的最小实验。先补齐这三项，我再给下一层提示。',
     reflect: `用三句话收束 ${lab.label}：你能独立解释什么？AI 提醒了哪个关键点？你用哪条运行结果或代码路径验证了它？`,
+    transfer: `改变一个关键条件后，${lab.label} 的原结论还成立吗？先写预测，再说明你会用什么代码路径或运行证据验证。`,
   }
   return stageReplies[stage]
 }

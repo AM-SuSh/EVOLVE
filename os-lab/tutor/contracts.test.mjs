@@ -34,6 +34,22 @@ test('event-v2 accepts a trusted run chain and keeps v1 compatibility', () => {
   assert.equal(validateInteractionEvent({ ...common, type: 'hint_requested' }), false)
 })
 
+test('event-v2 compatibly accepts transfer and the L4 support tier', () => {
+  const event = {
+    version: 2,
+    id: 'hint-l4',
+    sessionId: 'learning-1',
+    labId: 'lab2',
+    timestamp: '2026-07-30T00:00:00.000Z',
+    type: 'hint_requested',
+    stage: 'transfer',
+    checkpointId: 'lab2-transfer',
+    hintLevel: 4,
+  }
+  assert.equal(validateInteractionEvent(event), true)
+  assert.equal(validateInteractionEvent({ ...event, hintLevel: 5 }), false)
+})
+
 test('trace-v1 parser ignores malformed frames and accepts Lab2 events', () => {
   const trap = { v: 1, seq: 1, ts: 10, cpu: 0, pid: 0, tid: 0, type: 'trap_enter', cause: 'user_ecall' }
   const task = { v: 1, seq: 2, ts: 20, cpu: 0, pid: 1, tid: 1, type: 'task_switch', from: 'Ready', to: 'Running', reason: 'scheduler' }

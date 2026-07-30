@@ -19,7 +19,7 @@
         "trace_inspected", "hint_requested", "checkpoint_answered", "report_submitted", "teacher_reviewed"
       ]
     },
-    "stage": { "enum": ["orient", "read", "run", "debug", "reflect"] },
+    "stage": { "enum": ["orient", "read", "run", "debug", "reflect", "transfer"] },
     "category": { "type": "string", "maxLength": 80 },
     "content": { "type": "string", "maxLength": 262144 },
     "metadata": { "type": "object" },
@@ -54,7 +54,7 @@
       }
     },
     "checkpointId": { "type": "string", "minLength": 1, "maxLength": 160 },
-    "hintLevel": { "type": "integer", "minimum": 1, "maximum": 3 },
+    "hintLevel": { "type": "integer", "minimum": 1, "maximum": 4 },
     "answerId": { "type": "string", "minLength": 1, "maxLength": 160 },
     "conceptIds": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 160 } },
     "reportVersion": { "type": "string", "minLength": 1, "maxLength": 160 },

@@ -73,4 +73,18 @@ test('migration binds events and immutable runs to the authenticated user', () =
   assert.equal(diagnosticResult.diagnostics[0].code, 'E0425')
   assert.equal(learningDb.getRunDiagnostics(999999, runId), null)
   assert.throws(() => learningDb.finishRun(999999, { ...stored, stopped: false }), /不属于当前用户/)
+
+  assert.deepEqual(learningDb.getTutorSessionState(session.id, 'learning-1', 'lab2').stage, 'orient')
+  learningDb.saveTutorSessionState(session.id, 'learning-1', 'lab2', {
+    stage: 'transfer',
+    hintLevel: 4,
+    version: 'c3-v1',
+  })
+  const tutorState = learningDb.getTutorSessionState(session.id, 'learning-1', 'lab2')
+  assert.equal(tutorState.stage, 'transfer')
+  assert.equal(tutorState.hintLevel, 4)
+  const evidence = learningDb.getTutorEvidenceSummary(session.id, 'learning-1', 'lab2')
+  assert.equal(evidence.latestRun.runId, runId)
+  assert.equal(evidence.latestRun.verified, true)
+  assert.equal(evidence.diagnosticCount, 1)
 })

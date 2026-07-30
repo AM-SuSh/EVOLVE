@@ -18,6 +18,7 @@ import { collectTraceEvents, validateInteractionEvent, validateRunResult } from 
 import { createCargoJsonCollector } from '../tutor/cargo-diagnostics.mjs'
 import { evaluateRunAssertions, getRunRecipe } from '../tutor/run-recipes.mjs'
 import { parseTraceQuery, readTracePage, TraceIntegrityError } from '../tutor/trace-store.mjs'
+import { decideTutorTurn, enforceTutorOutput, tutorPolicyPrompt } from '../tutor/state-machine.mjs'
 import {
   EXERCISES,
   LAB_ORDER,
@@ -40,6 +41,8 @@ import {
   getLearningEvidence,
   getRun,
   getRunDiagnostics,
+  getTutorEvidenceSummary,
+  getTutorSessionState,
   insertLearningEvents,
   listAllReports,
   listMyReports,
@@ -48,6 +51,7 @@ import {
   logout,
   register,
   resolveSession,
+  saveTutorSessionState,
   setReportFeedback,
   submitReport,
 } from '../learning/db.mjs'
@@ -157,7 +161,7 @@ async function resolveLlm(studentLlm) {
   }
 }
 
-const stageIds = new Set(['orient', 'read', 'run', 'debug', 'reflect'])
+const stageIds = new Set(['orient', 'read', 'run', 'debug', 'reflect', 'transfer'])
 const labIds = new Set(['lab1', 'lab2', 'lab3', 'lab4', 'lab5', 'lab6', 'lab7', 'lab8'])
 const labLabels = {
   lab1: 'Lab1 裸机启动与 SBI',
@@ -278,7 +282,7 @@ function readingLayer(reading) {
   return `学生此刻正在实验手册中阅读 ${where}。请优先围绕这一节的内容追问，必要时才引导他前后翻。`
 }
 
-function frameworkFor(labId, stage, reading) {
+function frameworkFor(labId, stage, reading, policyPrompt = '') {
   const safeLabId = labIds.has(labId) ? labId : 'lab2'
   const safeStage = stageIds.has(stage) ? stage : 'orient'
   const hasLabOverride = safeLabId === 'lab2' && lab2StagePrompts[safeStage]
@@ -293,12 +297,13 @@ function frameworkFor(labId, stage, reading) {
     { id: 'stage', label: `阶段策略 · ${safeStage}`, source: stageSource },
   ]
   if (reading_) layers.push({ id: 'reading', label: '当前阅读位置', source: 'runtime' })
+  if (policyPrompt) layers.push({ id: 'policy', label: '服务端证据门控', source: 'runtime' })
   return {
     version: 'multi-lab-v2.1',
     labId: safeLabId,
     stage: safeStage,
     layers,
-    prompt: [systemPrompt, labPrompts[safeLabId], stagePrompt, reading_]
+    prompt: [systemPrompt, labPrompts[safeLabId], stagePrompt, reading_, policyPrompt]
       .filter(Boolean)
       .join('\n\n---\n\n'),
   }
@@ -373,7 +378,7 @@ function sendFrame(response, frame) {
  * 本地 7B 模型出一段引导要十几秒，不流式的话学生只能盯着三个跳点，
  * 观感和「坏了」没区别。
  */
-async function pipeUpstreamStream(upstreamResponse, response) {
+async function pipeUpstreamStream(upstreamResponse, response, forwardDeltas = true) {
   const reader = upstreamResponse.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -397,7 +402,7 @@ async function pipeUpstreamStream(upstreamResponse, response) {
     const delta = extractStreamText(payload)
     if (delta) {
       reply += delta
-      sendFrame(response, { type: 'delta', text: delta })
+      if (forwardDeltas) sendFrame(response, { type: 'delta', text: delta })
       return
     }
     completionFallback = extractCompletionText(payload, { allowReasoning: false }) || completionFallback
@@ -449,21 +454,67 @@ async function readUpstreamJson(upstreamResponse) {
   }
 }
 
-async function handleChat(body, request, response, origin) {
+async function handleChat(body, request, response, origin, session) {
   const labId = String(body.labId || '')
   if (!labIds.has(labId)) {
     json(response, 400, { error: 'labId 必须是 lab1 到 lab8 之一' }, origin)
     return
   }
-  const stage = stageIds.has(String(body.stage)) ? String(body.stage) : 'orient'
+  const requestedStage = stageIds.has(String(body.stage)) ? String(body.stage) : 'orient'
+  const learningSessionId = String(body.sessionId || '').trim().slice(0, 160)
+  if (!learningSessionId) {
+    json(response, 400, { error: 'sessionId 必须存在' }, origin)
+    return
+  }
   const message = String(body.message || '').trim()
   if (!message || message.length > 4_000) {
     json(response, 400, { error: 'message 必须为 1-4000 字符' }, origin)
     return
   }
 
-  const framework = frameworkFor(labId, stage, body.reading)
   const guardrail = matchGuardrail(message)
+  const storedState = getTutorSessionState(session.id, learningSessionId, labId)
+  const evidence = getTutorEvidenceSummary(session.id, learningSessionId, labId)
+  const tutorState = decideTutorTurn({
+    currentStage: storedState.stage,
+    requestedStage,
+    message,
+    evidence,
+    hintLevel: storedState.hintLevel,
+  })
+  saveTutorSessionState(session.id, learningSessionId, labId, tutorState)
+  const decisionEvents = []
+  const timestamp = new Date().toISOString()
+  if (tutorState.transitioned) {
+    decisionEvents.push({
+      version: 2,
+      id: randomUUID(),
+      sessionId: learningSessionId,
+      labId,
+      timestamp,
+      type: 'stage_enter',
+      stage: tutorState.stage,
+      metadata: { source: 'server-state-machine', gate: tutorState.gate },
+    })
+  }
+  if (tutorState.hintAdvanced) {
+    decisionEvents.push({
+      version: 2,
+      id: randomUUID(),
+      sessionId: learningSessionId,
+      labId,
+      timestamp,
+      type: 'hint_requested',
+      stage: tutorState.stage,
+      checkpointId: String(body.checkpointId || `${labId}-${tutorState.stage}`).slice(0, 160),
+      hintLevel: tutorState.hintLevel,
+    })
+  }
+  if (decisionEvents.length) {
+    insertLearningEvents(session.id, decisionEvents)
+    await persistEvents(decisionEvents)
+  }
+  const framework = frameworkFor(labId, tutorState.stage, body.reading, tutorPolicyPrompt(tutorState))
 
   // 护栏命中是规则判定，没有上游调用，直接整段返回。
   if (guardrail) {
@@ -472,6 +523,7 @@ async function handleChat(body, request, response, origin) {
       reply: responseText,
       mode: 'guardrail',
       framework: { ...framework, prompt: undefined },
+      tutorState,
       guardrail: { triggered: true, rule: guardrail.id, event: guardrail.event },
     }, origin)
     return
@@ -579,19 +631,21 @@ async function handleChat(body, request, response, origin) {
           return
         }
       }
+      const guardedOutput = enforceTutorOutput(reply, tutorState)
       json(response, 200, {
-        reply,
+        reply: guardedOutput.reply,
         mode: 'remote',
         model: llm.model,
         framework: { ...framework, prompt: undefined },
-        guardrail: { triggered: false },
+        tutorState,
+        guardrail: { triggered: guardedOutput.guarded, rule: guardedOutput.reason },
       }, origin)
       return
     }
 
     openEventStream(response, origin)
-    sendFrame(response, { type: 'meta', model: llm.model, triggered: false, framework: framework.version })
-    const streamed = await pipeUpstreamStream(upstreamResponse, response)
+    sendFrame(response, { type: 'meta', model: llm.model, triggered: false, framework: framework.version, tutorState })
+    const streamed = await pipeUpstreamStream(upstreamResponse, response, false)
     let reply = streamed.reply.trim()
     let emptyPayload = streamed.lastPayload
 
@@ -613,7 +667,11 @@ async function handleChat(body, request, response, origin) {
     }
 
     if (!reply) sendFrame(response, { type: 'error', error: emptyCompletionReason(emptyPayload) })
-    else sendFrame(response, { type: 'done', reply })
+    else {
+      const guardedOutput = enforceTutorOutput(reply, tutorState)
+      if (guardedOutput.guarded) sendFrame(response, { type: 'meta', triggered: true, rule: guardedOutput.reason, tutorState })
+      sendFrame(response, { type: 'done', reply: guardedOutput.reply, tutorState })
+    }
     response.end()
   } catch (error) {
     const raw = error instanceof Error ? error.message : '导师服务发生未知错误'
@@ -1207,7 +1265,11 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === 'POST' && pathname === '/chat') {
-      await handleChat(await readBody(request), request, response, origin)
+      if (!session) {
+        json(response, 401, { error: '请先登录再使用导师' }, origin)
+        return
+      }
+      await handleChat(await readBody(request), request, response, origin, session)
       return
     }
 

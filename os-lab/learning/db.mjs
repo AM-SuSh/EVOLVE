@@ -151,6 +151,19 @@ CREATE TABLE IF NOT EXISTS run_diagnostics (
 );
 CREATE INDEX IF NOT EXISTS run_diagnostics_run_idx ON run_diagnostics(run_id);
 `)
+applyMigration('20260730_member_c_tutor_state_v1', `
+CREATE TABLE IF NOT EXISTS tutor_sessions (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  session_id TEXT NOT NULL,
+  lab_id TEXT NOT NULL,
+  current_stage TEXT NOT NULL DEFAULT 'orient',
+  hint_level INTEGER NOT NULL DEFAULT 0,
+  state_version TEXT NOT NULL DEFAULT 'c3-v1',
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(user_id, session_id, lab_id)
+);
+CREATE INDEX IF NOT EXISTS tutor_sessions_user_updated_idx ON tutor_sessions(user_id, updated_at DESC);
+`)
 try {
   db.exec('ALTER TABLE reports ADD COLUMN feedback TEXT NOT NULL DEFAULT ""')
 } catch {
@@ -305,6 +318,70 @@ export function getLearningEvidence(userId) {
     verified: verified.has(labId),
     reflected: reflected.has(labId),
   }))
+}
+
+export function getTutorSessionState(userId, sessionId, labId) {
+  const existing = db
+    .prepare(
+      `SELECT current_stage AS stage, hint_level AS hintLevel, state_version AS version, updated_at AS updatedAt
+       FROM tutor_sessions WHERE user_id = ? AND session_id = ? AND lab_id = ?`,
+    )
+    .get(userId, sessionId, labId)
+  if (existing) return existing
+  const timestamp = now()
+  db.prepare(
+    `INSERT INTO tutor_sessions (user_id, session_id, lab_id, current_stage, hint_level, state_version, updated_at)
+     VALUES (?, ?, ?, 'orient', 0, 'c3-v1', ?)`,
+  ).run(userId, sessionId, labId, timestamp)
+  return { stage: 'orient', hintLevel: 0, version: 'c3-v1', updatedAt: timestamp }
+}
+
+export function saveTutorSessionState(userId, sessionId, labId, state) {
+  db.prepare(
+    `INSERT INTO tutor_sessions (user_id, session_id, lab_id, current_stage, hint_level, state_version, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, session_id, lab_id) DO UPDATE SET
+       current_stage = excluded.current_stage,
+       hint_level = excluded.hint_level,
+       state_version = excluded.state_version,
+       updated_at = excluded.updated_at`,
+  ).run(userId, sessionId, labId, state.stage, state.hintLevel, state.version || 'c3-v1', now())
+  return { ok: true }
+}
+
+export function getTutorEvidenceSummary(userId, sessionId, labId) {
+  const eventRows = db
+    .prepare(
+      `SELECT id, type, occurred_at AS occurredAt, payload_json AS payloadJson
+       FROM events WHERE user_id = ? AND session_id = ? AND lab_id = ? ORDER BY occurred_at, row_id`,
+    )
+    .all(userId, sessionId, labId)
+  const counts = {}
+  for (const row of eventRows) counts[row.type] = (counts[row.type] || 0) + 1
+  const runRows = db
+    .prepare(
+      `SELECT id AS runId, status, verified, finished_at AS finishedAt, trace_count AS traceCount
+       FROM runs WHERE user_id = ? AND learning_session_id = ? AND lab_id = ? AND trusted = 1
+       ORDER BY started_at DESC`,
+    )
+    .all(userId, sessionId, labId)
+  const latestRun = runRows[0]
+    ? { ...runRows[0], verified: Boolean(runRows[0].verified) }
+    : null
+  const diagnosticCount = latestRun
+    ? db.prepare('SELECT count(*) AS value FROM run_diagnostics WHERE run_id = ?').get(latestRun.runId).value
+    : 0
+  const lastFailureAt = runRows.find((run) => !run.verified && run.finishedAt)?.finishedAt || ''
+  const hasSaveAfterLatestFailure = Boolean(
+    lastFailureAt && eventRows.some((event) => event.type === 'code_save' && event.occurredAt > lastFailureAt),
+  )
+  return {
+    counts,
+    latestRun,
+    diagnosticCount: Number(diagnosticCount || 0),
+    hasSaveAfterLatestFailure,
+    eventIds: eventRows.slice(-20).map((event) => event.id),
+  }
 }
 
 /* -- 学习事件与可信运行链 ---------------------------------------------------- */

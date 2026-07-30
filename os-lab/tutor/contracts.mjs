@@ -1,5 +1,5 @@
 const LAB_IDS = new Set(Array.from({ length: 8 }, (_, index) => `lab${index + 1}`))
-const STAGE_IDS = new Set(['orient', 'read', 'run', 'debug', 'reflect'])
+const STAGE_IDS = new Set(['orient', 'read', 'run', 'debug', 'reflect', 'transfer'])
 
 const EVENT_V1_TYPES = new Set([
   'session_start',
@@ -112,7 +112,7 @@ export function validateInteractionEvent(event) {
     )
   }
   if (event.type === 'hint_requested') {
-    return isText(event.checkpointId, 160) && Number.isInteger(event.hintLevel) && event.hintLevel >= 1 && event.hintLevel <= 3
+    return isText(event.checkpointId, 160) && Number.isInteger(event.hintLevel) && event.hintLevel >= 1 && event.hintLevel <= 4
   }
   if (event.type === 'checkpoint_answered') {
     return Boolean(
