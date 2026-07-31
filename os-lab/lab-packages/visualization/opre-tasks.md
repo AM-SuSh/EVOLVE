@@ -57,3 +57,7 @@
 
 - 每个 OPRE 在 UI 有「插入报告」入口。
 - 空 trace 时任务卡显示降级路径，不锁定整门课。
+
+## 工作台定稿文案（7 日 Day5）
+
+短句与插入报告模板见同目录 [`opre-copy-final.md`](./opre-copy-final.md)（优先于本文表格直接绑 UI）。

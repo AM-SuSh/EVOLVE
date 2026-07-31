@@ -8,7 +8,8 @@
 
 | 路径 | 说明 |
 | --- | --- |
-| `MEMBER-A-DELIVERABLES.md` | 成员 A 相对 12 周计划的完成对照 |
+| `MEMBER-A-DELIVERABLES.md` | 成员 A 相对计划的完成对照 |
+| `MEMBER-A-7DAY/` | **7 日计划**成员 A 交付索引与 Day1 缺口表 |
 | `lab2/` | **样板 Lab**（Trap / 系统调用 / 协作式调度） |
 | `lab2/lab.yaml` | Lab 元数据、知识点索引、文件、验证、变体 |
 | `lab2/concepts/` | 机制 spec（`trap.yaml`、`scheduler.yaml`） |

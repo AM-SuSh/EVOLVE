@@ -1,5 +1,8 @@
 # Lab2 检查点与迁移题（成员 A · 第 6–7 周）
 
+> **机器可读表（7 日 Day2）**：同目录 [`checkpoints.yaml`](./checkpoints.yaml) — 含 `requiredEvidence` / `hintLevel` / `refusePattern`，供成员 C 门控加载。  
+> 本文保留人类可读对照；若冲突以 YAML 字段为准并回改本文。
+
 ## 阶段检查点（须证据，不可只靠自评）
 
 | ID | 阶段 | 检查点问题 | 可接受证据 |

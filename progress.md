@@ -1,5 +1,26 @@
 # os-lab 项目进度总览
 
+## 2026-07-31 - Task: 成员 A 完成 7 日计划全部教学侧交付
+
+### What was done
+
+- 按《7 日实施计划》收口成员 A 全部分项：缺口表、Lab2 `checkpoints.yaml`（requiredEvidence/hintLevel/refusePattern）、5 条导师金标准对话、量规 v2 冻结版、知识路径/OPRE 定稿文案、补救变式装箱与教师验收勾选、5 人可用性最小脚本。
+- 更新 `MEMBER-A-DELIVERABLES.md` 与既有草案的交叉链接（指向冻结版/YAML）。
+
+### Testing
+
+- 文档交叉链接与清单自检：`lab-packages/MEMBER-A-7DAY/README.md` 七日落点齐全；`checkpoints.yaml` 覆盖 C2-1…C2-5；金标准 JSON 含 3 拒 + 2 放行；`rubric-v2-frozen.md` 含 14 细项 + H1–H6；remedial `TEACHER_ACCEPTANCE` 教学项已勾选。
+
+### Notes
+
+- 主入口：`os-lab/lab-packages/MEMBER-A-7DAY/README.md`
+- 供 C：`lab2/checkpoints.yaml`、`learning/tutor-golden-dialogues-lab2.json`、`learning/rubric-v2-frozen.md`
+- 供 B：`lab2/knowledge-path.md`、`visualization/opre-copy-final.md`
+- 未关闭：真人 5 人测、B/C 产品挂接、remedial 正式 publish
+- 回滚：删除 `MEMBER-A-7DAY/` 本轮新增文件并还原交叉链接即可
+
+---
+
 ## 2026-07-31 - Task: 界面文案「教材」统一为「学习材料」
 
 ### What was done

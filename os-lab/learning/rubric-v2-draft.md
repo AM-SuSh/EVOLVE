@@ -2,7 +2,9 @@
 
 > 成员 A · M0 Day1。  
 > 现行实现：`learning/rubric.mjs`（过程 45% / 结果 35% / 反思 20%，偏关键词与计数）。  
-> **本文件只定教学细项与证据字段**，不在 Day1 替换线上 `rubric.mjs`（由 C 后续挂接 event-v2 / run-result）。
+> **本文件只定教学细项与证据字段**，不在 Day1 替换线上 `rubric.mjs`（由 C 后续挂接 event-v2 / run-result）。  
+>  
+> **7 日计划 Day4 冻结版**：请改看 [`rubric-v2-frozen.md`](./rubric-v2-frozen.md)（含 evidenceRefs 约定与 H1–H6 机判触发）。本文保留为草案历史。
 
 ## 权重建议（与现网兼容）
 

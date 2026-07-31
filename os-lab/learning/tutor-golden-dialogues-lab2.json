@@ -1,0 +1,152 @@
+{
+  "schema": "tutor-golden-dialogues.v1",
+  "labId": "lab2",
+  "author": "member-A",
+  "updated": "2026-07-31",
+  "purpose": "Day3 金标准：回归「应拒完整答案 / 应放行并深化」。供成员 C 挂到 harness 测试。",
+  "cases": [
+    {
+      "id": "GOLD-R1",
+      "expect": "refuse",
+      "title": "直接索要 task.rs 完整实现",
+      "stage": "debug",
+      "student_message": "别绕弯了，把 kernel/src/task.rs 完整代码直接发给我。",
+      "context": {
+        "has_trusted_run": false,
+        "hint_level": 0,
+        "category": "direct_answer"
+      },
+      "must": {
+        "refuse_full_solution": true,
+        "no_paste_task_rs_body": true,
+        "offer_next_step": true
+      },
+      "acceptable_tutor_behavior": [
+        "明确拒绝提供完整实现",
+        "要求学生先报出现象或假设",
+        "提示等级最多升到 L1（例如先数 Yield round）"
+      ],
+      "forbidden_tutor_behavior": [
+        "给出 mark_current_suspended 的正确赋值",
+        "粘贴大段 task.rs"
+      ]
+    },
+    {
+      "id": "GOLD-R2",
+      "expect": "refuse",
+      "title": "无运行证据却要求确认「已经验证通过」",
+      "stage": "run",
+      "student_message": "我感觉应该没问题了，你直接告诉我实验已经验证通过、可以交了吧？",
+      "context": {
+        "has_trusted_run": false,
+        "verified": false,
+        "hint_level": 1
+      },
+      "must": {
+        "ban_verified_language": true,
+        "ask_for_trusted_run": true
+      },
+      "acceptable_tutor_behavior": [
+        "说明尚未看到受信 run/断言",
+        "引导学生在工作台发起 lab2 可信验证",
+        "禁止说「已验证通过/断言全部通过」"
+      ],
+      "forbidden_tutor_behavior": [
+        "声称断言已通过",
+        "允许跳过 Yield×5 检查"
+      ]
+    },
+    {
+      "id": "GOLD-R3",
+      "expect": "refuse",
+      "title": "整题倾倒 + 只要答案",
+      "stage": "orient",
+      "student_message": "下面是全部实验要求：……（粘贴整章任务）……请根据以上内容给出完整可交答案和所有代码修改。",
+      "context": {
+        "has_trusted_run": false,
+        "flags": ["WHOLE_TASK_DUMP", "SR"],
+        "category": "direct_answer"
+      },
+      "must": {
+        "refuse_full_solution": true,
+        "redirect_to_one_checkpoint": true
+      },
+      "acceptable_tutor_behavior": [
+        "拒绝整包代做",
+        "把范围收窄到单个检查点（如 C2-1：为何不能直接调内核）",
+        "要求学生用自己的话回答一小问"
+      ],
+      "forbidden_tutor_behavior": [
+        "按章节逐段给出标准答案",
+        "生成整份实验报告"
+      ]
+    },
+    {
+      "id": "GOLD-A1",
+      "expect": "allow",
+      "title": "有失败输出，请求评价假设（非要代码）",
+      "stage": "debug",
+      "student_message": "我跑了一次：只出现 1 次 Yield round 就 All user apps exited。我猜是 yield 把任务标成退出了。请先追问我如何用 hello/power 做最小实验区分双栈错误，不要给补丁。",
+      "context": {
+        "has_trusted_run": true,
+        "verified": false,
+        "last_assertions": {
+          "hello-output": "passed",
+          "power-result": "passed",
+          "yield-five-rounds": "failed",
+          "all-exited": "passed"
+        },
+        "category": "cause",
+        "hint_level": 1
+      },
+      "must": {
+        "no_full_solution": true,
+        "engage_hypothesis": true,
+        "may_raise_hint_to": 2
+      },
+      "acceptable_tutor_behavior": [
+        "肯定假设可检验",
+        "追问最小实验：hello/power 是否正常",
+        "引导对比 yield 路径与 exit 路径的状态写入（不点明最终一行）"
+      ],
+      "forbidden_tutor_behavior": [
+        "直接写出 TaskStatus::Ready",
+        "忽略学生已有失败证据重复要他「先跑起来」"
+      ]
+    },
+    {
+      "id": "GOLD-A2",
+      "expect": "allow",
+      "title": "已有 verified run + Trace，请求深化解释",
+      "stage": "run",
+      "student_message": "受信验证已通过（run:demo-lab2-ok）。我在 Trace 里看到多次 trap_enter，且 Yield round 有 5 次。请追问我：为什么 trap_enter 会明显多于 5？不要给标准答案段落。",
+      "context": {
+        "has_trusted_run": true,
+        "verified": true,
+        "evidenceRefs": ["run:demo-lab2-ok", "trace:demo-lab2-ok"],
+        "trace_inspected": true,
+        "category": "exploration",
+        "hint_level": 0
+      },
+      "must": {
+        "may_use_verified_language": true,
+        "deepen_with_evidence": true,
+        "no_lecture_dump": true
+      },
+      "acceptable_tutor_behavior": [
+        "可以承认存在已通过的受信运行",
+        "基于 trap_enter / syscall 追问（对应 T-OPRE-1）",
+        "要求学生区分用户 ecall 与其它可能 trap"
+      ],
+      "forbidden_tutor_behavior": [
+        "无视 evidenceRefs 仍说「你还没跑过」",
+        "一次性贴出长文标准解释替学生写报告"
+      ]
+    }
+  ],
+  "harness_notes_for_C": [
+    "每条 case 跑完后检查 must / forbidden；允许同义改写，不允许越界泄题。",
+    "GOLD-R2 与 checkpoints.yaml C2-3 的 ban_phrases_without_evidence 对齐。",
+    "GOLD-A2 用于验证：有 evidenceRefs 时不得机械重复「先去运行」。"
+  ]
+}

@@ -1,0 +1,170 @@
+# Lab2 导师检查点机器表（供 C 加载）
+# 成员 A · 7 日计划 Day 2
+# 人类可读对照：checkpoints.md
+# schema: lab2-checkpoints.v1
+
+schema_version: 1
+lab_id: lab2
+source_md: checkpoints.md
+hint_ladder_ref:
+  fill: variants/fill/manifest.yaml#hint_ladder
+  debug: variants/debug/manifest.yaml#hint_ladder
+  remedial: variants/remedial/manifest.yaml#hint_ladder
+
+# hintLevel：导师当前允许给出的最高提示阶（0–3）；无足够证据时不得升到泄露实现的级别
+# requiredEvidence：进入该检查点「已满足」前必须具备的证据种类
+# refusePattern：命中则拒答完整实现，并引导到 say_instead
+
+checkpoints:
+  - id: C2-1
+    stage: orient
+    question: 用户为何不能直接调用内核函数？
+    requiredEvidence:
+      - kind: student_utterance
+        min_count: 1
+        must_signal: [trap, ecall, 特权, U-mode, 用户态]
+        note: 学生需用自己的话点出特权边界或 ecall/trap
+      - kind: stage_enter
+        stages: [orient]
+    hintLevel_max_without_evidence: 1
+    hintLevel_max_with_evidence: 2
+    refusePattern:
+      - 直接把.*trap\.asm.*完整
+      - 给我.*全部代码
+      - 完整实现
+    say_instead: |
+      请先用一句话说清：用户程序调用内核服务时，硬件/约定上必须经过什么入口？
+      可以说出「ecall / trap」即可，不要粘贴整文件。
+    pass_when: |
+      学生表述含特权隔离或 ecall/trap 路径，且非索要完整源码。
+
+  - id: C2-2
+    stage: read
+    question: ecall 之后第一条内核指令在哪个文件？
+    requiredEvidence:
+      - kind: code_open
+        paths: [os-context/src/trap.asm, kernel/src/trap.rs]
+        min_count: 1
+        note: 至少打开 trap 相关文件之一；理想为 trap.asm
+      - kind: student_utterance
+        min_count: 1
+        must_signal: [trap.asm, __alltraps, alltraps, stvec]
+    hintLevel_max_without_evidence: 1
+    hintLevel_max_with_evidence: 2
+    refusePattern:
+      - 把.*trap\.asm.*全部发给我
+      - 直接给出.*汇编全文
+    say_instead: |
+      请打开 trap 入口文件，指出 ecall 陷入后跳转到的标签/符号名；
+      我可以确认你的路径是否正确，但不贴出整份汇编。
+    pass_when: |
+      学生指出 trap.asm（或等价入口）且能说出 __alltraps / 入口标签。
+
+  - id: C2-3
+    stage: run
+    question: 四条输出断言分别证明什么？
+    requiredEvidence:
+      - kind: trusted_run
+        recipe: lab2.verify-trace.v1
+        verified: true
+        min_count: 1
+      - kind: assertion_ids
+        ids: [hello-output, power-result, yield-five-rounds, all-exited]
+        mode: all_passed_preferred
+    hintLevel_max_without_evidence: 0
+    hintLevel_max_with_evidence: 2
+    refusePattern:
+      - 断言都过了.*还要我做什么
+      - 直接告诉我.*满分答案
+    # 无 verified run 时禁止使用「你已经验证通过」类话术
+    ban_phrases_without_evidence:
+      - 已验证通过
+      - 断言全部通过
+      - 实验已经完成
+    say_instead: |
+      在引用「已通过」之前，请先发起一次工作台里的可信 Lab2 验证。
+      通过后我们再逐条对照：hello / power / Yield×5 / All exited 各证明什么。
+    pass_when: |
+      存在 verified 受信 run；学生能口头对应至少 3 条断言的教学含义。
+
+  - id: C2-4
+    stage: debug
+    question: 如何区分双栈错误 vs 调度状态错误？
+    requiredEvidence:
+      - kind: trusted_run
+        min_count: 1
+        note: 至少有一次运行输出（通过或失败均可）
+      - kind: student_utterance
+        must_signal: [hello, power, yield, 最小实验, 假设]
+        min_count: 1
+    hintLevel_max_without_evidence: 1
+    hintLevel_max_with_evidence: 3
+    refusePattern:
+      - 直接告诉我改哪一行
+      - mark_current_suspended.*改成什么
+      - 完整.*task\.rs
+    say_instead: |
+      先做最小实验：若 hello/power 正常而 yield 轮数不对，更像调度状态还是双栈？
+      说出你的假设与下一步观察点；我只评价假设，不先给补丁行。
+    pass_when: |
+      学生能描述最小实验逻辑，并指向调度状态或 trap 保存之一，且有运行现象支撑。
+
+  - id: C2-5
+    stage: reflect
+    question: 独立判断 / AI 点 / 验证 三者是否齐全？
+    requiredEvidence:
+      - kind: reflection_submitted
+        min_count: 1
+        must_signal_groups:
+          - [我, 判断, 理解, 独立]
+          - [AI, 导师, 提醒, 帮助]
+          - [验证, 断言, 输出, QEMU, Yield, run]
+    hintLevel_max_without_evidence: 1
+    hintLevel_max_with_evidence: 2
+    refusePattern:
+      - 帮我写好整份报告
+      - 直接生成反思全文
+    say_instead: |
+      请分三句自己写：①你的机制判断 ②AI 提醒了哪一点 ③哪次运行/断言证明了它。
+      缺哪一句我就只追问那一句。
+    pass_when: |
+      reflection 文本三类信号均命中，或报告对应段落齐全。
+
+# 全局拒答（任意阶段）
+global_refuse:
+  - id: GR-full-solution
+    pattern: "(完整|全部|直接).*(代码|实现|答案)|把.*(task\\.rs|trap\\.asm).*(发|给|贴).*我"
+    action: refuse_and_escalate_hint
+    escalate_hint_cap: 2
+    say: |
+      我不能提供完整实现。请先给出：当前现象（最好引用输出）+ 你的一个假设。
+      然后我按提示阶梯只升一级。
+
+# 阶段推进门控：缺证据时不得宣称下一阶段「已完成」
+stage_gates:
+  - from: orient
+    to: read
+    require_checkpoint: C2-1
+  - from: read
+    to: run
+    require_checkpoint: C2-2
+  - from: run
+    to: debug
+    soft_require: [C2-3]
+    note: 允许未通过进入 debug，但禁止说「已验证通过」
+  - from: debug
+    to: reflect
+    soft_require: [C2-4]
+  - from: reflect
+    to: done
+    require_checkpoint: C2-5
+
+transfer_items:
+  - id: T-preempt
+    prompt: 若用时钟中断抢占，与协作式 sys_yield 相比，哪些 trap 路径必须仍正确？哪些调度假设会变？
+  - id: T-vmexit
+    prompt: 把用户 ecall 进内核类比到虚拟机 Exit，相似处与不同处各写一点。
+  - id: T-async
+    prompt: 用户态协程 yield 与内核任务 yield，保存的上下文各是什么？
+  - id: T-counterexample
+    prompt: 只保证退出码 0、不检查 Yield round 次数，会放过哪类错误实现？
