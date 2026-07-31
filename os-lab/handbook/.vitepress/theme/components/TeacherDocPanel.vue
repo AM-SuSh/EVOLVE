@@ -133,6 +133,8 @@ onBeforeUnmount(() => {
 .ws-tdoc {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   background: var(--ws-surface);
@@ -215,16 +217,18 @@ onBeforeUnmount(() => {
 
 .ws-tdoc-editor {
   grid-row: 3;
+  width: 100%;
+  height: 100%;
   min-height: 0;
-  padding: var(--ws-space-3) var(--ws-space-4);
+  padding: var(--ws-space-4) clamp(16px, 3vw, 40px);
   color: var(--ws-ink);
   border: 0;
   outline: none;
   background: var(--ws-surface-soft, var(--ws-surface-alt));
   resize: none;
   font-family: var(--ws-font-mono);
-  font-size: var(--ws-text-xs);
-  line-height: 1.7;
+  font-size: var(--ws-text-sm);
+  line-height: 1.75;
   tab-size: 2;
 }
 

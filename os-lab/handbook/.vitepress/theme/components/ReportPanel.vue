@@ -1,15 +1,22 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
+  Bold,
+  Code2,
+  Columns3,
   Download,
   Eye,
   FilePlus2,
   FileText,
+  Heading2,
   ImagePlus,
   Images,
+  Italic,
+  List,
   MessageSquareQuote,
   Paperclip,
   Pencil,
+  Quote,
   Save,
   Send,
   Trash2,
@@ -40,8 +47,8 @@ import {
 } from '../report-attachments'
 
 /**
- * 实验报告面板：模板 / Markdown 下拉选择；提交以当前格式为准。
- * 图片先进图片库（可浏览/改名），模板勾选插入当前段；Markdown 可见插入结果；预览看完整稿。
+ * 实验报告面板：单一 Markdown 文档 + 同步预览。
+ * 图片通过选择、粘贴或拖放直接插入光标位置，二进制仍由 IndexedDB 管理。
  */
 const props = defineProps<{
   lab: TutorLab
@@ -61,7 +68,7 @@ const emit = defineEmits<{
 }>()
 
 type ReportMode = 'template' | 'markdown'
-type EditorView = 'edit' | 'preview'
+type EditorView = 'edit' | 'split' | 'preview'
 
 interface ReportDraft {
   mode: ReportMode
@@ -78,14 +85,14 @@ function emptySections(): Record<string, string> {
 }
 
 function emptyDraft(): ReportDraft {
-  return { mode: 'template', sections: emptySections(), markdownBody: '' }
+  return { mode: 'markdown', sections: emptySections(), markdownBody: '' }
 }
 
 const draft = ref<ReportDraft>(emptyDraft())
 const isMarkdownMode = computed(() => draft.value.mode === 'markdown')
 
 const savedAt = ref('')
-const editorView = ref<EditorView>('edit')
+const editorView = ref<EditorView>('split')
 const attachments = ref<ReportAttachmentMeta[]>([])
 const attachmentUrls = ref<Record<string, string>>({})
 const freeEditor = ref<HTMLTextAreaElement | null>(null)
@@ -95,13 +102,15 @@ const imageInput = ref<HTMLInputElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const importInput = ref<HTMLInputElement | null>(null)
 const busyAttach = ref(false)
+const dragActive = ref(false)
+const pendingInsertAt = ref<number | null>(null)
 /** 图片库改名草稿（始终可见输入框）。 */
 const renameDrafts = ref<Record<string, string>>({})
 /** 模板/Markdown 勾选待插入的图片 id。 */
 const selectedImageIds = ref<string[]>([])
 /** 大图浏览。 */
 const lightboxId = ref<string | null>(null)
-const libraryCollapsed = ref(false)
+const libraryCollapsed = ref(true)
 
 const storageKey = computed(() => `os-lab-report-${props.lab.id}-v2`)
 const legacyKey = computed(() => `os-lab-report-${props.lab.id}-v1`)
@@ -262,6 +271,26 @@ async function hydrateAttachmentUrls(labId: string, metas: ReportAttachmentMeta[
   attachmentUrls.value = next
 }
 
+function markdownFromSections(sections: Record<string, string>) {
+  const withPrompt = template.value.includePromptsInMarkdown !== false
+  return bodySections.value
+    .map((section) => {
+      const body = (sections[section.id] || '').trim()
+      if (withPrompt && section.prompt.trim()) {
+        return `## ${section.title}\n\n> **填写提示：** ${section.prompt.trim()}\n\n${body}`
+      }
+      return `## ${section.title}\n\n${body}`
+    })
+    .join('\n\n')
+}
+
+function ensureUnifiedMarkdown() {
+  if (!draft.value.markdownBody.trim()) {
+    draft.value.markdownBody = markdownFromSections(draft.value.sections)
+  }
+  draft.value.mode = 'markdown'
+}
+
 function load() {
   if (typeof localStorage === 'undefined') return
   // 取消进行中的 hydrate，避免旧请求覆盖新上传的 URL
@@ -297,6 +326,7 @@ function load() {
     }
     draft.value = next
     ensureSectionValues()
+    ensureUnifiedMarkdown()
     activeSection.value = bodySections.value[0]?.id || FIXED_REFLECTION.id
     savedAt.value = typeof value?.savedAt === 'string' ? value.savedAt : ''
     attachments.value = Array.isArray(value?.attachments)
@@ -317,6 +347,7 @@ function load() {
   } catch {
     draft.value = emptyDraft()
     attachments.value = []
+    ensureUnifiedMarkdown()
   }
 }
 
@@ -328,7 +359,19 @@ watch(
   },
 )
 
-onBeforeUnmount(() => revokeUrls())
+let autosaveTimer = 0
+
+function schedulePersist() {
+  if (typeof window === 'undefined') return
+  window.clearTimeout(autosaveTimer)
+  autosaveTimer = window.setTimeout(() => persist(false), 500)
+}
+
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') window.clearTimeout(autosaveTimer)
+  persist(false)
+  revokeUrls()
+})
 
 watch(
   () => props.insertPayload?.id,
@@ -338,7 +381,7 @@ watch(
     const stamp = new Date().toLocaleTimeString('zh-CN', { hour12: false })
     const block = `\n\n[${stamp} 终端输出]\n\`\`\`text\n${text}\n\`\`\`\n`
     if (isMarkdownMode.value) {
-      draft.value.markdownBody = `${draft.value.markdownBody.trimEnd()}${block}`.trimStart()
+      insertMarkdownAtCursor(block)
     } else {
       let id = activeSection.value
       if (!allSections.value.some((s) => s.id === id)) {
@@ -566,29 +609,103 @@ function currentSectionId() {
   return id
 }
 
-/** 模板：写到当前段末尾；Markdown：追加到正文末尾（可再手调位置）。 */
-function placeImageMarkdown(meta: ReportAttachmentMeta) {
-  const safeAlt = meta.name.replace(/[[\]]/g, '')
-  const block = `\n\n![${safeAlt}](attachment:${meta.id})\n\n`
-  if (draft.value.mode === 'markdown') {
-    draft.value.markdownBody = `${draft.value.markdownBody.trimEnd()}${block}`.trimStart()
-  } else {
-    const id = currentSectionId()
-    draft.value.sections[id] = `${(draft.value.sections[id] || '').trimEnd()}${block}`.trimStart()
-    activeSection.value = id
+function editorRange() {
+  const editor = freeEditor.value
+  const fallback = draft.value.markdownBody.length
+  return {
+    start: editor?.selectionStart ?? fallback,
+    end: editor?.selectionEnd ?? fallback,
   }
 }
 
-function placeDocMarkdown(meta: ReportAttachmentMeta) {
-  const safeLabel = meta.name.replace(/[[\]]/g, '')
-  const block = `\n\n[附件：${safeLabel}](attachment:${meta.id})\n\n`
+function insertMarkdownAtCursor(text: string, at?: number) {
+  const source = draft.value.markdownBody
+  const range = editorRange()
+  const start = Math.max(0, Math.min(at ?? range.start, source.length))
+  const end = at === undefined ? Math.max(start, range.end) : start
+  draft.value.markdownBody = `${source.slice(0, start)}${text}${source.slice(end)}`
+  const cursor = start + text.length
+  void nextTick(() => {
+    freeEditor.value?.focus()
+    freeEditor.value?.setSelectionRange(cursor, cursor)
+  })
+  schedulePersist()
+  return cursor
+}
+
+function wrapSelection(before: string, after: string, placeholder: string) {
+  const source = draft.value.markdownBody
+  const { start, end } = editorRange()
+  const selected = source.slice(start, end) || placeholder
+  const replacement = `${before}${selected}${after}`
+  draft.value.markdownBody = `${source.slice(0, start)}${replacement}${source.slice(end)}`
+  const selectionStart = start + before.length
+  const selectionEnd = selectionStart + selected.length
+  void nextTick(() => {
+    freeEditor.value?.focus()
+    freeEditor.value?.setSelectionRange(selectionStart, selectionEnd)
+  })
+  schedulePersist()
+}
+
+function prefixCurrentLine(prefix: string) {
+  const source = draft.value.markdownBody
+  const { start } = editorRange()
+  const lineStart = source.lastIndexOf('\n', Math.max(0, start - 1)) + 1
+  draft.value.markdownBody = `${source.slice(0, lineStart)}${prefix}${source.slice(lineStart)}`
+  const cursor = start + prefix.length
+  void nextTick(() => {
+    freeEditor.value?.focus()
+    freeEditor.value?.setSelectionRange(cursor, cursor)
+  })
+  schedulePersist()
+}
+
+function insertCodeBlock() {
+  const source = draft.value.markdownBody
+  const { start, end } = editorRange()
+  const selected = source.slice(start, end) || '// 在这里粘贴或输入代码'
+  const block = `\n\n\`\`\`rust\n${selected}\n\`\`\`\n\n`
+  insertMarkdownAtCursor(block)
+}
+
+function onEditorKeydown(event: KeyboardEvent) {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+    event.preventDefault()
+    save()
+    return
+  }
+  if (event.key === 'Tab') {
+    event.preventDefault()
+    insertMarkdownAtCursor('  ')
+  }
+}
+
+/** 图片直接写到 Markdown 光标位置；保留模板分支仅用于旧草稿兼容。 */
+function placeImageMarkdown(meta: ReportAttachmentMeta, at?: number) {
+  const safeAlt = meta.name.replace(/[[\]]/g, '')
+  const block = `\n\n![${safeAlt}](attachment:${meta.id})\n\n`
   if (draft.value.mode === 'markdown') {
-    draft.value.markdownBody = `${draft.value.markdownBody.trimEnd()}${block}`.trimStart()
+    return insertMarkdownAtCursor(block, at)
   } else {
     const id = currentSectionId()
     draft.value.sections[id] = `${(draft.value.sections[id] || '').trimEnd()}${block}`.trimStart()
     activeSection.value = id
   }
+  return null
+}
+
+function placeDocMarkdown(meta: ReportAttachmentMeta, at?: number) {
+  const safeLabel = meta.name.replace(/[[\]]/g, '')
+  const block = `\n\n[附件：${safeLabel}](attachment:${meta.id})\n\n`
+  if (draft.value.mode === 'markdown') {
+    return insertMarkdownAtCursor(block, at)
+  } else {
+    const id = currentSectionId()
+    draft.value.sections[id] = `${(draft.value.sections[id] || '').trimEnd()}${block}`.trimStart()
+    activeSection.value = id
+  }
+  return null
 }
 
 function uniqueName(name: string) {
@@ -666,7 +783,7 @@ async function storeFile(file: File, options?: { asImage?: boolean }) {
   return meta
 }
 
-async function addImages(fileList: FileList | File[]) {
+async function addImages(fileList: FileList | File[], insertAt?: number) {
   const files = Array.from(fileList)
   if (!files.length) return
   if (attachments.value.length >= MAX_ATTACHMENTS) {
@@ -679,28 +796,23 @@ async function addImages(fileList: FileList | File[]) {
     emit('notice', `还能再传 ${room} 个，已只处理前 ${room} 个。`)
   }
   busyAttach.value = true
-  libraryCollapsed.value = false
-  emit('notice', `正在上传 ${batch.length} 张图片…`)
+  emit('notice', `正在插入 ${batch.length} 张图片…`)
   try {
     let count = 0
-    const addedIds: string[] = []
+    let cursor = insertAt
     for (const file of batch) {
       try {
         const meta = await storeFile(file, { asImage: true })
         if (!meta) continue
-        addedIds.push(meta.id)
+        cursor = placeImageMarkdown(meta, cursor) ?? cursor
         count += 1
       } catch (err) {
         emit('notice', err instanceof Error ? `「${file.name}」上传失败：${err.message}` : '有一张图片上传失败。')
       }
     }
-    selectedImageIds.value = [...new Set([...selectedImageIds.value, ...addedIds])]
     persist(false)
     if (count) {
-      emit(
-        'notice',
-        `已加入图片库 ${count} 张。请勾选后点「插入选中到当前段/正文」。`,
-      )
+      emit('notice', `已在光标位置插入 ${count} 张图片。`)
     } else if (!batch.length) {
       emit('notice', '没有可上传的文件。')
     }
@@ -711,7 +823,7 @@ async function addImages(fileList: FileList | File[]) {
   }
 }
 
-async function addDocuments(fileList: FileList | File[]) {
+async function addDocuments(fileList: FileList | File[], insertAt?: number) {
   const files = Array.from(fileList)
   if (!files.length) return
   if (attachments.value.length + files.length > MAX_ATTACHMENTS) {
@@ -721,18 +833,23 @@ async function addDocuments(fileList: FileList | File[]) {
   busyAttach.value = true
   try {
     let count = 0
+    let cursor = insertAt
     for (const file of files) {
       if (file.type.startsWith('image/')) {
-        emit('notice', `「${file.name}」是图片，请用「上传到图片库」。`)
+        const meta = await storeFile(file, { asImage: true })
+        if (meta) {
+          cursor = placeImageMarkdown(meta, cursor) ?? cursor
+          count += 1
+        }
         continue
       }
       const meta = await storeFile(file)
       if (!meta) continue
-      placeDocMarkdown(meta)
+      cursor = placeDocMarkdown(meta, cursor) ?? cursor
       count += 1
     }
     persist(false)
-    if (count) emit('notice', `已上传 ${count} 个附件（Word/PDF 等），并在正文加入链接。`)
+    if (count) emit('notice', `已插入 ${count} 个文件。`)
   } catch (err) {
     emit('notice', err instanceof Error ? err.message : '上传失败，请稍后重试。')
   } finally {
@@ -917,7 +1034,9 @@ function onImagePick(event: Event) {
     emit('notice', '没有选到图片，请再试一次。')
     return
   }
-  void addImages(files)
+  const insertAt = pendingInsertAt.value ?? undefined
+  pendingInsertAt.value = null
+  void addImages(files, insertAt)
 }
 
 function onFilePick(event: Event) {
@@ -928,12 +1047,14 @@ function onFilePick(event: Event) {
     emit('notice', '没有选到文件，请再试一次。')
     return
   }
-  void addDocuments(files)
+  const insertAt = pendingInsertAt.value ?? undefined
+  pendingInsertAt.value = null
+  void addDocuments(files, insertAt)
 }
 
 function openImagePicker() {
   busyAttach.value = false
-  libraryCollapsed.value = false
+  pendingInsertAt.value = editorRange().start
   const el = imageInput.value
   if (!el) {
     emit('notice', '图片选择器未就绪，请刷新页面后再试。')
@@ -942,8 +1063,61 @@ function openImagePicker() {
   el.click()
 }
 
+function openFilePicker() {
+  pendingInsertAt.value = editorRange().start
+  fileInput.value?.click()
+}
+
+function onEditorPaste(event: ClipboardEvent) {
+  const files = Array.from(event.clipboardData?.items || [])
+    .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => Boolean(file))
+  if (!files.length) return
+  event.preventDefault()
+  void addImages(files, editorRange().start)
+}
+
+function onComposerDragOver(event: DragEvent) {
+  if (!event.dataTransfer?.types.includes('Files')) return
+  event.preventDefault()
+  dragActive.value = true
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+}
+
+function onComposerDragLeave(event: DragEvent) {
+  const current = event.currentTarget
+  const next = event.relatedTarget
+  if (current instanceof Node && next instanceof Node && current.contains(next)) return
+  dragActive.value = false
+}
+
+function onComposerDrop(event: DragEvent) {
+  event.preventDefault()
+  dragActive.value = false
+  const files = Array.from(event.dataTransfer?.files || [])
+  if (!files.length) return
+  const images = files.filter((file) => file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp)$/i.test(file.name))
+  const documents = files.filter((file) => !images.includes(file))
+  const insertAt = editorRange().start
+  if (images.length) void addImages(images, insertAt)
+  if (documents.length) void addDocuments(documents, insertAt)
+}
+
+function insertExisting(meta: ReportAttachmentMeta) {
+  if (meta.mime.startsWith('image/')) placeImageMarkdown(meta)
+  else placeDocMarkdown(meta)
+  persist(false)
+  emit('notice', `已插入「${meta.name}」。`)
+}
+
+function isReferenced(meta: ReportAttachmentMeta) {
+  const refs = referencedAttachmentKeys(buildBodyMarkdown())
+  return refs.has(meta.id) || refs.has(meta.name)
+}
+
 const modeLabel = computed(() =>
-  draft.value.mode === 'markdown' ? 'Markdown 自由编写' : '模板填写',
+  'Markdown 文档',
 )
 </script>
 
@@ -977,66 +1151,58 @@ const modeLabel = computed(() =>
         <p>{{ teacherFeedback }}</p>
       </div>
 
-      <div class="ws-report-modes">
-        <label class="ws-report-mode-select">
-          <span>编写格式</span>
-          <select
-            :value="draft.mode"
-            :disabled="editorView === 'preview'"
-            title="提交、预览、导出都以这里选中的格式为准"
-            @change="onModeSelect"
-          >
-            <option value="template">模板填写</option>
-            <option value="markdown">Markdown 自由编写</option>
-          </select>
-        </label>
-        <span class="ws-report-toolbar-sep" />
+      <div class="ws-report-modes ws-report-composer-toolbar">
+        <div class="ws-report-view-tabs" role="tablist" aria-label="报告视图">
         <button
           type="button"
+          role="tab"
+          :aria-selected="editorView === 'edit'"
           :class="{ active: editorView === 'edit' }"
-          title="继续改内容"
+          title="仅显示编辑区"
           @click="editorView = 'edit'"
         >
           <Pencil :size="14" aria-hidden="true" />编辑
         </button>
         <button
           type="button"
+          role="tab"
+          :aria-selected="editorView === 'split'"
+          :class="{ active: editorView === 'split' }"
+          title="同时显示编辑和预览"
+          @click="editorView = 'split'"
+        >
+          <Columns3 :size="14" aria-hidden="true" />分栏
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="editorView === 'preview'"
           :class="{ active: editorView === 'preview' }"
-          title="预览当前格式下老师会看到的样子"
+          title="仅显示最终排版"
           @click="editorView = 'preview'"
         >
-          <Eye :size="14" aria-hidden="true" />预览最终稿
+          <Eye :size="14" aria-hidden="true" />预览
         </button>
+        </div>
+        <span class="ws-report-toolbar-sep" />
+        <div class="ws-report-format-tools" aria-label="正文格式">
+          <button type="button" title="二级标题" aria-label="二级标题" @click="prefixCurrentLine('## ')"><Heading2 :size="15" /></button>
+          <button type="button" title="粗体" aria-label="粗体" @click="wrapSelection('**', '**', '重点')"><Bold :size="15" /></button>
+          <button type="button" title="斜体" aria-label="斜体" @click="wrapSelection('*', '*', '说明')"><Italic :size="15" /></button>
+          <button type="button" title="行内代码" aria-label="行内代码" @click="wrapSelection('`', '`', 'code')"><Code2 :size="15" /></button>
+          <button type="button" title="代码块" aria-label="代码块" @click="insertCodeBlock"><FileText :size="15" /></button>
+          <button type="button" title="引用" aria-label="引用" @click="prefixCurrentLine('> ')"><Quote :size="15" /></button>
+          <button type="button" title="列表" aria-label="列表" @click="prefixCurrentLine('- ')"><List :size="15" /></button>
+        </div>
         <div class="ws-report-modes-extra">
-          <button
-            type="button"
-            title="导入 .md / .txt；Word/PDF 请用「上传附件」"
-            :disabled="editorView === 'preview'"
-            @click="importInput?.click()"
-          >
-            <Upload :size="14" aria-hidden="true" />导入 Markdown
+          <button type="button" title="在光标位置插入图片" :disabled="busyAttach" @click="openImagePicker">
+            <ImagePlus :size="15" aria-hidden="true" /><span>图片</span>
           </button>
-          <button
-            type="button"
-            title="上传图片到图片库（不自动插入正文，勾选后再插入）"
-            @click="openImagePicker"
-          >
-            <ImagePlus :size="14" aria-hidden="true" />{{ busyAttach ? '上传中…' : '上传到图片库' }}
+          <button type="button" title="在光标位置插入附件" :disabled="busyAttach" @click="openFilePicker">
+            <Paperclip :size="15" aria-hidden="true" /><span>附件</span>
           </button>
-          <button
-            type="button"
-            title="展开/收起图片库"
-            @click="libraryCollapsed = !libraryCollapsed"
-          >
-            <Images :size="14" aria-hidden="true" />{{ libraryCollapsed ? '打开图片库' : '收起图片库' }}
-          </button>
-          <button
-            type="button"
-            title="上传 Word / PDF 等附件（不再提供 Word 编辑页）"
-            :disabled="editorView === 'preview' || busyAttach"
-            @click="fileInput?.click()"
-          >
-            <Paperclip :size="14" aria-hidden="true" />上传附件
+          <button type="button" title="导入 Markdown" @click="importInput?.click()">
+            <Upload :size="15" aria-hidden="true" /><span>导入</span>
           </button>
         </div>
       </div>
@@ -1067,6 +1233,106 @@ const modeLabel = computed(() =>
         multiple
         @change="onFilePick"
       />
+
+      <div
+        class="ws-report-composer"
+        :class="[`is-${editorView}`, { 'is-dragging': dragActive }]"
+        @dragover="onComposerDragOver"
+        @dragleave="onComposerDragLeave"
+        @drop="onComposerDrop"
+      >
+        <div v-if="dragActive" class="ws-report-drop-state">
+          <ImagePlus :size="22" aria-hidden="true" />
+          <strong>松开即可插入</strong>
+        </div>
+
+        <section v-show="editorView !== 'preview'" class="ws-report-writing-pane" aria-label="报告正文编辑">
+          <header>
+            <span>正文</span>
+            <small>{{ draft.markdownBody.length }} 字符</small>
+          </header>
+          <textarea
+            ref="freeEditor"
+            v-model="draft.markdownBody"
+            class="ws-report-document-editor"
+            rows="24"
+            placeholder="写下实验目标、关键过程、运行证据和结论…"
+            spellcheck="false"
+            @input="schedulePersist"
+            @paste="onEditorPaste"
+            @keydown="onEditorKeydown"
+            @blur="persist(false)"
+          />
+        </section>
+
+        <article v-show="editorView !== 'edit'" class="ws-report-reading-pane" aria-label="报告排版预览">
+          <header>
+            <span>最终排版</span>
+            <small>提交内容</small>
+          </header>
+          <div class="ws-report-preview ws-report-live-preview" v-html="previewHtml" />
+        </article>
+      </div>
+
+      <section class="ws-report-reflection-block">
+        <header>
+          <div>
+            <strong>{{ FIXED_REFLECTION.title }}</strong>
+            <small>完成后保存，作为本次学习复盘</small>
+          </div>
+        </header>
+        <textarea
+          :ref="(el) => setSectionEditor(FIXED_REFLECTION.id, el)"
+          v-model="draft.sections[FIXED_REFLECTION.id]"
+          :rows="FIXED_REFLECTION.rows"
+          :placeholder="FIXED_REFLECTION.prompt"
+          spellcheck="false"
+          @input="schedulePersist"
+          @blur="persist(false)"
+        />
+      </section>
+
+      <section v-if="attachments.length" class="ws-report-file-strip" aria-label="报告文件">
+        <header>
+          <strong>报告文件</strong>
+          <small>{{ attachments.length }}/{{ MAX_ATTACHMENTS }}</small>
+        </header>
+        <div class="ws-report-file-grid">
+          <article v-for="item in attachments" :key="item.id" class="ws-report-file-item">
+            <button
+              v-if="item.mime.startsWith('image/') && attachmentUrls[item.id]"
+              type="button"
+              class="ws-report-file-thumb"
+              :title="`查看 ${item.name}`"
+              @click="openLightbox(item.id)"
+            >
+              <img :src="attachmentUrls[item.id]" :alt="item.name" />
+            </button>
+            <span v-else class="ws-report-file-icon"><Paperclip :size="16" aria-hidden="true" /></span>
+            <div class="ws-report-file-meta">
+              <strong :title="item.name">{{ item.name }}</strong>
+              <small>{{ formatSize(item.size) }} · {{ isReferenced(item) ? '已插入' : '未插入' }}</small>
+            </div>
+            <div class="ws-report-file-actions">
+              <button type="button" title="插入到光标位置" aria-label="插入到光标位置" @click="insertExisting(item)"><ImagePlus v-if="item.mime.startsWith('image/')" :size="14" /><Paperclip v-else :size="14" /></button>
+              <button type="button" title="下载" aria-label="下载" @click="downloadAttachment(item)"><Download :size="14" /></button>
+              <button type="button" title="移除" aria-label="移除" @click="removeAttachment(item.id)"><Trash2 :size="14" /></button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <div v-if="lightboxMeta" class="ws-report-lightbox" role="dialog" aria-modal="true" aria-label="浏览图片" @click.self="closeLightbox">
+        <div class="ws-report-lightbox-panel">
+          <header>
+            <strong>{{ lightboxMeta.name }}</strong>
+            <button type="button" title="关闭" aria-label="关闭" @click="closeLightbox"><X :size="18" /></button>
+          </header>
+          <img v-if="lightboxUrl" :src="lightboxUrl" :alt="lightboxMeta.name" />
+        </div>
+      </div>
+
+      <template v-if="false">
 
       <div v-show="!libraryCollapsed" class="ws-report-library" aria-label="图片库">
         <header class="ws-report-library-head">
@@ -1354,6 +1620,7 @@ const modeLabel = computed(() =>
         <FilePlus2 :size="13" aria-hidden="true" />
         图片库可随时浏览；模板勾选插入当前段；自由编写看「插入结果」；预览看完整报告。Word/PDF 用「上传附件」。
       </p>
+      </template>
     </div>
   </section>
 </template>
@@ -2124,5 +2391,313 @@ const modeLabel = computed(() =>
   color: var(--ws-ink-faint);
   font-size: var(--ws-text-xs);
   line-height: 1.45;
+}
+
+/* -- 连续文档编辑器 ------------------------------------------------------- */
+
+.ws-report-composer-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  flex-wrap: wrap;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--ws-surface) 94%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.ws-report-view-tabs,
+.ws-report-format-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ws-report-format-tools button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+}
+
+.ws-report-composer {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 520px;
+  margin-bottom: var(--ws-space-3);
+  overflow: hidden;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
+}
+
+.ws-report-composer.is-edit,
+.ws-report-composer.is-preview {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ws-report-composer.is-dragging {
+  border-color: var(--ws-accent);
+  box-shadow: inset 0 0 0 2px var(--ws-accent-soft);
+}
+
+.ws-report-drop-state {
+  position: absolute;
+  inset: 10px;
+  z-index: 6;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  color: var(--ws-accent);
+  border: 2px dashed var(--ws-accent);
+  border-radius: var(--ws-radius-md);
+  background: color-mix(in srgb, var(--ws-surface) 90%, var(--ws-accent-soft));
+  pointer-events: none;
+}
+
+.ws-report-writing-pane,
+.ws-report-reading-pane {
+  display: grid;
+  grid-template-rows: 32px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+
+.ws-report-reading-pane {
+  border-left: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
+}
+
+.ws-report-composer.is-preview .ws-report-reading-pane {
+  border-left: 0;
+}
+
+.ws-report-writing-pane > header,
+.ws-report-reading-pane > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px;
+  color: var(--ws-ink-muted);
+  border-bottom: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
+  font-size: 11px;
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-report-writing-pane > header small,
+.ws-report-reading-pane > header small {
+  color: var(--ws-ink-faint);
+  font-weight: var(--ws-weight-regular);
+}
+
+.ws-report-document-editor {
+  width: 100%;
+  height: 100%;
+  min-height: 488px;
+  padding: clamp(18px, 3vw, 34px);
+  color: var(--ws-ink);
+  border: 0;
+  outline: 0;
+  background: var(--ws-surface);
+  resize: none;
+  font-family: var(--ws-font-mono);
+  font-size: 13px;
+  line-height: 1.75;
+  tab-size: 2;
+}
+
+.ws-report-document-editor:focus {
+  box-shadow: inset 3px 0 0 var(--ws-accent);
+}
+
+.ws-report-live-preview {
+  min-height: 488px;
+  height: 100%;
+  overflow: auto;
+  border: 0;
+  border-radius: 0;
+  background: var(--ws-surface);
+}
+
+.ws-report-reflection-block {
+  display: grid;
+  gap: 8px;
+  margin-bottom: var(--ws-space-3);
+  padding: 12px;
+  border: 1px solid var(--ws-line);
+  border-left: 3px solid var(--ws-accent);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
+}
+
+.ws-report-reflection-block header > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ws-report-reflection-block strong {
+  color: var(--ws-ink);
+  font-size: var(--ws-text-sm);
+}
+
+.ws-report-reflection-block small {
+  color: var(--ws-ink-faint);
+  font-size: 11px;
+}
+
+.ws-report-reflection-block textarea {
+  width: 100%;
+  min-height: 92px;
+  padding: 10px 12px;
+  color: var(--ws-ink);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  outline: 0;
+  background: var(--ws-surface-alt);
+  resize: vertical;
+  font: inherit;
+  font-size: var(--ws-text-sm);
+  line-height: 1.6;
+}
+
+.ws-report-reflection-block textarea:focus {
+  border-color: var(--ws-accent);
+}
+
+.ws-report-file-strip {
+  display: grid;
+  gap: 8px;
+  margin-bottom: var(--ws-space-3);
+  padding: 10px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+}
+
+.ws-report-file-strip > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-report-file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 8px;
+}
+
+.ws-report-file-item {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-surface);
+}
+
+.ws-report-file-thumb,
+.ws-report-file-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  overflow: hidden;
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-surface-alt);
+  place-items: center;
+}
+
+.ws-report-file-thumb {
+  cursor: zoom-in;
+}
+
+.ws-report-file-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ws-report-file-meta {
+  display: grid;
+  min-width: 0;
+}
+
+.ws-report-file-meta strong {
+  overflow: hidden;
+  color: var(--ws-ink);
+  font-size: var(--ws-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-report-file-meta small {
+  color: var(--ws-ink-faint);
+  font-size: 10px;
+}
+
+.ws-report-file-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.ws-report-file-actions button {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  color: var(--ws-ink-muted);
+  border: 0;
+  border-radius: var(--ws-radius-sm);
+  background: transparent;
+  place-items: center;
+  cursor: pointer;
+}
+
+.ws-report-file-actions button:hover {
+  color: var(--ws-accent);
+  background: var(--ws-accent-soft);
+}
+
+@media (max-width: 900px) {
+  .ws-report-composer-toolbar {
+    position: static;
+  }
+
+  .ws-report-format-tools {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .ws-report-toolbar-sep {
+    display: none;
+  }
+
+  .ws-report-composer.is-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ws-report-composer.is-split .ws-report-reading-pane {
+    border-top: 1px solid var(--ws-line);
+    border-left: 0;
+  }
+
+  .ws-report-reflection-block header > div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
 }
 </style>
