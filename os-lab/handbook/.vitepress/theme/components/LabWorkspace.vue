@@ -249,7 +249,7 @@ function syncMobileLayout() {
 }
 
 const showManualPane = computed(() => {
-  if (isTeacherRole.value && teacherEditing.value) return false
+  if (isTeacherRole.value) return !isMobileLayout.value || mobileView.value === 'manual'
   if (isMobileLayout.value) return mobileView.value === 'manual'
   return panelOpen.value.manual
 })
@@ -870,6 +870,14 @@ function toast(text: string, duration = 3200) {
 function finishTeacherEditing() {
   teacherEditing.value = false
   manualKey.value += 1
+}
+
+function startTeacherEditing() {
+  panelOpen.value.manual = true
+  mobileView.value = 'manual'
+  maximized.value = 'none'
+  teacherEditing.value = true
+  persistPanels()
 }
 
 /* -- 会话 ------------------------------------------------------------------- */
@@ -1519,7 +1527,7 @@ onBeforeUnmount(() => {
 
       <!-- 左栏：指导书 -->
       <div
-        v-if="showManualPane"
+        v-if="showManualPane && !teacherEditing"
         class="ws-zone ws-zone-manual ws-left-pane"
         :class="{ 'ws-mobile-hidden': isMobileLayout && mobileView !== 'manual' }"
       >
@@ -1541,7 +1549,7 @@ onBeforeUnmount(() => {
             :key="manualKey"
             :lab="lab"
             :editable="isTeacherRole"
-            @edit="teacherEditing = true"
+            @edit="startTeacherEditing"
             @section-change="currentSection = $event"
             @source-jump="onSourceJump"
           >
@@ -1550,9 +1558,8 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div
-        v-if="isTeacherRole && teacherEditing && panelOpen.manual"
+        v-if="isTeacherRole && teacherEditing"
         class="ws-zone ws-zone-manual ws-left-pane ws-teacher-doc-zone"
-        :class="{ 'ws-mobile-hidden': isMobileLayout && mobileView !== 'manual' }"
       >
         <header class="ws-zone-head">
           <span class="ws-zone-title"><BookOpen :size="14" aria-hidden="true" />编辑手册</span>
