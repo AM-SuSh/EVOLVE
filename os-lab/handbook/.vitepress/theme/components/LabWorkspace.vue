@@ -454,12 +454,10 @@ const panesElement = ref<HTMLElement | null>(null)
 const paneSplit = ref(loadPaneSplit())
 const paneResizing = ref(false)
 const paneGridStyle = computed<Record<string, string>>(() => {
+  if (isMobileLayout.value) return {}
+
   if (isTeacherRole.value) {
-    const teacherManual = panelOpen.value.manual
-    if (teacherManual) {
-      return { gridTemplateColumns: `minmax(0, ${paneSplit.value}%) minmax(0, 1fr)` }
-    }
-    return { gridTemplateColumns: 'minmax(0, 1fr)' }
+    return { gridTemplateColumns: `minmax(0, ${paneSplit.value}%) 10px minmax(0, 1fr)` }
   }
 
   const manual = showManualPane.value
@@ -1572,11 +1570,11 @@ onBeforeUnmount(() => {
       </div>
 
       <div
-        v-if="showManualPane && showRightPane && !isTeacherRole && !isMobileLayout"
+        v-if="showManualPane && showRightPane && !isMobileLayout"
         class="ws-pane-resizer"
         :class="{ active: paneResizing }"
         role="separator"
-        aria-label="调整实验手册与实践区宽度"
+        aria-label="调整左右栏宽度"
         aria-orientation="vertical"
         :aria-valuemin="MIN_PANE_SPLIT"
         :aria-valuemax="MAX_PANE_SPLIT"
