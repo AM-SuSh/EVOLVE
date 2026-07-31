@@ -2,6 +2,14 @@
 
 本文档描述教学 IDE 各面板的交互契约及当前实现，供成员 A/C 联调与回归验收。
 
+## 学习材料
+
+- 顶栏与首页「学习材料」进入 `/materials`（`MaterialsShelf`），不再直链单一 PDF。
+- **内置**：操作系统导论（OSTEP 中译）始终在列表中。
+- **教师**：同页可上传补充材料（PDF/EPUB/MD/TXT/Word，≤80 MiB），可删除自己上传的项；不能删内置。
+- **学生**：同一列表自选「打开」；上传材料经 `GET /materials/file?id=&token=` 读取。
+- 接口：`GET /materials`；教师 `POST|DELETE /teacher/materials`；文件落盘 `os-lab/learning/uploads/materials/`（已 gitignore）。
+
 ## 布局
 
 | 区域 | 组件 | 职责 |

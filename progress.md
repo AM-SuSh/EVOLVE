@@ -1,5 +1,38 @@
 # os-lab 项目进度总览
 
+## 2026-07-31 - Task: 界面文案「教材」统一为「学习材料」
+
+### What was done
+- 顶栏、材料页标题与提示文案由「教材」改为「学习材料」；入门指南正文里对 OSTEP 的「教材」叙述未改。
+
+### Testing
+- 文案检索：导航/材料页/首页入口无「教材」产品文案；`MaterialsShelf` 标题为「学习材料」。
+
+### Notes
+- `os-lab/handbook/.vitepress/config.mts`、`materials.md`、`MaterialsShelf.vue`、`tutor-server.mjs`、`docs/workbench-ui.md`：展示文案调整。
+- 回滚：还原上述文件对应字符串即可。
+
+---
+
+## 2026-07-31 - Task: 顶栏教材改为多资源架（教师上传 / 学生自选）
+
+### What was done
+- 顶栏与首页「教材」改为进入 `/materials` 资源列表：内置 OSTEP 始终可见，学生可自选打开。
+- 教师在同页上传补充学习材料（PDF 等），可删除上传项；文件落盘学习 uploads，经 tutor API 鉴权读取。
+
+### Testing
+- 重启 `npm run tutor` 后脚本验证：admin 登录 → `GET /materials` 含 `ostep-zh` → 上传冒烟 PDF（200）→ `GET /materials/file` 返回 `%PDF-1.4` → 删除后列表仅剩内置；学生 `1002` 可见内置标题。
+
+### Notes
+- `os-lab/handbook/tutor-server.mjs`：新增 `/materials`、`/materials/file`、`/teacher/materials`，CORS 放行 DELETE 与材料头。
+- `os-lab/handbook/.vitepress/theme/components/MaterialsShelf.vue`：教材架 UI（列表 / 打开 / 教师上传删除）。
+- `os-lab/handbook/materials.md`、`.vitepress/theme/index.ts`：教材页与组件注册。
+- `os-lab/handbook/.vitepress/config.mts`、`index.md`：导航与首页入口改指向 `/materials`。
+- `os-lab/handbook/docs/workbench-ui.md`：补充教材入口契约说明。
+- 回滚：还原上述文件；删除 `os-lab/learning/uploads/materials/` 即可清上传数据。
+
+---
+
 ## 2026-07-31 - 实验报告面板改造（格式下拉 / 图片库 / 上传修复）
 
 ### 产品行为

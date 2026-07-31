@@ -214,8 +214,9 @@ function json(response, status, payload, origin) {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': origin || Array.from(allowedOrigins)[0] || '*',
     // Authorization 必须在预检白名单里，否则浏览器直接拦截带登录态的请求。
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Auth-Token',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers':
+      'Content-Type, Authorization, X-Auth-Token, X-Material-Filename, X-Material-Title',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
     'Cache-Control': 'no-store',
     Vary: 'Origin',
   })
@@ -261,9 +262,87 @@ const REPORT_ALLOWED_EXT = new Set([
   '.md',
 ])
 
+/** 学习材料（教材）：内置 OSTEP + 教师上传，学生在同一入口自选打开。 */
+const MATERIALS_ROOT = path.resolve(osLabRoot, 'learning', 'uploads', 'materials')
+const MATERIALS_INDEX = path.join(MATERIALS_ROOT, 'index.json')
+const MATERIALS_MAX_FILE = 80 * 1024 * 1024
+const MATERIALS_MAX_COUNT = 40
+const MATERIALS_ALLOWED_EXT = new Set(['.pdf', '.epub', '.md', '.txt', '.doc', '.docx'])
+const BUILTIN_MATERIALS = [
+  {
+    id: 'ostep-zh',
+    title: '操作系统导论（OSTEP 中译）',
+    filename: 'ostep-zh.pdf',
+    mime: 'application/pdf',
+    kind: 'builtin',
+    url: '/downloads/ostep-zh.pdf',
+  },
+]
+
 function safeAttachmentName(name) {
   const base = path.basename(String(name || 'file')).replace(/[^\w.\u4e00-\u9fff()-]+/g, '_')
   return base.slice(0, 120) || 'file'
+}
+
+function readBinaryBody(request, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = []
+    let total = 0
+    request.on('data', (chunk) => {
+      total += chunk.length
+      if (total > maxBytes) {
+        reject(new Error(`文件超过 ${Math.floor(maxBytes / (1024 * 1024))} MiB`))
+        request.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    request.on('end', () => resolve(Buffer.concat(chunks)))
+    request.on('error', reject)
+  })
+}
+
+async function readMaterialsIndex() {
+  try {
+    const raw = JSON.parse(await readFile(MATERIALS_INDEX, 'utf8'))
+    return Array.isArray(raw?.items) ? raw.items : []
+  } catch {
+    return []
+  }
+}
+
+async function writeMaterialsIndex(items) {
+  await mkdir(MATERIALS_ROOT, { recursive: true })
+  await writeFile(MATERIALS_INDEX, JSON.stringify({ items }, null, 2), 'utf8')
+}
+
+function listMaterialsPublic(items) {
+  return [
+    ...BUILTIN_MATERIALS.map((item) => ({ ...item, size: null, createdAt: null })),
+    ...items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      filename: item.filename,
+      mime: item.mime,
+      size: item.size,
+      kind: 'upload',
+      createdAt: item.createdAt || null,
+      url: null,
+    })),
+  ]
+}
+
+function mimeForExt(ext) {
+  return (
+    {
+      '.pdf': 'application/pdf',
+      '.epub': 'application/epub+zip',
+      '.md': 'text/markdown; charset=utf-8',
+      '.txt': 'text/plain; charset=utf-8',
+      '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    }[ext] || 'application/octet-stream'
+  )
 }
 
 async function saveReportAttachments(userId, labId, attachments) {
@@ -1529,11 +1608,154 @@ const server = http.createServer(async (request, response) => {
       return
     }
 
+    /* -- 学习材料（教材）：登录后可列/读；教师可上传/删除 ------------------- */
+
+    if (request.method === 'GET' && pathname === '/materials') {
+      if (!session) {
+        json(response, 401, { error: '请先登录' }, origin)
+        return
+      }
+      const items = await readMaterialsIndex()
+      json(response, 200, { ok: true, materials: listMaterialsPublic(items) }, origin)
+      return
+    }
+
+    if (request.method === 'GET' && pathname === '/materials/file') {
+      if (!session) {
+        json(response, 401, { error: '请先登录' }, origin)
+        return
+      }
+      const id = String(requestUrl.searchParams.get('id') || '')
+      if (!id || id.includes('..') || id.includes('/') || id.includes('\\')) {
+        json(response, 400, { error: '无效材料 id' }, origin)
+        return
+      }
+      const builtin = BUILTIN_MATERIALS.find((item) => item.id === id)
+      if (builtin) {
+        json(response, 200, { ok: true, redirect: builtin.url }, origin)
+        return
+      }
+      const items = await readMaterialsIndex()
+      const meta = items.find((item) => item.id === id)
+      if (!meta?.storedName) {
+        json(response, 404, { error: '材料不存在' }, origin)
+        return
+      }
+      const filePath = path.join(MATERIALS_ROOT, meta.storedName)
+      if (!filePath.startsWith(MATERIALS_ROOT + path.sep)) {
+        json(response, 400, { error: '路径不可用' }, origin)
+        return
+      }
+      try {
+        const data = await readFile(filePath)
+        const inline = String(meta.mime || '').startsWith('application/pdf') || String(meta.mime || '').startsWith('text/')
+        response.writeHead(200, {
+          'Content-Type': meta.mime || 'application/octet-stream',
+          'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(meta.filename || meta.storedName)}`,
+          'Content-Length': data.length,
+          'Access-Control-Allow-Origin': origin || Array.from(allowedOrigins)[0] || '*',
+          'Cache-Control': 'private, max-age=120',
+          Vary: 'Origin',
+        })
+        response.end(data)
+      } catch {
+        json(response, 404, { error: '材料文件缺失' }, origin)
+      }
+      return
+    }
+
     /* -- 教师端（需教师账号登录） ------------------------------------------- */
 
     if (pathname.startsWith('/teacher/')) {
       if (session?.role !== 'teacher') {
         json(response, 401, { error: '需要教师账号登录（注册时填写教师码即为教师）' }, origin)
+        return
+      }
+
+      if (request.method === 'POST' && pathname === '/teacher/materials') {
+        const items = await readMaterialsIndex()
+        if (items.length >= MATERIALS_MAX_COUNT) {
+          json(response, 400, { error: `上传数量已达上限（${MATERIALS_MAX_COUNT}）` }, origin)
+          return
+        }
+        const filename = safeAttachmentName(
+          decodeURIComponent(String(request.headers['x-material-filename'] || 'material.pdf')),
+        )
+        const ext = path.extname(filename).toLowerCase()
+        if (!MATERIALS_ALLOWED_EXT.has(ext)) {
+          json(response, 400, { error: '仅支持 PDF / EPUB / MD / TXT / DOC / DOCX' }, origin)
+          return
+        }
+        const titleRaw = decodeURIComponent(String(request.headers['x-material-title'] || '')).trim()
+        const title = (titleRaw || filename.replace(/\.[^.]+$/, '') || '未命名材料').slice(0, 120)
+        let buffer
+        try {
+          buffer = await readBinaryBody(request, MATERIALS_MAX_FILE)
+        } catch (err) {
+          json(response, 400, { error: err instanceof Error ? err.message : '读取上传失败' }, origin)
+          return
+        }
+        if (!buffer.length) {
+          json(response, 400, { error: '空文件' }, origin)
+          return
+        }
+        const id = randomUUID().replace(/-/g, '').slice(0, 16)
+        const storedName = `${id}${ext}`
+        await mkdir(MATERIALS_ROOT, { recursive: true })
+        await writeFile(path.join(MATERIALS_ROOT, storedName), buffer)
+        const mimeHeader = String(request.headers['content-type'] || '').split(';')[0].trim()
+        const entry = {
+          id,
+          title,
+          filename,
+          storedName,
+          mime: mimeHeader && mimeHeader !== 'application/octet-stream' ? mimeHeader : mimeForExt(ext),
+          size: buffer.length,
+          createdAt: new Date().toISOString(),
+          uploadedBy: session.username,
+        }
+        items.push(entry)
+        await writeMaterialsIndex(items)
+        json(
+          response,
+          200,
+          {
+            ok: true,
+            material: {
+              id: entry.id,
+              title: entry.title,
+              filename: entry.filename,
+              mime: entry.mime,
+              size: entry.size,
+              kind: 'upload',
+              createdAt: entry.createdAt,
+              url: null,
+            },
+            materials: listMaterialsPublic(items),
+          },
+          origin,
+        )
+        return
+      }
+
+      if (request.method === 'DELETE' && pathname === '/teacher/materials') {
+        const id = String(requestUrl.searchParams.get('id') || '')
+        if (!id || BUILTIN_MATERIALS.some((item) => item.id === id)) {
+          json(response, 400, { error: '不能删除内置学习材料，或 id 无效' }, origin)
+          return
+        }
+        const items = await readMaterialsIndex()
+        const idx = items.findIndex((item) => item.id === id)
+        if (idx < 0) {
+          json(response, 404, { error: '材料不存在' }, origin)
+          return
+        }
+        const [removed] = items.splice(idx, 1)
+        if (removed?.storedName) {
+          await unlink(path.join(MATERIALS_ROOT, removed.storedName)).catch(() => {})
+        }
+        await writeMaterialsIndex(items)
+        json(response, 200, { ok: true, materials: listMaterialsPublic(items) }, origin)
         return
       }
 
