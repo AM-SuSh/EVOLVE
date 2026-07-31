@@ -455,9 +455,6 @@ const paneSplit = ref(loadPaneSplit())
 const paneResizing = ref(false)
 const paneGridStyle = computed<Record<string, string>>(() => {
   if (isTeacherRole.value) {
-    if (teacherEditing.value) {
-      return { gridTemplateColumns: 'minmax(0, 1fr)' }
-    }
     const teacherManual = panelOpen.value.manual
     if (teacherManual) {
       return { gridTemplateColumns: `minmax(0, ${paneSplit.value}%) minmax(0, 1fr)` }
@@ -1559,7 +1556,7 @@ onBeforeUnmount(() => {
       </div>
       <div
         v-if="isTeacherRole && teacherEditing"
-        class="ws-zone ws-zone-manual ws-left-pane ws-teacher-doc-zone"
+        class="ws-zone ws-zone-manual ws-left-pane"
       >
         <header class="ws-zone-head">
           <span class="ws-zone-title"><BookOpen :size="14" aria-hidden="true" />编辑手册</span>
@@ -1600,7 +1597,6 @@ onBeforeUnmount(() => {
       <!-- 右栏（教师）：整栏就是作业发布面板，没有终端/代码 -->
       <div
         v-if="isTeacherRole"
-        v-show="!teacherEditing"
         class="ws-right ws-right-teacher"
         :class="{ 'ws-mobile-hidden': isMobileLayout && mobileView !== 'practice' }"
       >
@@ -2279,11 +2275,6 @@ onBeforeUnmount(() => {
   min-width: 0;
   min-height: 0;
   border-right: 0;
-}
-
-.ws-panes > .ws-teacher-doc-zone {
-  grid-column: 1 / -1;
-  border-right: 1px solid var(--ws-line);
 }
 
 .ws-panes > .ws-pane-resizer {
