@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ArrowLeft, RotateCcw, Save } from 'lucide-vue-next'
 import { authHeaders, type TutorLab } from '../tutor-model'
 
@@ -7,8 +7,21 @@ import { authHeaders, type TutorLab } from '../tutor-model'
  * 工作台·教师手册编辑：占据左栏整栏，直接改该实验指导书的 Markdown 源
  * （增补知识点、订正内容），保存自动同步；「返回预览」回到渲染视图。
  */
-const props = defineProps<{ lab: TutorLab; endpoint: string }>()
-const emit = defineEmits<{ (event: 'notice', text: string): void; (event: 'close'): void }>()
+interface ManualLocation {
+  h2: string
+  h3: string
+  offset: number
+}
+
+const props = defineProps<{
+  lab: TutorLab
+  endpoint: string
+  location?: ManualLocation | null
+}>()
+const emit = defineEmits<{
+  (event: 'notice', text: string): void
+  (event: 'close', location: ManualLocation): void
+}>()
 
 /** '/labs/lab1-bare-metal' → 'lab1-bare-metal.md' */
 const docFile = computed(() => `${props.lab.documentRoute.split('/').pop()}.md`)
@@ -18,6 +31,7 @@ const savedContent = ref('')
 const loading = ref(false)
 const busy = ref(false)
 const note = ref('')
+const editor = ref<HTMLTextAreaElement | null>(null)
 
 const dirty = computed(() => content.value !== savedContent.value)
 const lineCount = computed(() => content.value ? content.value.split('\n').length : 0)
@@ -35,6 +49,8 @@ async function load(force = false) {
     if (!response.ok) throw new Error(payload?.error || `服务返回 ${response.status}`)
     content.value = payload.content || ''
     savedContent.value = content.value
+    await nextTick()
+    positionEditor(props.location)
   } catch (err) {
     note.value = err instanceof Error ? err.message : '读取失败（需教师账号 + 导师服务运行中）'
   } finally {
@@ -68,9 +84,58 @@ function reload() {
   void load()
 }
 
+function markdownHeadings(source: string) {
+  const headings: Array<{ level: 2 | 3; title: string; start: number; line: number }> = []
+  let cursor = 0
+  source.split('\n').forEach((line, index) => {
+    const match = line.match(/^(#{2,3})\s+(.+?)\s*#*\s*$/)
+    if (match) {
+      headings.push({
+        level: match[1].length as 2 | 3,
+        title: match[2]
+          .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
+          .replace(/[*_`~]/g, '')
+          .trim(),
+        start: cursor,
+        line: index,
+      })
+    }
+    cursor += line.length + 1
+  })
+  return headings
+}
+
+function positionEditor(location?: ManualLocation | null) {
+  const target = editor.value
+  if (!target || !location) return
+  const headings = markdownHeadings(content.value)
+  const heading =
+    (location.h3 && headings.find((item) => item.level === 3 && item.title === location.h3)) ||
+    (location.h2 && headings.find((item) => item.level === 2 && item.title === location.h2))
+  if (!heading) return
+  target.focus()
+  target.setSelectionRange(heading.start, heading.start)
+  const lineHeight = Number.parseFloat(window.getComputedStyle(target).lineHeight) || 24
+  target.scrollTop = Math.max(0, (heading.line - 2) * lineHeight)
+}
+
+function currentEditorLocation(): ManualLocation {
+  const target = editor.value
+  const headings = markdownHeadings(content.value)
+  const cursor = target?.selectionStart ?? 0
+  const preceding = headings.filter((item) => item.start <= cursor)
+  const h2 = [...preceding].reverse().find((item) => item.level === 2)
+  const h3 = [...preceding].reverse().find((item) => item.level === 3 && (!h2 || item.start >= h2.start))
+  return {
+    h2: h2?.title || props.location?.h2 || '',
+    h3: h3?.title || '',
+    offset: 0,
+  }
+}
+
 function close() {
   if (dirty.value && !window.confirm('当前修改尚未保存，确定返回预览吗？')) return
-  emit('close')
+  emit('close', currentEditorLocation())
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -119,6 +184,7 @@ onBeforeUnmount(() => {
     </header>
     <p v-if="note" class="ws-tdoc-note" :class="{ ok: note.startsWith('已保存并同步') }">{{ note }}</p>
     <textarea
+      ref="editor"
       v-model="content"
       class="ws-tdoc-editor"
       :disabled="loading"

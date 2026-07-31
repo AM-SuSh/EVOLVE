@@ -12,12 +12,22 @@ import { authHeaders, collapsedSectionPrefix, sectionPrefixOf, type TutorLab } f
  * 正文在登录后从 tutor-server 获取；服务端负责教师发布范围与学习进度鉴权。
  * 这里负责可信 Markdown 渲染、阅读位置观测和章节目录。
  */
-const props = defineProps<{ lab: TutorLab; editable?: boolean }>()
+interface ManualLocation {
+  h2: string
+  h3: string
+  offset: number
+}
+
+const props = defineProps<{
+  lab: TutorLab
+  editable?: boolean
+  restoreLocation?: ManualLocation | null
+}>()
 
 const emit = defineEmits<{
   (event: 'section-change', payload: { h2: string; h3: string }): void
   /** 教师点「编辑手册」：外层把本栏切换成 Markdown 编辑器。 */
-  (event: 'edit'): void
+  (event: 'edit', location: ManualLocation): void
   /** 学生点手册中的源码引用（`kernel/src/trap.rs` 或 `...:42`）：跳到工作区对应文件/行。 */
   (event: 'source-jump', payload: { path: string; line: number }): void
 }>()
@@ -150,6 +160,8 @@ async function loadManual() {
     indexSections()
     const diagrams = docRoot.value?.querySelectorAll<HTMLElement>('.mermaid') || []
     if (diagrams.length) await mermaid.run({ nodes: [...diagrams] })
+    await nextTick()
+    restoreReadingLocation()
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : '实验手册加载失败'
   } finally {
@@ -263,6 +275,50 @@ function jumpTo(section: ManualSection) {
   tocOpen.value = false
 }
 
+function currentReadingLocation(): ManualLocation {
+  updateActiveSection()
+  const container = scroller.value
+  const section = activeSection.value || sections.value[0]
+  if (!container || !section) return { h2: '', h3: '', offset: 0 }
+  const sectionTop =
+    section.el.getBoundingClientRect().top -
+    container.getBoundingClientRect().top +
+    container.scrollTop
+  return {
+    h2: activeH2.value?.title || '',
+    h3: activeH3.value?.title || '',
+    offset: Math.max(0, container.scrollTop - sectionTop),
+  }
+}
+
+function restoreReadingLocation() {
+  const location = props.restoreLocation
+  const container = scroller.value
+  if (!location || !container || !sections.value.length) {
+    updateActiveSection()
+    return
+  }
+  const target =
+    (location.h3 && sections.value.find((section) => section.level === 3 && section.title === location.h3)) ||
+    (location.h2 && sections.value.find((section) => section.level === 2 && section.title === location.h2))
+  if (!target) {
+    updateActiveSection()
+    return
+  }
+  const top =
+    target.el.getBoundingClientRect().top -
+    container.getBoundingClientRect().top +
+    container.scrollTop +
+    Math.max(0, location.offset || 0) -
+    16
+  container.scrollTo({ top: Math.max(0, top), behavior: 'auto' })
+  activeIndex.value = sections.value.indexOf(target)
+  emit('section-change', {
+    h2: activeH2.value?.title || '',
+    h3: activeH3.value?.title || '',
+  })
+}
+
 function closeTocAfterFocus(event: FocusEvent) {
   const drawer = event.currentTarget as HTMLElement
   if (!drawer.contains(event.relatedTarget as Node | null)) tocOpen.value = false
@@ -297,7 +353,7 @@ onBeforeUnmount(() => {
         class="ws-manual-edit"
         type="button"
         title="编辑本实验指导书，增补知识点"
-        @click="emit('edit')"
+        @click="emit('edit', currentReadingLocation())"
       >
         <Pencil :size="15" aria-hidden="true" />
         <span>编辑手册</span>

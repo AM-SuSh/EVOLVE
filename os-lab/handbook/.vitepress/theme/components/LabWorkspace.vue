@@ -162,6 +162,7 @@ const connection = ref<'checking' | 'remote' | 'offline'>('checking')
 const modelName = ref('')
 const notice = ref('')
 const currentSection = ref({ h2: '', h3: '' })
+const teacherManualLocation = ref<{ h2: string; h3: string; offset: number } | null>(null)
 const mobileView = ref<'manual' | 'practice'>('manual')
 /** 右栏学习支持页签（AI / 报告 / Trace）；Problems 与测试结果在底部面板。 */
 const rightTab = ref<'tutor' | 'report' | 'trace'>('tutor')
@@ -862,12 +863,14 @@ function toast(text: string, duration = 3200) {
   noticeTimer = window.setTimeout(() => (notice.value = ''), duration)
 }
 
-function finishTeacherEditing() {
+function finishTeacherEditing(location: { h2: string; h3: string; offset: number }) {
+  teacherManualLocation.value = location
   teacherEditing.value = false
   manualKey.value += 1
 }
 
-function startTeacherEditing() {
+function startTeacherEditing(location: { h2: string; h3: string; offset: number }) {
+  teacherManualLocation.value = location
   panelOpen.value.manual = true
   mobileView.value = 'manual'
   maximized.value = 'none'
@@ -1544,6 +1547,7 @@ onBeforeUnmount(() => {
             :key="manualKey"
             :lab="lab"
             :editable="isTeacherRole"
+            :restore-location="teacherManualLocation"
             @edit="startTeacherEditing"
             @section-change="currentSection = $event"
             @source-jump="onSourceJump"
@@ -1563,6 +1567,7 @@ onBeforeUnmount(() => {
           <TeacherDocPanel
             :lab="lab"
             :endpoint="endpoint"
+            :location="teacherManualLocation"
             @notice="toast"
             @close="finishTeacherEditing"
           />
