@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useData, useRouter, withBase } from 'vitepress'
-import { Blocks, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, Code2, LockKeyhole, Maximize2, MessagesSquare, Minimize2, Moon, PanelLeftClose, PanelLeftOpen, Play, Settings, Sun, UserRound } from 'lucide-vue-next'
+import { Blocks, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, Code2, LockKeyhole, Maximize2, MessagesSquare, Minimize2, Moon, PanelLeftClose, Play, Settings, Sun, UserRound } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
 import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
@@ -275,14 +275,6 @@ const showRightPane = computed(() => {
   return showPracticePane.value || showTerminalPane.value
 })
 
-const panesLayoutClass = computed(() => {
-  if (isTeacherRole.value || isMobileLayout.value) return {}
-  return {
-    'ws-panes-manual-only': showManualPane.value && !showRightPane.value,
-    'ws-panes-right-only': !showManualPane.value && showRightPane.value,
-  }
-})
-
 watch(mobileView, (view) => {
   if (!isMobileLayout.value) return
   if (view === 'manual' && !panelOpen.value.manual) {
@@ -421,12 +413,6 @@ const rightPaneClass = computed(() => {
     : 'ws-right-single ws-right-assistant-only'
 })
 
-const rightHasRail = computed(
-  () =>
-    !isMobileLayout.value &&
-    (!showPracticePane.value || !showTerminalPane.value),
-)
-
 /* -- 左右栏宽度 ------------------------------------------------------------- */
 
 const PANE_SPLIT_STORAGE_KEY = 'os-lab-workspace-pane-split'
@@ -471,9 +457,9 @@ const paneGridStyle = computed<Record<string, string>>(() => {
     return { gridTemplateColumns: 'minmax(0, 1fr)' }
   }
   if (!manual && right) {
-    return { gridTemplateColumns: '40px minmax(0, 1fr)' }
+    return { gridTemplateColumns: 'minmax(0, 1fr)' }
   }
-  return { gridTemplateColumns: '40px minmax(0, 1fr)' }
+  return { gridTemplateColumns: 'minmax(0, 1fr)' }
 })
 
 function paneLimits() {
@@ -1508,21 +1494,8 @@ onBeforeUnmount(() => {
     <main
       ref="panesElement"
       class="ws-panes"
-      :class="panesLayoutClass"
       :style="paneGridStyle"
     >
-      <!-- 手册收起后：左侧展开条（仅桌面） -->
-      <button
-        v-if="!isTeacherRole && !isMobileLayout && !panelOpen.manual"
-        type="button"
-        class="ws-panel-rail ws-panel-rail--manual"
-        title="展开实验手册"
-        @click="togglePanel('manual')"
-      >
-        <PanelLeftOpen :size="16" aria-hidden="true" />
-        <span>手册</span>
-      </button>
-
       <!-- 左栏：指导书 -->
       <div
         v-if="showManualPane && !teacherEditing"
@@ -1624,22 +1597,10 @@ onBeforeUnmount(() => {
         class="ws-right"
         :class="[
           rightPaneClass,
-          { 'ws-right-has-rail': rightHasRail, 'ws-mobile-hidden': isMobileLayout && mobileView !== 'practice' },
+          { 'ws-mobile-hidden': isMobileLayout && mobileView !== 'practice' },
         ]"
         :style="rightGridStyle"
       >
-        <button
-          v-if="!isMobileLayout && !showPracticePane"
-          type="button"
-          class="ws-panel-rail ws-panel-rail--inline"
-          title="展开代码与运行工作区"
-          @click="togglePanel('practice')"
-        >
-          <Code2 :size="14" aria-hidden="true" />
-          <span>展开工作区（代码 / 运行）</span>
-          <ChevronDown :size="14" aria-hidden="true" />
-        </button>
-
         <section
           v-show="showPracticePane"
           class="ws-zone ws-zone-practice ws-zone-workspace"
@@ -1822,18 +1783,6 @@ onBeforeUnmount(() => {
         >
           <span aria-hidden="true" />
         </div>
-
-        <button
-          v-if="!isMobileLayout && !showTerminalPane"
-          type="button"
-          class="ws-panel-rail ws-panel-rail--inline"
-          title="展开学习支持区"
-          @click="togglePanel('terminal')"
-        >
-          <MessagesSquare :size="14" aria-hidden="true" />
-          <span>展开学习支持（AI 导师 / 报告 / Trace）</span>
-          <ChevronUp :size="14" aria-hidden="true" />
-        </button>
 
         <section
           v-show="showTerminalPane"
@@ -2294,21 +2243,6 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.ws-panes > .ws-panel-rail--manual {
-  grid-row: 1;
-  grid-column: 1;
-}
-
-/* 仅手册：占满整行 */
-.ws-panes-manual-only > .ws-left-pane {
-  grid-column: 1 / -1;
-}
-
-/* 仅右栏：除左侧展开条外占满 */
-.ws-panes-right-only > .ws-right {
-  grid-column: 2 / -1;
-}
-
 .ws-pane-resizer {
   position: relative;
   z-index: 2;
@@ -2365,50 +2299,7 @@ onBeforeUnmount(() => {
   user-select: none !important;
 }
 
-/* -- 三栏分区：折叠 / 拖动 / 内部滚动 ------------------------------------ */
-
-.ws-panel-rail {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--ws-space-2);
-  padding: var(--ws-space-2);
-  color: var(--ws-ink-muted);
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-md);
-  background: var(--ws-surface-alt);
-  font: inherit;
-  font-size: var(--ws-text-xs);
-  font-weight: var(--ws-weight-semibold);
-  cursor: pointer;
-}
-
-.ws-panel-rail:hover {
-  color: var(--ws-accent);
-  border-color: var(--ws-accent);
-  background: var(--ws-accent-soft);
-}
-
-.ws-panel-rail--manual {
-  z-index: 3;
-  width: 40px;
-  min-height: 0;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-}
-
-.ws-panel-rail--manual span {
-  letter-spacing: 0.12em;
-}
-
-.ws-panel-rail--inline {
-  flex: 0 0 auto;
-  flex-direction: row;
-  width: 100%;
-  min-height: var(--ws-control-md);
-  writing-mode: horizontal-tb;
-}
+/* -- 三栏分区：拖动 / 内部滚动 ------------------------------------------- */
 
 .ws-zone {
   display: flex;
@@ -2814,28 +2705,6 @@ onBeforeUnmount(() => {
 
 .ws-right-single > .ws-zone {
   min-height: 0;
-}
-
-.ws-right-single.ws-right-has-rail {
-  grid-template-rows: auto minmax(0, 1fr);
-}
-
-.ws-right-assistant-only.ws-right-has-rail > .ws-zone {
-  grid-row: 2;
-  min-height: 0;
-}
-
-.ws-right-workspace-only.ws-right-has-rail {
-  grid-template-rows: minmax(0, 1fr) auto;
-}
-
-.ws-right-workspace-only.ws-right-has-rail > .ws-zone {
-  grid-row: 1;
-  min-height: 0;
-}
-
-.ws-right-workspace-only.ws-right-has-rail > .ws-panel-rail {
-  grid-row: 2;
 }
 
 .ws-right .ws-zone {
