@@ -3,7 +3,8 @@
 id: lab2-remedial-yield
 lab: lab2
 variant: remedial
-version: 0.1.0-draft
+version: 0.2.0-boxed
+# 0.2.0-boxed：Day5 装箱（PACKAGE.md + 教师验收）；正式班级发布前由 C 升 1.0.0
 
 learning_goal: |
   面向「已接触 debug/fill 但仍混淆让出与退出」的学生。

@@ -7,7 +7,7 @@
  * 「单任务 syscall 密集」提示（对应 visualization/README.md 教学问题 3）。
  * 点击事件 → emit('select', index) 由父组件 seek 并联动事件列表/源码跳转。
  */
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { ArrowDownToLine, ArrowUpFromLine, Repeat } from 'lucide-vue-next'
 import type { TraceEvent } from '../composables/useTracePlayback'
 
@@ -20,6 +20,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (event: 'select', index: number): void
 }>()
+
+const listRef = ref<HTMLOListElement | null>(null)
 
 interface TrapRow {
   index: number
@@ -68,6 +70,15 @@ function isSyscall(cause: string | undefined): boolean {
 function onRow(index: number) {
   emit('select', index)
 }
+
+watch(
+  () => props.playhead,
+  async (index) => {
+    await nextTick()
+    const el = listRef.value?.querySelector<HTMLElement>(`[data-trace-index="${index}"]`)
+    el?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+  },
+)
 </script>
 
 <template>
@@ -75,10 +86,11 @@ function onRow(index: number) {
     <div v-if="rows.length === 0" class="ws-trace-trap-empty">
       本次运行没有 <code>trap_enter</code> 事件。若未启用 <code>trace-edu</code> feature，重开 trace 后再查看。
     </div>
-    <ol v-else class="ws-trace-trap-list" role="list">
+    <ol v-else ref="listRef" class="ws-trace-trap-list" role="list">
       <li
         v-for="row in rows"
         :key="row.event.seq"
+        :data-trace-index="row.index"
         :class="[
           'ws-trace-row',
           row.event.type,

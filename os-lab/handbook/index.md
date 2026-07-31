@@ -13,8 +13,8 @@ hero:
       text: 入门指南
       link: /guide/start
     - theme: alt
-      text: 教材 PDF（OSTEP）
-      link: /downloads/ostep-zh.pdf
+      text: 学习材料
+      link: /materials
 
 features:
   - icon: 🧭

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { FileCode2, FolderTree, RefreshCw, X } from 'lucide-vue-next'
+import { FileCode2, FolderTree, RefreshCw, SquareTerminal, X } from 'lucide-vue-next'
 import { authHeaders, type TutorLab } from '../tutor-model'
 import { monacoLanguageForPath, type FileStatusKind } from '../file-status'
 import { resolveFileStatus, useFileStatus } from '../composables/useFileStatus'
@@ -14,6 +14,12 @@ const props = defineProps<{
   endpoint: string
   student?: string
   dark?: boolean
+  terminalOpen?: boolean
+}>()
+
+const emit = defineEmits<{
+  /** 用户点击终端开关图标，请求切换终端面板开合。 */
+  (event: 'toggle-terminal'): void
 }>()
 
 function apiUrl(pathname: string) {
@@ -266,6 +272,18 @@ function warnBeforeUnload(event: BeforeUnloadEvent) {
   event.returnValue = ''
 }
 
+function onWorkspaceSaveShortcut(event: KeyboardEvent) {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+  if (event.key.toLowerCase() !== 's') return
+  const root = codeRoot.value
+  if (!root) return
+  const target = event.target
+  if (!(target instanceof Node) || !root.contains(target)) return
+  event.preventDefault()
+  if (!canEdit.value || !activePath.value) return
+  void saveEdit()
+}
+
 watch(activePath, (path) => {
   if (workspaceContext) workspaceContext.currentFile = path
 })
@@ -273,11 +291,13 @@ watch(activePath, (path) => {
 onMounted(() => {
   clientReady.value = true
   window.addEventListener('beforeunload', warnBeforeUnload)
+  window.addEventListener('keydown', onWorkspaceSaveShortcut, true)
   void loadTree()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', warnBeforeUnload)
+  window.removeEventListener('keydown', onWorkspaceSaveShortcut, true)
 })
 
 defineExpose({ openAtLine, refreshFileStatus })
@@ -316,9 +336,21 @@ defineExpose({ openAtLine, refreshFileStatus })
           type="button"
           class="ws-code-save"
           :disabled="saving || !hasUnsavedChanges"
+          title="保存当前文件（Ctrl+S）"
+          aria-keyshortcuts="Control+s Meta+s"
           @click="saveEdit"
         >
           {{ saving ? '保存中…' : '保存' }}
+        </button>
+        <button
+          type="button"
+          class="ws-code-icon-btn"
+          :class="{ 'ws-code-icon-btn--active': terminalOpen }"
+          :title="terminalOpen ? '隐藏底部面板' : '显示底部面板（终端 / Problems / 测试结果）'"
+          :aria-label="terminalOpen ? '隐藏底部面板' : '显示底部面板'"
+          @click="emit('toggle-terminal')"
+        >
+          <SquareTerminal :size="14" aria-hidden="true" />
         </button>
         <button type="button" class="ws-code-icon-btn" title="重新加载目录" @click="loadTree">
           <RefreshCw :size="14" aria-hidden="true" />
@@ -667,6 +699,12 @@ export default { components: { CodeTreeNode } }
 .ws-code-icon-btn:hover {
   color: var(--ws-accent);
   border-color: var(--ws-accent);
+}
+
+.ws-code-icon-btn--active {
+  color: var(--ws-accent);
+  border-color: var(--ws-accent);
+  background: var(--ws-surface-alt, var(--ws-surface));
 }
 
 .ws-code-flash {

@@ -30,7 +30,7 @@ export default withMermaid(defineConfig({
       { text: '首页', link: '/' },
       { text: '入门指南', link: '/guide/start' },
       { text: '引导式学习', link: '/guide/ai-tutor' },
-      { text: '教材', link: '/downloads/ostep-zh.pdf' },
+      { text: '学习材料', link: '/materials' },
     ],
     // 学生侧栏只保留入门三页；进度勾选/验证速查/项目文档已从学生导航移除。
     sidebar: {
@@ -66,7 +66,9 @@ export default withMermaid(defineConfig({
       // /learn/* 是正文外壳（避免搜索重复）；teacher* 为教师页不进学生搜索。
       options: {
         exclude: (relativePath) =>
-          relativePath.startsWith('learn/') || relativePath.startsWith('teacher'),
+          relativePath.startsWith('learn/') ||
+          relativePath.startsWith('teacher') ||
+          relativePath === 'materials.md',
       },
     },
   },

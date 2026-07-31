@@ -2,8 +2,8 @@ import http from 'node:http'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
-import { appendFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { existsSync as existsSyncSync, readFileSync } from 'node:fs'
+import { appendFile, mkdir, readFile, readdir, stat, unlink, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { parse as parseYaml } from 'yaml'
 import {
@@ -26,6 +26,7 @@ import { deriveMasteryUpdates } from '../learning/mastery.mjs'
 import { evaluateReviewGates } from '../learning/review-gates.mjs'
 import { createLearningBackup, generateAnonymousAnalysis } from '../learning/trial-operations.mjs'
 import { accessForLab, buildLearningAccess } from '../learning/access.mjs'
+import { getReportTemplate, normalizeReportTemplate } from '../learning/report-template.mjs'
 import { collectTraceEvents, validateInteractionEvent, validateRunResult } from '../tutor/contracts.mjs'
 import { createCargoJsonCollector } from '../tutor/cargo-diagnostics.mjs'
 import { evaluateRunAssertions, getRunRecipe } from '../tutor/run-recipes.mjs'
@@ -52,6 +53,7 @@ import {
   finishRun,
   getAssessmentInput,
   getLearningEvidence,
+  getReportAttachmentMeta,
   getRun,
   getRunDiagnostics,
   getTutorEvidenceSummary,
@@ -129,10 +131,11 @@ async function learningContextFor(session, effectiveOverride) {
   }
 }
 
-/** 从请求头解析登录会话（Authorization: Bearer <token> 或 X-Auth-Token）。 */
-function sessionOf(request) {
+/** 从请求头解析登录会话（Authorization / X-Auth-Token；附件直链可带 ?token=）。 */
+function sessionOf(request, requestUrl) {
   const auth = String(request.headers.authorization || '')
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : String(request.headers['x-auth-token'] || '')
+  let token = auth.startsWith('Bearer ') ? auth.slice(7) : String(request.headers['x-auth-token'] || '')
+  if (!token && requestUrl) token = String(requestUrl.searchParams.get('token') || '')
   return resolveSession(token)
 }
 
@@ -245,22 +248,23 @@ function json(response, status, payload, origin) {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': origin || Array.from(allowedOrigins)[0] || '*',
     // Authorization 必须在预检白名单里，否则浏览器直接拦截带登录态的请求。
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Auth-Token',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers':
+      'Content-Type, Authorization, X-Auth-Token, X-Material-Filename, X-Material-Title',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
     'Cache-Control': 'no-store',
     Vary: 'Origin',
   })
   response.end(status === 204 ? undefined : JSON.stringify(payload))
 }
 
-function readBody(request) {
+function readBody(request, maxBytes = 256_000) {
   return new Promise((resolve, reject) => {
     let body = ''
     request.setEncoding('utf8')
     request.on('data', (chunk) => {
       body += chunk
-      if (body.length > 256_000) {
-        reject(new Error('请求内容超过 256 KiB'))
+      if (body.length > maxBytes) {
+        reject(new Error(`请求内容超过 ${Math.floor(maxBytes / 1024)} KiB`))
         request.destroy()
       }
     })
@@ -273,6 +277,143 @@ function readBody(request) {
     })
     request.on('error', reject)
   })
+}
+
+const REPORT_UPLOAD_ROOT = path.resolve(osLabRoot, 'learning', 'uploads', 'reports')
+const REPORT_MAX_BODY = 8 * 1024 * 1024
+const REPORT_MAX_FILE = 4 * 1024 * 1024
+const REPORT_MAX_FILES = 8
+const REPORT_ALLOWED_EXT = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.txt',
+  '.md',
+])
+
+/** 学习材料（教材）：内置 OSTEP + 教师上传，学生在同一入口自选打开。 */
+const MATERIALS_ROOT = path.resolve(osLabRoot, 'learning', 'uploads', 'materials')
+const MATERIALS_INDEX = path.join(MATERIALS_ROOT, 'index.json')
+const MATERIALS_MAX_FILE = 80 * 1024 * 1024
+const MATERIALS_MAX_COUNT = 40
+const MATERIALS_ALLOWED_EXT = new Set(['.pdf', '.epub', '.md', '.txt', '.doc', '.docx'])
+const BUILTIN_MATERIALS = [
+  {
+    id: 'ostep-zh',
+    title: '操作系统导论（OSTEP 中译）',
+    filename: 'ostep-zh.pdf',
+    mime: 'application/pdf',
+    kind: 'builtin',
+    url: '/downloads/ostep-zh.pdf',
+  },
+]
+
+function safeAttachmentName(name) {
+  const base = path.basename(String(name || 'file')).replace(/[^\w.\u4e00-\u9fff()-]+/g, '_')
+  return base.slice(0, 120) || 'file'
+}
+
+function readBinaryBody(request, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = []
+    let total = 0
+    request.on('data', (chunk) => {
+      total += chunk.length
+      if (total > maxBytes) {
+        reject(new Error(`文件超过 ${Math.floor(maxBytes / (1024 * 1024))} MiB`))
+        request.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    request.on('end', () => resolve(Buffer.concat(chunks)))
+    request.on('error', reject)
+  })
+}
+
+async function readMaterialsIndex() {
+  try {
+    const raw = JSON.parse(await readFile(MATERIALS_INDEX, 'utf8'))
+    return Array.isArray(raw?.items) ? raw.items : []
+  } catch {
+    return []
+  }
+}
+
+async function writeMaterialsIndex(items) {
+  await mkdir(MATERIALS_ROOT, { recursive: true })
+  await writeFile(MATERIALS_INDEX, JSON.stringify({ items }, null, 2), 'utf8')
+}
+
+function listMaterialsPublic(items) {
+  return [
+    ...BUILTIN_MATERIALS.map((item) => ({ ...item, size: null, createdAt: null })),
+    ...items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      filename: item.filename,
+      mime: item.mime,
+      size: item.size,
+      kind: 'upload',
+      createdAt: item.createdAt || null,
+      url: null,
+    })),
+  ]
+}
+
+function mimeForExt(ext) {
+  return (
+    {
+      '.pdf': 'application/pdf',
+      '.epub': 'application/epub+zip',
+      '.md': 'text/markdown; charset=utf-8',
+      '.txt': 'text/plain; charset=utf-8',
+      '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    }[ext] || 'application/octet-stream'
+  )
+}
+
+async function saveReportAttachments(userId, labId, attachments) {
+  const dir = path.join(REPORT_UPLOAD_ROOT, String(userId), String(labId))
+  await mkdir(dir, { recursive: true })
+  // 覆盖提交：清空旧附件目录内容。
+  try {
+    const existing = await readdir(dir)
+    await Promise.all(existing.map((file) => unlink(path.join(dir, file)).catch(() => {})))
+  } catch {
+    /* 目录可能尚不存在 */
+  }
+  const saved = []
+  const list = Array.isArray(attachments) ? attachments.slice(0, REPORT_MAX_FILES) : []
+  for (const item of list) {
+    const name = safeAttachmentName(item?.name)
+    const ext = path.extname(name).toLowerCase()
+    if (!REPORT_ALLOWED_EXT.has(ext)) continue
+    const raw = String(item?.dataBase64 || '')
+    if (!raw || raw.length > REPORT_MAX_FILE * 1.4) continue
+    let buffer
+    try {
+      buffer = Buffer.from(raw, 'base64')
+    } catch {
+      continue
+    }
+    if (!buffer.length || buffer.length > REPORT_MAX_FILE) continue
+    const storedName = `${saved.length + 1}-${name}`
+    await writeFile(path.join(dir, storedName), buffer)
+    saved.push({
+      name,
+      mime: String(item?.mime || 'application/octet-stream').slice(0, 120),
+      size: buffer.length,
+      storedName,
+    })
+  }
+  return saved
 }
 
 function resolveOrigin(origin) {
@@ -736,6 +877,55 @@ const RUN_ALLOWED_BINS = new Set([
   'rust-objcopy',
 ])
 
+/** 常见本机工具路径：tutor 若未 activate 实验环境，仍能找到 cargo/qemu。 */
+const TOOL_BIN_DIRS = [
+  process.env.CARGO_HOME ? path.join(process.env.CARGO_HOME, 'bin') : '',
+  'D:\\AppGallery\\Rust\\cargo\\bin',
+  'D:\\Rust\\cargo\\bin',
+  path.join(process.env.USERPROFILE || '', '.cargo', 'bin'),
+  process.env.OS_LAB_QEMU_DIR || '',
+  'D:\\AppGallery\\QEMU',
+  'D:\\QEMU',
+].filter(Boolean)
+
+const resolvedBinCache = new Map()
+
+function enrichRunEnv() {
+  const env = { ...process.env }
+  if (!env.CARGO_HOME) {
+    if (existsSyncSync('D:\\AppGallery\\Rust\\cargo\\bin\\cargo.exe')) {
+      env.CARGO_HOME = 'D:\\AppGallery\\Rust\\cargo'
+      env.RUSTUP_HOME = env.RUSTUP_HOME || 'D:\\AppGallery\\Rust\\rustup'
+    } else if (existsSyncSync('D:\\Rust\\cargo\\bin\\cargo.exe')) {
+      env.CARGO_HOME = 'D:\\Rust\\cargo'
+      env.RUSTUP_HOME = env.RUSTUP_HOME || 'D:\\Rust\\rustup'
+    }
+  }
+  const extra = TOOL_BIN_DIRS.filter((dir) => Boolean(dir) && existsSyncSync(dir))
+  if (extra.length) {
+    const merged = [...extra, env.Path || env.PATH || ''].join(path.delimiter)
+    env.Path = merged
+    env.PATH = merged
+  }
+  return env
+}
+
+function resolveToolBin(cmd) {
+  if (resolvedBinCache.has(cmd)) return resolvedBinCache.get(cmd)
+  const exe = process.platform === 'win32' && !cmd.endsWith('.exe') ? `${cmd}.exe` : cmd
+  const pathDirs = `${process.env.Path || process.env.PATH || ''}`.split(path.delimiter)
+  for (const dir of [...TOOL_BIN_DIRS, ...pathDirs]) {
+    if (!dir) continue
+    const candidate = path.join(dir, exe)
+    if (existsSyncSync(candidate)) {
+      resolvedBinCache.set(cmd, candidate)
+      return candidate
+    }
+  }
+  resolvedBinCache.set(cmd, cmd)
+  return cmd
+}
+
 function parseCommandLine(line) {
   const trimmed = line.trim()
   if (!trimmed) return null
@@ -746,7 +936,12 @@ function parseCommandLine(line) {
   if (!RUN_ALLOWED_BINS.has(tokens[0])) {
     return { error: `仅允许运行：${[...RUN_ALLOWED_BINS].join(' / ')}（收到 ${tokens[0]}）` }
   }
-  return { title: trimmed, cmd: tokens[0], args: tokens.slice(1) }
+  const args = tokens.slice(1)
+  // cargo 自动附带 JSON 诊断，供 Problems 面板解析（学生不必手写 --message-format）。
+  if (tokens[0] === 'cargo' && !args.some((arg) => arg.startsWith('--message-format'))) {
+    args.push('--message-format=json')
+  }
+  return { title: trimmed, cmd: tokens[0], args }
 }
 
 function parseCommandInput(command) {
@@ -784,8 +979,16 @@ function killActiveRun(userId, reason) {
 function runStep(step, response, run, cwd) {
   return new Promise((resolve) => {
     sendFrame(response, { type: 'step', title: step.title })
-    const child = spawn(step.cmd, step.args, { cwd, env: process.env })
+    const bin = resolveToolBin(step.cmd)
+    const env = enrichRunEnv()
+    const child = spawn(bin, step.args, { cwd, env, windowsHide: true })
     run.child = child
+    let settled = false
+    const finish = (code) => {
+      if (settled) return
+      settled = true
+      resolve(code)
+    }
     const forwardText = (text) => {
       if (run.outputLength >= RUN_OUTPUT_CAP) return
       const remaining = RUN_OUTPUT_CAP - run.outputLength
@@ -798,19 +1001,26 @@ function runStep(step, response, run, cwd) {
         sendFrame(response, { type: 'output', text: '\n[输出过长，已截断……]\n' })
       }
     }
-    const cargoJson = step.cmd === 'cargo' && step.args.some((arg) => arg.startsWith('--message-format=json'))
+    if (bin !== step.cmd) {
+      forwardText(`[工具] 使用 ${bin}\n`)
+    }
+    const cargoJson =
+      (step.cmd === 'cargo' || path.basename(bin).toLowerCase().startsWith('cargo')) &&
+      step.args.some((arg) => arg.startsWith('--message-format=json'))
     const collector = cargoJson
       ? createCargoJsonCollector(cwd, forwardText, (diagnostic) => run.diagnostics.push(diagnostic))
       : null
-    child.stdout.on('data', (chunk) => collector ? collector.push(chunk) : forwardText(chunk.toString('utf8')))
+    child.stdout.on('data', (chunk) => (collector ? collector.push(chunk) : forwardText(chunk.toString('utf8'))))
     child.stderr.on('data', (chunk) => forwardText(chunk.toString('utf8')))
     child.on('error', (error) => {
-      sendFrame(response, { type: 'output', text: `无法启动 ${step.cmd}：${error.message}\n` })
-      resolve(-1)
+      forwardText(
+        `无法启动 ${step.cmd}：${error.message}\n请确认已安装 Rust，并先执行 . \\scripts\\activate-os-env.ps1 后再 npm run tutor。\n`,
+      )
+      finish(-1)
     })
     child.on('close', (code) => {
       collector?.flush()
-      resolve(code ?? -1)
+      finish(code ?? -1)
     })
   })
 }
@@ -1025,6 +1235,9 @@ async function handleRun(body, request, response, origin, session) {
       recipeId: run.recipeId,
       trusted: run.trusted,
       assertions,
+      diagnostics: run.diagnostics,
+      diagnosticCount: run.diagnostics.length,
+      traceCount: traceEvents.length,
       result,
       stopped: run.stopped || undefined,
     })
@@ -1172,7 +1385,7 @@ const server = http.createServer(async (request, response) => {
   const requestUrl = new URL(request.url || '/', 'http://localhost')
   const pathname = requestUrl.pathname
   // 身份只来自登录会话（不再信任 ?user=，防止冒名）；未登录 = 游客只读。
-  const session = sessionOf(request)
+  const session = sessionOf(request, requestUrl)
   const reqUser = session?.username || ''
   try {
     /* -- 账号 --------------------------------------------------------------- */
@@ -1286,6 +1499,19 @@ const server = http.createServer(async (request, response) => {
       return
     }
 
+    /* -- 实验报告版式（教师布置，学生只读拉取） ------------------------------ */
+
+    if (request.method === 'GET' && pathname === '/report-template') {
+      const labId = String(requestUrl.searchParams.get('labId') || '')
+      if (!labIds.has(labId)) {
+        json(response, 400, { error: '未知实验' }, origin)
+        return
+      }
+      const config = await readTeacherConfig()
+      json(response, 200, { ok: true, labId, template: getReportTemplate(config, labId) }, origin)
+      return
+    }
+
     /* -- 学生报告提交 -------------------------------------------------------- */
 
     if (request.method === 'POST' && pathname === '/reports') {
@@ -1293,15 +1519,22 @@ const server = http.createServer(async (request, response) => {
         json(response, 401, { error: '请先登录再提交报告' }, origin)
         return
       }
-      const body = await readBody(request)
-      const labId = String(body.labId || '')
-      const content = typeof body.content === 'string' ? body.content : ''
-      if (!labIds.has(labId) || !content.trim() || content.length > 262_144) {
-        json(response, 400, { error: '报告内容为空或过大（上限 256 KiB）' }, origin)
+      let body
+      try {
+        body = await readBody(request, REPORT_MAX_BODY)
+      } catch (error) {
+        json(response, 400, { error: error instanceof Error ? error.message : '请求过大' }, origin)
         return
       }
-      submitReport(session.id, labId, content)
-      json(response, 200, { ok: true, mine: listMyReports(session.id) }, origin)
+      const labId = String(body.labId || '')
+      const content = typeof body.content === 'string' ? body.content : ''
+      if (!labIds.has(labId) || !content.trim() || content.length > 524_288) {
+        json(response, 400, { error: '报告内容为空或过大（正文上限 512 KiB）' }, origin)
+        return
+      }
+      const savedAttachments = await saveReportAttachments(session.id, labId, body.attachments)
+      submitReport(session.id, labId, content, savedAttachments)
+      json(response, 200, { ok: true, mine: listMyReports(session.id), attachments: savedAttachments }, origin)
       return
     }
 
@@ -1495,6 +1728,62 @@ const server = http.createServer(async (request, response) => {
       return
     }
 
+    /* -- 学习材料（教材）：登录后可列/读；教师可上传/删除 ------------------- */
+
+    if (request.method === 'GET' && pathname === '/materials') {
+      if (!session) {
+        json(response, 401, { error: '请先登录' }, origin)
+        return
+      }
+      const items = await readMaterialsIndex()
+      json(response, 200, { ok: true, materials: listMaterialsPublic(items) }, origin)
+      return
+    }
+
+    if (request.method === 'GET' && pathname === '/materials/file') {
+      if (!session) {
+        json(response, 401, { error: '请先登录' }, origin)
+        return
+      }
+      const id = String(requestUrl.searchParams.get('id') || '')
+      if (!id || id.includes('..') || id.includes('/') || id.includes('\\')) {
+        json(response, 400, { error: '无效材料 id' }, origin)
+        return
+      }
+      const builtin = BUILTIN_MATERIALS.find((item) => item.id === id)
+      if (builtin) {
+        json(response, 200, { ok: true, redirect: builtin.url }, origin)
+        return
+      }
+      const items = await readMaterialsIndex()
+      const meta = items.find((item) => item.id === id)
+      if (!meta?.storedName) {
+        json(response, 404, { error: '材料不存在' }, origin)
+        return
+      }
+      const filePath = path.join(MATERIALS_ROOT, meta.storedName)
+      if (!filePath.startsWith(MATERIALS_ROOT + path.sep)) {
+        json(response, 400, { error: '路径不可用' }, origin)
+        return
+      }
+      try {
+        const data = await readFile(filePath)
+        const inline = String(meta.mime || '').startsWith('application/pdf') || String(meta.mime || '').startsWith('text/')
+        response.writeHead(200, {
+          'Content-Type': meta.mime || 'application/octet-stream',
+          'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(meta.filename || meta.storedName)}`,
+          'Content-Length': data.length,
+          'Access-Control-Allow-Origin': origin || Array.from(allowedOrigins)[0] || '*',
+          'Cache-Control': 'private, max-age=120',
+          Vary: 'Origin',
+        })
+        response.end(data)
+      } catch {
+        json(response, 404, { error: '材料文件缺失' }, origin)
+      }
+      return
+    }
+
     /* -- 教师端（需教师账号登录） ------------------------------------------- */
 
     if (pathname.startsWith('/teacher/')) {
@@ -1556,6 +1845,93 @@ const server = http.createServer(async (request, response) => {
         return
       }
 
+      if (request.method === 'POST' && pathname === '/teacher/materials') {
+        const items = await readMaterialsIndex()
+        if (items.length >= MATERIALS_MAX_COUNT) {
+          json(response, 400, { error: `上传数量已达上限（${MATERIALS_MAX_COUNT}）` }, origin)
+          return
+        }
+        const filename = safeAttachmentName(
+          decodeURIComponent(String(request.headers['x-material-filename'] || 'material.pdf')),
+        )
+        const ext = path.extname(filename).toLowerCase()
+        if (!MATERIALS_ALLOWED_EXT.has(ext)) {
+          json(response, 400, { error: '仅支持 PDF / EPUB / MD / TXT / DOC / DOCX' }, origin)
+          return
+        }
+        const titleRaw = decodeURIComponent(String(request.headers['x-material-title'] || '')).trim()
+        const title = (titleRaw || filename.replace(/\.[^.]+$/, '') || '未命名材料').slice(0, 120)
+        let buffer
+        try {
+          buffer = await readBinaryBody(request, MATERIALS_MAX_FILE)
+        } catch (err) {
+          json(response, 400, { error: err instanceof Error ? err.message : '读取上传失败' }, origin)
+          return
+        }
+        if (!buffer.length) {
+          json(response, 400, { error: '空文件' }, origin)
+          return
+        }
+        const id = randomUUID().replace(/-/g, '').slice(0, 16)
+        const storedName = `${id}${ext}`
+        await mkdir(MATERIALS_ROOT, { recursive: true })
+        await writeFile(path.join(MATERIALS_ROOT, storedName), buffer)
+        const mimeHeader = String(request.headers['content-type'] || '').split(';')[0].trim()
+        const entry = {
+          id,
+          title,
+          filename,
+          storedName,
+          mime: mimeHeader && mimeHeader !== 'application/octet-stream' ? mimeHeader : mimeForExt(ext),
+          size: buffer.length,
+          createdAt: new Date().toISOString(),
+          uploadedBy: session.username,
+        }
+        items.push(entry)
+        await writeMaterialsIndex(items)
+        json(
+          response,
+          200,
+          {
+            ok: true,
+            material: {
+              id: entry.id,
+              title: entry.title,
+              filename: entry.filename,
+              mime: entry.mime,
+              size: entry.size,
+              kind: 'upload',
+              createdAt: entry.createdAt,
+              url: null,
+            },
+            materials: listMaterialsPublic(items),
+          },
+          origin,
+        )
+        return
+      }
+
+      if (request.method === 'DELETE' && pathname === '/teacher/materials') {
+        const id = String(requestUrl.searchParams.get('id') || '')
+        if (!id || BUILTIN_MATERIALS.some((item) => item.id === id)) {
+          json(response, 400, { error: '不能删除内置学习材料，或 id 无效' }, origin)
+          return
+        }
+        const items = await readMaterialsIndex()
+        const idx = items.findIndex((item) => item.id === id)
+        if (idx < 0) {
+          json(response, 404, { error: '材料不存在' }, origin)
+          return
+        }
+        const [removed] = items.splice(idx, 1)
+        if (removed?.storedName) {
+          await unlink(path.join(MATERIALS_ROOT, removed.storedName)).catch(() => {})
+        }
+        await writeMaterialsIndex(items)
+        json(response, 200, { ok: true, materials: listMaterialsPublic(items) }, origin)
+        return
+      }
+
       if (request.method === 'GET' && pathname === '/teacher/reports') {
         json(response, 200, { ok: true, reports: listAllReports() }, origin)
         return
@@ -1571,6 +1947,38 @@ const server = http.createServer(async (request, response) => {
         const body = await readBody(request)
         const result = submitAssessmentReview(session.id, body)
         json(response, result.ok ? 200 : 400, result, origin)
+        return
+      }
+
+      if (request.method === 'GET' && pathname === '/teacher/report-attachment') {
+        const username = String(requestUrl.searchParams.get('user') || '')
+        const labId = String(requestUrl.searchParams.get('labId') || '')
+        const file = path.basename(String(requestUrl.searchParams.get('file') || ''))
+        const meta = getReportAttachmentMeta(username, labId)
+        if (!meta) {
+          json(response, 404, { error: '报告不存在' }, origin)
+          return
+        }
+        const item = meta.attachments.find((att) => att.storedName === file || att.name === file)
+        if (!item) {
+          json(response, 404, { error: '附件不存在' }, origin)
+          return
+        }
+        const filePath = path.join(REPORT_UPLOAD_ROOT, String(meta.userId), labId, item.storedName)
+        try {
+          const data = await readFile(filePath)
+          response.writeHead(200, {
+            'Content-Type': item.mime || 'application/octet-stream',
+            'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(item.name)}`,
+            'Content-Length': data.length,
+            'Access-Control-Allow-Origin': origin || Array.from(allowedOrigins)[0] || '*',
+            'Cache-Control': 'no-store',
+            Vary: 'Origin',
+          })
+          response.end(data)
+        } catch {
+          json(response, 404, { error: '附件文件缺失' }, origin)
+        }
         return
       }
 
@@ -1642,6 +2050,17 @@ const server = http.createServer(async (request, response) => {
           }
           if (body.assignment) {
             await writeAssignment(String(body.assignment.labId), String(body.assignment.variant))
+          }
+          if (body.reportTemplate && typeof body.reportTemplate === 'object') {
+            const labId = String(body.reportTemplate.labId || '')
+            if (!labIds.has(labId)) {
+              json(response, 400, { error: '报告版式缺少有效 labId' }, origin)
+              return
+            }
+            const current = await readTeacherConfig()
+            const reportTemplates = { ...(current.reportTemplates || {}) }
+            reportTemplates[labId] = normalizeReportTemplate(body.reportTemplate)
+            patch.reportTemplates = reportTemplates
           }
           const config = await writeTeacherConfig(patch)
           json(response, 200, { ok: true, config: { ...config, llm: { ...config.llm, apiKey: config.llm?.apiKey ? '（已设置）' : '' } } }, origin)
@@ -1783,7 +2202,7 @@ const server = http.createServer(async (request, response) => {
     }
 
     json(response, 404, {
-      error: '可用接口包括：GET|POST /health，GET /fs/status、/run/diagnostics、/runs/:id/trace、/mastery，POST /chat、/run、/run/stop、/events、/assessment、/report',
+      error: '可用接口包括：GET|POST /health，GET /fs/status、/run/diagnostics、/runs/:id/trace、/mastery、/materials，POST /chat、/run、/run/stop、/events、/assessment、/report',
     }, origin)
   } catch (error) {
     const message = error instanceof Error ? error.message : '导师服务发生未知错误'

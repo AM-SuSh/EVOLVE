@@ -1,8 +1,22 @@
-# 成员 A 交付总览（对照《三人小组后续实验发展实施计划》）
+# 成员 A 交付总览
 
-更新：2026-07-29
+更新：2026-07-31
 
-## 已完成（可验收文档/规格）
+## 7 日计划交付（本轮主交付）
+
+索引：[`MEMBER-A-7DAY/README.md`](./MEMBER-A-7DAY/README.md)
+
+| Day | 落点 |
+| --- | --- |
+| 1 缺口表 | `MEMBER-A-7DAY/day1-gap-table.md` |
+| 2 检查点 YAML | `lab2/checkpoints.yaml` |
+| 3 金标准对话 | `../learning/tutor-golden-dialogues-lab2.json` |
+| 4 量规冻结 | `../learning/rubric-v2-frozen.md` |
+| 5 路径/OPRE/补救装箱 | `lab2/knowledge-path.md`、`visualization/opre-copy-final.md`、`lab2/variants/remedial/PACKAGE.md` |
+| 6 变式验收 | `lab2/variants/remedial/TEACHER_ACCEPTANCE.md` |
+| 7 可用性脚本 | `../learning/usability-script-5person.md` |
+
+## 既往已完成（可验收文档/规格）
 
 | 计划周次 | 任务 | 落点 |
 | --- | --- | --- |
@@ -13,19 +27,20 @@
 | 第 8–9 周 | 创建模板+审核清单；Lab2 补救变式；Lab3 debug 变式规格 | `templates/*`、`lab2/variants/remedial`、`lab3/variants/debug`、`scaffold/exercises/lab3/debug/...` 占位 |
 | 样板扩展 | Lab3 `lab.yaml`+concepts+知识表 | `lab-packages/lab3/**` |
 | 第 10–12 周 | 试用协议与测量设计 | `learning/trial-protocol-m5.md` |
+| 评分研究 | AI 交互过程评分详解 | `learning/ai-interaction-scoring.md` |
 
 ## 明确未完成（需真人/跨成员）
 
 | 项 | 原因 |
 | --- | --- |
-| 组织 5–30 人试用并分析 | 需真实学生与课程安排 |
+| 组织 5 人可用性并写修订记录 | 需真人；脚本已就绪 |
 | 基于试用数据的一次真实修订 | 依赖上一行 |
-| Lab3 debug 完整可编译植入 mm.rs | 仅规格+占位；完整植入需与参考 `mm.rs` 同步并由 C 接入发放 |
-| 可视化交互实现 / 评分服务挂接 | 成员 B/C 主责；A 已交规格供验收 |
-| 周末共同「完整链演示」勾选 | 共同里程碑，非 A 单人可关闭 |
+| Lab3 debug 完整可编译植入 mm.rs | 仅规格+占位；需与参考同步并由 C 接入 |
+| 门控/评分服务/OPRE UI/向导 | 成员 B/C 主责；A 规格已交 |
+| remedial 班级正式发布 | 待 C lint/dry-run + 教师操作 |
 
 ## 使用方式
 
-教师备课：从 `lab2/`、`lab3/` 与 `templates/` 出发。  
-成员 B：按 `visualization/` 实现视图与 OPRE。  
-成员 C：按量规字段、复核门控与 recipe 对齐实现。
+- **C**：先读 `checkpoints.yaml`、`tutor-golden-dialogues-lab2.json`、`rubric-v2-frozen.md`  
+- **B**：先读 `knowledge-path.md`、`opre-copy-final.md`  
+- **教师发布补救变式**：`variants/remedial/TEACHER_ACCEPTANCE.md` + `PACKAGE.md`

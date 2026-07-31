@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { withBase } from 'vitepress'
-import { ArrowLeft, CheckCircle2, ClipboardCheck, RefreshCw, Save, Search } from 'lucide-vue-next'
+import { ArrowLeft, CheckCircle2, ClipboardCheck, Download, RefreshCw, Save, Search } from 'lucide-vue-next'
 import { authHeaders, loadAuth } from '../tutor-model'
+import { createReportMarkdown, renderReportHtml } from '../report-markdown'
 
 /**
  * 实验验收（/teacher-review）：处理队列、报告正文与验收意见三栏协作，
@@ -12,6 +13,13 @@ const endpoint = String(
   import.meta.env.VITE_OS_LAB_TUTOR_ENDPOINT || 'http://127.0.0.1:8787',
 ).replace(/\/$/, '')
 
+interface ReportAttachment {
+  name: string
+  mime: string
+  size: number
+  storedName: string
+}
+
 interface StudentReport {
   user: string
   className?: string
@@ -19,6 +27,7 @@ interface StudentReport {
   updatedAt: string
   content: string
   feedback?: string
+  attachments?: ReportAttachment[]
 }
 
 const authed = ref(false)
@@ -62,6 +71,75 @@ const pendingCount = computed(() => reports.value.filter((report) => !report.fee
 const reviewedCount = computed(() => reports.value.length - pendingCount.value)
 const active = computed(() => reports.value.find((report) => reportKey(report) === activeKey.value))
 const hasChanges = computed(() => feedbackDraft.value !== feedbackSaved.value)
+
+function attachmentUrl(user: string, labId: string, file: string) {
+  const token = loadAuth()?.token || ''
+  const url = new URL(`${endpoint}/teacher/report-attachment`)
+  url.searchParams.set('user', user)
+  url.searchParams.set('labId', labId)
+  url.searchParams.set('file', file)
+  if (token) url.searchParams.set('token', token)
+  return url.toString()
+}
+
+function resolveTeacherAttachment(report: StudentReport, ref: string) {
+  const key = String(ref || '').trim()
+  let decoded = key
+  try {
+    decoded = decodeURIComponent(key)
+  } catch {
+    decoded = key
+  }
+  const item = (report.attachments || []).find(
+    (att) =>
+      att.storedName === key ||
+      att.storedName === decoded ||
+      att.name === key ||
+      att.name === decoded ||
+      // 学生端现在用 attachment:附件id 引用；教师端按文件名匹配，id 对不上时回落第一个同名策略。
+      att.storedName.endsWith(decoded) ||
+      decoded.endsWith(att.name),
+  )
+  if (!item) return null
+  return attachmentUrl(report.user, report.labId, item.storedName)
+}
+
+const reportMarkdown = createReportMarkdown()
+
+const activeHtml = computed(() => {
+  const report = active.value
+  if (!report) return ''
+  return renderReportHtml(
+    report.content,
+    (ref) => resolveTeacherAttachment(report, ref),
+    reportMarkdown,
+  )
+})
+
+async function downloadAttachment(report: StudentReport, item: ReportAttachment) {
+  try {
+    const response = await fetch(
+      `${endpoint}/teacher/report-attachment?user=${encodeURIComponent(report.user)}&labId=${encodeURIComponent(report.labId)}&file=${encodeURIComponent(item.storedName)}`,
+      { headers: authHeaders() },
+    )
+    if (!response.ok) throw new Error(`下载失败 ${response.status}`)
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = item.name
+    anchor.click()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    note.value = err instanceof Error ? err.message : '附件下载失败'
+  }
+}
+
+function formatSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 function reportKey(report: StudentReport) {
   return `${report.user}::${report.labId}`
@@ -233,7 +311,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             </div>
             <time :datetime="active.updatedAt">提交于 {{ formatTime(active.updatedAt) }}</time>
           </header>
-          <pre class="tr-content">{{ active.content }}</pre>
+          <div v-if="active.attachments?.length" class="tr-attachments">
+            <strong>附件</strong>
+            <button
+              v-for="item in active.attachments"
+              :key="item.storedName"
+              type="button"
+              @click="downloadAttachment(active, item)"
+            >
+              <Download :size="14" aria-hidden="true" />
+              {{ item.name }}
+              <small>{{ formatSize(item.size) }}</small>
+            </button>
+          </div>
+          <div class="tr-content tr-md" v-html="activeHtml" />
         </template>
       </main>
 
@@ -746,6 +837,85 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   line-height: var(--ws-leading-relaxed);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.tr-content.tr-md {
+  font-family: inherit;
+  white-space: normal;
+}
+
+.tr-content.tr-md :deep(h1),
+.tr-content.tr-md :deep(h2),
+.tr-content.tr-md :deep(h3) {
+  margin: 1em 0 0.4em;
+  line-height: 1.3;
+}
+
+.tr-content.tr-md :deep(.ws-report-figure) {
+  margin: 1em 0;
+  text-align: center;
+}
+
+.tr-content.tr-md :deep(.ws-report-figure img),
+.tr-content.tr-md :deep(img) {
+  display: block;
+  max-width: min(100%, 720px);
+  height: auto;
+  margin: 0.6em auto;
+  border: 1px solid var(--ws-line);
+  border-radius: 6px;
+}
+
+.tr-content.tr-md :deep(.ws-report-figure figcaption) {
+  margin-top: 0.35em;
+  color: var(--ws-ink-faint);
+  font-size: 12px;
+}
+
+.tr-content.tr-md :deep(pre) {
+  padding: 10px 12px;
+  overflow-x: auto;
+  border: 1px solid var(--ws-line);
+  border-radius: 6px;
+  background: var(--ws-surface-alt);
+}
+
+.tr-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px clamp(var(--ws-space-5), 4vw, 48px);
+  border-bottom: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
+}
+
+.tr-attachments strong {
+  margin-right: 4px;
+  font-size: 13px;
+}
+
+.tr-attachments button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: 6px;
+  background: var(--ws-surface);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tr-attachments button:hover {
+  color: var(--ws-accent);
+  border-color: var(--ws-accent);
+}
+
+.tr-attachments small {
+  color: var(--ws-ink-faint);
 }
 
 .tr-feedback {

@@ -23,6 +23,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: 'jump', payload: { path: string; line: number; code: string }): void
+  /** 某次 run 的诊断加载完成；count>0 时父级可自动切到 Problems。 */
+  (event: 'diagnostics-loaded', payload: { runId: string; count: number }): void
 }>()
 
 const diagnostics = ref<RunDiagnostic[]>([])
@@ -34,7 +36,10 @@ async function loadDiagnostics() {
   requestController?.abort()
   diagnostics.value = []
   error.value = ''
-  if (!props.runId) return
+  if (!props.runId) {
+    emit('diagnostics-loaded', { runId: '', count: 0 })
+    return
+  }
 
   const controller = new AbortController()
   requestController = controller
@@ -47,8 +52,14 @@ async function loadDiagnostics() {
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(payload?.error || `导师服务返回 ${response.status}`)
     diagnostics.value = payload.diagnostics || []
+    if (!controller.signal.aborted) {
+      emit('diagnostics-loaded', { runId: props.runId, count: diagnostics.value.length })
+    }
   } catch (err) {
-    if (!controller.signal.aborted) error.value = err instanceof Error ? err.message : '诊断加载失败'
+    if (!controller.signal.aborted) {
+      error.value = err instanceof Error ? err.message : '诊断加载失败'
+      emit('diagnostics-loaded', { runId: props.runId, count: 0 })
+    }
   } finally {
     if (requestController === controller) {
       loading.value = false
@@ -66,7 +77,14 @@ function jumpToDiagnostic(diagnostic: RunDiagnostic) {
 </script>
 
 <template>
-  <section class="ws-problems" aria-label="问题列表">
+  <section class="ws-problems" aria-label="编译诊断 Problems">
+    <header class="ws-problems-intro">
+      <strong>Problems · 编译诊断</strong>
+      <p>
+        汇总<strong>最近一次运行</strong>解析出的编译错误与警告（文件、行号、错误码）。
+        点击一条可跳到工作区对应源码；这里不是终端输出原文，而是结构化问题列表。
+      </p>
+    </header>
     <p v-if="loading" class="ws-problems-state" role="status">正在读取编译诊断…</p>
     <div v-else-if="error" class="ws-problems-state error" role="alert">
       <AlertCircle :size="18" aria-hidden="true" />
@@ -92,21 +110,54 @@ function jumpToDiagnostic(diagnostic: RunDiagnostic) {
     <div v-else class="ws-problems-empty" role="status">
       <FileWarning :size="20" aria-hidden="true" />
       <strong>{{ runId ? '本次运行没有编译诊断' : '尚未采集编译诊断' }}</strong>
+      <p>
+        {{
+          runId
+            ? '构建已成功或未产生可解析的 cargo 诊断。若编译失败却仍为空，请确认命令走了 tutor 运行通道。'
+            : '在「终端」页签运行构建/验证命令后，有错误或警告时会自动切到本页签。'
+        }}
+      </p>
     </div>
   </section>
 </template>
 
 <style scoped>
 .ws-problems {
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   font-size: var(--ws-text-xs);
+}
+
+.ws-problems-intro {
+  flex: 0 0 auto;
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border-bottom: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
+}
+
+.ws-problems-intro strong {
+  color: var(--ws-ink);
+  font-size: var(--ws-text-sm);
+}
+
+.ws-problems-intro p {
+  margin: var(--ws-space-1) 0 0;
+  color: var(--ws-ink-muted);
+  line-height: var(--ws-leading-normal);
 }
 
 .ws-problems-list {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .ws-problem-row {
@@ -140,7 +191,13 @@ function jumpToDiagnostic(diagnostic: RunDiagnostic) {
   color: var(--ws-warning, #a15c00);
 }
 
-.ws-problem-message,
+.ws-problem-message {
+  overflow: visible;
+  text-overflow: unset;
+  white-space: normal;
+  word-break: break-word;
+}
+
 .ws-problem-location {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -162,11 +219,15 @@ function jumpToDiagnostic(diagnostic: RunDiagnostic) {
   align-items: center;
   justify-content: center;
   gap: var(--ws-space-2);
-  min-height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
   margin: 0;
   padding: var(--ws-space-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   color: var(--ws-ink-faint);
   text-align: center;
+  -webkit-overflow-scrolling: touch;
 }
 
 .ws-problems-state.error {
@@ -180,6 +241,13 @@ function jumpToDiagnostic(diagnostic: RunDiagnostic) {
 .ws-problems-empty strong {
   color: var(--ws-ink);
   font-size: var(--ws-text-sm);
+}
+
+.ws-problems-empty p {
+  margin: 0;
+  max-width: 42ch;
+  color: var(--ws-ink-faint);
+  line-height: var(--ws-leading-normal);
 }
 
 @media (max-width: 760px) {

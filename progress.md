@@ -1,5 +1,105 @@
 # os-lab 项目进度总览
 
+## 2026-07-31 - Task: 成员 A 完成 7 日计划全部教学侧交付
+
+### What was done
+
+- 按《7 日实施计划》收口成员 A 全部分项：缺口表、Lab2 `checkpoints.yaml`（requiredEvidence/hintLevel/refusePattern）、5 条导师金标准对话、量规 v2 冻结版、知识路径/OPRE 定稿文案、补救变式装箱与教师验收勾选、5 人可用性最小脚本。
+- 更新 `MEMBER-A-DELIVERABLES.md` 与既有草案的交叉链接（指向冻结版/YAML）。
+
+### Testing
+
+- 文档交叉链接与清单自检：`lab-packages/MEMBER-A-7DAY/README.md` 七日落点齐全；`checkpoints.yaml` 覆盖 C2-1…C2-5；金标准 JSON 含 3 拒 + 2 放行；`rubric-v2-frozen.md` 含 14 细项 + H1–H6；remedial `TEACHER_ACCEPTANCE` 教学项已勾选。
+
+### Notes
+
+- 主入口：`os-lab/lab-packages/MEMBER-A-7DAY/README.md`
+- 供 C：`lab2/checkpoints.yaml`、`learning/tutor-golden-dialogues-lab2.json`、`learning/rubric-v2-frozen.md`
+- 供 B：`lab2/knowledge-path.md`、`visualization/opre-copy-final.md`
+- 未关闭：真人 5 人测、B/C 产品挂接、remedial 正式 publish
+- 回滚：删除 `MEMBER-A-7DAY/` 本轮新增文件并还原交叉链接即可
+
+---
+
+## 2026-07-31 - Task: 界面文案「教材」统一为「学习材料」
+
+### What was done
+- 顶栏、材料页标题与提示文案由「教材」改为「学习材料」；入门指南正文里对 OSTEP 的「教材」叙述未改。
+
+### Testing
+- 文案检索：导航/材料页/首页入口无「教材」产品文案；`MaterialsShelf` 标题为「学习材料」。
+
+### Notes
+- `os-lab/handbook/.vitepress/config.mts`、`materials.md`、`MaterialsShelf.vue`、`tutor-server.mjs`、`docs/workbench-ui.md`：展示文案调整。
+- 回滚：还原上述文件对应字符串即可。
+
+---
+
+## 2026-07-31 - Task: 顶栏教材改为多资源架（教师上传 / 学生自选）
+
+### What was done
+- 顶栏与首页「教材」改为进入 `/materials` 资源列表：内置 OSTEP 始终可见，学生可自选打开。
+- 教师在同页上传补充学习材料（PDF 等），可删除上传项；文件落盘学习 uploads，经 tutor API 鉴权读取。
+
+### Testing
+- 重启 `npm run tutor` 后脚本验证：admin 登录 → `GET /materials` 含 `ostep-zh` → 上传冒烟 PDF（200）→ `GET /materials/file` 返回 `%PDF-1.4` → 删除后列表仅剩内置；学生 `1002` 可见内置标题。
+
+### Notes
+- `os-lab/handbook/tutor-server.mjs`：新增 `/materials`、`/materials/file`、`/teacher/materials`，CORS 放行 DELETE 与材料头。
+- `os-lab/handbook/.vitepress/theme/components/MaterialsShelf.vue`：教材架 UI（列表 / 打开 / 教师上传删除）。
+- `os-lab/handbook/materials.md`、`.vitepress/theme/index.ts`：教材页与组件注册。
+- `os-lab/handbook/.vitepress/config.mts`、`index.md`：导航与首页入口改指向 `/materials`。
+- `os-lab/handbook/docs/workbench-ui.md`：补充教材入口契约说明。
+- 回滚：还原上述文件；删除 `os-lab/learning/uploads/materials/` 即可清上传数据。
+
+---
+
+## 2026-07-31 - 实验报告面板改造（格式下拉 / 图片库 / 上传修复）
+
+### 产品行为
+
+- **编写格式**改为下拉：**模板填写** / **Markdown 自由编写**；提交、预览、导出一律以当前选项为准，避免交错稿。
+- **移除 Word 编辑页**；需要 Word/PDF 时用「上传附件」。旧 `word` / `free` 草稿自动迁入 Markdown。
+- **图片库**常驻可浏览：上传 → 输入框改名并点「改名」→ 勾选 →「插入选中」。
+  - 模板：插入**当前段**末尾，段下显示「本段已插入」缩略图。
+  - Markdown：正文末尾插入，下方「插入结果」可见图；可手改 `![](attachment:…)` 调位置。
+  - 缩略图可点开大图浏览；「预览最终稿」看完整排版（含图）。
+- 上传只进图片库，**不自动写入正文**，由学生勾选插入，减少插错段。
+
+### 缺陷修复
+
+- **上传没反应**：`onImagePick` 先清空 `input.value` 会同步清空仍引用的 `FileList`，`addImages` 拿到空列表静默返回；改为先 `Array.from(files)` 再清空。
+- **上传后图片消失**：页面加载时 `hydrateAttachmentUrls` 整表覆盖刚写入的预览 URL；改为合并已有 URL，并用 generation 取消过期 hydrate。
+- **压缩/类型过严**：`compressImageFile` 失败不再抛错阻断；无扩展名截图、`image/*` 也可入库；强制图片 mime，避免误进「文档附件」。
+- **预览丢图**：`renderReportHtml` 用占位符注入真实 `<img>`；引用改用稳定 `attachment:id`（避免文件名空格导致 Markdown 解析失败）。
+- **persist 配额满**：localStorage 写失败不再误报成上传失败（二进制已在 IndexedDB）。
+- tutor `EADDRINUSE :8787`：释放占用 node 进程后重启 `npm run tutor`。
+
+### 主要文件
+
+- `os-lab/handbook/.vitepress/theme/components/ReportPanel.vue`
+- `os-lab/handbook/.vitepress/theme/report-markdown.ts`
+- `os-lab/handbook/.vitepress/theme/report-attachments.ts`
+- `os-lab/handbook/docs/workbench-ui.md`
+
+### 说明（相对此前条目）
+
+- 同日较早记录的「三种模式含 Word」「仅 data URL 预览」已被本轮取代：现为模板/Markdown 两档 + 图片库勾选插入；预览以占位符渲染 + blob/object URL 为主。
+
+---
+
+## 2026-07-31 - 实验报告：自由编写、插图、附件与教师可配版式（基线）
+
+- **痛点**：原报告面板过死板；提示词只在 placeholder，提交稿里看不见；教师无法布置格式。
+- **学生端**：模板 / 自由编写起步；「预览最终稿」= 提交稿；插图嵌正文；填写提示写入 Markdown。
+- **教师端**：教学安排「报告版式布置」；`GET /report-template`；`teacher.json` 的 `reportTemplates`。
+- **服务端**：报告附件上传与教师下载；`reports.attachments`。
+- **主要文件**：`ReportPanel.vue`、`TeacherPublishPanel.vue`、`report-template.ts|mjs`、`LabWorkspace.vue`、`tutor-server.mjs`、`scaffold.mjs`。
+- 后续迭代见上方「实验报告面板改造」条目。
+
+---
+
+
 ## 一、项目概览与团队分工
 
 | 项目 | 内容 |
@@ -2696,3 +2796,70 @@
 - 改动文件：`os-lab/handbook/.vitepress/theme/components/CodePanel.vue`、`progress.md`（本条）。
 - 本轮提交作者固定为 `SIZN <a18990330371@outlook.com>`（用 `git commit --author` 指定，未改动仓库全局 config），无合作者。
 - 本轮未推送远端（与既往惯例一致）。
+
+## 2026-07-31 - Task: 工作台终端面板 VSCode 化改造（可开合 + 命令融入终端 + 指令库 + 快捷键）
+
+### What was done
+
+本轮对 `os-lab/handbook` 前端工作台的终端区做了一系列仿 VSCode 的交互改造，全部集中在 `LabWorkspace.vue`、`TerminalPanel.vue`、`XtermOutput.vue`、`CodePanel.vue`、`tutor-model.ts` 五个文件，未触碰后端 `tutor-server.mjs` 与内核代码。
+
+- **终端独立可开合（VSCode 风格）**：在 `LabWorkspace.vue` 新增独立状态 `terminalDockOpen`（不复用 `panelOpen.terminal`，后者语义是「学习支持」区，避免连锁影响 `showTerminalPane`/`togglePanel`/移动端逻辑）。`workspaceGridStyle` 在终端关闭时退化为 `gridTemplateRows: 1fr`，`CodePanel` 占满工作区；打开时恢复「代码 / 分割条 / 终端」三行 grid，拖拽比例沿用 `workspaceCodeSplit`。分割条与终端容器用 `v-show` 而非 `v-if`，保留 xterm 实例与 SSE 输出历史。
+- **命令输入融入终端**：去掉 `TerminalPanel.vue` 上方单独的命令输入行（textarea + 运行按钮），命令直接在 xterm 区域输入。`XtermOutput.vue` 新增 `interactive` prop（开启时 `disableStdin: false`、`cursorBlink: true`、`cursorStyle: 'bar'`），暴露 `onData`/`focus`。`TerminalPanel.vue` 新增 `inputBuffer` 与 `handleData`：xterm 显示 `$ ` prompt，用户在 prompt 后直接键入命令，回车提交运行，退格删字，Ctrl+C 清行（运行中则停止）。`run()` 重构为直接 `writeTerm()` 写 xterm 并累积到 `output` ref（供复制/插入报告），运行结束 `renderPrompt()` 重新显示输入行。右上角保留浮动控件（重置/停止/帮助）。
+- **ghost text 虚写推荐命令**：`ghostText` computed 在输入是推荐命令前缀时显示剩余部分，偏离即消失。`renderPrompt()` 用 `\r\x1b[2K` 清行重绘 `$ ` + 输入 + ghost，并把光标退回输入末尾（`\x1b[nD`）。三层颜色区分：`$ ` 青色（`\x1b[36m`）、用户输入默认前景色、ghost 斜体浅灰（`\x1b[3m\x1b[38;5;245m`）。
+- **字体美化**：`XtermOutput.vue` 字体配置从失效的 `var(--ws-font-mono)`（xterm canvas 不解析 CSS 变量）改为真实字体栈 `'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, 'Courier New', monospace`，字号 12→13，`lineHeight: 1.25`，`letterSpacing: 0.3`。
+- **终端背景统一**：`applyTheme` 同步把 host 元素 `style.background` 设为同一个解析后的 bg 值，消除 xterm 行数不足填满 host 时底部空隙色差；`.ws-terminal` 容器背景从 `--ws-surface` 改为 `--ws-surface-soft`，与 xterm 区一致。
+- **Tab 一键补全**：`handleData` 新增 Tab（`\t`）分支，把 ghost 剩余部分一次性追加到 `inputBuffer`。`XtermOutput` 交互模式下在 host 挂 `keydown` 监听拦截 Tab 默认行为（避免浏览器切走焦点），让 xterm 收到 `\t`。
+- **常用推荐指令库**：`tutor-model.ts` 给 `TutorLab` 接口新增 `commands: { label: string; command: string }[]` 字段，为 8 个 lab 各编排 6 条常用命令（基于项目 `Makefile` 真实目标确认：lab1-5 用 cargo 系，lab6-8 用 make 系）。`TerminalPanel.vue` 新增 `commandLibrary` computed、`histIdx` 指针与 `historyUp/Down`，`handleData` 拦截方向键转义序列 `\x1b[A`/`\x1b[B` 在指令库中循环切换（像 shell 历史），回车/lab 切换/重置时重置 `histIdx`。
+- **终端开关按钮位置演进**：从顶栏「终端」文字按钮 → 工作区标题栏图标 → 最终落到 `CodePanel` 代码工具栏「重新加载目录」按钮左侧，纯图标式（`SquareTerminal`），通过 `terminalOpen` prop + `toggle-terminal` emit 与 `LabWorkspace` 的 `terminalDockOpen` 双向通信。代码工具栏始终可见，终端关闭后也能随时点图标重新展开。
+- **快捷键帮助面板**：`TerminalPanel.vue` 终端右上角控件组加 `HelpCircle` 帮助按钮，点击弹出快捷键说明面板（`<dl>` + `<kbd>` 键帽样式），列出 ↑/↓ 循环命令、Tab 补全、Enter 运行、Ctrl+C 清行/停止、重置/终端开关图标说明；透明遮罩点击外部关闭。
+
+### Testing
+
+- 全程 `npm run dev` HMR 热更新验证，每轮改动后无 VitePress 编译错误（中途一次 `tutor-model.ts` 编辑中间态报 `Unexpected "}"`，补回 `resources: {` 后立即恢复，00:49:41 全组件批量 HMR 更新确认恢复）。
+- 每轮改动后 `ReadLints` 对涉及文件无 linter 错误。
+- 人工验证点：终端开合、拖拽比例保留、ghost 随输入收缩/消失、Tab 补全、上下方向键循环指令库、回车运行、Ctrl+C 清行、帮助面板开合、代码工具栏终端图标开合终端。
+
+### Notes
+
+- 改动文件：
+  - `os-lab/handbook/.vitepress/theme/components/LabWorkspace.vue`：`terminalDockOpen` 状态、`showTerminalDock`、`workspaceGridStyle` 适配、顶栏按钮移除、`CodePanel` 传 `terminal-open`/`@toggle-terminal`。
+  - `os-lab/handbook/.vitepress/theme/components/TerminalPanel.vue`：命令融入 xterm、ghost text、`handleData`、指令库循环、Tab 补全、帮助面板、`hide-requested` emit（后移除）。
+  - `os-lab/handbook/.vitepress/theme/components/XtermOutput.vue`：`interactive` prop、`onData`/`focus` 暴露、字体配置、host 背景同步、Tab 拦截。
+  - `os-lab/handbook/.vitepress/theme/components/CodePanel.vue`：`terminalOpen` prop + `toggle-terminal` emit、代码工具栏终端开关按钮、`ws-code-icon-btn--active` 样式。
+  - `os-lab/handbook/.vitepress/theme/tutor-model.ts`：`TutorLab.commands` 字段 + 8 个 lab 指令库数据。
+  - `progress.md`（本条）。
+- 设计边界：不引入多终端 Tab、不持久化 `terminalDockOpen`（每次进入默认打开）、不改 `panelOpen.terminal` 语义、不动 `tutor-server.mjs` 与内核。
+- 回滚方式：按上述文件逐个 `git checkout` 对应历史版本，或反向应用各改动点；指令库字段为新增可选数据，移除后 `commandLibrary` 会回退到 `[verificationCommand]` 单条。
+
+## 2026-07-31 - Task: 底部面板 VS Code 化收口与 Problems/Trace 运行闭环
+
+### What was done
+
+承接同日前一条「终端面板 VS Code 化」：把底部区做成真正的 VS Code 式多 Tab，并打通 Problems / Trace 从「跑命令 → 出诊断/事件 → 前端展示」的整条链路；测完后清理 stu 临时演示文件，产品功能保留。
+
+- **底部多 Tab（终端 | Problems | 测试结果）**：`LabWorkspace.vue` 新增 `bottomTab`；Problems 与测试结果从右侧学习支持迁到底部 dock。右侧只保留 **AI 导师 | 实验报告 | Trace**。代码工具栏终端图标语义改为开合整块底部面板。
+- **作用说明文案**：Problems / Trace / 测试结果面板补简介——Problems 是编译诊断列表（点跳源码），Trace 是运行时 trap/调度回放，测试结果是断言汇总；避免与「终端原文」混淆。
+- **有诊断自动切 Problems**：`TerminalPanel` 在 run 结束 SSE 带 `diagnostics` 时 emit `run-diagnostics`；`ProblemsPanel` 加载成功 emit `diagnostics-loaded`。父组件展开 dock、切到 Problems，并用角标显示条数；点击诊断仍 `openAtLine` 跳源码。
+- **底部面板全屏**：`maximized` 扩展 `'dock'`；dock 头加最大化/恢复按钮，Esc 恢复；Problems / 测试结果可滚动，xterm 保留 scrollback。
+- **编辑器与终端快捷键**：Monaco / CodePanel 补齐 **Ctrl+S** 保存；终端 **Ctrl+C**（有选区则复制，否则中断/清行）、**Ctrl+V** 粘贴（`XtermOutput` host paste 监听）。
+- **运行历史不清屏**：每次运行不再整屏清空，改为分隔线续写，保留上一轮输出便于对照。
+- **tutor-server 诊断/Trace 闭环**：
+  - 新增 `GET /runs/:id/trace`（按 run 读真实 trace 事件，无则可信空态）。
+  - cargo 命令自动补 `--message-format=json`，exit 帧携带 `diagnostics` / `diagnosticCount` / `traceCount`。
+  - Windows 下解析已知 `CARGO_HOME` / cargo、qemu 路径并 enrich `PATH`；spawn 失败写入运行输出，避免「静默 exit -1、Problems/Trace 全空」。
+- **`cargo-diagnostics.mjs`**：Windows / 非规范路径时尽量从 `file_name` / rendered 抽出可跳转诊断，避免有错误码却不出 Problems。
+- **Trace 播放跟随**：`TraceViewer` 播放头变化时对 Trap 列表、时间线、事件列表 `scrollIntoView`，避免播到后面看不见当前帧。
+- **测试残留清理**（测完还原）：删除 stu 临时 `_tmp_demo_problem.rs`、`_tmp_find_next_task.inc.rs`、`_TMP_DEMO_STEPS.md`、演示用 `trace.rs`、`qemu-check-trace.txt`；`task.rs` 改回 `todo!`；`Cargo.toml` 去掉临时 `trace-edu`。正式 UI / tutor 改动未回滚。
+
+### Testing
+
+- `npm run dev` HMR 验证底部 Tab 切换、有诊断自动切 Problems、dock 全屏/Esc、Ctrl+S/C/V、运行分隔线续写。
+- 配合 activate-os-env 后的 tutor：`cargo check` 能产出 Problems；带 `trace-edu` 的演示跑通后 Trace Viewer 能拉到真实事件（演示脚手架已拆除）。
+- 清理后确认仓库内无 `TEMP_DEMO` / `_tmp_*` / `_TMP_DEMO` 残留引用。
+
+### Notes
+
+- 主要文件：`LabWorkspace.vue`、`CodePanel.vue`、`MonacoEditor.vue`、`ProblemsPanel.vue`、`TerminalPanel.vue`、`XtermOutput.vue`、`TraceViewer.vue`、`TraceTrapView.vue`、`TraceTimelineView.vue`、`tutor-server.mjs`、`tutor/cargo-diagnostics.mjs`；`progress.md`（本条）。
+- 与前一条边界变化：本轮**已改** `tutor-server.mjs` 与诊断解析；底部从「仅终端」升级为多 Tab dock。
+- 本轮未提交/未推送（与既往惯例一致）；前一条终端 VSCode 化已有本地 commit `3688d22`。
+

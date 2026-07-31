@@ -1,7 +1,29 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { Megaphone, RefreshCw, Send, Unlock, UserRound, Users } from 'lucide-vue-next'
+import {
+  ArrowDown,
+  ArrowUp,
+  FileText,
+  Megaphone,
+  Plus,
+  RefreshCw,
+  Send,
+  Trash2,
+  Unlock,
+  Upload,
+  UserRound,
+  Users,
+  X,
+} from 'lucide-vue-next'
 import { authHeaders, type TutorLab } from '../tutor-model'
+import {
+  DEFAULT_REPORT_TEMPLATE,
+  FIXED_REFLECTION,
+  cloneTemplate,
+  formatSectionMarkdown,
+  parseReportTemplateFromMarkdown,
+  type ReportTemplate,
+} from '../report-template'
 
 /**
  * 教师工作台右栏 · 作业发布面板（占满整栏）。
@@ -10,7 +32,7 @@ import { authHeaders, type TutorLab } from '../tutor-model'
  *  - 任务类型可插拔：来自 scaffold/exercises/<lab>/ 的变体（补代码 fill、排错 debug…），
  *    新变体放进目录即自动出现在下拉里；
  *  - 每个班级独立一行：A 班留 fill、B 班留 debug 互不影响，也可跟随全局默认；
- *  - 附带开放进度（把阶段代码下发到本实验）、个别学生调整与作业公告。
+ *  - 附带开放进度、个别学生调整、作业公告与报告版式布置。
  */
 const props = defineProps<{ lab: TutorLab; endpoint: string }>()
 const emit = defineEmits<{ (event: 'notice', text: string): void }>()
@@ -44,6 +66,37 @@ const variantDrafts = ref<Record<string, string>>({})
 const studentSel = ref('')
 const noticeScope = ref('')
 const noticeDraft = ref('')
+
+/** 当前 Lab 的报告版式草稿（全局布置，学生端拉取）。 */
+const reportDraft = ref<ReportTemplate>(cloneTemplate(DEFAULT_REPORT_TEMPLATE))
+const reportModalOpen = ref(false)
+const reportImportInput = ref<HTMLInputElement | null>(null)
+const reportPreview = computed(() => {
+  const tpl = reportDraft.value
+  const lines = [`# ${props.lab.label} ${props.lab.title} · 实验报告`, '']
+  if (tpl.intro.trim()) {
+    lines.push(
+      tpl.includePromptsInMarkdown
+        ? `> **老师布置：** ${tpl.intro.trim()}`
+        : tpl.intro.trim(),
+      '',
+    )
+  }
+  for (const section of tpl.sections) {
+    lines.push(
+      formatSectionMarkdown(section.title, section.prompt, '（学生填写）', tpl.includePromptsInMarkdown),
+    )
+  }
+  lines.push(
+    formatSectionMarkdown(
+      FIXED_REFLECTION.title,
+      FIXED_REFLECTION.prompt,
+      '（学生填写，系统固定）',
+      tpl.includePromptsInMarkdown,
+    ),
+  )
+  return lines.join('\n')
+})
 
 const classList = computed(() =>
   [...new Set((overview.value?.students || []).map((s) => s.className).filter(Boolean))],
@@ -95,12 +148,30 @@ function variantLabel(name: string) {
   return variants.value.find((v) => v.name === name)?.label || ''
 }
 
+async function loadReportTemplate() {
+  try {
+    const response = await fetch(
+      `${props.endpoint}/report-template?labId=${encodeURIComponent(props.lab.id)}`,
+      { headers: authHeaders() },
+    )
+    if (!response.ok) {
+      reportDraft.value = cloneTemplate(DEFAULT_REPORT_TEMPLATE)
+      return
+    }
+    const payload = await response.json()
+    reportDraft.value = cloneTemplate(payload.template || DEFAULT_REPORT_TEMPLATE)
+  } catch {
+    reportDraft.value = cloneTemplate(DEFAULT_REPORT_TEMPLATE)
+  }
+}
+
 async function load() {
   try {
     const response = await fetch(`${props.endpoint}/teacher/overview`, { headers: authHeaders() })
     if (response.ok) {
       overview.value = await response.json()
       if (!noticeScope.value) noticeDraft.value = overview.value?.config.notice || ''
+      await loadReportTemplate()
     } else {
       note.value = '需教师账号登录后使用。'
       noteOk.value = false
@@ -177,12 +248,97 @@ async function publishNotice() {
   )
 }
 
+function addReportSection() {
+  const n = reportDraft.value.sections.length + 1
+  reportDraft.value.sections.push({
+    id: `section-${Date.now().toString(36)}`,
+    title: `第 ${n} 节`,
+    prompt: '请写明这一节希望学生回答什么。',
+    rows: 4,
+  })
+}
+
+function removeReportSection(index: number) {
+  if (reportDraft.value.sections.length <= 1) {
+    note.value = '至少保留一节。'
+    noteOk.value = false
+    return
+  }
+  reportDraft.value.sections.splice(index, 1)
+}
+
+function moveReportSection(index: number, delta: number) {
+  const target = index + delta
+  const list = reportDraft.value.sections
+  if (target < 0 || target >= list.length) return
+  const [item] = list.splice(index, 1)
+  list.splice(target, 0, item)
+}
+
+function resetReportTemplate() {
+  reportDraft.value = cloneTemplate(DEFAULT_REPORT_TEMPLATE)
+}
+
+async function openReportModal() {
+  await loadReportTemplate()
+  reportModalOpen.value = true
+}
+
+function closeReportModal() {
+  reportModalOpen.value = false
+}
+
+async function onImportReportMarkdown(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  try {
+    const text = await file.text()
+    reportDraft.value = parseReportTemplateFromMarkdown(text)
+    note.value = `已从「${file.name}」导入 ${reportDraft.value.sections.length} 个章节，确认后请发布。`
+    noteOk.value = true
+    emit('notice', note.value)
+  } catch (err) {
+    note.value = err instanceof Error ? err.message : '导入失败'
+    noteOk.value = false
+  }
+}
+
+async function saveReportTemplate() {
+  if (!reportDraft.value.sections.length) {
+    note.value = '至少保留一节正文。'
+    noteOk.value = false
+    return
+  }
+  await publish(
+    { type: 'global', id: '' },
+    {
+      reportTemplate: {
+        labId: props.lab.id,
+        intro: reportDraft.value.intro,
+        includePromptsInMarkdown: reportDraft.value.includePromptsInMarkdown,
+        sections: reportDraft.value.sections,
+      },
+    },
+    `${props.lab.label} 报告版式已发布，学生刷新后生效。`,
+  )
+  reportModalOpen.value = false
+}
+
 watch(noticeScope, (scope) => {
   if (!overview.value) return
   noticeDraft.value = scope
     ? classEntry(scope)?.notice || overview.value.config.notice || ''
     : overview.value.config.notice || ''
 })
+
+watch(
+  () => props.lab.id,
+  () => {
+    void loadReportTemplate()
+  },
+)
 
 onMounted(load)
 </script>
@@ -326,9 +482,150 @@ onMounted(load)
         />
         <button type="button" :disabled="busy || !noticeDraft.trim()" @click="publishNotice"><Megaphone :size="14" aria-hidden="true" />发布公告</button>
       </section>
+
+      <section class="ws-pub-block">
+        <div class="ws-pub-section-title">
+          <span>04</span>
+          <div>
+            <h3>报告版式布置</h3>
+            <p>在弹窗里编辑章节与填写提示，也可直接导入 Markdown 大纲。</p>
+          </div>
+        </div>
+        <div class="ws-pub-report-entry">
+          <p>
+            当前共 <strong>{{ reportDraft.sections.length }}</strong> 节
+            <template v-if="reportDraft.intro"> · 已设置总要求</template>
+          </p>
+          <button type="button" @click="openReportModal">
+            <FileText :size="14" aria-hidden="true" />打开报告版式编辑
+          </button>
+        </div>
+      </section>
     </div>
 
     <p v-else class="ws-pub-empty ws-pub-loading">正在载入班级与作业配置…</p>
+
+    <Teleport to="body">
+      <div
+        v-if="reportModalOpen"
+        class="ws-pub-modal-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label="报告版式布置"
+        @click.self="closeReportModal"
+      >
+        <div class="ws-pub-modal">
+          <header class="ws-pub-modal-head">
+            <div>
+              <span>报告版式布置</span>
+              <strong>{{ lab.label }} · {{ lab.title }}</strong>
+            </div>
+            <button type="button" class="ws-pub-modal-close" title="关闭" @click="closeReportModal">
+              <X :size="16" aria-hidden="true" />
+            </button>
+          </header>
+
+          <div class="ws-pub-modal-body">
+            <div class="ws-pub-report-actions sticky">
+              <button type="button" class="ghost" @click="reportImportInput?.click()">
+                <Upload :size="14" aria-hidden="true" />导入 Markdown
+              </button>
+              <button type="button" class="ghost" @click="addReportSection">
+                <Plus :size="14" aria-hidden="true" />加一节
+              </button>
+              <button type="button" class="ghost" @click="resetReportTemplate">恢复默认五节</button>
+              <button type="button" :disabled="busy" @click="saveReportTemplate">
+                <FileText :size="14" aria-hidden="true" />发布本实验报告版式
+              </button>
+            </div>
+            <input
+              ref="reportImportInput"
+              type="file"
+              accept=".md,.markdown,.txt,text/markdown,text/plain"
+              hidden
+              @change="onImportReportMarkdown"
+            />
+
+            <p class="ws-pub-report-import-hint">
+              只需布置正文各节；「收获与反思」由系统固定，学生端始终出现。导入时用
+              <code>## 节标题</code> 分节，节后的 <code>&gt; 提示</code> 作为填写提示。
+            </p>
+
+            <label class="ws-pub-report-field">
+              <span>总要求（显示在报告开头）</span>
+              <textarea
+                v-model="reportDraft.intro"
+                rows="2"
+                placeholder="例如：本周报告请附上至少一张 trap 时序截图，并回答思考题。"
+              />
+            </label>
+
+            <label class="ws-pub-report-check">
+              <input v-model="reportDraft.includePromptsInMarkdown" type="checkbox" />
+              把各节「填写提示」写进学生提交稿（推荐开启）
+            </label>
+
+            <div
+              v-for="(section, index) in reportDraft.sections"
+              :key="section.id"
+              class="ws-pub-report-section"
+            >
+              <header>
+                <strong>第 {{ index + 1 }} 节</strong>
+                <div class="ws-pub-report-move">
+                  <button type="button" title="上移" :disabled="index === 0" @click="moveReportSection(index, -1)">
+                    <ArrowUp :size="14" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    title="下移"
+                    :disabled="index === reportDraft.sections.length - 1"
+                    @click="moveReportSection(index, 1)"
+                  >
+                    <ArrowDown :size="14" aria-hidden="true" />
+                  </button>
+                  <button type="button" title="删除本节" @click="removeReportSection(index)">
+                    <Trash2 :size="14" aria-hidden="true" />
+                  </button>
+                </div>
+              </header>
+              <label>
+                <span>标题</span>
+                <input v-model="section.title" type="text" maxlength="80" />
+              </label>
+              <label>
+                <span>填写提示（学生可见，也会写进提交稿）</span>
+                <textarea
+                  v-model="section.prompt"
+                  rows="2"
+                  maxlength="800"
+                  placeholder="告诉学生这一节要写什么、写到什么程度。"
+                />
+              </label>
+            </div>
+
+            <div class="ws-pub-report-section ws-pub-report-fixed">
+              <header>
+                <strong>系统固定 · {{ FIXED_REFLECTION.title }}</strong>
+              </header>
+              <p>每位学生报告末尾都会有这一节，用于复盘与解锁下一层；老师无需配置。</p>
+            </div>
+
+            <details class="ws-pub-report-preview" open>
+              <summary>预览学生提交稿骨架</summary>
+              <pre>{{ reportPreview }}</pre>
+            </details>
+          </div>
+
+          <footer class="ws-pub-modal-foot">
+            <button type="button" class="ghost" @click="closeReportModal">取消</button>
+            <button type="button" :disabled="busy" @click="saveReportTemplate">
+              <FileText :size="14" aria-hidden="true" />发布版式
+            </button>
+          </footer>
+        </div>
+      </div>
+    </Teleport>
   </section>
 </template>
 
@@ -630,6 +927,286 @@ onMounted(load)
 
 .ws-pub-note.ok {
   color: var(--ws-ok, #1a7f37);
+}
+
+.ws-pub-report-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+}
+
+.ws-pub-report-entry p {
+  margin: 0;
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-sm);
+}
+
+.ws-pub-report-entry strong {
+  color: var(--ws-ink);
+}
+
+.ws-pub-report-entry button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--ws-control-sm);
+  padding: 6px 12px;
+  color: var(--ws-accent-contrast);
+  border: 1px solid var(--ws-accent);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-accent);
+  font: inherit;
+  font-size: var(--ws-text-xs);
+  cursor: pointer;
+}
+
+.ws-pub-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.ws-pub-modal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(820px, 100%);
+  max-height: min(88vh, 900px);
+  overflow: hidden;
+  border: 1px solid var(--ws-line);
+  border-radius: 12px;
+  background: var(--ws-surface);
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.25);
+}
+
+.ws-pub-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
+}
+
+.ws-pub-modal-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
+}
+
+.ws-pub-modal-head span {
+  display: block;
+  color: var(--ws-accent);
+  font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-bold);
+}
+
+.ws-pub-modal-head strong {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--ws-text-sm);
+}
+
+.ws-pub-modal-close {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: 8px;
+  background: var(--ws-surface);
+  place-items: center;
+  cursor: pointer;
+}
+
+.ws-pub-modal-body {
+  min-height: 0;
+  padding: 12px 16px 20px;
+  overflow-y: auto;
+}
+
+.ws-pub-report-import-hint {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  color: var(--ws-ink-muted);
+  border-radius: 8px;
+  background: var(--ws-surface-alt);
+  font-size: var(--ws-text-xs);
+  line-height: 1.5;
+}
+
+.ws-pub-report-import-hint code {
+  font-size: 11px;
+}
+
+.ws-pub-report-field,
+.ws-pub-report-section label {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+  font-size: var(--ws-text-xs);
+  color: var(--ws-ink-muted);
+}
+
+.ws-pub-report-field textarea,
+.ws-pub-report-section textarea,
+.ws-pub-report-section input[type='text'],
+.ws-pub-report-section input[type='number'],
+.ws-pub-report-section select {
+  width: 100%;
+  padding: 6px 8px;
+  color: var(--ws-ink);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
+  font: inherit;
+  font-size: var(--ws-text-sm);
+}
+
+.ws-pub-report-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: var(--ws-text-xs);
+  color: var(--ws-ink-muted);
+}
+
+.ws-pub-report-section {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+}
+
+.ws-pub-report-section header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.ws-pub-report-section header strong {
+  font-size: var(--ws-text-sm);
+  color: var(--ws-ink);
+}
+
+.ws-pub-report-move {
+  display: flex;
+  gap: 4px;
+}
+
+.ws-pub-report-move button {
+  display: inline-flex;
+  padding: 4px;
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: 6px;
+  background: var(--ws-surface);
+  cursor: pointer;
+}
+
+.ws-pub-report-move button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ws-pub-report-fixed {
+  opacity: 0.92;
+}
+
+.ws-pub-report-fixed p {
+  margin: 0;
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+  line-height: 1.5;
+}
+
+.ws-pub-report-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.6fr);
+  gap: 10px;
+}
+
+.ws-pub-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.ws-pub-report-actions.sticky {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 0;
+  background: var(--ws-surface);
+}
+
+.ws-pub-report-actions button,
+.ws-pub-report-actions .ghost,
+.ws-pub-modal-foot button,
+.ws-pub-modal-foot .ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--ws-control-sm);
+  padding: 4px 10px;
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
+  font: inherit;
+  font-size: var(--ws-text-xs);
+  cursor: pointer;
+}
+
+.ws-pub-report-actions button:not(.ghost),
+.ws-pub-modal-foot button:not(.ghost) {
+  color: var(--ws-accent-contrast);
+  border-color: var(--ws-accent);
+  background: var(--ws-accent);
+}
+
+.ws-pub-report-preview {
+  margin-top: 4px;
+  border: 1px dashed var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  padding: 8px 10px;
+  font-size: var(--ws-text-xs);
+}
+
+.ws-pub-report-preview summary {
+  cursor: pointer;
+  color: var(--ws-ink-muted);
+}
+
+.ws-pub-report-preview pre {
+  margin: 8px 0 0;
+  padding: 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  border-radius: 6px;
+  background: var(--ws-surface);
+  color: var(--ws-ink);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 @media (max-width: 1180px) {

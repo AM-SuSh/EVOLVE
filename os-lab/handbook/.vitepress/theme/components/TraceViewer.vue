@@ -11,7 +11,7 @@
  *
  * 与成员 C 契约：接口未就绪时 unavailable=true，文案明确「查询接口尚未返回真实事件」。
  */
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { GitBranch, Play, Pause, SkipForward, SkipBack, RotateCcw, Code2, FileText } from 'lucide-vue-next'
 import { authHeaders } from '../tutor-model'
 import {
@@ -45,6 +45,7 @@ const loading = ref(false)
 const loaded = ref(false)
 const unavailable = ref(false)
 const fetchError = ref('')
+const eventListRef = ref<HTMLOListElement | null>(null)
 
 const view = ref<TraceView>('trap')
 const filterTypes = ref(new Set<'trap_enter' | 'task_switch'>())
@@ -56,6 +57,8 @@ const filteredEvents = computed(() => {
 })
 
 const playback = useTracePlayback(filteredEvents)
+const playheadIndex = computed(() => playback.playhead.value)
+const isPlaying = computed(() => playback.playing.value)
 const pids = computed(() => collectPids(allEvents.value))
 
 const EVENT_LIST_CAP = 200
@@ -139,6 +142,12 @@ function onInsertReport() {
   emit('insert-report', formatTraceEvidence(event))
 }
 
+watch(playheadIndex, async (index) => {
+  await nextTick()
+  const el = eventListRef.value?.querySelector<HTMLElement>(`[data-event-index="${index}"]`)
+  el?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+})
+
 function toggleType(type: 'trap_enter' | 'task_switch') {
   const next = new Set(filterTypes.value)
   if (next.has(type)) next.delete(type)
@@ -162,10 +171,28 @@ function resetFilter() {
 }
 
 const emptyState = computed<{ kind: 'no-run' | 'loading' | 'unavailable' | 'empty'; title: string; note: string }>(() => {
-  if (!props.runId) return { kind: 'no-run', title: '尚未采集运行轨迹', note: '完成可信运行后，此处只展示与运行绑定的 trap_enter 和 task_switch 事件。' }
+  if (!props.runId) {
+    return {
+      kind: 'no-run',
+      title: '尚未采集运行轨迹',
+      note: 'Trace 用来回放内核运行时事件（trap 进入、任务切换），帮助理解「代码跑起来之后发生了什么」。请先在底部「终端」跑完一次可信命令，再回到本页查看。',
+    }
+  }
   if (loading.value) return { kind: 'loading', title: '正在加载轨迹…', note: '' }
-  if (unavailable.value) return { kind: 'unavailable', title: '本次运行没有可展示的轨迹', note: fetchError.value || '已关联运行，但轨迹查询接口尚未返回真实事件；这里不会播放预设动画。' }
-  if (allEvents.value.length === 0) return { kind: 'empty', title: '本次运行没有 trace 事件', note: '若未启用 trace-edu feature，重开 trace 后再查看。' }
+  if (unavailable.value) {
+    return {
+      kind: 'unavailable',
+      title: '本次运行没有可展示的轨迹',
+      note: fetchError.value || '已关联运行，但轨迹查询接口尚未返回真实事件；这里不会播放预设动画。Trace 依赖内核/服务端上报的 trap_enter、task_switch，与 Problems（编译诊断）不是同一类产物。',
+    }
+  }
+  if (allEvents.value.length === 0) {
+    return {
+      kind: 'empty',
+      title: '本次运行没有 trace 事件',
+      note: '若未启用 trace-edu feature，或本次命令未触发 trap/调度埋点，这里会为空。可换可信验证命令重跑后再看。',
+    }
+  }
   return { kind: 'empty', title: '', note: '' }
 })
 
@@ -173,7 +200,15 @@ const hasEvents = computed(() => allEvents.value.length > 0)
 </script>
 
 <template>
-  <section class="ws-trace-viewer" aria-label="运行轨迹">
+  <section class="ws-trace-viewer" aria-label="运行轨迹 Trace">
+    <header class="ws-trace-intro">
+      <strong>Trace · 运行时轨迹</strong>
+      <p>
+        回放最近一次运行的内核事件（Trap 时序 / 任务时间线），用于理解 trap、调度与进程切换。
+        与底部 <strong>Problems</strong>（编译错误列表）不同：Trace 看的是「跑起来之后」的时序，不是编译诊断。
+      </p>
+    </header>
+
     <div v-if="!hasEvents" class="ws-trace-empty" role="status">
       <GitBranch :size="20" aria-hidden="true" />
       <strong>{{ emptyState.title }}</strong>
@@ -205,11 +240,11 @@ const hasEvents = computed(() => allEvents.value.length > 0)
         </div>
 
         <div class="ws-trace-toolbar-row ws-trace-controls">
-          <button type="button" class="ws-trace-ctrl" :disabled="playback.atEnd.value && !playback.playing.value" @click="playback.toggle()">
-            <component :is="playback.playing.value ? Pause : Play" :size="14" aria-hidden="true" />
-            <span>{{ playback.playing.value ? '暂停' : '播放' }}</span>
+          <button type="button" class="ws-trace-ctrl" :disabled="playback.atEnd.value && !isPlaying" @click="playback.toggle()">
+            <component :is="isPlaying ? Pause : Play" :size="14" aria-hidden="true" />
+            <span>{{ isPlaying ? '暂停' : '播放' }}</span>
           </button>
-          <button type="button" class="ws-trace-ctrl" :disabled="playback.playhead === 0" @click="playback.stepBack()">
+          <button type="button" class="ws-trace-ctrl" :disabled="playheadIndex === 0" @click="playback.stepBack()">
             <SkipBack :size="14" aria-hidden="true" />
           </button>
           <button type="button" class="ws-trace-ctrl" :disabled="playback.atEnd.value" @click="playback.stepForward()">
@@ -221,13 +256,13 @@ const hasEvents = computed(() => allEvents.value.length > 0)
               <option v-for="s in TRACE_PLAYBACK_SPEEDS" :key="s" :value="s">{{ s }}x</option>
             </select>
           </label>
-          <span class="ws-trace-pos">#{{ playback.playhead }} / {{ Math.max(0, filteredEvents.length - 1) }}</span>
+          <span class="ws-trace-pos">#{{ playheadIndex }} / {{ Math.max(0, filteredEvents.length - 1) }}</span>
         </div>
       </header>
 
       <div class="ws-trace-body">
-        <TraceTrapView v-if="view === 'trap'" :events="filteredEvents" :playhead="playback.playhead.value" @select="onSelect" />
-        <TraceTimelineView v-else :events="filteredEvents" :playhead="playback.playhead.value" @select="onSelect" />
+        <TraceTrapView v-if="view === 'trap'" :events="filteredEvents" :playhead="playheadIndex" @select="onSelect" />
+        <TraceTimelineView v-else :events="filteredEvents" :playhead="playheadIndex" @select="onSelect" />
       </div>
 
       <footer v-if="currentEvent" class="ws-trace-detail">
@@ -257,10 +292,15 @@ const hasEvents = computed(() => allEvents.value.length > 0)
         </div>
       </footer>
 
-      <details class="ws-trace-list-wrap">
+      <details class="ws-trace-list-wrap" open>
         <summary>事件列表（{{ filteredEvents.length }}）</summary>
-        <ol class="ws-trace-list">
-          <li v-for="(event, index) in listEvents" :key="event.seq" :class="{ active: index === playback.playhead.value }">
+        <ol ref="eventListRef" class="ws-trace-list">
+          <li
+            v-for="(event, index) in listEvents"
+            :key="event.seq"
+            :data-event-index="index"
+            :class="{ active: index === playheadIndex }"
+          >
             <button type="button" @click="onSelect(index)">
               <span class="ws-trace-list-seq">#{{ event.seq }}</span>
               <span class="ws-trace-list-type">{{ event.type }}</span>
@@ -281,7 +321,19 @@ const hasEvents = computed(() => allEvents.value.length > 0)
 
 <style scoped>
 .ws-trace-viewer { display: flex; flex-direction: column; min-height: 0; height: 100%; font-size: var(--ws-text-xs); }
-.ws-trace-empty { display: flex; flex-direction: column; align-items: center; gap: var(--ws-space-2); margin: auto; max-width: 36ch; padding: var(--ws-space-3); color: var(--ws-ink-faint); text-align: center; line-height: var(--ws-leading-normal); }
+.ws-trace-intro {
+  flex: 0 0 auto;
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border-bottom: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
+}
+.ws-trace-intro strong { color: var(--ws-ink); font-size: var(--ws-text-sm); }
+.ws-trace-intro p {
+  margin: var(--ws-space-1) 0 0;
+  color: var(--ws-ink-muted);
+  line-height: var(--ws-leading-normal);
+}
+.ws-trace-empty { display: flex; flex-direction: column; align-items: center; gap: var(--ws-space-2); margin: auto; max-width: 44ch; padding: var(--ws-space-3); color: var(--ws-ink-faint); text-align: center; line-height: var(--ws-leading-normal); }
 .ws-trace-empty strong { color: var(--ws-ink); font-size: var(--ws-text-sm); }
 .ws-trace-note { margin: 0; color: var(--ws-ink-muted); }
 .ws-trace-note code { font-family: var(--ws-font-mono); }

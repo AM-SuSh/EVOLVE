@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Check, Copy, FilePlus2, Play, RotateCcw, Square } from 'lucide-vue-next'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { Check, Copy, FilePlus2, HelpCircle, RotateCcw, Square, SquareTerminal } from 'lucide-vue-next'
 import { authHeaders, type TutorLab } from '../tutor-model'
 import XtermOutput from './XtermOutput.vue'
 
@@ -33,12 +33,16 @@ const emit = defineEmits<{
   (event: 'run-finished', payload: RunFinishedPayload): void
   /** 运行结束（含手动停止），用于关联 trace / Problems。 */
   (event: 'run-exit', runId: string): void
+  /** 运行结束时附带的编译诊断（若有），供立即切换 Problems。 */
+  (event: 'run-diagnostics', payload: { runId: string; diagnostics: unknown[] }): void
   /** 学生把本次输出插进实验报告的「过程记录」。 */
   (event: 'insert-report', text: string): void
 }>()
 
 const command = ref('')
+const inputBuffer = ref('')
 const running = ref(false)
+const showHelp = ref(false)
 const output = ref('')
 const exitInfo = ref<{
   code: number
@@ -58,10 +62,61 @@ const lastRunCommand = ref('')
 const xtermRef = ref<InstanceType<typeof XtermOutput> | null>(null)
 let copyStateTimer = 0
 
+/** 本 Lab 推荐的验证命令，作为终端输入行的 ghost text（虚写提示）。 */
+const recommendedCommand = computed(() => props.lab.verificationCommand)
+
+/** 本 Lab 常用推荐指令库（命令字符串列表），供上下方向键循环选用。 */
+const commandLibrary = computed(() => {
+  const cmds = props.lab.commands
+  if (cmds && cmds.length) return cmds.map((c) => c.command)
+  return [props.lab.verificationCommand]
+})
+
+/** 历史浏览指针：-1 表示处于实时输入（未在指令库中浏览）。 */
+const histIdx = ref(-1)
+let liveBuffer = ''
+
+function historyUp() {
+  const lib = commandLibrary.value
+  if (!lib.length) return
+  if (histIdx.value === -1) {
+    liveBuffer = inputBuffer.value
+    histIdx.value = lib.length - 1
+  } else {
+    histIdx.value = Math.max(0, histIdx.value - 1)
+  }
+  inputBuffer.value = lib[histIdx.value]
+  renderPrompt()
+}
+
+function historyDown() {
+  if (histIdx.value === -1) return
+  const lib = commandLibrary.value
+  histIdx.value += 1
+  if (histIdx.value >= lib.length) {
+    histIdx.value = -1
+    inputBuffer.value = liveBuffer
+  } else {
+    inputBuffer.value = lib[histIdx.value]
+  }
+  renderPrompt()
+}
+
+/**
+ * 终端输入行的虚写提示：当用户尚未输入、或输入内容仍是推荐命令的前缀时，
+ * 显示推荐命令的剩余部分；一旦输入偏离推荐命令即消失。
+ */
+const ghostText = computed(() => {
+  const rec = recommendedCommand.value
+  const buf = inputBuffer.value
+  if (!rec || buf.includes('\n')) return ''
+  return rec.startsWith(buf) ? rec.slice(buf.length) : ''
+})
+
 const statusLabel = computed(() => {
   if (running.value) return stepTitle.value ? `运行中 · ${stepTitle.value}` : '运行中…'
   if (errorText.value) return errorText.value
-  if (!exitInfo.value) return '可直接编辑命令，或从左侧手册复制后粘贴；支持多行按顺序执行'
+  if (!exitInfo.value) return ''
   if (exitInfo.value.stopped === 'timeout') return '已超时终止'
   if (exitInfo.value.stopped) return '已手动停止'
   if (exitInfo.value.verified) return '可信验证通过，已自动记录为验证证据'
@@ -70,23 +125,113 @@ const statusLabel = computed(() => {
   return `运行结束（退出码 ${exitInfo.value.code}）`
 })
 
+/** 重绘当前输入行：清行后写出 `$ ` + 已输入内容 + 灰色 ghost 提示。 */
+function renderPrompt() {
+  const term = xtermRef.value
+  if (!term) return
+  const buf = inputBuffer.value
+  const ghost = ghostText.value
+  // `$ ` 用青色作 prompt 标识；用户输入用默认前景色；ghost 用斜体浅灰虚写。
+  let line = `\r\x1b[2K\x1b[36m$ \x1b[39m${buf}`
+  if (ghost) {
+    line += `\x1b[3m\x1b[38;5;245m${ghost}\x1b[23m\x1b[39m\x1b[${ghost.length}D`
+  }
+  term.write(line)
+}
+
+/** 把文本同时写入 xterm 与输出缓冲（输出缓冲用于复制/插入报告）。 */
+function writeTerm(text: string) {
+  output.value += text
+  xtermRef.value?.write(text)
+}
+
+function handleData(data: string) {
+  if (running.value) {
+    // 运行中只响应 Ctrl+C 停止
+    if (data === '\x03') void stop()
+    return
+  }
+  // 方向键：上下在指令库中循环，左右忽略（不支持行内光标移动）
+  if (data === '\x1b[A') {
+    historyUp()
+    return
+  }
+  if (data === '\x1b[B') {
+    historyDown()
+    return
+  }
+  for (const ch of data) {
+    const code = ch.charCodeAt(0)
+    if (ch === '\r' || ch === '\n') {
+      const cmd = inputBuffer.value
+      xtermRef.value?.write('\r\n')
+      inputBuffer.value = ''
+      histIdx.value = -1
+      if (cmd.trim()) {
+        command.value = cmd
+        void run()
+      } else {
+        renderPrompt()
+      }
+      return
+    }
+    if (code === 9) {
+      // Tab：一键补全剩余推荐命令（ghost text）
+      const ghost = ghostText.value
+      if (ghost) {
+        inputBuffer.value += ghost
+        renderPrompt()
+      }
+      continue
+    }
+    if (code === 127) {
+      // 退格
+      if (inputBuffer.value.length > 0) {
+        inputBuffer.value = inputBuffer.value.slice(0, -1)
+        renderPrompt()
+      }
+      continue
+    }
+    if (code === 3) {
+      // Ctrl+C：清空当前行
+      inputBuffer.value = ''
+      xtermRef.value?.write('\r\n')
+      renderPrompt()
+      continue
+    }
+    if (code >= 32) {
+      inputBuffer.value += ch
+      renderPrompt()
+    }
+  }
+}
+
 function resetCommand() {
+  inputBuffer.value = props.lab.verificationCommand
   command.value = props.lab.verificationCommand
+  histIdx.value = -1
+  renderPrompt()
 }
 
 watch(() => props.lab.id, () => {
-  resetCommand()
+  inputBuffer.value = ''
+  command.value = ''
   output.value = ''
   exitInfo.value = null
   inserted.value = false
   copyState.value = 'idle'
   errorText.value = ''
   lastRunCommand.value = ''
-}, { immediate: true })
+  histIdx.value = -1
+  xtermRef.value?.clear()
+  renderPrompt()
+})
 
-function appendOutput(text: string) {
-  output.value += text
-}
+onMounted(() => {
+  xtermRef.value?.onData(handleData)
+  renderPrompt()
+  xtermRef.value?.focus()
+})
 
 async function scrollToBottom() {
   await nextTick()
@@ -139,7 +284,6 @@ async function copyLatestOutput() {
 async function run() {
   if (running.value) return
   running.value = true
-  output.value = ''
   exitInfo.value = null
   inserted.value = false
   copyState.value = 'idle'
@@ -147,6 +291,9 @@ async function run() {
   stepTitle.value = ''
   const runCommand = command.value.trim()
   lastRunCommand.value = runCommand
+  // 保留历史输出：只追加分隔线，不再 clear 整屏。
+  writeTerm(`\r\n\x1b[90m──── ${new Date().toLocaleTimeString()} · ${runCommand} ────\x1b[0m\r\n`)
+  output.value = ''
 
   try {
     const trustedPreset = runCommand === props.lab.verificationCommand.trim()
@@ -188,6 +335,9 @@ async function run() {
           recipeId?: string | null
           trusted?: boolean
           assertions?: RunAssertion[]
+          diagnostics?: unknown[]
+          diagnosticCount?: number
+          traceCount?: number
         }
         try {
           frame = JSON.parse(line.slice(5).trim())
@@ -196,9 +346,9 @@ async function run() {
         }
         if (frame.type === 'step') {
           stepTitle.value = frame.title || ''
-          appendOutput(`$ ${frame.title}\n`)
+          writeTerm(`$ ${frame.title}\n`)
         }
-        if (frame.type === 'output' && frame.text) appendOutput(frame.text)
+        if (frame.type === 'output' && frame.text) writeTerm(frame.text)
         if (frame.type === 'exit') {
           exitInfo.value = {
             code: frame.code ?? -1,
@@ -211,10 +361,19 @@ async function run() {
             stopped: frame.stopped,
           }
           if (frame.runId) emit('run-exit', frame.runId)
+          if (frame.runId && Array.isArray(frame.diagnostics) && frame.diagnostics.length > 0) {
+            emit('run-diagnostics', { runId: frame.runId, diagnostics: frame.diagnostics })
+          }
+          if (typeof frame.traceCount === 'number' && frame.traceCount > 0) {
+            writeTerm(`\r\n\x1b[36m[Trace] 采集到 ${frame.traceCount} 条事件，可在右侧学习支持 → Trace 查看\x1b[0m\n`)
+          }
+          if (typeof frame.diagnosticCount === 'number' && frame.diagnosticCount > 0) {
+            writeTerm(`\r\n\x1b[33m[Problems] 采集到 ${frame.diagnosticCount} 条编译诊断，已切换到底部 Problems\x1b[0m\n`)
+          }
           if (frame.stopped === 'timeout') {
-            appendOutput('\r\n\x1b[33m[已超时终止]\x1b[0m\n')
+            writeTerm('\r\n\x1b[33m[已超时终止]\x1b[0m\n')
           } else if (frame.stopped) {
-            appendOutput('\r\n\x1b[33m[已手动停止]\x1b[0m\n')
+            writeTerm('\r\n\x1b[33m[已手动停止]\x1b[0m\n')
           }
         }
       }
@@ -235,17 +394,19 @@ async function run() {
       error instanceof Error && error.message
         ? error.message
         : '无法连接导师服务：先在 os-lab/handbook 运行 npm run tutor'
+    writeTerm(`\x1b[31m${errorText.value}\x1b[0m\n`)
   } finally {
     running.value = false
     stepTitle.value = ''
     scrollToBottom()
+    renderPrompt()
   }
 }
 
 async function stop() {
   try {
     await fetch(apiUrl(`/run/stop`), { method: 'POST', headers: authHeaders() })
-    appendOutput('\r\n\x1b[33m[正在停止…]\x1b[0m\n')
+    writeTerm('\r\n\x1b[33m[正在停止…]\x1b[0m\n')
   } catch {
     // 服务不在时无事可停。
   }
@@ -256,13 +417,6 @@ function insertReport() {
   inserted.value = true
 }
 
-function onKeydown(event: KeyboardEvent) {
-  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-    event.preventDefault()
-    run()
-  }
-}
-
 onBeforeUnmount(() => {
   window.clearTimeout(copyStateTimer)
   if (running.value) void stop()
@@ -271,38 +425,61 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="ws-terminal" aria-label="当前实验运行与验证">
-    <header class="ws-terminal-head">
-      <label class="ws-visually-hidden" for="ws-terminal-input">要运行的命令</label>
-      <textarea
-        id="ws-terminal-input"
-        v-model="command"
-        class="ws-terminal-input"
-        rows="1"
-        spellcheck="false"
-        placeholder="输入或粘贴命令（cargo / make / qemu-system-riscv64…），Ctrl+Enter 运行"
-        @keydown="onKeydown"
-      />
-      <button
-        type="button"
-        class="ws-terminal-icon"
-        title="恢复本 Lab 默认验证命令"
-        aria-label="恢复默认命令"
-        @click="resetCommand"
-      >
-        <RotateCcw :size="14" aria-hidden="true" />
-      </button>
-      <button v-if="!running" type="button" class="ws-terminal-run" :disabled="!command.trim()" @click="run">
-        <Play :size="14" aria-hidden="true" /><span>运行</span>
-      </button>
-      <button v-else type="button" class="ws-terminal-stop" @click="stop">
-        <Square :size="13" aria-hidden="true" /><span>停止</span>
-      </button>
-    </header>
+    <p v-if="statusLabel" class="ws-terminal-status" :data-ok="exitInfo?.ok">{{ statusLabel }}</p>
 
-    <p class="ws-terminal-status" :data-ok="exitInfo?.ok">{{ statusLabel }}</p>
+    <div class="ws-terminal-stage">
+      <XtermOutput ref="xtermRef" :dark="dark" interactive />
+      <div class="ws-terminal-controls">
+        <button
+          v-if="!running"
+          type="button"
+          class="ws-term-ctrl"
+          title="恢复本 Lab 默认验证命令"
+          aria-label="恢复默认命令"
+          @click="resetCommand"
+        >
+          <RotateCcw :size="13" aria-hidden="true" />
+        </button>
+        <button
+          v-else
+          type="button"
+          class="ws-term-ctrl ws-term-ctrl--stop"
+          title="停止运行"
+          aria-label="停止运行"
+          @click="stop"
+        >
+          <Square :size="12" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          class="ws-term-ctrl"
+          :class="{ 'ws-term-ctrl--active': showHelp }"
+          title="终端快捷键说明"
+          aria-label="终端快捷键说明"
+          @click="showHelp = !showHelp"
+        >
+          <HelpCircle :size="13" aria-hidden="true" />
+        </button>
+      </div>
 
-    <XtermOutput ref="xtermRef" :content="output" :dark="dark" />
-    <p v-if="!output && !running" class="ws-terminal-hint-overlay">点击「运行」在当前账号的实验工作区执行命令，输出会实时显示在这里。</p>
+      <div v-if="showHelp" class="ws-terminal-help-backdrop" @click="showHelp = false" />
+      <div v-if="showHelp" class="ws-terminal-help" role="dialog" aria-label="终端快捷键说明" @click.stop>
+        <div class="ws-terminal-help-head">
+          <span>终端快捷操作</span>
+          <button type="button" class="ws-terminal-help-close" aria-label="关闭" @click="showHelp = false">×</button>
+        </div>
+        <dl class="ws-terminal-help-list">
+          <div><dt><kbd>↑</kbd> / <kbd>↓</kbd></dt><dd>循环切换本 Lab 常用命令</dd></div>
+          <div><dt><kbd>Tab</kbd></dt><dd>一键补全推荐命令（虚写部分）</dd></div>
+          <div><dt><kbd>Enter</kbd></dt><dd>运行当前命令</dd></div>
+          <div><dt><kbd>Ctrl</kbd>+<kbd>C</kbd></dt><dd>有选中文本则复制；否则清空当前行 / 停止运行</dd></div>
+          <div><dt><kbd>Ctrl</kbd>+<kbd>V</kbd></dt><dd>粘贴到当前输入行</dd></div>
+          <div><dt>⟲ 图标</dt><dd>恢复本 Lab 默认验证命令</dd></div>
+          <div><dt><SquareTerminal :size="12" aria-hidden="true" /> 图标</dt><dd>代码工具栏：显示/隐藏底部面板（终端 / Problems / 测试结果）</dd></div>
+          <div><dt>⛶ 图标</dt><dd>底部面板标题栏：铺满 / 恢复页面</dd></div>
+        </dl>
+      </div>
+    </div>
 
     <footer v-if="exitInfo" class="ws-terminal-foot">
       <button
@@ -335,91 +512,148 @@ onBeforeUnmount(() => {
 
 .ws-terminal {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
-  background: var(--ws-surface);
+  background: var(--ws-surface-soft, var(--ws-surface-alt));
   position: relative;
 }
 
-.ws-terminal-head {
+.ws-terminal-stage {
+  position: relative;
   display: flex;
-  align-items: stretch;
-  gap: var(--ws-space-2);
-  padding: var(--ws-space-2) var(--ws-space-3);
-  border-bottom: 1px solid var(--ws-line);
-  background: var(--ws-surface-alt);
-}
-
-.ws-terminal-input {
-  flex: 1 1 auto;
+  min-height: 0;
   min-width: 0;
-  min-height: var(--ws-control-md);
-  padding: var(--ws-space-1) var(--ws-space-2);
-  color: var(--ws-ink);
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-md);
-  background: var(--ws-surface);
-  font-family: var(--ws-font-mono);
-  font-size: var(--ws-text-xs);
-  line-height: 1.6;
-  resize: vertical;
+  overflow: hidden;
 }
 
-.ws-terminal-input:focus {
-  border-color: var(--ws-accent);
-  outline: none;
+.ws-terminal-stage :deep(.ws-xterm-host) {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
 }
 
-.ws-terminal-icon {
+.ws-terminal-controls {
+  position: absolute;
+  top: var(--ws-space-1);
+  right: var(--ws-space-2);
+  z-index: 2;
+  display: flex;
+  gap: var(--ws-space-1);
+}
+
+.ws-term-ctrl {
   display: grid;
-  flex: 0 0 auto;
-  width: var(--ws-control-md);
+  place-items: center;
+  width: var(--ws-control-sm);
+  height: var(--ws-control-sm);
+  padding: 0;
   color: var(--ws-ink-muted);
   border: 1px solid var(--ws-line);
   border-radius: var(--ws-radius-md);
   background: var(--ws-surface);
-  place-items: center;
   cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
 }
 
-.ws-terminal-icon:hover {
+.ws-term-ctrl:hover {
   color: var(--ws-accent);
   border-color: var(--ws-accent);
 }
 
-.ws-terminal-run,
-.ws-terminal-stop {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: var(--ws-space-1);
-  padding: var(--ws-space-1) var(--ws-space-3);
-  border: 0;
-  border-radius: var(--ws-radius-md);
-  font: inherit;
-  font-size: var(--ws-text-sm);
-  font-weight: var(--ws-weight-semibold);
-  cursor: pointer;
+.ws-term-ctrl--stop {
+  color: var(--ws-danger, #c0392b);
+  border-color: var(--ws-danger, #c0392b);
 }
 
-.ws-terminal-run {
-  color: var(--ws-accent-contrast);
-  background: var(--ws-accent);
-}
-
-.ws-terminal-run:hover:not(:disabled) {
-  background: var(--ws-accent-hover);
-}
-
-.ws-terminal-run:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.ws-terminal-stop {
+.ws-term-ctrl--stop:hover {
   color: var(--ws-accent-contrast);
   background: var(--ws-danger, #c0392b);
+}
+
+.ws-term-ctrl--active {
+  color: var(--ws-accent);
+  border-color: var(--ws-accent);
+}
+
+.ws-terminal-help-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+}
+
+.ws-terminal-help {
+  position: absolute;
+  top: calc(var(--ws-control-sm) + var(--ws-space-2));
+  right: var(--ws-space-2);
+  z-index: 5;
+  width: min(320px, calc(100% - var(--ws-space-3)));
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  font-size: var(--ws-text-xs);
+  color: var(--ws-ink);
+}
+
+.ws-terminal-help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--ws-space-2);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-terminal-help-close {
+  border: 0;
+  background: transparent;
+  color: var(--ws-ink-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 var(--ws-space-1);
+}
+
+.ws-terminal-help-close:hover {
+  color: var(--ws-ink);
+}
+
+.ws-terminal-help-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ws-space-1);
+}
+
+.ws-terminal-help-list > div {
+  display: flex;
+  gap: var(--ws-space-2);
+  align-items: baseline;
+}
+
+.ws-terminal-help-list dt {
+  flex: 0 0 auto;
+  min-width: 92px;
+  color: var(--ws-ink-muted);
+}
+
+.ws-terminal-help-list dd {
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+.ws-terminal-help kbd {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm, 4px);
+  background: var(--ws-surface-alt);
+  font-family: var(--ws-font-mono);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .ws-terminal-status {
@@ -435,15 +669,6 @@ onBeforeUnmount(() => {
 
 .ws-terminal-status[data-ok='false'] {
   color: var(--ws-danger, #c0392b);
-}
-
-.ws-terminal-hint-overlay {
-  position: absolute;
-  inset: auto var(--ws-space-3) var(--ws-space-6);
-  margin: 0;
-  color: var(--ws-ink-faint);
-  font-size: var(--ws-text-xs);
-  pointer-events: none;
 }
 
 .ws-terminal-foot {
