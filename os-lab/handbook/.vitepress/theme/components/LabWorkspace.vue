@@ -1599,7 +1599,8 @@ onBeforeUnmount(() => {
 
       <!-- 右栏（教师）：整栏就是作业发布面板，没有终端/代码 -->
       <div
-        v-if="isTeacherRole && !teacherEditing"
+        v-if="isTeacherRole"
+        v-show="!teacherEditing"
         class="ws-right ws-right-teacher"
         :class="{ 'ws-mobile-hidden': isMobileLayout && mobileView !== 'practice' }"
       >
