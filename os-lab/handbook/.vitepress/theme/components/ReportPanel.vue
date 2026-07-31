@@ -2400,12 +2400,53 @@ const modeLabel = computed(() =>
   top: 0;
   z-index: 4;
   flex-wrap: wrap;
+  gap: var(--ws-space-2);
   padding: 6px 8px;
   background: color-mix(in srgb, var(--ws-surface) 94%, transparent);
   backdrop-filter: blur(10px);
 }
 
-.ws-report-view-tabs,
+.ws-report-view-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.ws-report-view-tabs button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  color: var(--ws-ink-muted);
+  white-space: nowrap;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-surface);
+  font: inherit;
+  font-size: var(--ws-text-xs);
+  cursor: pointer;
+}
+
+.ws-report-view-tabs button:hover {
+  color: var(--ws-ink);
+  border-color: var(--ws-ink-muted);
+}
+
+.ws-report-view-tabs button:focus-visible {
+  outline: 2px solid var(--ws-accent);
+  outline-offset: 2px;
+}
+
+.ws-report-view-tabs button.active {
+  color: var(--ws-accent);
+  border-color: var(--ws-accent);
+  background: var(--ws-accent-soft);
+}
+
 .ws-report-format-tools {
   display: flex;
   align-items: center;
