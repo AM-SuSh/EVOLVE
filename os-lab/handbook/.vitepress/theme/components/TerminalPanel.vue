@@ -589,7 +589,9 @@ onBeforeUnmount(() => {
   top: calc(var(--ws-control-sm) + var(--ws-space-2));
   right: var(--ws-space-2);
   z-index: 5;
-  width: min(320px, calc(100% - var(--ws-space-3)));
+  width: min(420px, calc(100% - var(--ws-space-4)));
+  max-height: calc(100% - var(--ws-control-sm) - var(--ws-space-4));
+  box-sizing: border-box;
   padding: var(--ws-space-2) var(--ws-space-3);
   border: 1px solid var(--ws-line);
   border-radius: var(--ws-radius-md);
@@ -597,6 +599,7 @@ onBeforeUnmount(() => {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
   font-size: var(--ws-text-xs);
   color: var(--ws-ink);
+  overflow-y: auto;
 }
 
 .ws-terminal-help-head {
@@ -642,7 +645,9 @@ onBeforeUnmount(() => {
 
 .ws-terminal-help-list dd {
   margin: 0;
+  min-width: 0;
   flex: 1 1 auto;
+  overflow-wrap: anywhere;
 }
 
 .ws-terminal-help kbd {
