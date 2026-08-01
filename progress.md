@@ -2995,3 +2995,45 @@
 - 与前一条边界变化：本轮**已改** `tutor-server.mjs` 与诊断解析；底部从「仅终端」升级为多 Tab dock。
 - 本轮未提交/未推送（与既往惯例一致）；前一条终端 VSCode 化已有本地 commit `3688d22`。
 
+## 2026-08-02 · 工作台「添加到对话」+ 清理临时调度探针
+
+### Summary
+
+删除测 `run:` 点击用的临时调度文件；在手册 / 工作区 / 终端 / Problems / 测试结果 / Trace 增加「添加到对话」，内容以附件 chips 进入 AI 导师输入区，发送时一并提交。
+
+### Changes
+
+- **临时文件清理**：移除 `tmp_lab2_scheduler.rs`；`task.rs` 的 `find_next_task` 保持 `todo!("Lab2：…")`。
+- **附件模型**：新增 `chat-attachments.ts`（来源标签、截断、拼装格式）；`TutorPane` 展示可移除 chips；有附件即可发送。
+- **各面板入口**：`CodePanel` / `TerminalSession` / `ProblemsPanel` / 测试结果区 / `ManualPane` / `TraceViewer` 发出 `add-to-chat`；`LabWorkspace.addToChat` 累积附件、切到导师页签并 toast。
+- **文档**：`workbench-ui.md` 增补「添加到对话」说明。
+
+### Testing
+
+- 刷新手册后，各面板点「添加到对话」→ 右栏 AI 导师出现附件 chip；填写问题或仅附件发送 → 消息含 `【来源 · 标题】` 代码块。
+- 确认 stu 工作区无 `tmp_lab2_scheduler.rs`。
+
+### Notes
+
+- 主要文件：`chat-attachments.ts`、`TutorPane.vue`、`LabWorkspace.vue`、`CodePanel.vue`、`MonacoEditor.vue`、`TerminalPanel.vue`、`TerminalSession.vue`、`ProblemsPanel.vue`、`ManualPane.vue`、`TraceViewer.vue`、`docs/workbench-ui.md`、`progress.md`。
+- 未自动发送：需学生点发送，便于先改问题再附证据。
+
+## 2026-08-02 · 添加到对话：可选范围 + 点击溯源
+
+### Summary
+
+终端对齐工作区「选区优先」；测试结果支持单条断言；待发/已发附件 chip 可点击跳回源面板。
+
+### Changes
+
+- **终端**：有 xterm 选区则只附选区，否则附本次全文；标题标明「选区/全文」。
+- **测试结果**：每条断言旁可单独「添加到对话」；全部入口仍保留。
+- **溯源**：附件带 `origin`；点 chip → 工作区行 / 终端 / Problems / 测试 / 手册章节 / Trace `#seq`。
+- **已发送气泡**：保留可点附件 chips，正文只展示学生原问题（完整拼装仍发给导师）。
+
+### Testing
+
+- 终端拖选几行再「添加到对话」→ chip 标题含「选区」；点 chip 回终端。
+- 测试结果点单条旁图标 → 只附一条；发送后点气泡 chip 回测试页签。
+- 工作区/手册/Problems/Trace 附件同样可点溯源。
+

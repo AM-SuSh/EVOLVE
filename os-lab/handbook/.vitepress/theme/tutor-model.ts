@@ -73,6 +73,23 @@ export interface TutorMessage {
   gate?: string
   evidenceRefs?: string[]
   refused?: boolean
+  /** 学生消息附带的工作台附件（可点击溯源；正文 content 仍含拼装后的全文给导师）。 */
+  chatAttachments?: Array<{
+    id: string
+    source: 'code' | 'terminal' | 'problems' | 'tests' | 'manual' | 'trace'
+    title: string
+    body: string
+    origin?: {
+      path?: string
+      line?: number
+      runId?: string
+      assertionId?: string
+      h2?: string
+      h3?: string
+      seq?: number
+      scope?: 'selection' | 'full' | 'context' | 'single' | 'all'
+    }
+  }>
 }
 
 /** 服务端 decideTutorTurn 回传字段（成员 C · Day2 契约）。 */

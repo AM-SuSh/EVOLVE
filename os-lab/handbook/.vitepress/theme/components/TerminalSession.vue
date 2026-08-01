@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Check, Copy, FilePlus2, HelpCircle, RotateCcw, Square, SquareTerminal } from 'lucide-vue-next'
+import { Check, Copy, FilePlus2, HelpCircle, MessageSquarePlus, RotateCcw, Square, SquareTerminal } from 'lucide-vue-next'
 import { authHeaders, type TutorLab } from '../tutor-model'
 import XtermOutput from './XtermOutput.vue'
 
@@ -38,6 +38,13 @@ const emit = defineEmits<{
   (event: 'run-diagnostics', payload: { runId: string; diagnostics: unknown[] }): void
   /** 学生把本次输出插进实验报告的「过程记录」。 */
   (event: 'insert-report', text: string): void
+  /** 把终端输出添加到 AI 导师对话（优先 xterm 选区，否则本次完整输出）。 */
+  (event: 'add-to-chat', payload: {
+    source: 'terminal'
+    title: string
+    body: string
+    origin?: { runId?: string; scope?: 'selection' | 'full' }
+  }): void
 }>()
 
 const command = ref('')
@@ -429,6 +436,22 @@ function insertReport() {
   inserted.value = true
 }
 
+function addOutputToChat() {
+  const selected = String(xtermRef.value?.getSelection?.() || '').trim()
+  const full = fullRunOutput().trim() || output.value.trim()
+  const body = selected || full
+  if (!body) return
+  const cmd = lastRunCommand.value || command.value.trim() || '终端输出'
+  const scope = selected ? ('selection' as const) : ('full' as const)
+  const title = `${scope === 'selection' ? '选区' : '全文'} · ${cmd}`.slice(0, 80)
+  emit('add-to-chat', {
+    source: 'terminal',
+    title,
+    body,
+    origin: { runId: exitInfo.value?.runId || undefined, scope },
+  })
+}
+
 onBeforeUnmount(() => {
   window.clearTimeout(copyStateTimer)
   if (running.value) void stop()
@@ -494,12 +517,14 @@ onBeforeUnmount(() => {
           <div><dt>+</dt><dd>会话栏「新开终端」（最多 4 个，互不影响滚动历史）</dd></div>
           <div><dt><SquareTerminal :size="12" aria-hidden="true" /> 图标</dt><dd>代码工具栏：显示/隐藏底部面板（终端 / Problems / 测试结果）</dd></div>
           <div><dt>⛶ 图标</dt><dd>底部面板标题栏：铺满 / 恢复页面</dd></div>
+          <div><dt>添加到对话</dt><dd>有选中文本则只附选区；否则附本次完整输出</dd></div>
         </dl>
       </div>
     </div>
 
-    <footer v-if="exitInfo" class="ws-terminal-foot">
+    <footer v-if="exitInfo || output" class="ws-terminal-foot">
       <button
+        v-if="exitInfo"
         type="button"
         :data-state="copyState"
         :title="copyState === 'failed' ? '复制失败，请重试' : '复制本次命令和完整终端输出'"
@@ -509,10 +534,17 @@ onBeforeUnmount(() => {
         <Copy v-else :size="14" aria-hidden="true" />
         {{ copyState === 'copied' ? '已复制' : copyState === 'failed' ? '复制失败' : '复制输出' }}
       </button>
-      <button v-if="!inserted" type="button" @click="insertReport">
+      <button
+        type="button"
+        title="添加到 AI 导师对话：有选中文本则只附选区，否则附本次完整输出（与工作区一致）"
+        @click="addOutputToChat"
+      >
+        <MessageSquarePlus :size="14" aria-hidden="true" />添加到对话
+      </button>
+      <button v-if="exitInfo && !inserted" type="button" @click="insertReport">
         <FilePlus2 :size="14" aria-hidden="true" />把输出插入实验报告
       </button>
-      <span v-else class="done">已插入实验报告的「过程记录」。</span>
+      <span v-else-if="exitInfo && inserted" class="done">已插入实验报告的「过程记录」。</span>
     </footer>
   </section>
 </template>

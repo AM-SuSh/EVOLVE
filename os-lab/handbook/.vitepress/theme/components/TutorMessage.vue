@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ShieldAlert } from 'lucide-vue-next'
+import { chatSourceLabels, studentQuestionFromChat, type ChatAttachment } from '../chat-attachments'
 import {
   categoryLabels,
   describeTutorHintLevel,
@@ -15,11 +16,18 @@ const props = defineProps<{ message: TutorMessage; streaming?: boolean }>()
 
 const emit = defineEmits<{
   (event: 'open-evidence', ref: string): void
+  (event: 'open-attachment', item: ChatAttachment): void
 }>()
 
 const copied = ref(false)
 const isAssistant = computed(() => props.message.role === 'assistant')
-const html = computed(() => renderTutorMarkdown(props.message.content))
+const attached = computed(() => props.message.chatAttachments || [])
+/** 学生消息若带附件，气泡只显示原问题；完整拼装正文仍在 content 里发给导师。 */
+const displayContent = computed(() => {
+  if (isAssistant.value || !attached.value.length) return props.message.content
+  return studentQuestionFromChat(props.message.content) || '（已附带工作台内容）'
+})
+const html = computed(() => renderTutorMarkdown(displayContent.value))
 const hintLabel = computed(() => describeTutorHintLevel(props.message.hintLevel))
 const hintTitle = computed(() => tutorHintDetail(props.message.hintLevel))
 const refused = computed(() => Boolean(props.message.refused || props.message.guardrail))
@@ -76,6 +84,19 @@ async function onBodyClick(event: MouseEvent) {
         </span>
       </div>
       <div class="ws-message-content" :class="{ streaming }" @click="onBodyClick" v-html="html" />
+      <div v-if="attached.length" class="ws-message-attachments" aria-label="已附带的工作台内容">
+        <button
+          v-for="item in attached"
+          :key="item.id"
+          type="button"
+          class="ws-message-attachment"
+          :title="`点击溯源：${chatSourceLabels[item.source]} · ${item.title}`"
+          @click="emit('open-attachment', item as ChatAttachment)"
+        >
+          <span>{{ chatSourceLabels[item.source] }}</span>
+          <strong>{{ item.title }}</strong>
+        </button>
+      </div>
       <div v-if="chips.length" class="ws-message-refs" aria-label="证据引用">
         <button
           v-for="chip in chips"
@@ -173,6 +194,50 @@ async function onBodyClick(event: MouseEvent) {
   font-size: var(--ws-text-base);
   line-height: var(--ws-leading-relaxed);
   overflow-wrap: anywhere;
+}
+
+.ws-message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ws-space-1);
+  margin-top: var(--ws-space-2);
+}
+
+.ws-message-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 2px 8px;
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-surface);
+  font: inherit;
+  font-size: var(--ws-text-xs);
+  cursor: pointer;
+}
+
+.ws-message-attachment span {
+  color: var(--ws-accent);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-message-attachment strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ws-ink);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-message-attachment:hover,
+.ws-message-attachment:focus-visible {
+  color: var(--ws-ink);
+  border-color: var(--ws-accent);
+  background: var(--ws-accent-soft);
 }
 
 .ws-message-refs {

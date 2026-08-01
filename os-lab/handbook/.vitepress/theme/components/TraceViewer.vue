@@ -12,7 +12,7 @@
  * 与成员 C 契约：接口未就绪时 unavailable=true，文案明确「查询接口尚未返回真实事件」。
  */
 import { computed, nextTick, ref, watch } from 'vue'
-import { GitBranch, Play, Pause, SkipForward, SkipBack, RotateCcw, Code2, FileText } from 'lucide-vue-next'
+import { GitBranch, Play, Pause, SkipForward, SkipBack, RotateCcw, Code2, FileText, MessageSquarePlus } from 'lucide-vue-next'
 import { authHeaders } from '../tutor-model'
 import {
   useTracePlayback,
@@ -38,6 +38,12 @@ const emit = defineEmits<{
   (event: 'jump', payload: { path: string; line: number }): void
   (event: 'insert-report', text: string): void
   (event: 'trace-inspected', payload: { runId: string; view: TraceView; eventRange: { start: number; end: number } }): void
+  (event: 'add-to-chat', payload: {
+    source: 'trace'
+    title: string
+    body: string
+    origin?: { runId?: string; seq?: number; path?: string; line?: number }
+  }): void
 }>()
 
 const allEvents = ref<TraceEvent[]>([])
@@ -130,9 +136,13 @@ function onSelect(index: number) {
   playback.seek(index)
 }
 
-/** 供导师证据引用跳转：定位到指定事件下标（无事件时为 no-op）。 */
+/** 供导师证据引用跳转：定位到指定事件下标 / seq（无事件时为 no-op）。 */
 defineExpose({
   seek: (index: number) => playback.seek(index),
+  seekSeq: (seq: number) => {
+    const index = filteredEvents.value.findIndex((item) => item.seq === seq)
+    if (index >= 0) playback.seek(index)
+  },
 })
 
 function onJumpSource() {
@@ -145,6 +155,23 @@ function onInsertReport() {
   const event = currentEvent.value
   if (!event) return
   emit('insert-report', formatTraceEvidence(event))
+}
+
+function onAddToChat() {
+  const event = currentEvent.value
+  if (!event) return
+  const anchor = sourceAnchorFor(event)
+  emit('add-to-chat', {
+    source: 'trace',
+    title: `#${event.seq} · ${event.type}`,
+    body: formatTraceEvidence(event),
+    origin: {
+      runId: props.runId || undefined,
+      seq: event.seq,
+      path: anchor.path,
+      line: anchor.line,
+    },
+  })
 }
 
 watch(playheadIndex, async (index) => {
@@ -293,6 +320,9 @@ const hasEvents = computed(() => allEvents.value.length > 0)
           </button>
           <button type="button" class="ws-trace-action" @click="onInsertReport">
             <FileText :size="14" aria-hidden="true" /> 插入报告
+          </button>
+          <button type="button" class="ws-trace-action" title="把当前事件添加到 AI 导师对话" @click="onAddToChat">
+            <MessageSquarePlus :size="14" aria-hidden="true" /> 添加到对话
           </button>
         </div>
       </footer>

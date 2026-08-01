@@ -50,7 +50,7 @@ const hasServerState = computed(() => Boolean(props.tutorState))
 <template>
   <div
     class="ws-evidence-bar"
-    role="status"
+    role="region"
     :aria-label="`导师证据：阶段 ${stageMeta.shortTitle}；${haveText}；下一步 ${nextText}`"
   >
     <div class="ws-evidence-cols">
@@ -70,11 +70,12 @@ const hasServerState = computed(() => Boolean(props.tutorState))
             class="ws-evidence-chip"
             :data-kind="chip.kind"
             :title="chip.kind === 'run' ? `打开 ${chip.ref}（有断言看测试结果，否则回终端）` : `打开 ${chip.ref}`"
-            @click="emit('open-evidence', chip.ref)"
+            @click.stop="emit('open-evidence', chip.ref)"
           >
             {{ chip.label }}
           </button>
         </div>
+        <p v-if="chips.length" class="ws-evidence-chip-hint">点击上方引用跳到对应面板</p>
       </div>
       <div class="ws-evidence-col ws-evidence-col--grow">
         <span class="ws-evidence-label">下一步所需</span>
@@ -181,6 +182,19 @@ const hasServerState = computed(() => Boolean(props.tutorState))
 .ws-evidence-chip:hover {
   border-color: var(--ws-accent);
   background: var(--ws-accent-soft);
+}
+
+.ws-evidence-chip:focus-visible {
+  outline: 2px solid var(--ws-accent);
+  outline-offset: 1px;
+}
+
+.ws-evidence-chip-hint {
+  margin: 2px 0 0;
+  color: var(--ws-ink-faint);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.3;
 }
 
 .ws-evidence-badges {

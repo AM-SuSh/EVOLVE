@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useData, useRouter, withBase } from 'vitepress'
-import { Blocks, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, Code2, LockKeyhole, Maximize2, MessagesSquare, Minimize2, Moon, PanelLeftClose, Play, Settings, Sun, UserRound } from 'lucide-vue-next'
+import { Blocks, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, Code2, LockKeyhole, Maximize2, MessageSquarePlus, MessagesSquare, Minimize2, Moon, PanelLeftClose, Play, Settings, Sun, UserRound } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
 import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
@@ -18,6 +18,15 @@ import {
   provideWorkspaceContext,
   type WorkspaceContext,
 } from '../composables/useWorkspaceContext'
+import {
+  CHAT_ATTACHMENT_MAX_COUNT,
+  chatSourceLabels,
+  clampChatBody,
+  formatChatWithAttachments,
+  type ChatAttachment,
+  type ChatAttachmentOrigin,
+  type ChatAttachmentSource,
+} from '../chat-attachments'
 import {
   appendEvent,
   buildLabJourney,
@@ -53,8 +62,12 @@ provideWorkspaceContext(workspaceContext)
 
 /** 代码区 ref：手册「源码引用」与 Problems 诊断点击都通过它跳转。 */
 const codePanelRef = ref<InstanceType<typeof CodePanel> | null>(null)
+const manualPaneRef = ref<InstanceType<typeof ManualPane> | null>(null)
 const problemsPanelRef = ref<InstanceType<typeof ProblemsPanel> | null>(null)
 const traceViewerRef = ref<InstanceType<typeof TraceViewer> | null>(null)
+const tutorPaneRef = ref<InstanceType<typeof TutorPane> | null>(null)
+/** 各面板「添加到对话」累积的附件，发送时一并交给导师。 */
+const chatAttachments = ref<ChatAttachment[]>([])
 
 const endpoint = String(
   import.meta.env.VITE_OS_LAB_TUTOR_ENDPOINT || 'http://127.0.0.1:8787',
@@ -1030,6 +1043,7 @@ function openingMessage() {
 function startSession() {
   activeStage.value = 'orient'
   lastTutorState.value = null
+  chatAttachments.value = []
   sessionId.value = createId(props.labId)
   messages.value = [
     {
@@ -1211,7 +1225,209 @@ async function requestReply(
   return { reply, guardrail, rule, tutorState }
 }
 
-async function sendMessage(text: string) {
+/** 工作台内容添加到 AI 导师对话（不立刻发送；与输入框内容一并提交）。 */
+function addToChat(payload: {
+  source: ChatAttachmentSource
+  title: string
+  body: string
+  origin?: ChatAttachmentOrigin
+}) {
+  const body = clampChatBody(payload.body)
+  if (!body) {
+    toast('没有可添加的内容')
+    return
+  }
+  if (chatAttachments.value.length >= CHAT_ATTACHMENT_MAX_COUNT) {
+    toast(`最多附带 ${CHAT_ATTACHMENT_MAX_COUNT} 段内容，请先移除再添加`)
+    return
+  }
+  const title = String(payload.title || chatSourceLabels[payload.source] || '附件').slice(0, 120)
+  chatAttachments.value = [
+    ...chatAttachments.value,
+    { id: createId('chat'), source: payload.source, title, body, origin: payload.origin },
+  ]
+  rightTab.value = 'tutor'
+  mobileView.value = 'practice'
+  panelOpen.value.terminal = true
+  persistPanels()
+  toast(`已添加到对话：${chatSourceLabels[payload.source]} · ${title}`)
+  void tutorPaneRef.value?.focusComposer?.()
+}
+
+function removeChatAttachment(id: string) {
+  chatAttachments.value = chatAttachments.value.filter((item) => item.id !== id)
+}
+
+/** 点击附件 chip：跳回对应面板/源码/章节。 */
+async function openChatAttachment(item: {
+  source: ChatAttachmentSource
+  title?: string
+  origin?: ChatAttachmentOrigin
+}) {
+  const source = item.source
+  const origin = item.origin || {}
+  panelOpen.value.terminal = true
+  persistPanels()
+
+  if (source === 'code') {
+    mobileView.value = 'practice'
+    if (origin.path) {
+      await codePanelRef.value?.openAtLine(origin.path, origin.line || 1)
+      toast(`已溯源到工作区 ${origin.path}${origin.line ? `:${origin.line}` : ''}`)
+    } else {
+      toast('已打开工作区')
+    }
+    return
+  }
+
+  if (source === 'terminal') {
+    mobileView.value = 'practice'
+    bottomTab.value = 'terminal'
+    terminalDockOpen.value = true
+    toast(origin.scope === 'selection' ? '已打开终端（附件来自选区）' : '已打开终端')
+    return
+  }
+
+  if (source === 'problems') {
+    mobileView.value = 'practice'
+    bottomTab.value = 'problems'
+    terminalDockOpen.value = true
+    if (origin.runId) lastRunId.value = origin.runId
+    if (origin.path) {
+      await codePanelRef.value?.openAtLine(origin.path, origin.line || 1)
+      toast(`已溯源到诊断 ${origin.path}${origin.line ? `:${origin.line}` : ''}`)
+    } else {
+      toast('已打开 Problems')
+    }
+    return
+  }
+
+  if (source === 'tests') {
+    mobileView.value = 'practice'
+    bottomTab.value = 'tests'
+    terminalDockOpen.value = true
+    if (origin.runId) {
+      lastRunId.value = origin.runId
+      const entry = runResultHistory.value.find(
+        (row) => row.runId === origin.runId || row.runId.startsWith(String(origin.runId)),
+      )
+      if (entry?.assertions.length) {
+        lastAssertions.value = entry.assertions
+        lastAssertionsRunId.value = entry.runId
+      }
+    }
+    toast(
+      origin.assertionId
+        ? `已打开测试结果 · ${origin.assertionId}`
+        : '已打开测试结果',
+    )
+    return
+  }
+
+  if (source === 'manual') {
+    mobileView.value = 'manual'
+    panelOpen.value.manual = true
+    persistPanels()
+    await nextTick()
+    manualPaneRef.value?.jumpToTitles?.(origin.h2, origin.h3)
+    toast(origin.h2 || origin.h3 ? `已溯源到手册「${[origin.h2, origin.h3].filter(Boolean).join(' / ')}」` : '已打开手册')
+    return
+  }
+
+  if (source === 'trace') {
+    mobileView.value = 'practice'
+    rightTab.value = 'trace'
+    if (origin.runId) lastRunId.value = origin.runId
+    await nextTick()
+    if (typeof origin.seq === 'number') {
+      traceViewerRef.value?.seekSeq?.(origin.seq)
+    } else {
+      traceViewerRef.value?.seek?.(0)
+    }
+    toast(typeof origin.seq === 'number' ? `已溯源到 Trace #${origin.seq}` : '已打开 Trace')
+  }
+}
+
+function formatAssertionsForChat(
+  assertions: RunAssertionItem[],
+  meta?: { runId?: string; verified?: boolean; stopped?: string },
+) {
+  const head = [
+    meta?.runId ? `run:${meta.runId}` : '',
+    meta?.stopped
+      ? `状态：已停止（${meta.stopped}）`
+      : meta?.verified != null
+        ? `状态：${meta.verified ? '已通过' : '未通过'}`
+        : '',
+  ].filter(Boolean)
+  const lines = assertions.map(
+    (item) =>
+      `${item.passed ? '✓' : '✗'} ${item.label || item.id}\n  期望：${item.expected}\n  实际：${item.observed}`,
+  )
+  return [...head, '', ...lines].join('\n').trim()
+}
+
+function formatOneAssertionForChat(item: RunAssertionItem, runId?: string) {
+  return [
+    runId ? `run:${runId}` : '',
+    `${item.passed ? '✓' : '✗'} ${item.label || item.id}`,
+    `期望：${item.expected}`,
+    `实际：${item.observed}`,
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
+function addCurrentTestsToChat() {
+  if (!lastAssertions.value.length) {
+    toast('当前没有可添加的断言结果')
+    return
+  }
+  addToChat({
+    source: 'tests',
+    title: lastAssertionsRunId.value
+      ? `全部 · run:${lastAssertionsRunId.value.slice(0, 8)}`
+      : '当前全部断言',
+    body: formatAssertionsForChat(lastAssertions.value, { runId: lastAssertionsRunId.value }),
+    origin: { runId: lastAssertionsRunId.value || undefined, scope: 'all' },
+  })
+}
+
+function addHistoryTestsToChat(entry: StoredRunResult) {
+  if (!entry.assertions.length) {
+    toast('该次运行没有断言列表')
+    return
+  }
+  addToChat({
+    source: 'tests',
+    title: `全部 · run:${entry.runId.slice(0, 8)}`,
+    body: formatAssertionsForChat(entry.assertions, {
+      runId: entry.runId,
+      verified: entry.verified,
+      stopped: entry.stopped,
+    }),
+    origin: { runId: entry.runId, scope: 'all' },
+  })
+}
+
+function addOneAssertionToChat(item: RunAssertionItem, runId?: string) {
+  addToChat({
+    source: 'tests',
+    title: `${item.passed ? '✓' : '✗'} ${item.label || item.id}`,
+    body: formatOneAssertionForChat(item, runId),
+    origin: { runId: runId || undefined, assertionId: item.id, scope: 'single' },
+  })
+}
+
+function sendTutorMessage(text: string) {
+  const pending = [...chatAttachments.value]
+  const full = formatChatWithAttachments(text, pending)
+  if (!full.trim()) return
+  chatAttachments.value = []
+  void sendMessage(full, pending)
+}
+
+async function sendMessage(text: string, attached: ChatAttachment[] = []) {
   if (sending.value) return
   const guarded = isDirectAnswerRequest(text)
   const category = inferCategory(text)
@@ -1224,6 +1440,15 @@ async function sendMessage(text: string) {
     timestamp: new Date().toISOString(),
     category,
     guardrail: guarded,
+    chatAttachments: attached.length
+      ? attached.map((item) => ({
+          id: item.id,
+          source: item.source,
+          title: item.title,
+          body: item.body,
+          origin: item.origin,
+        }))
+      : undefined,
   })
   record('student_message', { category, content: text })
   if (guarded) record('guardrail_triggered', { category, content: text })
@@ -1489,8 +1714,15 @@ async function navigateEvidenceRef(refValue: string) {
       }
     }
     terminalDockOpen.value = true
-    // 有断言 → 测试结果；无断言的失败/停止 run → 终端（否则空面板像「点不动」）。
+    maximized.value = 'none'
+    // 有断言 → 测试结果；无断言的失败/停止 run → 终端（并 toast，避免「点了没反应」）。
     bottomTab.value = hasAssertions ? 'tests' : 'terminal'
+    toast(
+      hasAssertions
+        ? `已打开测试结果 · run:${(runId || '').slice(0, 8)}…`
+        : `已打开终端 · run:${(runId || '').slice(0, 8)}…（本次无断言/诊断，请看终端输出）`,
+      4200,
+    )
     return
   }
 
@@ -1500,6 +1732,7 @@ async function navigateEvidenceRef(refValue: string) {
     rightTab.value = 'trace'
     await nextTick()
     traceViewerRef.value?.seek(0)
+    toast(`已打开 Trace · run:${(runId || '').slice(0, 8)}…`)
     return
   }
 
@@ -1519,6 +1752,9 @@ async function navigateEvidenceRef(refValue: string) {
         line: Number(diagnostic.line),
         code: diagnostic.code || '',
       })
+      toast(`已打开 Problems · ${diagnostic.file}:${diagnostic.line}`)
+    } else {
+      toast('已打开 Problems（当前无可用诊断行）')
     }
   }
 }
@@ -1784,6 +2020,7 @@ onBeforeUnmount(() => {
         </header>
         <div class="ws-zone-body">
           <ManualPane
+            ref="manualPaneRef"
             :key="manualKey"
             :lab="lab"
             :editable="isTeacherRole"
@@ -1791,6 +2028,7 @@ onBeforeUnmount(() => {
             @edit="startTeacherEditing"
             @section-change="currentSection = $event"
             @source-jump="onSourceJump"
+            @add-to-chat="addToChat"
           >
             <slot />
           </ManualPane>
@@ -1912,6 +2150,7 @@ onBeforeUnmount(() => {
               :dark="isDark"
               :terminal-open="terminalDockOpen"
               @toggle-terminal="terminalDockOpen = !terminalDockOpen"
+              @add-to-chat="addToChat"
             />
             <div
               v-show="showTerminalDock"
@@ -1995,6 +2234,7 @@ onBeforeUnmount(() => {
                   @run-exit="onRunExit"
                   @run-diagnostics="onRunDiagnostics"
                   @insert-report="onInsertReport"
+                  @add-to-chat="addToChat"
                 />
                 <ProblemsPanel
                   ref="problemsPanelRef"
@@ -2003,10 +2243,22 @@ onBeforeUnmount(() => {
                   :endpoint="endpoint"
                   @jump="onProblemJump"
                   @diagnostics-loaded="onDiagnosticsLoaded"
+                  @add-to-chat="addToChat"
                 />
                 <div v-show="bottomTab === 'tests'" class="ws-tests-panel">
                   <header class="ws-tests-intro">
-                    <strong>测试结果 · 可信断言</strong>
+                    <div class="ws-tests-intro-row">
+                      <strong>测试结果 · 可信断言</strong>
+                      <button
+                        v-if="lastAssertions.length"
+                        type="button"
+                        class="ws-tests-add-chat"
+                        title="把当前断言结果添加到 AI 导师对话"
+                        @click="addCurrentTestsToChat"
+                      >
+                        <MessageSquarePlus :size="13" aria-hidden="true" />添加到对话
+                      </button>
+                    </div>
                     <p>
                       汇总<strong>可信验证命令</strong>的断言（期望 vs 实际）；停止或无断言的运行不会冲掉上一份结果。
                       结果按 Lab/账号缓存在本机约 24 小时，刷新页面后仍可查看。
@@ -2033,6 +2285,14 @@ onBeforeUnmount(() => {
                             <span class="ws-test-label">{{ item.label || item.id }}</span>
                             <span class="ws-test-expected">期望：{{ item.expected }}</span>
                             <span class="ws-test-observed">实际：{{ item.observed }}</span>
+                            <button
+                              type="button"
+                              class="ws-tests-add-chat ws-test-assertion-add"
+                              title="只把这一条断言添加到对话"
+                              @click="addOneAssertionToChat(item, lastAssertionsRunId)"
+                            >
+                              <MessageSquarePlus :size="12" aria-hidden="true" />
+                            </button>
                           </li>
                         </ul>
                       </section>
@@ -2065,6 +2325,15 @@ onBeforeUnmount(() => {
                             <span v-if="entry.assertions.length" class="ws-tests-history-count">
                               {{ entry.assertions.filter((a) => a.passed).length }}/{{ entry.assertions.length }}
                             </span>
+                            <button
+                              v-if="entry.assertions.length"
+                              type="button"
+                              class="ws-tests-add-chat ws-tests-history-add"
+                              title="添加到对话"
+                              @click.prevent.stop="addHistoryTestsToChat(entry)"
+                            >
+                              <MessageSquarePlus :size="12" aria-hidden="true" />
+                            </button>
                           </summary>
                           <ul v-if="entry.assertions.length" class="ws-tests-assertions">
                             <li
@@ -2076,6 +2345,14 @@ onBeforeUnmount(() => {
                               <span class="ws-test-label">{{ item.label || item.id }}</span>
                               <span class="ws-test-expected">期望：{{ item.expected }}</span>
                               <span class="ws-test-observed">实际：{{ item.observed }}</span>
+                              <button
+                                type="button"
+                                class="ws-tests-add-chat ws-test-assertion-add"
+                                title="只把这一条断言添加到对话"
+                                @click="addOneAssertionToChat(item, entry.runId)"
+                              >
+                                <MessageSquarePlus :size="12" aria-hidden="true" />
+                              </button>
                             </li>
                           </ul>
                           <p v-else class="ws-tests-note">本次无断言列表（可能被停止或未走可信 recipe）。</p>
@@ -2161,6 +2438,7 @@ onBeforeUnmount(() => {
           </header>
           <div class="ws-zone-body ws-assistant-body">
             <TutorPane
+              ref="tutorPaneRef"
               v-show="rightTab === 'tutor'"
               :lab="lab"
               :messages="messages"
@@ -2170,11 +2448,14 @@ onBeforeUnmount(() => {
               :connection-label="connectionLabel"
               :tutor-state="lastTutorState"
               :active-stage="activeStage"
-              @send="sendMessage"
+              :attachments="chatAttachments"
+              @send="sendTutorMessage"
               @new-session="startSession"
               @check-connection="checkConnection"
               @use-prompt="usePrompt"
               @open-evidence="navigateEvidenceRef"
+              @remove-attachment="removeChatAttachment"
+              @open-attachment="openChatAttachment"
             />
             <ReportPanel
               v-show="rightTab === 'report'"
@@ -2196,6 +2477,7 @@ onBeforeUnmount(() => {
               @jump="onTraceJump"
               @insert-report="onInsertReport"
               @trace-inspected="onTraceInspected"
+              @add-to-chat="addToChat"
             />
           </div>
         </section>
@@ -2890,9 +3172,47 @@ onBeforeUnmount(() => {
   background: var(--ws-surface-alt);
 }
 
+.ws-tests-intro-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ws-space-2);
+}
+
 .ws-tests-intro strong {
   color: var(--ws-ink);
   font-size: var(--ws-text-sm);
+}
+
+.ws-tests-add-chat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-surface);
+  color: var(--ws-ink-muted);
+  font: inherit;
+  font-size: var(--ws-text-xs);
+  cursor: pointer;
+}
+
+.ws-tests-add-chat:hover,
+.ws-tests-add-chat:focus-visible {
+  color: var(--ws-ink);
+  border-color: var(--ws-accent, #3b82f6);
+  background: var(--ws-surface-alt);
+}
+
+.ws-tests-history-add {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  justify-content: center;
 }
 
 .ws-tests-intro p {
@@ -3158,17 +3478,26 @@ onBeforeUnmount(() => {
 
 .ws-test-assertion {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto 1fr auto;
   grid-template-areas:
-    'mark label'
-    'mark expected'
-    'mark observed';
+    'mark label add'
+    'mark expected add'
+    'mark observed add';
   gap: 2px var(--ws-space-2);
   padding: var(--ws-space-2) var(--ws-space-3);
   border: 1px solid var(--ws-line);
   border-radius: var(--ws-radius-md);
   background: var(--ws-surface-alt);
   font-size: var(--ws-text-xs);
+}
+
+.ws-test-assertion-add {
+  grid-area: add;
+  align-self: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  justify-content: center;
 }
 
 .ws-test-assertion.passed {

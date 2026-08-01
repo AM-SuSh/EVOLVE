@@ -138,6 +138,34 @@ defineExpose({
     editor.setPosition({ lineNumber: line, column: 1 })
     editor.focus()
   },
+  /** 供「添加到对话」：优先选区，否则取光标附近若干行。 */
+  getChatSnippet(radius = 20) {
+    if (!editor) return { text: '', line: 0, scope: 'context' as const }
+    const model = editor.getModel()
+    if (!model) return { text: '', line: 0, scope: 'context' as const }
+    const selection = editor.getSelection()
+    const selected = selection ? model.getValueInRange(selection).trim() : ''
+    if (selected) {
+      return {
+        text: selected,
+        line: selection?.startLineNumber || editor.getPosition()?.lineNumber || 0,
+        scope: 'selection' as const,
+      }
+    }
+    const line = editor.getPosition()?.lineNumber || 1
+    const start = Math.max(1, line - radius)
+    const end = Math.min(model.getLineCount(), line + radius)
+    return {
+      text: model.getValueInRange({
+        startLineNumber: start,
+        startColumn: 1,
+        endLineNumber: end,
+        endColumn: model.getLineMaxColumn(end),
+      }),
+      line,
+      scope: 'context' as const,
+    }
+  },
 })
 </script>
 

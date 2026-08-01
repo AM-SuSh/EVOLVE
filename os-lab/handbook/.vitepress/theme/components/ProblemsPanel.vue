@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { AlertCircle, AlertTriangle, FileWarning } from 'lucide-vue-next'
+import { AlertCircle, AlertTriangle, FileWarning, MessageSquarePlus } from 'lucide-vue-next'
 import { authHeaders } from '../tutor-model'
 
 export interface RunDiagnostic {
@@ -25,6 +25,12 @@ const emit = defineEmits<{
   (event: 'jump', payload: { path: string; line: number; code: string }): void
   /** 某次 run 的诊断加载完成；count>0 时父级可自动切到 Problems。 */
   (event: 'diagnostics-loaded', payload: { runId: string; count: number }): void
+  (event: 'add-to-chat', payload: {
+    source: 'problems'
+    title: string
+    body: string
+    origin?: { runId?: string; path?: string; line?: number; scope?: 'single' | 'all' }
+  }): void
 }>()
 
 const diagnostics = ref<RunDiagnostic[]>([])
@@ -75,6 +81,43 @@ function jumpToDiagnostic(diagnostic: RunDiagnostic) {
   emit('jump', { path: diagnostic.file, line: diagnostic.line, code: diagnostic.code })
 }
 
+function formatDiagnostic(diagnostic: RunDiagnostic) {
+  return [
+    `${diagnostic.level.toUpperCase()} ${diagnostic.code}`,
+    `${diagnostic.file}:${diagnostic.line}:${diagnostic.column}`,
+    diagnostic.message,
+    diagnostic.rendered?.trim() || '',
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
+function addAllDiagnosticsToChat() {
+  if (!diagnostics.value.length) return
+  const body = diagnostics.value.map(formatDiagnostic).join('\n\n---\n\n')
+  emit('add-to-chat', {
+    source: 'problems',
+    title: `诊断 ${diagnostics.value.length} 条${props.runId ? ` · run:${props.runId.slice(0, 8)}` : ''}`,
+    body,
+    origin: { runId: props.runId || undefined, scope: 'all' },
+  })
+}
+
+function addOneDiagnosticToChat(diagnostic: RunDiagnostic, event: MouseEvent) {
+  event.stopPropagation()
+  emit('add-to-chat', {
+    source: 'problems',
+    title: `${diagnostic.file}:${diagnostic.line}`,
+    body: formatDiagnostic(diagnostic),
+    origin: {
+      runId: props.runId || undefined,
+      path: diagnostic.file,
+      line: diagnostic.line,
+      scope: 'single',
+    },
+  })
+}
+
 /** 供导师「诊断」引用跳转：取当前列表首条（无则 null，不造假）。 */
 defineExpose({
   firstDiagnostic: () => diagnostics.value[0] || null,
@@ -84,7 +127,18 @@ defineExpose({
 <template>
   <section class="ws-problems" aria-label="编译诊断 Problems">
     <header class="ws-problems-intro">
-      <strong>Problems · 编译诊断</strong>
+      <div class="ws-problems-intro-row">
+        <strong>Problems · 编译诊断</strong>
+        <button
+          v-if="diagnostics.length"
+          type="button"
+          class="ws-problems-add-chat"
+          title="把全部诊断添加到 AI 导师对话"
+          @click="addAllDiagnosticsToChat"
+        >
+          <MessageSquarePlus :size="13" aria-hidden="true" />添加到对话
+        </button>
+      </div>
       <p>
         汇总<strong>最近一次运行</strong>解析出的编译错误与警告（文件、行号、错误码）。
         点击一条可跳到工作区对应源码；这里不是终端输出原文，而是结构化问题列表。
@@ -96,21 +150,34 @@ defineExpose({
       <span>{{ error }}</span>
     </div>
     <div v-else-if="diagnostics.length" class="ws-problems-list">
-      <button
+      <div
         v-for="diagnostic in diagnostics"
         :key="`${diagnostic.diagnosticIndex}:${diagnostic.file}:${diagnostic.line}`"
-        type="button"
         class="ws-problem-row"
         :data-level="diagnostic.level"
-        :title="`${diagnostic.file}:${diagnostic.line}:${diagnostic.column}`"
-        @click="jumpToDiagnostic(diagnostic)"
       >
-        <AlertCircle v-if="diagnostic.level === 'error'" :size="15" aria-hidden="true" />
-        <AlertTriangle v-else :size="15" aria-hidden="true" />
-        <span class="ws-problem-message">{{ diagnostic.message }}</span>
-        <code>{{ diagnostic.code }}</code>
-        <span class="ws-problem-location">{{ diagnostic.file }}:{{ diagnostic.line }}:{{ diagnostic.column }}</span>
-      </button>
+        <button
+          type="button"
+          class="ws-problem-main"
+          :title="`${diagnostic.file}:${diagnostic.line}:${diagnostic.column}`"
+          @click="jumpToDiagnostic(diagnostic)"
+        >
+          <AlertCircle v-if="diagnostic.level === 'error'" :size="15" aria-hidden="true" />
+          <AlertTriangle v-else :size="15" aria-hidden="true" />
+          <span class="ws-problem-message">{{ diagnostic.message }}</span>
+          <code>{{ diagnostic.code }}</code>
+          <span class="ws-problem-location">{{ diagnostic.file }}:{{ diagnostic.line }}:{{ diagnostic.column }}</span>
+        </button>
+        <button
+          type="button"
+          class="ws-problem-add-chat"
+          title="添加到对话"
+          aria-label="添加到对话"
+          @click="addOneDiagnosticToChat(diagnostic, $event)"
+        >
+          <MessageSquarePlus :size="13" aria-hidden="true" />
+        </button>
+      </div>
     </div>
     <div v-else class="ws-problems-empty" role="status">
       <FileWarning :size="20" aria-hidden="true" />
@@ -143,9 +210,52 @@ defineExpose({
   background: var(--ws-surface-alt);
 }
 
+.ws-problems-intro-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ws-space-2);
+}
+
 .ws-problems-intro strong {
   color: var(--ws-ink);
   font-size: var(--ws-text-sm);
+}
+
+.ws-problems-add-chat,
+.ws-problem-add-chat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-surface);
+  color: var(--ws-ink-muted);
+  font: inherit;
+  font-size: var(--ws-text-xs);
+  cursor: pointer;
+}
+
+.ws-problems-add-chat {
+  padding: 2px 8px;
+  min-height: 24px;
+}
+
+.ws-problem-add-chat {
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.ws-problems-add-chat:hover,
+.ws-problem-add-chat:hover,
+.ws-problems-add-chat:focus-visible,
+.ws-problem-add-chat:focus-visible {
+  color: var(--ws-ink);
+  border-color: var(--ws-accent, #3b82f6);
+  background: var(--ws-surface-alt);
 }
 
 .ws-problems-intro p {
@@ -167,32 +277,46 @@ defineExpose({
 
 .ws-problem-row {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: var(--ws-space-1);
+  width: 100%;
+  min-height: var(--ws-control-md);
+  padding: var(--ws-space-1) var(--ws-space-2) var(--ws-space-1) 0;
+  border-bottom: 1px solid var(--ws-line);
+  background: var(--ws-surface);
+}
+
+.ws-problem-main {
+  display: grid;
   grid-template-columns: 16px minmax(180px, 1fr) auto minmax(150px, 0.7fr);
   align-items: center;
   gap: var(--ws-space-2);
-  width: 100%;
-  min-height: var(--ws-control-md);
+  min-width: 0;
   padding: var(--ws-space-2) var(--ws-space-3);
   color: var(--ws-ink-muted);
   border: 0;
-  border-bottom: 1px solid var(--ws-line);
-  background: var(--ws-surface);
+  background: transparent;
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 
 .ws-problem-row:hover,
-.ws-problem-row:focus-visible {
-  color: var(--ws-ink);
+.ws-problem-row:focus-within {
   background: var(--ws-surface-alt);
 }
 
-.ws-problem-row[data-level='error'] > svg {
+.ws-problem-main:hover,
+.ws-problem-main:focus-visible {
+  color: var(--ws-ink);
+}
+
+.ws-problem-row[data-level='error'] .ws-problem-main > svg {
   color: var(--ws-danger, #c0392b);
 }
 
-.ws-problem-row:not([data-level='error']) > svg {
+.ws-problem-row:not([data-level='error']) .ws-problem-main > svg {
   color: var(--ws-warning, #a15c00);
 }
 

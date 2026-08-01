@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { Plus, RefreshCw, Send, Server } from 'lucide-vue-next'
+import { Plus, RefreshCw, Send, Server, X } from 'lucide-vue-next'
 import TutorMessage from './TutorMessage.vue'
 import TutorEvidenceBar from './TutorEvidenceBar.vue'
+import { chatSourceLabels, type ChatAttachment } from '../chat-attachments'
 import {
   tutorPromptsFor,
   type TutorLab,
@@ -25,6 +26,7 @@ const props = defineProps<{
   connectionLabel: string
   tutorState: TutorState | null
   activeStage: TutorStageId
+  attachments?: ChatAttachment[]
 }>()
 
 const emit = defineEmits<{
@@ -33,11 +35,17 @@ const emit = defineEmits<{
   (event: 'check-connection'): void
   (event: 'use-prompt', prompt: TutorPrompt): void
   (event: 'open-evidence', ref: string): void
+  (event: 'remove-attachment', id: string): void
+  (event: 'open-attachment', item: ChatAttachment): void
 }>()
 
 const draft = ref('')
 const composer = ref<HTMLTextAreaElement>()
 const messageList = ref<HTMLElement>()
+const attachments = computed(() => props.attachments || [])
+const canSend = computed(
+  () => Boolean(draft.value.trim() || attachments.value.length) && !props.sending,
+)
 
 /** 快捷提问取自不同学习环节的代表性模板：判断 / 排错 / 复盘。 */
 const quickPrompts = computed(() => [
@@ -48,9 +56,8 @@ const quickPrompts = computed(() => [
 ])
 
 function submit() {
-  const text = draft.value.trim()
-  if (!text || props.sending) return
-  emit('send', text)
+  if (!canSend.value) return
+  emit('send', draft.value.trim())
   draft.value = ''
 }
 
@@ -73,6 +80,11 @@ async function scrollToLatest() {
   if (list) list.scrollTop = list.scrollHeight
 }
 
+async function focusComposer() {
+  await nextTick()
+  composer.value?.focus()
+}
+
 watch(() => props.messages.length, scrollToLatest)
 watch(
   () => props.messages[props.messages.length - 1]?.content,
@@ -85,7 +97,7 @@ watch(
   },
 )
 
-defineExpose({ scrollToLatest })
+defineExpose({ scrollToLatest, focusComposer })
 </script>
 
 <template>
@@ -129,6 +141,7 @@ defineExpose({ scrollToLatest })
           :message="message"
           :streaming="message.id === streamingId"
           @open-evidence="emit('open-evidence', $event)"
+          @open-attachment="emit('open-attachment', $event)"
         />
         <div v-if="sending && !streamingId" class="ws-thinking" role="status">
           <div class="ws-thinking-avatar" aria-hidden="true">OS</div>
@@ -139,6 +152,31 @@ defineExpose({ scrollToLatest })
     </div>
 
     <div class="ws-composer-dock">
+      <div v-if="attachments.length" class="ws-chat-attachments" aria-label="待发送的工作台附件">
+        <div
+          v-for="item in attachments"
+          :key="item.id"
+          class="ws-chat-attachment"
+        >
+          <button
+            type="button"
+            class="ws-chat-attachment-open"
+            :title="`点击溯源：${chatSourceLabels[item.source]} · ${item.title}`"
+            @click="emit('open-attachment', item)"
+          >
+            <span class="ws-chat-attachment-source">{{ chatSourceLabels[item.source] }}</span>
+            <strong class="ws-chat-attachment-title">{{ item.title }}</strong>
+          </button>
+          <button
+            type="button"
+            class="ws-chat-attachment-remove"
+            :aria-label="`移除附件 ${item.title}`"
+            @click="emit('remove-attachment', item.id)"
+          >
+            <X :size="12" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
       <div class="ws-prompt-row" aria-label="快捷提问">
         <button v-for="prompt in quickPrompts" :key="prompt.id" type="button" @click="usePrompt(prompt)">
           {{ prompt.label }}
@@ -151,12 +189,22 @@ defineExpose({ scrollToLatest })
           ref="composer"
           v-model="draft"
           rows="3"
-          placeholder="写下你的判断、观察到的现象或卡住的地方…（导师只引导，不代写）"
+          :placeholder="
+            attachments.length
+              ? '可再写一句你的判断或问题，发送时会连同上方附件一起交给导师…'
+              : '写下你的判断、观察到的现象或卡住的地方…（导师只引导，不代写）'
+          "
           @keydown="onKeydown"
         />
         <div class="ws-composer-foot">
-          <span>匿名会话 · 记录保存在本机 · Ctrl+Enter 发送</span>
-          <button type="submit" :disabled="!draft.trim() || sending">
+          <span>
+            {{
+              attachments.length
+                ? `将附带 ${attachments.length} 段工作台内容 · Ctrl+Enter 发送`
+                : '匿名会话 · 记录保存在本机 · Ctrl+Enter 发送'
+            }}
+          </span>
+          <button type="submit" :disabled="!canSend">
             <Send :size="16" aria-hidden="true" /><span>发送</span>
           </button>
         </div>
@@ -300,6 +348,81 @@ defineExpose({ scrollToLatest })
 .ws-composer-dock {
   padding: var(--ws-space-2) var(--ws-space-5) var(--ws-space-4);
   border-top: 1px solid var(--ws-line);
+  background: var(--ws-surface);
+}
+
+.ws-chat-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ws-space-1);
+  margin-bottom: var(--ws-space-2);
+}
+
+.ws-chat-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  min-height: var(--ws-control-sm);
+  padding: 2px 4px 2px 4px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-chat-attachment-open {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ws-space-1);
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--ws-radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ws-chat-attachment-open:hover,
+.ws-chat-attachment-open:focus-visible {
+  background: var(--ws-surface);
+}
+
+.ws-chat-attachment-source {
+  flex: 0 0 auto;
+  color: var(--ws-accent);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-chat-attachment-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ws-ink);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-chat-attachment-remove {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: var(--ws-ink-faint);
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ws-chat-attachment-remove:hover {
+  color: var(--ws-ink);
   background: var(--ws-surface);
 }
 

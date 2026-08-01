@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, withBase } from 'vitepress'
 import MarkdownIt from 'markdown-it'
 import mermaid from 'mermaid'
-import { LockKeyhole, Pencil, RefreshCw, TableOfContents } from 'lucide-vue-next'
+import { LockKeyhole, MessageSquarePlus, Pencil, RefreshCw, TableOfContents } from 'lucide-vue-next'
 import { authHeaders, collapsedSectionPrefix, sectionPrefixOf, type TutorLab } from '../tutor-model'
 
 /**
@@ -30,6 +30,12 @@ const emit = defineEmits<{
   (event: 'edit', location: ManualLocation): void
   /** 学生点手册中的源码引用（`kernel/src/trap.rs` 或 `...:42`）：跳到工作区对应文件/行。 */
   (event: 'source-jump', payload: { path: string; line: number }): void
+  (event: 'add-to-chat', payload: {
+    source: 'manual'
+    title: string
+    body: string
+    origin?: { h2?: string; h3?: string }
+  }): void
 }>()
 
 interface ManualSection {
@@ -291,6 +297,54 @@ function currentReadingLocation(): ManualLocation {
   }
 }
 
+/** 当前阅读章节正文（标题到下一标题之间），供「添加到对话」。 */
+function currentSectionPlainText() {
+  updateActiveSection()
+  const section = activeSection.value || sections.value[0]
+  if (!section) return { title: '', body: '' }
+  const index = sections.value.indexOf(section)
+  const end = index >= 0 ? sections.value[index + 1]?.el : undefined
+  const chunks: string[] = [section.title]
+  let node: ChildNode | null = section.el.nextSibling
+  while (node && node !== end) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const text = ((node as HTMLElement).innerText || node.textContent || '').trim()
+      if (text) chunks.push(text)
+    } else if (node.nodeType === Node.TEXT_NODE) {
+      const text = (node.textContent || '').trim()
+      if (text) chunks.push(text)
+    }
+    node = node.nextSibling
+  }
+  const title =
+    [activeH2.value?.title, activeH3.value?.title].filter(Boolean).join(' / ') || section.title
+  return { title, body: chunks.join('\n\n').trim() }
+}
+
+function addCurrentSectionToChat() {
+  const { title, body } = currentSectionPlainText()
+  if (!body) return
+  emit('add-to-chat', {
+    source: 'manual',
+    title: title || '当前章节',
+    body,
+    origin: {
+      h2: activeH2.value?.title || undefined,
+      h3: activeH3.value?.title || undefined,
+    },
+  })
+}
+
+/** 供附件溯源：按章节标题跳转。 */
+function jumpToTitles(h2?: string, h3?: string) {
+  const target =
+    (h3 && sections.value.find((section) => section.level === 3 && section.title === h3)) ||
+    (h2 && sections.value.find((section) => section.level === 2 && section.title === h2))
+  if (target) jumpTo(target)
+}
+
+defineExpose({ jumpToTitles })
+
 function restoreReadingLocation() {
   const location = props.restoreLocation
   const container = scroller.value
@@ -348,8 +402,19 @@ onBeforeUnmount(() => {
     :class="{ 'ws-manual-pane--editable': props.editable }"
     aria-label="实验手册"
   >
-    <header v-if="props.editable" class="ws-manual-toolbar">
+    <header class="ws-manual-toolbar">
       <button
+        class="ws-manual-add-chat"
+        type="button"
+        title="把当前阅读章节添加到 AI 导师对话"
+        :disabled="loading || locked || !manualHtml"
+        @click="addCurrentSectionToChat"
+      >
+        <MessageSquarePlus :size="15" aria-hidden="true" />
+        <span>添加到对话</span>
+      </button>
+      <button
+        v-if="props.editable"
         class="ws-manual-edit"
         type="button"
         title="编辑本实验指导书，增补知识点"
@@ -360,60 +425,62 @@ onBeforeUnmount(() => {
       </button>
     </header>
 
-    <div
-      class="ws-toc-drawer"
-      :class="{ open: tocOpen }"
-      @mouseenter="tocOpen = true"
-      @mouseleave="tocOpen = false"
-      @focusin="tocOpen = true"
-      @focusout="closeTocAfterFocus"
-    >
-      <nav class="ws-toc-panel" aria-label="章节目录" :aria-hidden="!tocOpen">
-        <strong>目录</strong>
-        <button
-          v-for="(section, index) in sections"
-          :key="section.id"
-          type="button"
-          :tabindex="tocOpen ? 0 : -1"
-          :class="{ active: index === activeIndex, sub: section.level === 3 }"
-          @click="jumpTo(section)"
-        >
-          {{ section.title }}
-        </button>
-      </nav>
-      <button
-        class="ws-toc-edge"
-        type="button"
-        :aria-expanded="tocOpen"
-        title="章节目录"
-        :aria-label="tocOpen ? '收起章节目录' : '展开章节目录'"
-        @click="tocOpen = !tocOpen"
-      >
-        <TableOfContents :size="16" aria-hidden="true" />
-      </button>
-    </div>
-
-    <div ref="scroller" class="ws-manual-scroll">
+    <div class="ws-manual-body">
       <div
-        ref="docRoot"
-        class="ws-manual-doc vp-doc"
-        @click="onDocClick"
-        @keydown="onDocKeydown"
+        class="ws-toc-drawer"
+        :class="{ open: tocOpen }"
+        @mouseenter="tocOpen = true"
+        @mouseleave="tocOpen = false"
+        @focusin="tocOpen = true"
+        @focusout="closeTocAfterFocus"
       >
-        <div v-if="loading" class="ws-manual-state" role="status">
-          <RefreshCw :size="22" class="ws-spin" aria-hidden="true" />
-          <strong>正在读取实验手册</strong>
-          <span>同步教师发布范围与学习进度</span>
+        <nav class="ws-toc-panel" aria-label="章节目录" :aria-hidden="!tocOpen">
+          <strong>目录</strong>
+          <button
+            v-for="(section, index) in sections"
+            :key="section.id"
+            type="button"
+            :tabindex="tocOpen ? 0 : -1"
+            :class="{ active: index === activeIndex, sub: section.level === 3 }"
+            @click="jumpTo(section)"
+          >
+            {{ section.title }}
+          </button>
+        </nav>
+        <button
+          class="ws-toc-edge"
+          type="button"
+          :aria-expanded="tocOpen"
+          title="章节目录"
+          :aria-label="tocOpen ? '收起章节目录' : '展开章节目录'"
+          @click="tocOpen = !tocOpen"
+        >
+          <TableOfContents :size="16" aria-hidden="true" />
+        </button>
+      </div>
+
+      <div ref="scroller" class="ws-manual-scroll">
+        <div
+          ref="docRoot"
+          class="ws-manual-doc vp-doc"
+          @click="onDocClick"
+          @keydown="onDocKeydown"
+        >
+          <div v-if="loading" class="ws-manual-state" role="status">
+            <RefreshCw :size="22" class="ws-spin" aria-hidden="true" />
+            <strong>正在读取实验手册</strong>
+            <span>同步教师发布范围与学习进度</span>
+          </div>
+          <div v-else-if="error" class="ws-manual-state" :class="{ locked }" role="alert">
+            <LockKeyhole v-if="locked" :size="24" aria-hidden="true" />
+            <RefreshCw v-else :size="24" aria-hidden="true" />
+            <strong>{{ locked ? '当前内容尚不可查看' : '实验手册暂时无法读取' }}</strong>
+            <span>{{ error }}</span>
+            <a v-if="locked" :href="withBase('/guide/ai-tutor')">返回学习路径</a>
+            <button v-else type="button" @click="loadManual">重新加载</button>
+          </div>
+          <div v-else v-html="manualHtml" />
         </div>
-        <div v-else-if="error" class="ws-manual-state" :class="{ locked }" role="alert">
-          <LockKeyhole v-if="locked" :size="24" aria-hidden="true" />
-          <RefreshCw v-else :size="24" aria-hidden="true" />
-          <strong>{{ locked ? '当前内容尚不可查看' : '实验手册暂时无法读取' }}</strong>
-          <span>{{ error }}</span>
-          <a v-if="locked" :href="withBase('/guide/ai-tutor')">返回学习路径</a>
-          <button v-else type="button" @click="loadManual">重新加载</button>
-        </div>
-        <div v-else v-html="manualHtml" />
       </div>
     </div>
   </section>
@@ -423,7 +490,7 @@ onBeforeUnmount(() => {
 .ws-manual-pane {
   position: relative;
   display: grid;
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -431,18 +498,51 @@ onBeforeUnmount(() => {
   background: var(--ws-surface);
 }
 
-.ws-manual-pane--editable {
-  grid-template-rows: auto minmax(0, 1fr);
-}
-
-/* 教师编辑入口；学生阅读态不再占用一整行工具条。 */
 .ws-manual-toolbar {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  gap: var(--ws-space-2);
   padding: var(--ws-space-2) var(--ws-space-4);
   border-bottom: 1px solid var(--ws-line);
   background: var(--ws-surface-alt);
+}
+
+.ws-manual-add-chat,
+.ws-manual-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-surface);
+  color: var(--ws-ink-muted);
+  font: inherit;
+  font-size: var(--ws-text-xs);
+  cursor: pointer;
+}
+
+.ws-manual-add-chat:hover:not(:disabled),
+.ws-manual-edit:hover,
+.ws-manual-add-chat:focus-visible,
+.ws-manual-edit:focus-visible {
+  color: var(--ws-ink);
+  border-color: var(--ws-accent, #3b82f6);
+  background: var(--ws-surface-alt);
+}
+
+.ws-manual-add-chat:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ws-manual-body {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* 目录覆盖在正文之上，不占用纵向空间。 */
@@ -562,23 +662,6 @@ onBeforeUnmount(() => {
 }
 
 .ws-manual-edit {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: var(--ws-space-1);
-  min-height: var(--ws-control-md);
-  padding: var(--ws-space-1) var(--ws-space-3);
-  color: var(--ws-ink-muted);
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-md);
-  background: var(--ws-surface);
-  font: inherit;
-  font-size: var(--ws-text-sm);
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.ws-manual-edit {
   color: var(--ws-accent-contrast);
   border-color: var(--ws-accent);
   background: var(--ws-accent);
@@ -649,6 +732,7 @@ onBeforeUnmount(() => {
     padding: var(--ws-space-4) var(--ws-space-4) var(--ws-space-6);
   }
 
+  .ws-manual-add-chat span,
   .ws-manual-edit span {
     display: none;
   }

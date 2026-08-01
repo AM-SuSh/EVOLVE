@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { FileCode2, FolderTree, RefreshCw, SquareTerminal, X } from 'lucide-vue-next'
+import { FileCode2, FolderTree, MessageSquarePlus, RefreshCw, SquareTerminal, X } from 'lucide-vue-next'
 import { authHeaders, type TutorLab } from '../tutor-model'
 import { monacoLanguageForPath, type FileStatusKind } from '../file-status'
 import { resolveFileStatus, useFileStatus } from '../composables/useFileStatus'
@@ -20,6 +20,13 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** 用户点击终端开关图标，请求切换终端面板开合。 */
   (event: 'toggle-terminal'): void
+  /** 把当前选区或光标附近代码添加到 AI 导师对话。 */
+  (event: 'add-to-chat', payload: {
+    source: 'code'
+    title: string
+    body: string
+    origin?: { path?: string; line?: number; scope?: 'selection' | 'context' }
+  }): void
 }>()
 
 function apiUrl(pathname: string) {
@@ -266,6 +273,28 @@ async function openAtLine(path: string, line: number) {
   if (line > 0) editorRef.value?.revealLine(line)
 }
 
+function addCodeToChat() {
+  if (!activePath.value) return
+  const snippet = editorRef.value?.getChatSnippet?.(18) as {
+    text?: string
+    line?: number
+    scope?: 'selection' | 'context'
+  } | undefined
+  const body = String(snippet?.text || activeTab.value?.draft || '').trim()
+  if (!body) return
+  const line = Number(snippet?.line || 0)
+  const scope = snippet?.scope || 'context'
+  const scopeLabel = scope === 'selection' ? '选区' : '附近'
+  const title =
+    line > 0 ? `${activePath.value}:${line}（${scopeLabel}）` : `${activePath.value}（${scopeLabel}）`
+  emit('add-to-chat', {
+    source: 'code',
+    title,
+    body,
+    origin: { path: activePath.value, line: line || undefined, scope },
+  })
+}
+
 function warnBeforeUnload(event: BeforeUnloadEvent) {
   if (!openTabs.value.some((tab) => tab.draft !== tab.content)) return
   event.preventDefault()
@@ -341,6 +370,16 @@ defineExpose({ openAtLine, refreshFileStatus })
           @click="saveEdit"
         >
           {{ saving ? '保存中…' : '保存' }}
+        </button>
+        <button
+          v-if="activePath"
+          type="button"
+          class="ws-code-icon-btn"
+          title="添加到 AI 导师对话：有选区则只附选区，否则附光标附近代码"
+          aria-label="添加到对话"
+          @click="addCodeToChat"
+        >
+          <MessageSquarePlus :size="14" aria-hidden="true" />
         </button>
         <button
           type="button"
