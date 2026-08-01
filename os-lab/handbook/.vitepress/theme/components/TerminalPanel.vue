@@ -131,13 +131,22 @@ function renderPrompt() {
   if (!term) return
   const buf = inputBuffer.value
   const ghost = ghostText.value
-  // `$ ` 用青色作 prompt 标识；用户输入用默认前景色；ghost 用斜体浅灰虚写。
+  // `$ ` 用青色作 prompt 标识；用户输入用默认前景色；ghost 用斜体浅灰虚写（暗色略亮）。
+  const ghostAnsi = props.dark ? '\x1b[38;5;244m' : '\x1b[38;5;245m'
   let line = `\r\x1b[2K\x1b[36m$ \x1b[39m${buf}`
   if (ghost) {
-    line += `\x1b[3m\x1b[38;5;245m${ghost}\x1b[23m\x1b[39m\x1b[${ghost.length}D`
+    line += `\x1b[3m${ghostAnsi}${ghost}\x1b[23m\x1b[39m\x1b[${ghost.length}D`
   }
   term.write(line)
 }
+
+watch(
+  () => props.dark,
+  async () => {
+    await nextTick()
+    if (!running.value) renderPrompt()
+  },
+)
 
 /** 把文本同时写入 xterm 与输出缓冲（输出缓冲用于复制/插入报告）。 */
 function writeTerm(text: string) {
@@ -424,11 +433,15 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="ws-terminal" aria-label="当前实验运行与验证">
+  <section
+    class="ws-terminal"
+    :class="{ 'ws-terminal--dark': dark }"
+    aria-label="当前实验运行与验证"
+  >
     <p v-if="statusLabel" class="ws-terminal-status" :data-ok="exitInfo?.ok">{{ statusLabel }}</p>
 
     <div class="ws-terminal-stage">
-      <XtermOutput ref="xtermRef" :dark="dark" interactive />
+      <XtermOutput ref="xtermRef" :dark="!!dark" interactive />
       <div class="ws-terminal-controls">
         <button
           v-if="!running"
@@ -519,6 +532,11 @@ onBeforeUnmount(() => {
   min-height: 0;
   background: var(--ws-surface-soft, var(--ws-surface-alt));
   position: relative;
+  color-scheme: light;
+}
+
+.ws-terminal--dark {
+  color-scheme: dark;
 }
 
 .ws-terminal-stage {
@@ -596,7 +614,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--ws-line);
   border-radius: var(--ws-radius-md);
   background: var(--ws-surface);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--ws-shadow-2);
   font-size: var(--ws-text-xs);
   color: var(--ws-ink);
   overflow-y: auto;

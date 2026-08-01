@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { FitAddon } from '@xterm/addon-fit'
-import { Terminal } from '@xterm/xterm'
+import { Terminal, type ITheme } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = withDefaults(
   defineProps<{
@@ -21,24 +21,74 @@ let resizeObserver: ResizeObserver | null = null
 let renderedContent = ''
 let dataHandler: ((data: string) => void) | null = null
 
-function surfaceColor(name: string, fallback: string) {
+/** 解析 CSS 变量为可用颜色；取到未展开的 var(...) 时回退，避免 xterm 主题失效。 */
+function cssColor(name: string, fallback: string) {
   if (typeof document === 'undefined') return fallback
-  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-  return value || fallback
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  if (!raw || raw.includes('var(')) return fallback
+  return raw
+}
+
+function buildTheme(dark: boolean): ITheme {
+  if (dark) {
+    return {
+      background: cssColor('--vp-c-bg-soft', '#1e1e22'),
+      foreground: cssColor('--vp-c-text-1', '#e6e6e6'),
+      cursor: cssColor('--vp-c-brand-1', '#63c3bd'),
+      cursorAccent: cssColor('--vp-c-bg', '#1b1b1f'),
+      selectionBackground: 'rgba(99, 195, 189, 0.35)',
+      selectionForeground: '#f0f0f0',
+      black: '#1b1b1f',
+      red: '#f07178',
+      green: '#7fd99a',
+      yellow: '#e6c07b',
+      blue: '#6cb6ff',
+      magenta: '#d2a8ff',
+      cyan: '#63c3bd',
+      white: '#e6e6e6',
+      brightBlack: '#6e7681',
+      brightRed: '#ff7b72',
+      brightGreen: '#56d364',
+      brightYellow: '#e3b341',
+      brightBlue: '#79c0ff',
+      brightMagenta: '#d2a8ff',
+      brightCyan: '#7ee0d8',
+      brightWhite: '#f0f3f5',
+    }
+  }
+  return {
+    background: cssColor('--vp-c-bg-soft', '#f6f8f9'),
+    foreground: cssColor('--vp-c-text-1', '#213547'),
+    cursor: cssColor('--vp-c-brand-1', '#126a73'),
+    cursorAccent: '#ffffff',
+    selectionBackground: 'rgba(31, 123, 130, 0.28)',
+    selectionForeground: '#213547',
+    black: '#213547',
+    red: '#c0392b',
+    green: '#1a7f37',
+    yellow: '#9a6700',
+    blue: '#0969da',
+    magenta: '#8250df',
+    cyan: '#126a73',
+    white: '#f6f8f9',
+    brightBlack: '#6b7280',
+    brightRed: '#cf222e',
+    brightGreen: '#1a7f37',
+    brightYellow: '#9a6700',
+    brightBlue: '#0550ae',
+    brightMagenta: '#8250df',
+    brightCyan: '#1f7b82',
+    brightWhite: '#ffffff',
+  }
 }
 
 function applyTheme() {
   if (!terminal) return
-  const bg = surfaceColor('--ws-surface-soft', props.dark ? '#1e1e1e' : '#f6f8f9')
-  const fg = surfaceColor('--ws-ink', props.dark ? '#d4d4d4' : '#213547')
-  terminal.options.theme = {
-    background: bg,
-    foreground: fg,
-    cursor: fg,
-    selectionBackground: props.dark ? '#264f78' : '#add6ff',
-  }
-  // 让 host 容器背景与 xterm canvas 背景严格一致，避免拉长后底部空隙色差。
-  if (host.value) host.value.style.background = bg
+  const theme = buildTheme(Boolean(props.dark))
+  terminal.options.theme = theme
+  if (host.value) host.value.style.background = theme.background || ''
+  // 主题变更后强制重绘，否则已渲染行仍停留在旧底色。
+  terminal.refresh(0, terminal.rows - 1)
 }
 
 function fit() {
@@ -74,6 +124,7 @@ onMounted(() => {
     disableStdin: !props.interactive,
     cursorBlink: props.interactive,
     cursorStyle: props.interactive ? 'bar' : 'block',
+    theme: buildTheme(Boolean(props.dark)),
   })
   fitAddon = new FitAddon()
   terminal.loadAddon(fitAddon)
@@ -145,7 +196,11 @@ watch(
 
 watch(
   () => props.dark,
-  () => applyTheme(),
+  async () => {
+    // 等 .dark class 与 CSS 变量落盘后再读色并刷新。
+    await nextTick()
+    requestAnimationFrame(() => applyTheme())
+  },
 )
 
 onBeforeUnmount(() => {
@@ -163,6 +218,7 @@ onBeforeUnmount(() => {
 function clear() {
   terminal?.reset()
   renderedContent = ''
+  applyTheme()
 }
 
 function write(text: string) {
@@ -190,7 +246,12 @@ defineExpose({ clear, write, writeln, fit, onData, focus, getSelection })
 </script>
 
 <template>
-  <div ref="host" class="ws-xterm-host" aria-live="polite" />
+  <div
+    ref="host"
+    class="ws-xterm-host"
+    :class="{ 'ws-xterm-host--dark': dark }"
+    aria-live="polite"
+  />
 </template>
 
 <style scoped>
@@ -202,6 +263,11 @@ defineExpose({ clear, write, writeln, fit, onData, focus, getSelection })
   padding: var(--ws-space-1) var(--ws-space-2);
   overflow: hidden;
   background: var(--ws-surface-soft, var(--ws-surface-alt));
+  color-scheme: light;
+}
+
+.ws-xterm-host--dark {
+  color-scheme: dark;
 }
 
 .ws-xterm-host :deep(.xterm) {
@@ -212,5 +278,22 @@ defineExpose({ clear, write, writeln, fit, onData, focus, getSelection })
   overflow-y: auto !important;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+}
+
+.ws-xterm-host--dark :deep(.xterm-viewport::-webkit-scrollbar) {
+  width: 10px;
+}
+
+.ws-xterm-host--dark :deep(.xterm-viewport::-webkit-scrollbar-track) {
+  background: transparent;
+}
+
+.ws-xterm-host--dark :deep(.xterm-viewport::-webkit-scrollbar-thumb) {
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.ws-xterm-host--dark :deep(.xterm-viewport::-webkit-scrollbar-thumb:hover) {
+  background: rgba(255, 255, 255, 0.28);
 }
 </style>
