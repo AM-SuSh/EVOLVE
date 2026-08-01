@@ -44,8 +44,8 @@
 | 缺口（A 表） | 说明 | 计划日 |
 | --- | --- | --- |
 | G2 提示阶梯不可见 | **已落地**：证据条 `L{n} · 短文案` + 拒答标记；消息 meta 同步 | Day 3 ✅ |
-| G7 OPRE 入口 | Trace/手册旁无「插入报告」OPRE 条 | Day 5 |
-| G8 知识路径条 | 手册顶无紧凑路径条 | Day 5 |
+| G7 OPRE 入口 | **已落地**：`OpreBar` 挂 Trace intro 下（T-OPRE-1 / S-OPRE-1 + 插入报告） | Day 5 ✅ |
+| G8 知识路径条 | **已落地**：`KnowledgePathBar` 挂 `ManualPane` 顶（Lab2 五段） | Day 5 ✅ |
 | 导师证据条 | **已落地** `TutorEvidenceBar`（消费 chat `tutorState`） | Day 2 ✅ |
 | 证据引用跳转 | **已落地**：消息内 `run:`/`trace:`/诊断 chips → 对应面板 | Day 3 ✅ |
 
@@ -69,4 +69,5 @@
 ## 7. 后续堵点
 
 - Day3 已收口：引用跳转 + 提示阶梯/拒答态（见 `workbench-ui.md`「证据引用跳转」）。
-- Day4 已落地：评分细项 UI（学生报告区 + TeacherReport）。下一优先级（Day5+）：教师复核改分、OPRE/知识路径入口、Lab 向导。
+- Day4 已落地：评分细项 UI（学生报告区 + TeacherReport）。
+- Day5 已落地：教师评分复核改分留痕（`POST /teacher/review`）、OPRE 条、知识路径条。下一优先级（Day6）：Lab 向导。

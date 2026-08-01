@@ -13,18 +13,37 @@ import {
 } from '../tutor-model'
 
 /**
- * 教师学习报告：消费 GET /teacher/reviews 的 automaticResult（评分 v2）。
- * 与学生得分区同一套 items / evidenceRefs；无复核队列时可信空态，不回落启发式假分。
+ * 教师评分复核：消费 GET /teacher/reviews 的 automaticResult，
+ * 并以 POST /teacher/review 提交改分 + 理由留痕（不覆盖自动分）。
+ * 与「实验验收」TeacherReview（报告批语）不同页。
  */
 const endpoint = String(
   import.meta.env.VITE_OS_LAB_TUTOR_ENDPOINT || 'http://127.0.0.1:8787',
 ).replace(/\/$/, '')
+
+type ReviewDecisionKind = 'confirmed' | 'corrected' | 'dismissed'
 
 interface ReviewGate {
   code?: string
   severity?: string
   reason?: string
   evidenceRefs?: string[]
+}
+
+interface CorrectedResult {
+  total: number
+  dimensions: { process: number; result: number; reflection: number }
+}
+
+interface ReviewDecision {
+  decisionId: string
+  revision: number
+  teacher: string
+  decision: ReviewDecisionKind
+  correctedResult: CorrectedResult | null
+  rationale: string
+  evidenceRefs: string[]
+  createdAt?: string
 }
 
 interface AssessmentReview {
@@ -44,6 +63,7 @@ interface AssessmentReview {
     items: AssessmentV2['items']
     uncertainty?: string
   }
+  decisions?: ReviewDecision[]
   createdAt?: string
   updatedAt?: string
 }
@@ -51,11 +71,21 @@ interface AssessmentReview {
 const authed = ref(false)
 const denied = ref(false)
 const loading = ref(false)
+const submitting = ref(false)
 const note = ref('')
 const toast = ref('')
+const formError = ref('')
 const reviews = ref<AssessmentReview[]>([])
 const selectedId = ref('')
 const statusFilter = ref<'pending' | 'all'>('pending')
+
+const decision = ref<ReviewDecisionKind>('confirmed')
+const rationale = ref('')
+const selectedRefs = ref<string[]>([])
+const correctedTotal = ref(0)
+const correctedProcess = ref(0)
+const correctedResultDim = ref(0)
+const correctedReflection = ref(0)
 
 const filtered = computed(() => {
   if (statusFilter.value === 'all') return reviews.value
@@ -83,8 +113,23 @@ const selectedLab = computed(() => {
   return tutorLabs.find((lab) => lab.id === labId) || tutorLabs[1]
 })
 
+const canSubmit = computed(() => active.value?.status === 'pending')
+
+const legalEvidenceRefs = computed(() => {
+  const items = active.value?.automaticResult?.items || []
+  const set = new Set<string>()
+  for (const item of items) {
+    for (const ref of item.evidenceRefs || []) {
+      if (ref) set.add(String(ref))
+    }
+  }
+  return [...set].sort()
+})
+
+const decisions = computed(() => active.value?.decisions || [])
+
 const emptyHint = computed(() => {
-  if (denied.value) return '请先以教师账号登录后再查看评分 v2。'
+  if (denied.value) return '请先以教师账号登录后再查看评分复核。'
   if (!reviews.value.length) {
     return '暂无服务端评价进入复核队列。请学生先在「学习评价」页签生成评价，且触发门控后会出现在此；不显示本地启发式假分。'
   }
@@ -94,10 +139,54 @@ const emptyHint = computed(() => {
   return '选择左侧一条评价查看细项与证据链。'
 })
 
+const decisionLabel: Record<ReviewDecisionKind, string> = {
+  confirmed: '确认自动分',
+  corrected: '修正分数',
+  dismissed: '驳回入队',
+}
+
+function clampScore(value: number) {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(100, Math.max(0, Math.round(value)))
+}
+
+function resetFormFromActive() {
+  const review = active.value
+  formError.value = ''
+  decision.value = 'confirmed'
+  rationale.value = ''
+  selectedRefs.value = []
+  if (!review) {
+    correctedTotal.value = 0
+    correctedProcess.value = 0
+    correctedResultDim.value = 0
+    correctedReflection.value = 0
+    return
+  }
+  const dims = review.automaticResult.dimensions
+  correctedTotal.value = clampScore(review.automaticResult.total)
+  correctedProcess.value = clampScore(dims.process)
+  correctedResultDim.value = clampScore(dims.result)
+  correctedReflection.value = clampScore(dims.reflection)
+}
+
 function formatReview(review: AssessmentReview) {
   const when = review.createdAt ? new Date(review.createdAt).toLocaleString('zh-CN') : '未知时间'
   const cls = review.className ? ` · ${review.className}` : ''
   return `${review.student}${cls} · ${review.labId.toUpperCase()} · ${review.automaticResult.total} 分 · ${when}`
+}
+
+function formatDecisionTime(iso?: string) {
+  if (!iso) return '未知时间'
+  return new Date(iso).toLocaleString('zh-CN')
+}
+
+function toggleRef(refValue: string, checked: boolean) {
+  if (checked) {
+    if (!selectedRefs.value.includes(refValue)) selectedRefs.value = [...selectedRefs.value, refValue]
+    return
+  }
+  selectedRefs.value = selectedRefs.value.filter((item) => item !== refValue)
 }
 
 async function load() {
@@ -134,6 +223,54 @@ async function load() {
   }
 }
 
+async function submitReview() {
+  if (!active.value || !canSubmit.value || submitting.value) return
+  formError.value = ''
+  const reason = rationale.value.trim()
+  if (!reason) {
+    formError.value = '复核必须填写理由'
+    return
+  }
+  const body: Record<string, unknown> = {
+    reviewId: active.value.reviewId,
+    decision: decision.value,
+    rationale: reason,
+    evidenceRefs: [...selectedRefs.value],
+  }
+  if (decision.value === 'corrected') {
+    body.correctedResult = {
+      total: clampScore(correctedTotal.value),
+      dimensions: {
+        process: clampScore(correctedProcess.value),
+        result: clampScore(correctedResultDim.value),
+        reflection: clampScore(correctedReflection.value),
+      },
+    }
+  }
+  submitting.value = true
+  try {
+    const response = await fetch(`${endpoint}/teacher/review`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok || payload.ok === false) {
+      formError.value = String(payload.error || `提交失败（HTTP ${response.status}）`)
+      return
+    }
+    toast.value = `已提交复核 · revision ${payload.revision ?? '—'}`
+    window.setTimeout(() => {
+      if (toast.value.startsWith('已提交复核')) toast.value = ''
+    }, 4200)
+    await load()
+  } catch {
+    formError.value = '无法连接导师服务（npm run tutor）'
+  } finally {
+    submitting.value = false
+  }
+}
+
 function exportAssessment() {
   if (!active.value || !assessment.value) return
   const body = JSON.stringify(
@@ -144,6 +281,7 @@ function exportAssessment() {
       labId: active.value.labId,
       sessionId: active.value.sessionId,
       gates: active.value.gates || [],
+      decisions: active.value.decisions || [],
       assessment: assessment.value,
     },
     null,
@@ -177,6 +315,14 @@ watch(statusFilter, () => {
   }
 })
 
+watch(selectedId, () => {
+  resetFormFromActive()
+})
+
+watch(reviews, () => {
+  resetFormFromActive()
+})
+
 onMounted(() => {
   void load()
 })
@@ -186,9 +332,12 @@ onMounted(() => {
   <main class="teacher-report">
     <header class="teacher-report-header">
       <div>
-        <span>os-lab · 教师端</span>
-        <h1>{{ active ? `${selectedLab.label} · 评分 v2` : '学习评价（评分 v2）' }}</h1>
-        <p>数据来自服务端 automaticResult（与学生「学习评价」页签同一套细项与 evidenceRefs）。</p>
+        <span>os-lab · 教师端 · 评分复核</span>
+        <h1>{{ active ? `${selectedLab.label} · 评分复核` : '评分复核（评分 v2）' }}</h1>
+        <p>
+          只读展示服务端 automaticResult；改分经 POST /teacher/review 留痕，不覆盖自动分。
+          报告批语请用「实验验收」。
+        </p>
       </div>
       <div class="teacher-report-actions">
         <label for="teacher-review-filter">队列筛选</label>
@@ -221,7 +370,7 @@ onMounted(() => {
     <section v-if="denied" class="teacher-empty">
       <ShieldAlert :size="28" aria-hidden="true" />
       <h2>需要教师账号</h2>
-      <p>请先在引导式学习登录教师账号，再打开本页查看评分 v2。</p>
+      <p>请先在引导式学习登录教师账号，再打开本页进行评分复核。</p>
       <a :href="withBase('/guide/ai-tutor')">返回引导式学习</a>
     </section>
 
@@ -264,6 +413,105 @@ onMounted(() => {
               <span>{{ gate.severity || '—' }} · {{ gate.reason || '无说明' }}</span>
             </li>
           </ul>
+        </section>
+
+        <section v-if="active" class="teacher-decision" aria-label="评分复核操作">
+          <header>
+            <h2>复核决定</h2>
+            <span v-if="canSubmit">待复核 · 可提交</span>
+            <span v-else>已处理 · 表单只读（automaticResult 不变）</span>
+          </header>
+
+          <fieldset :disabled="!canSubmit || submitting">
+            <div class="teacher-decision-kinds" role="radiogroup" aria-label="决定类型">
+              <label v-for="kind in (['confirmed', 'corrected', 'dismissed'] as ReviewDecisionKind[])" :key="kind">
+                <input v-model="decision" type="radio" name="review-decision" :value="kind">
+                {{ decisionLabel[kind] }}
+              </label>
+            </div>
+
+            <label class="teacher-field">
+              <span>理由（必填）</span>
+              <textarea v-model="rationale" rows="3" maxlength="4000" placeholder="说明确认 / 改分 / 驳回的依据" />
+            </label>
+
+            <div v-if="decision === 'corrected'" class="teacher-corrected">
+              <label>
+                <span>总分</span>
+                <input v-model.number="correctedTotal" type="number" min="0" max="100" step="1">
+              </label>
+              <label>
+                <span>过程</span>
+                <input v-model.number="correctedProcess" type="number" min="0" max="100" step="1">
+              </label>
+              <label>
+                <span>结果</span>
+                <input v-model.number="correctedResultDim" type="number" min="0" max="100" step="1">
+              </label>
+              <label>
+                <span>反思</span>
+                <input v-model.number="correctedReflection" type="number" min="0" max="100" step="1">
+              </label>
+              <p class="teacher-corrected-hint">仅修正维度总分（0–100 整数），不改写细项；原自动分只读保留。</p>
+            </div>
+
+            <div class="teacher-refs">
+              <span>引用证据（须属于原评价 items）</span>
+              <p v-if="!legalEvidenceRefs.length" class="teacher-refs-empty">原评价无 evidenceRefs 可勾选。</p>
+              <label v-for="refValue in legalEvidenceRefs" :key="refValue" class="teacher-ref-item">
+                <input
+                  type="checkbox"
+                  :checked="selectedRefs.includes(refValue)"
+                  @change="toggleRef(refValue, ($event.target as HTMLInputElement).checked)"
+                >
+                <code>{{ shortRef(refValue) }}</code>
+                <button type="button" class="teacher-ref-copy" @click.prevent="onOpenEvidence(refValue)">复制</button>
+              </label>
+            </div>
+
+            <p v-if="formError" class="teacher-form-error" role="alert">{{ formError }}</p>
+
+            <button
+              type="button"
+              class="teacher-submit"
+              :disabled="!canSubmit || submitting"
+              @click="submitReview"
+            >
+              {{ submitting ? '提交中…' : '提交复核' }}
+            </button>
+          </fieldset>
+        </section>
+
+        <section v-if="active" class="teacher-audit" aria-label="复核审计时间线">
+          <header>
+            <h2>审计留痕</h2>
+            <span>{{ decisions.length }} 条决定</span>
+          </header>
+          <p v-if="!decisions.length" class="teacher-audit-empty">尚无教师决定；提交复核后会出现在此。</p>
+          <ol v-else class="teacher-audit-list">
+            <li v-for="item in decisions" :key="item.decisionId">
+              <strong>r{{ item.revision }} · {{ decisionLabel[item.decision] || item.decision }}</strong>
+              <span>{{ item.teacher }} · {{ formatDecisionTime(item.createdAt) }}</span>
+              <p>{{ item.rationale }}</p>
+              <p v-if="item.correctedResult">
+                修正分：总分 {{ item.correctedResult.total }}
+                （过程 {{ item.correctedResult.dimensions.process }}
+                / 结果 {{ item.correctedResult.dimensions.result }}
+                / 反思 {{ item.correctedResult.dimensions.reflection }}）
+              </p>
+              <p v-if="item.evidenceRefs?.length" class="teacher-audit-refs">
+                证据：
+                <button
+                  v-for="refValue in item.evidenceRefs"
+                  :key="`${item.decisionId}-${refValue}`"
+                  type="button"
+                  @click="onOpenEvidence(refValue)"
+                >
+                  {{ shortRef(refValue) }}
+                </button>
+              </p>
+            </li>
+          </ol>
         </section>
       </section>
     </div>
@@ -449,6 +697,8 @@ onMounted(() => {
 }
 
 .teacher-gates,
+.teacher-decision,
+.teacher-audit,
 .teacher-empty {
   padding: var(--ws-space-5);
   border: 1px solid var(--ws-line);
@@ -456,20 +706,27 @@ onMounted(() => {
   background: var(--ws-surface);
 }
 
-.teacher-gates > header {
+.teacher-gates > header,
+.teacher-decision > header,
+.teacher-audit > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--ws-space-3);
   margin-bottom: var(--ws-space-3);
 }
 
 .teacher-gates h2,
+.teacher-decision h2,
+.teacher-audit h2,
 .teacher-empty h2 {
   margin: 0;
   font-size: var(--ws-text-lg);
 }
 
-.teacher-gates header span {
+.teacher-gates header span,
+.teacher-decision header span,
+.teacher-audit header span {
   color: var(--ws-ink-muted);
   font-size: var(--ws-text-xs);
 }
@@ -494,6 +751,179 @@ onMounted(() => {
 
 .teacher-gates li span {
   color: var(--ws-ink-muted);
+}
+
+.teacher-decision fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.teacher-decision fieldset:disabled {
+  opacity: 0.72;
+}
+
+.teacher-decision-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ws-space-3);
+  margin-bottom: var(--ws-space-3);
+  font-size: var(--ws-text-sm);
+}
+
+.teacher-decision-kinds label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.teacher-field {
+  display: grid;
+  gap: var(--ws-space-1);
+  margin-bottom: var(--ws-space-3);
+  font-size: var(--ws-text-sm);
+}
+
+.teacher-field span,
+.teacher-refs > span {
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+}
+
+.teacher-field textarea,
+.teacher-corrected input {
+  width: 100%;
+  padding: var(--ws-space-2) var(--ws-space-3);
+  color: var(--ws-ink);
+  border: 1px solid var(--ws-line-strong);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-soft, var(--ws-surface));
+  font: inherit;
+  font-size: var(--ws-text-sm);
+}
+
+.teacher-corrected {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--ws-space-2);
+  margin-bottom: var(--ws-space-3);
+}
+
+.teacher-corrected label {
+  display: grid;
+  gap: 4px;
+  font-size: var(--ws-text-xs);
+  color: var(--ws-ink-muted);
+}
+
+.teacher-corrected-hint,
+.teacher-refs-empty,
+.teacher-audit-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--ws-ink-muted);
+  font-size: 12px;
+}
+
+.teacher-refs {
+  display: grid;
+  gap: var(--ws-space-1);
+  margin-bottom: var(--ws-space-3);
+}
+
+.teacher-ref-item {
+  display: flex;
+  align-items: center;
+  gap: var(--ws-space-2);
+  font-size: var(--ws-text-sm);
+}
+
+.teacher-ref-item code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.teacher-ref-copy {
+  padding: 2px 8px;
+  color: var(--ws-accent);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.teacher-form-error {
+  margin: 0 0 var(--ws-space-2);
+  color: #9a3412;
+  font-size: var(--ws-text-sm);
+}
+
+.teacher-submit {
+  min-height: var(--ws-control-lg);
+  padding: var(--ws-space-2) var(--ws-space-4);
+  color: #fff;
+  border: 0;
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-accent);
+  font: inherit;
+  font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-bold);
+  cursor: pointer;
+}
+
+.teacher-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.teacher-audit-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.teacher-audit-list li {
+  display: grid;
+  gap: 4px;
+  padding: var(--ws-space-3) 0;
+  border-bottom: 1px solid var(--ws-line);
+  font-size: var(--ws-text-sm);
+}
+
+.teacher-audit-list li:last-child {
+  border-bottom: 0;
+}
+
+.teacher-audit-list li span,
+.teacher-audit-list li p {
+  margin: 0;
+  color: var(--ws-ink-muted);
+}
+
+.teacher-audit-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.teacher-audit-refs button {
+  padding: 2px 8px;
+  color: var(--ws-accent);
+  border: 1px solid var(--ws-line);
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .teacher-empty {
@@ -529,6 +959,10 @@ onMounted(() => {
 
   .teacher-layout {
     grid-template-columns: 1fr;
+  }
+
+  .teacher-corrected {
+    grid-template-columns: 1fr 1fr;
   }
 }
 

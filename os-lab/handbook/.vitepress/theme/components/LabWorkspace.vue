@@ -1512,6 +1512,13 @@ const connectionDetail = ref('')
 let noticeTimer = 0
 
 const lab = computed(() => getTutorLab(props.labId))
+
+/** 当前 Lab 变体（知识路径弱提示）；无 scaffold 数据时为空。 */
+const currentLabVariant = computed(() => {
+  const labId = lab.value?.id
+  if (!labId || !scaffold.value?.variants) return ''
+  return String(scaffold.value.variants[labId] || '')
+})
 const journey = computed(() => buildLabJourney(events.value, props.labId, learningAccess.value))
 const journeyItem = computed(() => journey.value.find((item) => item.lab.id === props.labId))
 const currentAccess = computed(() => learningAccess.value.find((item) => item.labId === props.labId))
@@ -2621,6 +2628,7 @@ onBeforeUnmount(() => {
             :lab="lab"
             :editable="isTeacherRole"
             :restore-location="teacherManualLocation"
+            :variant="currentLabVariant"
             @edit="startTeacherEditing"
             @section-change="currentSection = $event"
             @source-jump="onSourceJump"

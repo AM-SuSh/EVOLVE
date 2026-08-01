@@ -1,5 +1,28 @@
 # os-lab 项目进度总览
 
+## 2026-08-02 - Task: 成员 B Day5 复核改分 + OPRE + 知识路径
+
+### What was done
+
+- **评分复核留痕**：`TeacherReport` 接 `POST /teacher/review`（confirmed / corrected / dismissed + 必填理由 + 合法 evidenceRefs；corrected 仅维度总分）；展示 `decisions` 审计时间线；`automaticResult` 只读不变。未覆盖现有「实验验收」`TeacherReview`（报告批语）。
+- **导航分流**：`TeacherNav` 增加「评分复核」→ `/guide/teacher-report`，与「实验验收」并列。
+- **OPRE 条**：新增 `OpreBar.vue`，挂 `TraceViewer` intro 下；Lab2 Trap→T-OPRE-1、时间线→S-OPRE-1；插入报告复用现有 `insert-report`；无 trace 显示 empty 文案；Lab3 降级模板。
+- **知识路径条**：新增 `KnowledgePathBar.vue`，挂 `ManualPane` 顶；Lab2 五段定稿文案；段点击滚手册匹配章节；`scaffold.variants` 驱动 debug/remedial/fill 弱提示。
+- **文档**：`workbench-ui.md`、`day1-workbench-audit.md`、`teacher-report.md` 同步 Day5 契约。
+
+### Testing
+
+- `npm test`（handbook）：41 项全部通过。
+- `git diff --check`：本轮改动文件无空白错误。
+- 手工建议：教师登录评分复核改一条分并见审计；学生 Trace OPRE 插入报告；Lab2 手册顶见路径条。
+
+### Notes
+
+- 主要文件：`TeacherReport.vue`、`TeacherNav.vue`、`OpreBar.vue`、`KnowledgePathBar.vue`、`TraceViewer.vue`、`ManualPane.vue`、`LabWorkspace.vue`、`docs/workbench-ui.md`、`progress.md`。
+- 计划 Day5 B 完成标准：教师能改一条分并留痕；OPRE/路径在页面有入口。Lab 向导属 Day6。
+
+---
+
 ## 2026-08-02 - Task: 成员 B Day4 评分 v2 界面
 
 ### What was done

@@ -5,6 +5,14 @@ import MarkdownIt from 'markdown-it'
 import mermaid from 'mermaid'
 import { LockKeyhole, MessageSquarePlus, Pencil, RefreshCw, TableOfContents } from 'lucide-vue-next'
 import { authHeaders, collapsedSectionPrefix, sectionPrefixOf, type TutorLab } from '../tutor-model'
+import KnowledgePathBar from './KnowledgePathBar.vue'
+
+type KnowledgePathSegmentId =
+  | 'prerequisite'
+  | 'mechanism'
+  | 'artifact'
+  | 'evidence'
+  | 'transfer'
 
 /**
  * 实验手册栏。
@@ -22,6 +30,8 @@ const props = defineProps<{
   lab: TutorLab
   editable?: boolean
   restoreLocation?: ManualLocation | null
+  /** 当前 Lab 变体名（scaffold.variants），供知识路径弱提示 */
+  variant?: string
 }>()
 
 const emit = defineEmits<{
@@ -343,6 +353,23 @@ function jumpToTitles(h2?: string, h3?: string) {
   if (target) jumpTo(target)
 }
 
+const PATH_SEGMENT_MATCHERS: Record<KnowledgePathSegmentId, RegExp[]> = {
+  prerequisite: [/先修|Lab\s*1|裸机|启动/i],
+  mechanism: [/背景|概念|Trap|系统调用|调度|机制/i],
+  artifact: [/实验任务|任务|目标|要求/i],
+  evidence: [/验证|断言|验收|观察/i],
+  transfer: [/迁移|思考|拓展|检查点/i],
+}
+
+/** 知识路径条：按段滚到手册内最近匹配章节；无匹配则仅高亮该段（由子组件处理）。 */
+function onKnowledgePathNavigate(segment: KnowledgePathSegmentId) {
+  const matchers = PATH_SEGMENT_MATCHERS[segment] || []
+  const target = sections.value.find((section) =>
+    matchers.some((pattern) => pattern.test(section.title)),
+  )
+  if (target) jumpTo(target)
+}
+
 defineExpose({ jumpToTitles })
 
 function restoreReadingLocation() {
@@ -425,6 +452,12 @@ onBeforeUnmount(() => {
       </button>
     </header>
 
+    <KnowledgePathBar
+      :lab-id="lab.id"
+      :variant="variant"
+      @navigate="onKnowledgePathNavigate"
+    />
+
     <div class="ws-manual-body">
       <div
         class="ws-toc-drawer"
@@ -490,7 +523,7 @@ onBeforeUnmount(() => {
 .ws-manual-pane {
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;

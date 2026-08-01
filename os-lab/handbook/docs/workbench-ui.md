@@ -15,7 +15,7 @@
 
 | 区域 | 组件 | 职责 |
 | --- | --- | --- |
-| 左栏 | `ManualPane` | 实验手册（Markdown 渲染、目录、阅读位置）；知识路径条属本周 Day5 挂载，当前未实现 |
+| 左栏 | `ManualPane` + `KnowledgePathBar` | 实验手册（Markdown 渲染、目录、阅读位置）；Lab2 手册顶挂知识路径五段条（定稿见 `lab2/knowledge-path.md`） |
 | 右栏 · 工作区 | `CodePanel`（Monaco）+ 内联底部 dock | 源码编辑；底栏页签：**终端** / **Problems** / **测试结果** |
 | 右栏 · 学习支持 | `ReportPanel` / `AssessmentPane` / `TraceViewer`；AI 对话为浮层 | 页签：**实验报告** / **学习评价** / **Trace** |
 
@@ -111,9 +111,10 @@
 4. 大数据：事件列表 >200 条时只渲染前 200 条并提示「用过滤或播放控制查看其余」；视图主体靠滚动承载。
 5. 源码跳转：选中事件后「跳到源码」按静态映射跳转（`trap_enter` → `kernel/src/trap.rs`，`task_switch` → `kernel/src/task.rs`），复用 `codePanelRef.openAtLine`。
 6. 关键帧插入报告：选中事件后「插入报告」把事件格式化为证据文本，复用 `LabWorkspace.onInsertReport` → `ReportPanel`（模板写入当前节；Markdown 追加到正文）。
-7. 事件上报：切换视图或移动播放头时上报 `trace_inspected`（事件 v2，字段 `runId`/`view`/`eventRange:{start,end}`）。
-8. 空数据与异常 trace 显示明确空态，不展示预设动画；移动端控制条与视图纵向堆叠。
-9. Sv39 page walk 视图暂未实现：真实 trace 无 `page_walk` 事件，按 `visualization/README.md` 应显示降级空态而非伪造；OPRE 页表任务改为源码降级路径。
+7. **OPRE 条**（`OpreBar`，Day5）：挂在 Trace intro 下；Lab2 Trap→T-OPRE-1、时间线→S-OPRE-1；每步「插入报告」走同一 `insert-report` 通道；无事件显示 `opre.empty_trace`，不锁死、不播假动画；Lab3 走 P-OPRE-1 降级模板（文案见 `visualization/opre-copy-final.md`）。
+8. 事件上报：切换视图或移动播放头时上报 `trace_inspected`（事件 v2，字段 `runId`/`view`/`eventRange:{start,end}`）。
+9. 空数据与异常 trace 显示明确空态，不展示预设动画；移动端控制条与视图纵向堆叠。
+10. Sv39 page walk 视图暂未实现：真实 trace 无 `page_walk` 事件，按 `visualization/README.md` 应显示降级空态而非伪造；OPRE 页表任务改为源码降级路径。
 
 ## 实验报告面板
 
@@ -143,14 +144,22 @@
 - **AI 点评**：把报告发给 AI 助手（浮层对话），不是真人老师。
 - **提交给老师**：提交前弹窗二次确认；重复提交覆盖本实验上一份。
 
-## 评分 v2 · 教师报告（Day4）
+## 评分 v2 · 教师评分复核（Day4–5）
 
-挂载：`/guide/teacher-report`（`TeacherReport`）。
+挂载：`/guide/teacher-report`（`TeacherReport`）。与「实验验收」页（`TeacherReview` / 报告批语）不同入口。
 
 - **数据**：教师登录后 `GET /teacher/reviews` → `automaticResult`（与学生 items 同形）；主区复用同一 `AssessmentScorePanel`。
 - **限制**：仅展示已进入复核队列的评价；未触门控的会话显示可信空态，不回落旧启发式分。
 - **引用**：教师页无学生工作台；点击 evidenceRefs 复制引用并提示，不假装跳进 IDE。
-- 改分 + 理由留痕属 Day5（`TeacherReview` / `POST /teacher/review`）。
+- **改分留痕（Day5）**：`pending` 项可提交 `POST /teacher/review`（`confirmed` / `corrected` / `dismissed` + 必填 `rationale` + 合法 `evidenceRefs`；`corrected` 时带维度总分 `correctedResult`）。`automaticResult` 只读不变；`decisions[]` 作审计时间线。导航「评分复核」指向本页。
+
+## 知识路径条（Day5）
+
+挂载：`ManualPane` 工具栏与正文之间（`KnowledgePathBar`）。
+
+- Lab2：五段（先修 / 本机制 / 产物 / 必观证据 / 迁移），文案对齐 `lab2/knowledge-path.md`。
+- 点击段：滚到手册内标题匹配章节（背景/任务/验证/思考等）；无匹配仅高亮该段。
+- 变体弱提示：`scaffold.variants[labId]` 为 `debug|remedial` / `fill` 时显示一行焦点说明；其它 Lab 不展示假路径。
 
 ## 终端（xterm）
 

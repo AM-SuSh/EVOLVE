@@ -27,6 +27,7 @@ import {
 } from '../composables/useTracePlayback'
 import TraceTrapView from './TraceTrapView.vue'
 import TraceTimelineView from './TraceTimelineView.vue'
+import OpreBar from './OpreBar.vue'
 
 const props = defineProps<{
   runId?: string
@@ -240,6 +241,13 @@ const hasEvents = computed(() => allEvents.value.length > 0)
         与底部 <strong>Problems</strong>（编译错误列表）不同：Trace 看的是「跑起来之后」的时序，不是编译诊断。
       </p>
     </header>
+
+    <OpreBar
+      :view="view"
+      :has-events="hasEvents"
+      :lab-id="labId"
+      @insert-report="emit('insert-report', $event)"
+    />
 
     <div v-if="!hasEvents" class="ws-trace-empty" role="status">
       <GitBranch :size="20" aria-hidden="true" />
