@@ -62,14 +62,14 @@ const hasServerState = computed(() => Boolean(props.tutorState))
       <div class="ws-evidence-col ws-evidence-col--grow">
         <span class="ws-evidence-label">已有证据</span>
         <p class="ws-evidence-value" :class="{ faint: !hasServerState }">{{ haveText }}</p>
-        <div v-if="chips.length" class="ws-evidence-chips">
+        <div v-if="chips.length" class="ws-evidence-chips" aria-label="可点击证据引用">
           <button
             v-for="chip in chips"
             :key="chip.ref"
             type="button"
             class="ws-evidence-chip"
             :data-kind="chip.kind"
-            :title="`打开 ${chip.ref}`"
+            :title="chip.kind === 'run' ? `打开 ${chip.ref}（有断言看测试结果，否则回终端）` : `打开 ${chip.ref}`"
             @click="emit('open-evidence', chip.ref)"
           >
             {{ chip.label }}

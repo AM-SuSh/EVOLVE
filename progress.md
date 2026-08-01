@@ -5,8 +5,9 @@
 ### What was done
 
 - **终端暗色适配**：`XtermOutput` 按 `dark` 使用完整浅/深色板（含 ANSI），避免读到未解析的 `var(...)` 导致主题失效；切换主题后 `nextTick` + 重绘；暗色滚动条与 `color-scheme`；`TerminalPanel`/`TerminalSession` 同步跟随工作台暗夜开关。
-- **测试结果保留**：停止或空断言的 run 不再用 `[]` 冲掉上一份断言；`LabWorkspace` 增加 `runResultHistory`（最多 8 次）与「当前结果 / 近期历史」展示；点 `run:` 引用时可从历史恢复对应断言。
+- **测试结果保留**：停止或空断言的 run 不再用 `[]` 冲掉上一份断言；`LabWorkspace` 增加 `runResultHistory`（最多 8 次）与「当前结果 / 近期历史」展示；点 `run:` 引用时可从历史恢复对应断言；**按 Lab/账号写入 localStorage，默认 24 小时内刷新页面仍可回看**。
 - **多会话新开终端**：拆出 `TerminalSession.vue`；`TerminalPanel` 增加会话页签与 **+**（最多 4 个），各会话滚动历史独立，可切换/关闭（至少保留 1 个）；同会话内多次运行只追加分隔线，不整屏 clear。
+- **无断言 run 跳转**：点 `run:` 且无断言时切到终端（避免空「测试结果」像点不动）。
 
 ### Testing
 

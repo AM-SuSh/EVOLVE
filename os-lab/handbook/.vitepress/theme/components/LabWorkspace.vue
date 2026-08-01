@@ -174,24 +174,161 @@ const mobileView = ref<'manual' | 'practice'>('manual')
 const rightTab = ref<'tutor' | 'report' | 'trace'>('tutor')
 /** 工作区底部面板页签：终端 | Problems | 测试结果。 */
 const bottomTab = ref<'terminal' | 'problems' | 'tests'>('terminal')
-/** 最近一次运行的 runId，供 Trace/Problems 查询对应产物。 */
-const lastRunId = ref('')
-/** 最近一次「带断言」的运行结果；空断言 / 停止不会冲掉上一份。 */
-const lastAssertions = ref<Array<{ id: string; label: string; passed: boolean; expected: string; observed: string }>>([])
-/** 与 lastAssertions 对应的 runId（可与 lastRunId 不同：后者可能是刚停止、无断言的 run）。 */
-const lastAssertionsRunId = ref('')
+type RunAssertionItem = {
+  id: string
+  label: string
+  passed: boolean
+  expected: string
+  observed: string
+}
 type StoredRunResult = {
   runId: string
   verified: boolean
   trusted: boolean
   stopped?: string
   at: string
-  assertions: Array<{ id: string; label: string; passed: boolean; expected: string; observed: string }>
+  assertions: RunAssertionItem[]
 }
+
+/** 测试结果本地缓存：按 lab + 学生隔离，默认保留 24 小时（刷新不丢）。 */
+const RUN_RESULTS_STORAGE_KEY = 'os-lab-run-results-v1'
+const RUN_RESULTS_TTL_MS = 24 * 60 * 60 * 1000
+const RUN_RESULTS_HISTORY_CAP = 8
+
+type PersistedRunResults = {
+  version: 1
+  labId: string
+  student: string
+  savedAt: number
+  lastRunId: string
+  lastAssertionsRunId: string
+  lastAssertions: RunAssertionItem[]
+  history: StoredRunResult[]
+}
+
+function emptyRunResults() {
+  return {
+    lastRunId: '',
+    lastAssertionsRunId: '',
+    lastAssertions: [] as RunAssertionItem[],
+    history: [] as StoredRunResult[],
+  }
+}
+
+function isFreshTimestamp(value: string | number, now = Date.now()) {
+  const ms = typeof value === 'number' ? value : Date.parse(value)
+  return Number.isFinite(ms) && now - ms <= RUN_RESULTS_TTL_MS
+}
+
+function loadPersistedRunResults(labId: string, student: string) {
+  const empty = emptyRunResults()
+  if (typeof localStorage === 'undefined') return empty
+  try {
+    const raw = localStorage.getItem(RUN_RESULTS_STORAGE_KEY)
+    if (!raw) return empty
+    const all = JSON.parse(raw) as Record<string, PersistedRunResults>
+    const key = `${labId}::${student || 'anon'}`
+    const bundle = all?.[key]
+    if (!bundle || bundle.version !== 1 || bundle.labId !== labId) return empty
+    if (!isFreshTimestamp(bundle.savedAt)) return empty
+    const history = (Array.isArray(bundle.history) ? bundle.history : [])
+      .filter((item) => item?.runId && isFreshTimestamp(item.at))
+      .slice(0, RUN_RESULTS_HISTORY_CAP)
+    const cachedAssertions = Array.isArray(bundle.lastAssertions) ? bundle.lastAssertions : []
+    const cachedAssertionsRunId =
+      typeof bundle.lastAssertionsRunId === 'string' ? bundle.lastAssertionsRunId : ''
+    const historyHit = history.find((item) => item.runId === cachedAssertionsRunId && item.assertions?.length)
+    const fallbackHit = history.find((item) => item.assertions?.length)
+    const lastAssertionsRunId = historyHit?.runId || (cachedAssertions.length ? cachedAssertionsRunId : '') || fallbackHit?.runId || ''
+    const lastAssertions =
+      (historyHit?.assertions?.length ? historyHit.assertions : null) ||
+      (cachedAssertionsRunId === lastAssertionsRunId && cachedAssertions.length ? cachedAssertions : null) ||
+      fallbackHit?.assertions ||
+      []
+    return {
+      lastRunId: typeof bundle.lastRunId === 'string' ? bundle.lastRunId : '',
+      lastAssertionsRunId,
+      lastAssertions,
+      history,
+    }
+  } catch {
+    return empty
+  }
+}
+
+function persistRunResults(
+  labId: string,
+  student: string,
+  snapshot: {
+    lastRunId: string
+    lastAssertionsRunId: string
+    lastAssertions: RunAssertionItem[]
+    history: StoredRunResult[]
+  },
+) {
+  if (typeof localStorage === 'undefined') return
+  try {
+    const raw = localStorage.getItem(RUN_RESULTS_STORAGE_KEY)
+    const all = (raw ? JSON.parse(raw) : {}) as Record<string, PersistedRunResults>
+    const key = `${labId}::${student || 'anon'}`
+    const now = Date.now()
+    // 清掉过期条目，避免 localStorage 无限膨胀。
+    for (const [entryKey, bundle] of Object.entries(all)) {
+      if (!bundle?.savedAt || !isFreshTimestamp(bundle.savedAt, now)) delete all[entryKey]
+    }
+    all[key] = {
+      version: 1,
+      labId,
+      student: student || 'anon',
+      savedAt: now,
+      lastRunId: snapshot.lastRunId,
+      lastAssertionsRunId: snapshot.lastAssertionsRunId,
+      lastAssertions: snapshot.lastAssertions,
+      history: snapshot.history.slice(0, RUN_RESULTS_HISTORY_CAP),
+    }
+    localStorage.setItem(RUN_RESULTS_STORAGE_KEY, JSON.stringify(all))
+  } catch {
+    /* quota / 隐私模式：忽略，不影响主流程 */
+  }
+}
+
+function saveCurrentRunResults() {
+  persistRunResults(props.labId, studentId.value, {
+    lastRunId: lastRunId.value,
+    lastAssertionsRunId: lastAssertionsRunId.value,
+    lastAssertions: lastAssertions.value,
+    history: runResultHistory.value,
+  })
+}
+
+function restoreRunResultsForScope() {
+  const loaded = loadPersistedRunResults(props.labId, studentId.value)
+  lastRunId.value = loaded.lastRunId
+  lastAssertionsRunId.value = loaded.lastAssertionsRunId
+  lastAssertions.value = loaded.lastAssertions
+  runResultHistory.value = loaded.history
+  if (workspaceContext && loaded.lastRunId) {
+    workspaceContext.lastRunId = loaded.lastRunId
+  }
+}
+
+/** 最近一次运行的 runId，供 Trace/Problems 查询对应产物。 */
+const lastRunId = ref('')
+/** 最近一次「带断言」的运行结果；空断言 / 停止不会冲掉上一份。 */
+const lastAssertions = ref<RunAssertionItem[]>([])
+/** 与 lastAssertions 对应的 runId（可与 lastRunId 不同：后者可能是刚停止、无断言的 run）。 */
+const lastAssertionsRunId = ref('')
 /** 近期测试结果历史（新→旧），供「测试结果」页签回顾。 */
 const runResultHistory = ref<StoredRunResult[]>([])
 /** 最近一次诊断条数，用于 Problems 页签角标。 */
 const lastDiagnosticCount = ref(0)
+
+watch(
+  () => [props.labId, studentId.value] as const,
+  () => restoreRunResultsForScope(),
+  { immediate: true },
+)
+
 /** 右上工作区、右下学习支持区或底部面板可铺满顶栏以下的整个页面。 */
 const maximized = ref<'none' | 'workspace' | 'assistant' | 'dock'>('none')
 
@@ -1239,7 +1376,7 @@ function onRunFinished(payload: {
         assertions,
       },
       ...runResultHistory.value.filter((item) => item.runId !== payload.runId),
-    ].slice(0, 8)
+    ].slice(0, RUN_RESULTS_HISTORY_CAP)
   }
 
   // 仅非停止的完整结束写入验证事件；有断言时才替换「当前测试结果」展示。
@@ -1262,10 +1399,12 @@ function onRunFinished(payload: {
     lastAssertions.value = assertions
     lastAssertionsRunId.value = payload.runId
   }
+  saveCurrentRunResults()
 }
 
 function onRunExit(runId: string) {
   if (runId) lastRunId.value = runId
+  saveCurrentRunResults()
 }
 
 /** Problems 诊断加载完成：有条目时自动展开底部面板并切到 Problems。 */
@@ -1331,6 +1470,7 @@ async function navigateEvidenceRef(refValue: string) {
 
   if (raw.startsWith('run:')) {
     const runId = raw.slice(4).trim()
+    let hasAssertions = false
     if (runId) {
       lastRunId.value = runId
       const entry = runResultHistory.value.find(
@@ -1339,10 +1479,18 @@ async function navigateEvidenceRef(refValue: string) {
       if (entry?.assertions.length) {
         lastAssertions.value = entry.assertions
         lastAssertionsRunId.value = entry.runId
+        hasAssertions = true
+      } else if (
+        lastAssertionsRunId.value &&
+        (lastAssertionsRunId.value === runId || lastAssertionsRunId.value.startsWith(runId)) &&
+        lastAssertions.value.length > 0
+      ) {
+        hasAssertions = true
       }
     }
     terminalDockOpen.value = true
-    bottomTab.value = 'tests'
+    // 有断言 → 测试结果；无断言的失败/停止 run → 终端（否则空面板像「点不动」）。
+    bottomTab.value = hasAssertions ? 'tests' : 'terminal'
     return
   }
 
@@ -1861,6 +2009,7 @@ onBeforeUnmount(() => {
                     <strong>测试结果 · 可信断言</strong>
                     <p>
                       汇总<strong>可信验证命令</strong>的断言（期望 vs 实际）；停止或无断言的运行不会冲掉上一份结果。
+                      结果按 Lab/账号缓存在本机约 24 小时，刷新页面后仍可查看。
                       与 Problems（编译诊断）、Trace（运行时事件回放）互补。
                     </p>
                   </header>
