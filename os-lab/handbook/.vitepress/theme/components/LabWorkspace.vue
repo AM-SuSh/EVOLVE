@@ -1758,7 +1758,10 @@ onBeforeUnmount(() => {
                         <span class="ws-test-observed">实际：{{ item.observed }}</span>
                       </li>
                     </ul>
-                    <p v-else>最近一次运行 <code>{{ lastRunId }}</code> 的断言详情已记录在运行状态和实验报告证据中。</p>
+                    <p v-else>
+                      最近一次运行 <code>{{ lastRunId }}</code> 未返回可展示的断言列表，
+                      <strong>不表示验证已通过</strong>。请确认命令走了可信验证通道（含 recipe 断言），或查看终端输出与实验报告中的运行证据。
+                    </p>
                   </div>
                 </div>
               </div>

@@ -1,5 +1,27 @@
 # os-lab 项目进度总览
 
+## 2026-08-01 - Task: 成员 B Day1 工作台空态与文档核对
+
+### What was done
+
+- **核对清单**：新建 `os-lab/handbook/docs/day1-workbench-audit.md`，记录空态/mock 核查结论、与 `workbench-ui.md` 不一致项（D1–D6）、挂 Day2+ 的规格缺口（G2/G7/G8、TutorEvidenceBar），以及本轮已修正文案。
+- **文档同步**：重写 `workbench-ui.md` 布局——工作区底栏为终端/Problems/测试结果，Trace 在学习支持页签；顶栏开关恢复、无折叠 rail；Problems API 写明 `GET /run/diagnostics`；ManualPane 职责改为手册（知识路径注明 Day5）。
+- **空态文案**：Problems 无 run →「还没有编译诊断；先保存再构建」；Trace 无事件强调教学 trace / `trap_enter`·`task_switch`；测试结果有 run 无断言 →「不表示验证已通过」；文件状态 T 的 title 对齐 A 的 `ui-copy-review.md`。
+
+### Testing
+
+- 对照清单 §6：文档三区描述与 `LabWorkspace` 挂载一致；Problems/Trace/测试结果无数据时不造假列表。
+- `git diff --check`：本轮改动文件无空白错误（实施后本地核对）。
+
+### Notes
+
+- 主要文件：`handbook/docs/day1-workbench-audit.md`、`handbook/docs/workbench-ui.md`、`ProblemsPanel.vue`、`TraceViewer.vue`、`LabWorkspace.vue`、`file-status.ts`、`progress.md`。
+- 教学缺口表仍以成员 A 的 `MEMBER-A-7DAY/day1-gap-table.md` 为准；本轮不重复开票。
+- **明日堵点（Day2）**：落地 `TutorEvidenceBar`，消费 chat 已有 `tutorState`（阶段 / 证据 / 下一步）。
+- 未做：TutorEvidenceBar、评分细项 UI、Lab 向导、共同 Lab2 smoke（属后续日/共同项）。
+
+---
+
 ## 2026-08-01 - Task: 实验报告视图与工作台分区交互收口
 
 ### What was done

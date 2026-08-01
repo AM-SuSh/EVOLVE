@@ -12,7 +12,11 @@ export interface FileStatusMeta {
 export const FILE_STATUS_META: Record<FileStatusKind, FileStatusMeta> = {
   added: { kind: 'added', badge: 'A', label: '本 Lab 新增文件' },
   modified: { kind: 'modified', badge: 'M', label: '你已修改' },
-  todo: { kind: 'todo', badge: 'T', label: '待完成任务文件' },
+  todo: {
+    kind: 'todo',
+    badge: 'T',
+    label: 'T=教师发放的任务文件，优先阅读文件头注释',
+  },
   generated: { kind: 'generated', badge: 'G', label: '自动生成，建议只读' },
   conflict: { kind: 'conflict', badge: '!', label: '与参考基线冲突或过期' },
 }

@@ -109,12 +109,12 @@ function jumpToDiagnostic(diagnostic: RunDiagnostic) {
     </div>
     <div v-else class="ws-problems-empty" role="status">
       <FileWarning :size="20" aria-hidden="true" />
-      <strong>{{ runId ? '本次运行没有编译诊断' : '尚未采集编译诊断' }}</strong>
+      <strong>{{ runId ? '本次运行没有编译诊断' : '还没有编译诊断' }}</strong>
       <p>
         {{
           runId
             ? '构建已成功或未产生可解析的 cargo 诊断。若编译失败却仍为空，请确认命令走了 tutor 运行通道。'
-            : '在「终端」页签运行构建/验证命令后，有错误或警告时会自动切到本页签。'
+            : '先保存再构建：在「终端」页签运行构建/验证命令后，有错误或警告时会自动切到本页签。'
         }}
       </p>
     </div>

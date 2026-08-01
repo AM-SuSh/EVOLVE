@@ -189,8 +189,8 @@ const emptyState = computed<{ kind: 'no-run' | 'loading' | 'unavailable' | 'empt
   if (allEvents.value.length === 0) {
     return {
       kind: 'empty',
-      title: '本次运行没有 trace 事件',
-      note: '若未启用 trace-edu feature，或本次命令未触发 trap/调度埋点，这里会为空。可换可信验证命令重跑后再看。',
+      title: '本次运行尚未产生 trap_enter/task_switch',
+      note: '确认是否启用教学 trace（trace-edu feature）。若命令未触发 trap/调度埋点，这里会为空；可换可信验证命令重跑后再看。这里不会播放预设动画。',
     }
   }
   return { kind: 'empty', title: '', note: '' }
