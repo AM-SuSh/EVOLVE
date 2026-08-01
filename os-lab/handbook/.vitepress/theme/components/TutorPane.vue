@@ -37,6 +37,9 @@ const emit = defineEmits<{
   (event: 'open-evidence', ref: string): void
   (event: 'remove-attachment', id: string): void
   (event: 'open-attachment', item: ChatAttachment): void
+  (event: 'drag-start', event: PointerEvent): void
+  (event: 'drag-move', event: PointerEvent): void
+  (event: 'drag-end', event: PointerEvent): void
 }>()
 
 const draft = ref('')
@@ -102,7 +105,14 @@ defineExpose({ scrollToLatest, focusComposer })
 
 <template>
   <section class="ws-tutor-pane" aria-label="AI 引导导师">
-    <header class="ws-tutor-head">
+    <header
+      class="ws-tutor-head"
+      @pointerdown="emit('drag-start', $event)"
+      @pointermove="emit('drag-move', $event)"
+      @pointerup="emit('drag-end', $event)"
+      @pointercancel="emit('drag-end', $event)"
+      @lostpointercapture="emit('drag-end', $event)"
+    >
       <strong>AI 导师</strong>
       <div class="ws-tutor-actions">
         <button
@@ -240,6 +250,12 @@ defineExpose({ scrollToLatest, focusComposer })
   padding: var(--ws-space-2) var(--ws-space-4);
   border-bottom: 1px solid var(--ws-line);
   background: var(--ws-surface-alt);
+  cursor: grab;
+  touch-action: none;
+}
+
+.ws-tutor-head:active {
+  cursor: grabbing;
 }
 
 .ws-tutor-head > strong {
