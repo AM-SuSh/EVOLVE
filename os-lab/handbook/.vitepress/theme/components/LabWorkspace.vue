@@ -176,8 +176,20 @@ const rightTab = ref<'tutor' | 'report' | 'trace'>('tutor')
 const bottomTab = ref<'terminal' | 'problems' | 'tests'>('terminal')
 /** 最近一次运行的 runId，供 Trace/Problems 查询对应产物。 */
 const lastRunId = ref('')
-/** 最近一次运行的断言结果，供「测试结果」页签展示。 */
+/** 最近一次「带断言」的运行结果；空断言 / 停止不会冲掉上一份。 */
 const lastAssertions = ref<Array<{ id: string; label: string; passed: boolean; expected: string; observed: string }>>([])
+/** 与 lastAssertions 对应的 runId（可与 lastRunId 不同：后者可能是刚停止、无断言的 run）。 */
+const lastAssertionsRunId = ref('')
+type StoredRunResult = {
+  runId: string
+  verified: boolean
+  trusted: boolean
+  stopped?: string
+  at: string
+  assertions: Array<{ id: string; label: string; passed: boolean; expected: string; observed: string }>
+}
+/** 近期测试结果历史（新→旧），供「测试结果」页签回顾。 */
+const runResultHistory = ref<StoredRunResult[]>([])
 /** 最近一次诊断条数，用于 Problems 页签角标。 */
 const lastDiagnosticCount = ref(0)
 /** 右上工作区、右下学习支持区或底部面板可铺满顶栏以下的整个页面。 */
@@ -1197,7 +1209,7 @@ function announceUnlock(wasCompleted: boolean) {
   )
 }
 
-/** 终端每次运行结束自动记录为验证证据（真实输出，不再靠学生自报）。 */
+/** 终端每次运行结束：更新 run 指针；有断言才刷新测试结果，停止/空断言不冲掉上一份。 */
 function onRunFinished(payload: {
   content: string
   passed: boolean
@@ -1206,27 +1218,54 @@ function onRunFinished(payload: {
   recipeId: string | null
   trusted: boolean
   assertions: Array<{ id: string; label: string; passed: boolean; expected: string; observed: string }>
+  stopped?: string
 }) {
   const wasCompleted = Boolean(journeyItem.value?.completed)
-  record('verification_attempt', {
-    content: payload.content,
-    runId: payload.runId,
-    ...(payload.recipeId ? { recipeId: payload.recipeId } : {}),
-    assertions: payload.assertions,
-    metadata: {
-      passed: payload.verified,
-      verified: payload.verified,
-      trusted: payload.trusted,
-      source: 'terminal',
-    },
-  })
   if (payload.runId) lastRunId.value = payload.runId
-  if (payload.assertions) lastAssertions.value = payload.assertions
   if (workspaceContext) {
     workspaceContext.lastRunId = payload.runId
     workspaceContext.lastRecipeId = payload.recipeId || ''
   }
-  announceUnlock(wasCompleted)
+
+  const assertions = Array.isArray(payload.assertions) ? payload.assertions : []
+  if (payload.runId) {
+    runResultHistory.value = [
+      {
+        runId: payload.runId,
+        verified: payload.verified,
+        trusted: payload.trusted,
+        stopped: payload.stopped,
+        at: new Date().toISOString(),
+        assertions,
+      },
+      ...runResultHistory.value.filter((item) => item.runId !== payload.runId),
+    ].slice(0, 8)
+  }
+
+  // 仅非停止的完整结束写入验证事件；有断言时才替换「当前测试结果」展示。
+  if (!payload.stopped) {
+    record('verification_attempt', {
+      content: payload.content,
+      runId: payload.runId,
+      ...(payload.recipeId ? { recipeId: payload.recipeId } : {}),
+      assertions,
+      metadata: {
+        passed: payload.verified,
+        verified: payload.verified,
+        trusted: payload.trusted,
+        source: 'terminal',
+      },
+    })
+    announceUnlock(wasCompleted)
+  }
+  if (assertions.length > 0) {
+    lastAssertions.value = assertions
+    lastAssertionsRunId.value = payload.runId
+  }
+}
+
+function onRunExit(runId: string) {
+  if (runId) lastRunId.value = runId
 }
 
 /** Problems 诊断加载完成：有条目时自动展开底部面板并切到 Problems。 */
@@ -1292,7 +1331,16 @@ async function navigateEvidenceRef(refValue: string) {
 
   if (raw.startsWith('run:')) {
     const runId = raw.slice(4).trim()
-    if (runId) lastRunId.value = runId
+    if (runId) {
+      lastRunId.value = runId
+      const entry = runResultHistory.value.find(
+        (item) => item.runId === runId || item.runId.startsWith(runId),
+      )
+      if (entry?.assertions.length) {
+        lastAssertions.value = entry.assertions
+        lastAssertionsRunId.value = entry.runId
+      }
+    }
     terminalDockOpen.value = true
     bottomTab.value = 'tests'
     return
@@ -1796,7 +1844,7 @@ onBeforeUnmount(() => {
                   :session-id="sessionId"
                   :dark="isDark"
                   @run-finished="onRunFinished"
-                  @run-exit="lastRunId = $event"
+                  @run-exit="onRunExit"
                   @run-diagnostics="onRunDiagnostics"
                   @insert-report="onInsertReport"
                 />
@@ -1812,28 +1860,79 @@ onBeforeUnmount(() => {
                   <header class="ws-tests-intro">
                     <strong>测试结果 · 可信断言</strong>
                     <p>
-                      汇总最近一次<strong>可信验证命令</strong>的断言（期望 vs 实际）。
-                      与 Problems（编译诊断）、Trace（运行时事件回放）互补：这里回答的是「验证有没有过」。
+                      汇总<strong>可信验证命令</strong>的断言（期望 vs 实际）；停止或无断言的运行不会冲掉上一份结果。
+                      与 Problems（编译诊断）、Trace（运行时事件回放）互补。
                     </p>
                   </header>
                   <div class="ws-tests-body">
-                    <p v-if="!lastRunId">在「终端」页签运行可信验证命令后，断言结果将汇总在此。</p>
-                    <ul v-else-if="lastAssertions.length" class="ws-tests-assertions">
-                      <li
-                        v-for="item in lastAssertions"
-                        :key="item.id"
-                        :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed }]"
-                      >
-                        <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
-                        <span class="ws-test-label">{{ item.label || item.id }}</span>
-                        <span class="ws-test-expected">期望：{{ item.expected }}</span>
-                        <span class="ws-test-observed">实际：{{ item.observed }}</span>
-                      </li>
-                    </ul>
-                    <p v-else>
-                      最近一次运行 <code>{{ lastRunId }}</code> 未返回可展示的断言列表，
-                      <strong>不表示验证已通过</strong>。请确认命令走了可信验证通道（含 recipe 断言），或查看终端输出与实验报告中的运行证据。
+                    <p v-if="!lastAssertionsRunId && !runResultHistory.length">
+                      在「终端」页签运行可信验证命令后，断言结果将汇总在此。
                     </p>
+                    <template v-else>
+                      <section v-if="lastAssertions.length" class="ws-tests-current" aria-label="当前断言结果">
+                        <header class="ws-tests-run-head">
+                          <strong>当前结果</strong>
+                          <code v-if="lastAssertionsRunId">run:{{ lastAssertionsRunId.slice(0, 8) }}…</code>
+                        </header>
+                        <ul class="ws-tests-assertions">
+                          <li
+                            v-for="item in lastAssertions"
+                            :key="item.id"
+                            :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed }]"
+                          >
+                            <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
+                            <span class="ws-test-label">{{ item.label || item.id }}</span>
+                            <span class="ws-test-expected">期望：{{ item.expected }}</span>
+                            <span class="ws-test-observed">实际：{{ item.observed }}</span>
+                          </li>
+                        </ul>
+                      </section>
+                      <p v-else-if="lastRunId" class="ws-tests-note">
+                        最近一次运行 <code>{{ lastRunId }}</code> 未返回可展示断言
+                        <template v-if="lastAssertionsRunId">；仍保留上一份
+                          <code>run:{{ lastAssertionsRunId.slice(0, 8) }}…</code>
+                          的结果如下方历史。</template>
+                        <strong> 不表示验证已通过。</strong>
+                      </p>
+                      <section v-if="runResultHistory.length" class="ws-tests-history" aria-label="近期运行历史">
+                        <header class="ws-tests-run-head">
+                          <strong>近期历史</strong>
+                          <span>{{ runResultHistory.length }} 次</span>
+                        </header>
+                        <details
+                          v-for="entry in runResultHistory"
+                          :key="entry.runId"
+                          class="ws-tests-history-item"
+                          :open="entry.runId === lastAssertionsRunId"
+                        >
+                          <summary>
+                            <code>run:{{ entry.runId.slice(0, 8) }}…</code>
+                            <span
+                              class="ws-tests-history-badge"
+                              :data-state="entry.stopped ? 'stopped' : entry.verified ? 'ok' : 'fail'"
+                            >
+                              {{ entry.stopped ? '已停止' : entry.verified ? '已通过' : '未通过' }}
+                            </span>
+                            <span v-if="entry.assertions.length" class="ws-tests-history-count">
+                              {{ entry.assertions.filter((a) => a.passed).length }}/{{ entry.assertions.length }}
+                            </span>
+                          </summary>
+                          <ul v-if="entry.assertions.length" class="ws-tests-assertions">
+                            <li
+                              v-for="item in entry.assertions"
+                              :key="`${entry.runId}:${item.id}`"
+                              :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed }]"
+                            >
+                              <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
+                              <span class="ws-test-label">{{ item.label || item.id }}</span>
+                              <span class="ws-test-expected">期望：{{ item.expected }}</span>
+                              <span class="ws-test-observed">实际：{{ item.observed }}</span>
+                            </li>
+                          </ul>
+                          <p v-else class="ws-tests-note">本次无断言列表（可能被停止或未走可信 recipe）。</p>
+                        </details>
+                      </section>
+                    </template>
                   </div>
                 </div>
               </div>
@@ -2501,7 +2600,7 @@ onBeforeUnmount(() => {
 
 .ws-workspace-code,
 .ws-workspace-terminal,
-.ws-workspace-terminal :deep(.ws-terminal),
+.ws-workspace-terminal :deep(.ws-terminal-shell),
 .ws-workspace-terminal :deep(.ws-problems),
 .ws-workspace-terminal .ws-tests-panel {
   min-width: 0;
@@ -2612,7 +2711,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.ws-bottom-dock-body > :deep(.ws-terminal) {
+.ws-bottom-dock-body > :deep(.ws-terminal-shell) {
   grid-area: 1 / 1;
   min-width: 0;
   min-height: 0;
@@ -2672,6 +2771,82 @@ onBeforeUnmount(() => {
 
 .ws-tests-body code {
   font-family: var(--ws-font-mono);
+}
+
+.ws-tests-current,
+.ws-tests-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ws-space-2);
+  margin-bottom: var(--ws-space-4);
+}
+
+.ws-tests-run-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ws-space-2);
+  color: var(--ws-ink);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-tests-run-head span {
+  color: var(--ws-ink-faint);
+}
+
+.ws-tests-note {
+  margin: 0 0 var(--ws-space-3) !important;
+  color: var(--ws-ink-muted);
+  line-height: var(--ws-leading-normal);
+}
+
+.ws-tests-history-item {
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+  padding: 0 var(--ws-space-2) var(--ws-space-2);
+}
+
+.ws-tests-history-item summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ws-space-2);
+  min-height: 32px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--ws-ink);
+}
+
+.ws-tests-history-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.ws-tests-history-badge {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-tests-history-badge[data-state='ok'] {
+  color: var(--ws-ok);
+  background: var(--ws-ok-soft);
+}
+
+.ws-tests-history-badge[data-state='fail'] {
+  color: var(--ws-danger);
+  background: var(--ws-danger-soft);
+}
+
+.ws-tests-history-badge[data-state='stopped'] {
+  color: var(--ws-warn);
+  background: var(--ws-warn-soft);
+}
+
+.ws-tests-history-count {
+  color: var(--ws-ink-faint);
+  font-variant-numeric: tabular-nums;
 }
 
 .ws-zone-assistant .ws-zone-body {

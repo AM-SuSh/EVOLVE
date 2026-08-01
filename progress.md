@@ -1,5 +1,26 @@
 # os-lab 项目进度总览
 
+## 2026-08-02 - Task: 终端暗色适配 · 测试结果保留 · 多会话新开
+
+### What was done
+
+- **终端暗色适配**：`XtermOutput` 按 `dark` 使用完整浅/深色板（含 ANSI），避免读到未解析的 `var(...)` 导致主题失效；切换主题后 `nextTick` + 重绘；暗色滚动条与 `color-scheme`；`TerminalPanel`/`TerminalSession` 同步跟随工作台暗夜开关。
+- **测试结果保留**：停止或空断言的 run 不再用 `[]` 冲掉上一份断言；`LabWorkspace` 增加 `runResultHistory`（最多 8 次）与「当前结果 / 近期历史」展示；点 `run:` 引用时可从历史恢复对应断言。
+- **多会话新开终端**：拆出 `TerminalSession.vue`；`TerminalPanel` 增加会话页签与 **+**（最多 4 个），各会话滚动历史独立，可切换/关闭（至少保留 1 个）；同会话内多次运行只追加分隔线，不整屏 clear。
+
+### Testing
+
+- 手工：顶栏切暗夜 → 终端底色/前景/光标随主题更新。
+- 手工：跑出断言后再停止一次 →「测试结果」仍保留上一份，并出现历史条目。
+- 手工：点终端 **+** → 新会话空白可输入；旧会话输出仍在。
+
+### Notes
+
+- 主要文件：`XtermOutput.vue`、`TerminalPanel.vue`、`TerminalSession.vue`、`LabWorkspace.vue`、`progress.md`。
+- 未改服务端 recipe / trace 采集；无断言的 stopped run 仍只显示可信空态说明。
+
+---
+
 ## 2026-08-01 - Task: 成员 B Day3 引用跳转与提示/拒答态
 
 ### What was done
