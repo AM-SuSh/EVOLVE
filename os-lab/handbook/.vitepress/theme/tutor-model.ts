@@ -68,6 +68,11 @@ export interface TutorMessage {
   stage?: TutorStageId
   category?: QuestionCategory
   guardrail?: boolean
+  /** 当轮服务端门控摘要（助手消息）；用于 chips / 拒答态 / 提示层级。 */
+  hintLevel?: number
+  gate?: string
+  evidenceRefs?: string[]
+  refused?: boolean
 }
 
 /** 服务端 decideTutorTurn 回传字段（成员 C · Day2 契约）。 */
@@ -129,6 +134,70 @@ const TUTOR_GATE_NEXT: Record<string, string> = {
   'transfer-check': '完成一条带预测的迁移回答',
 }
 
+/** 通用提示阶梯（L0–L4）；具体 Lab 话术仍由服务端 / manifest 负责。 */
+export const TUTOR_HINT_LADDER: Record<number, { short: string; detail: string }> = {
+  0: { short: '观察复现', detail: '先完整跑通并记录可观察现象，再下结论。' },
+  1: { short: '提出假设', detail: '用自己的话提出可检验假设，说明依据。' },
+  2: { short: '最小实验', detail: '设计能区分假设的最小实验或对照观察。' },
+  3: { short: '对比路径', detail: '对照相关代码路径与状态写入，定位差异。' },
+  4: { short: '升阶边界', detail: '提示已到边界；需要教师短辅导，不代替完整实现。' },
+}
+
+export function describeTutorHintLevel(level: number | undefined | null): string {
+  if (!Number.isInteger(level) || Number(level) < 0) return ''
+  const meta = TUTOR_HINT_LADDER[Number(level)] || TUTOR_HINT_LADDER[4]
+  return `L${level} · ${meta.short}`
+}
+
+export function tutorHintDetail(level: number | undefined | null): string {
+  if (!Number.isInteger(level) || Number(level) < 0) return ''
+  const meta = TUTOR_HINT_LADDER[Number(level)] || TUTOR_HINT_LADDER[4]
+  return meta.detail
+}
+
+/** 是否处于「拒答完整实现」门控态。 */
+export function isTutorRefused(state: TutorState | null | undefined): boolean {
+  if (!state) return false
+  if (state.gate === 'answer-guardrail') return true
+  return (state.actions || []).includes('apply-answer-guardrail')
+}
+
+/** 可导航的证据引用（过滤 event:）。 */
+export function navigableEvidenceRefs(refs: string[] | undefined | null): string[] {
+  return (refs || []).filter((ref) => {
+    const value = String(ref || '')
+    return value.startsWith('run:') || value.startsWith('trace:') || value.startsWith('diag:') || value.startsWith('diagnostic:')
+  })
+}
+
+export type TutorEvidenceChip = { ref: string; label: string; kind: 'run' | 'trace' | 'diag' }
+
+/** 从 tutorState 生成可点击证据 chips（含诊断摘要）。 */
+export function tutorEvidenceChips(state: TutorState | null | undefined): TutorEvidenceChip[] {
+  if (!state) return []
+  const chips: TutorEvidenceChip[] = []
+  const seen = new Set<string>()
+  const push = (ref: string, label: string, kind: TutorEvidenceChip['kind']) => {
+    if (seen.has(ref)) return
+    seen.add(ref)
+    chips.push({ ref, label, kind })
+  }
+  for (const ref of navigableEvidenceRefs(state.evidenceRefs)) {
+    if (ref.startsWith('run:')) push(ref, shortRef(ref), 'run')
+    else if (ref.startsWith('trace:')) push(ref, shortRef(ref), 'trace')
+    else push(ref, '诊断', 'diag')
+  }
+  const runId = state.toolContext?.latestRun?.runId
+  if (runId) {
+    push(`run:${runId}`, shortRef(`run:${runId}`), 'run')
+    const traces = Number(state.toolContext?.traceCount ?? state.toolContext?.latestRun?.traceCount ?? 0)
+    if (traces > 0) push(`trace:${runId}`, `trace:${String(runId).slice(0, 8)}…`, 'trace')
+  }
+  const diagnostics = Number(state.toolContext?.diagnosticCount || 0)
+  if (diagnostics > 0) push('diag:latest', `诊断 ${diagnostics} 条`, 'diag')
+  return chips
+}
+
 /** 从 tutorState 归纳「已有证据」文案；无 verified run 时绝不写「已验证通过」。 */
 export function describeTutorEvidenceHave(state: TutorState | null | undefined): string {
   if (!state) return '尚无服务端证据'
@@ -168,9 +237,11 @@ export function tutorStageMeta(stageId: TutorStageId | undefined) {
   return tutorStages.find((stage) => stage.id === stageId) || tutorStages[0]
 }
 
-function shortRef(ref: string): string {
+export function shortRef(ref: string): string {
   const value = String(ref || '')
   if (value.startsWith('run:')) return `run:${value.slice(4, 12)}…`
+  if (value.startsWith('trace:')) return `trace:${value.slice(6, 14)}…`
+  if (value.startsWith('diag:') || value.startsWith('diagnostic:')) return '诊断'
   if (value.length > 14) return `${value.slice(0, 12)}…`
   return value
 }

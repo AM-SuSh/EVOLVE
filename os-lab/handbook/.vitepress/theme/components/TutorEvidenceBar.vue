@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { ShieldAlert } from 'lucide-vue-next'
 import {
   describeTutorEvidenceHave,
   describeTutorEvidenceNext,
+  describeTutorHintLevel,
+  isTutorRefused,
+  tutorEvidenceChips,
+  tutorHintDetail,
   tutorStageMeta,
   type TutorStageId,
   type TutorState,
@@ -15,6 +20,10 @@ import {
 const props = defineProps<{
   tutorState: TutorState | null
   fallbackStage: TutorStageId
+}>()
+
+const emit = defineEmits<{
+  (event: 'open-evidence', ref: string): void
 }>()
 
 const stageMeta = computed(() =>
@@ -31,12 +40,10 @@ const nextText = computed(() => {
   return describeTutorEvidenceNext(props.tutorState)
 })
 
-const hintLabel = computed(() => {
-  const level = props.tutorState?.hintLevel
-  if (!Number.isInteger(level) || Number(level) < 0) return ''
-  return `L${level}`
-})
-
+const hintLabel = computed(() => describeTutorHintLevel(props.tutorState?.hintLevel))
+const hintTitle = computed(() => tutorHintDetail(props.tutorState?.hintLevel))
+const refused = computed(() => isTutorRefused(props.tutorState))
+const chips = computed(() => tutorEvidenceChips(props.tutorState))
 const hasServerState = computed(() => Boolean(props.tutorState))
 </script>
 
@@ -55,13 +62,37 @@ const hasServerState = computed(() => Boolean(props.tutorState))
       <div class="ws-evidence-col ws-evidence-col--grow">
         <span class="ws-evidence-label">已有证据</span>
         <p class="ws-evidence-value" :class="{ faint: !hasServerState }">{{ haveText }}</p>
+        <div v-if="chips.length" class="ws-evidence-chips">
+          <button
+            v-for="chip in chips"
+            :key="chip.ref"
+            type="button"
+            class="ws-evidence-chip"
+            :data-kind="chip.kind"
+            :title="`打开 ${chip.ref}`"
+            @click="emit('open-evidence', chip.ref)"
+          >
+            {{ chip.label }}
+          </button>
+        </div>
       </div>
       <div class="ws-evidence-col ws-evidence-col--grow">
         <span class="ws-evidence-label">下一步所需</span>
         <p class="ws-evidence-value next">{{ nextText }}</p>
       </div>
     </div>
-    <span v-if="hintLabel" class="ws-evidence-hint" :title="`当前提示层级 ${hintLabel}`">{{ hintLabel }}</span>
+    <div class="ws-evidence-badges">
+      <span
+        v-if="refused"
+        class="ws-evidence-refuse"
+        title="请求被护栏拦截：不提供完整实现，改为引导判断或观察"
+      >
+        <ShieldAlert :size="12" aria-hidden="true" />拒答
+      </span>
+      <span v-if="hintLabel" class="ws-evidence-hint" :title="hintTitle || `当前提示层级 ${hintLabel}`">
+        {{ hintLabel }}
+      </span>
+    </div>
   </div>
 </template>
 
@@ -127,9 +158,41 @@ const hasServerState = computed(() => Boolean(props.tutorState))
   white-space: nowrap;
 }
 
-.ws-evidence-hint {
+.ws-evidence-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.ws-evidence-chip {
+  min-height: 22px;
+  padding: 1px 6px;
+  color: var(--ws-accent);
+  border: 1px solid var(--ws-line);
+  border-radius: 4px;
+  background: var(--ws-surface);
+  font: inherit;
+  font-family: var(--ws-font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.ws-evidence-chip:hover {
+  border-color: var(--ws-accent);
+  background: var(--ws-accent-soft);
+}
+
+.ws-evidence-badges {
+  display: flex;
   flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
   align-self: center;
+}
+
+.ws-evidence-hint {
   min-width: 1.75rem;
   padding: 2px 6px;
   border: 1px solid var(--ws-line);
@@ -139,6 +202,21 @@ const hasServerState = computed(() => Boolean(props.tutorState))
   font-family: var(--ws-font-mono, ui-monospace, monospace);
   font-size: 11px;
   text-align: center;
+  white-space: nowrap;
+}
+
+.ws-evidence-refuse {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  color: var(--ws-warn);
+  border: 1px solid var(--ws-warn);
+  border-radius: 4px;
+  background: var(--ws-warn-soft);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 @media (max-width: 720px) {
@@ -149,6 +227,12 @@ const hasServerState = computed(() => Boolean(props.tutorState))
 
   .ws-evidence-sub {
     white-space: normal;
+  }
+
+  .ws-evidence-badges {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
   }
 }
 </style>

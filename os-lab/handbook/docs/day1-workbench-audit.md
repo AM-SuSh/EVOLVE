@@ -43,10 +43,11 @@
 
 | 缺口（A 表） | 说明 | 计划日 |
 | --- | --- | --- |
-| G2 提示阶梯不可见 | 证据条已显示 `L{hintLevel}`；完整阶梯文案/拒答态仍待 Day3 | Day 3 |
+| G2 提示阶梯不可见 | **已落地**：证据条 `L{n} · 短文案` + 拒答标记；消息 meta 同步 | Day 3 ✅ |
 | G7 OPRE 入口 | Trace/手册旁无「插入报告」OPRE 条 | Day 5 |
 | G8 知识路径条 | 手册顶无紧凑路径条 | Day 5 |
 | 导师证据条 | **已落地** `TutorEvidenceBar`（消费 chat `tutorState`） | Day 2 ✅ |
+| 证据引用跳转 | **已落地**：消息内 `run:`/`trace:`/诊断 chips → 对应面板 | Day 3 ✅ |
 
 ## 5. 本轮已修正的空态文案
 
@@ -65,7 +66,7 @@
 2. 未运行命令时打开 Problems / Trace / 测试结果：无假列表、无预设动画。  
 3. 断开 tutor 或故意用无效 `runId`：Trace/Problems 显示失败/空态，不填充示例事件。
 
-## 7. 后续堵点（Day3）
+## 7. 后续堵点
 
-- 消息内 `run:` / `trace:` / 诊断可点回对应面板；完善提示层级与拒答态展示（G2 收口）。
-- Day2 证据条已挂载：见 `TutorEvidenceBar.vue` 与 `workbench-ui.md`「AI 导师 · 证据条」。
+- Day3 已收口：引用跳转 + 提示阶梯/拒答态（见 `workbench-ui.md`「证据引用跳转」）。
+- 下一优先级（Day4+）：评分细项 UI、教师复核队列、OPRE/知识路径入口。

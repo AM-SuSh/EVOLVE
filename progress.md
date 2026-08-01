@@ -1,5 +1,27 @@
 # os-lab 项目进度总览
 
+## 2026-08-01 - Task: 成员 B Day3 引用跳转与提示/拒答态
+
+### What was done
+
+- **引用跳转**：消息正文 `run:`/`trace:` 可点；助手消息与证据条 chips 可点；`LabWorkspace.navigateEvidenceRef` 分别切到测试结果 / Trace（`seek(0)`）/ Problems（有诊断则 `openAtLine`）。
+- **提示阶梯**：`tutor-model` 通用 L0–L4 短文案；证据条与消息 meta 展示 `L{n} · …`。
+- **拒答态**：`gate=answer-guardrail` / 护栏动作时证据条「拒答」+ 消息「已拒答完整实现」。
+- **文档**：`workbench-ui.md` 补充引用跳转契约；`day1-workbench-audit.md` 将 G2 / Day3 堵点标为已落地。
+
+### Testing
+
+- `npm test`（handbook）：41 项全部通过。
+- `git diff --check`：本轮改动文件无空白错误。
+- 手工：护栏提问见拒答态；有真实 runId 时点 `run:`→测试结果、`trace:`→Trace；有诊断时点诊断→Problems。
+
+### Notes
+
+- 主要文件：`TutorMessage.vue`、`TutorEvidenceBar.vue`、`TutorPane.vue`、`LabWorkspace.vue`、`TraceViewer.vue`、`ProblemsPanel.vue`、`tutor-model.ts`、`markdown.ts`、`docs/workbench-ui.md`、`docs/day1-workbench-audit.md`、`progress.md`。
+- 未做（属 Day4+）：评分细项 UI、教师复核、Lab 向导、OPRE/知识路径条。
+
+---
+
 ## 2026-08-01 - Task: 成员 B Day2 TutorEvidenceBar
 
 ### What was done

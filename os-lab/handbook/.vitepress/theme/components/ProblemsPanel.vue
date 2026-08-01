@@ -74,6 +74,11 @@ onBeforeUnmount(() => requestController?.abort())
 function jumpToDiagnostic(diagnostic: RunDiagnostic) {
   emit('jump', { path: diagnostic.file, line: diagnostic.line, code: diagnostic.code })
 }
+
+/** 供导师「诊断」引用跳转：取当前列表首条（无则 null，不造假）。 */
+defineExpose({
+  firstDiagnostic: () => diagnostics.value[0] || null,
+})
 </script>
 
 <template>

@@ -32,6 +32,7 @@ const emit = defineEmits<{
   (event: 'new-session'): void
   (event: 'check-connection'): void
   (event: 'use-prompt', prompt: TutorPrompt): void
+  (event: 'open-evidence', ref: string): void
 }>()
 
 const draft = ref('')
@@ -114,7 +115,11 @@ defineExpose({ scrollToLatest })
       </div>
     </header>
 
-    <TutorEvidenceBar :tutor-state="tutorState" :fallback-stage="activeStage" />
+    <TutorEvidenceBar
+      :tutor-state="tutorState"
+      :fallback-stage="activeStage"
+      @open-evidence="emit('open-evidence', $event)"
+    />
 
     <div ref="messageList" class="ws-message-list" aria-live="polite">
       <div class="ws-message-inner">
@@ -123,6 +128,7 @@ defineExpose({ scrollToLatest })
           :key="message.id"
           :message="message"
           :streaming="message.id === streamingId"
+          @open-evidence="emit('open-evidence', $event)"
         />
         <div v-if="sending && !streamingId" class="ws-thinking" role="status">
           <div class="ws-thinking-avatar" aria-hidden="true">OS</div>

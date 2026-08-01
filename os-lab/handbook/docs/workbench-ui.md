@@ -46,9 +46,19 @@
 
 - 数据来源：`POST /chat`（及 SSE `meta`/`done` 帧）回传的 `tutorState`（成员 C 状态机权威字段）。
 - 展示三列：**阶段**（`stage` → `tutorStages` 短名）· **已有证据**（`toolContext` / `evidenceRefs`）· **下一步所需**（`gate` / `actions` 中文映射）。
-- 次要徽章：`hintLevel` → `L0`…`L4`（完整提示阶梯文案属 Day3，本条仅展示层级）。
+- 提示阶梯徽章：`hintLevel` → `L0 · 观察复现` … `L4 · 升阶边界`（通用短文案；具体 Lab 话术仍由服务端 / manifest）。
+- 拒答态：`gate === 'answer-guardrail'` 或 `actions` 含 `apply-answer-guardrail` 时显示「拒答」标记；消息 meta 同步「已拒答完整实现」。
 - 空态：尚未收到服务端 `tutorState` 时用本地 `activeStage` +「还没有服务端证据摘要…」，**不 mock** run / 断言；无 `latestRun.verified` 时不出现「已验证通过」话术。
-- 新对话清空证据条状态；消息内 `run:`/`trace:` 点击跳转属 Day3。
+- 新对话清空证据条状态。
+
+## AI 导师 · 证据引用跳转（Day3）
+
+- 正文中的 `run:<id>` / `trace:<id>` 渲染为可点链接；助手消息与证据条展示可点 chips（过滤 `event:`）。
+- 导航由 `LabWorkspace.navigateEvidenceRef` 统一处理：
+  - `run:` → 底部 **测试结果** 页签（并设置 `lastRunId`）
+  - `trace:` → 学习支持 **Trace** 页签，并 `TraceViewer.seek(0)`
+  - `diag:` / `diagnostic:` / 诊断摘要 → 底部 **Problems**；若已有诊断条目则复用 `openAtLine`
+- 无真实 run / 事件 / 诊断时只切面板并走可信空态，不造假数据。
 
 ## Problems 面板
 

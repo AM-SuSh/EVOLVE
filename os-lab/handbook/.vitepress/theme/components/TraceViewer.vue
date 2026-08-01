@@ -130,6 +130,11 @@ function onSelect(index: number) {
   playback.seek(index)
 }
 
+/** 供导师证据引用跳转：定位到指定事件下标（无事件时为 no-op）。 */
+defineExpose({
+  seek: (index: number) => playback.seek(index),
+})
+
 function onJumpSource() {
   const event = currentEvent.value
   if (!event) return

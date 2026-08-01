@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useData, useRouter, withBase } from 'vitepress'
 import { Blocks, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, Code2, LockKeyhole, Maximize2, MessagesSquare, Minimize2, Moon, PanelLeftClose, Play, Settings, Sun, UserRound } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
@@ -28,6 +28,7 @@ import {
   hasCustomLlmConfig,
   inferCategory,
   isDirectAnswerRequest,
+  isTutorRefused,
   loadAuth,
   loadEvents,
   loadLlmConfig,
@@ -52,6 +53,8 @@ provideWorkspaceContext(workspaceContext)
 
 /** 代码区 ref：手册「源码引用」与 Problems 诊断点击都通过它跳转。 */
 const codePanelRef = ref<InstanceType<typeof CodePanel> | null>(null)
+const problemsPanelRef = ref<InstanceType<typeof ProblemsPanel> | null>(null)
+const traceViewerRef = ref<InstanceType<typeof TraceViewer> | null>(null)
 
 const endpoint = String(
   import.meta.env.VITE_OS_LAB_TUTOR_ENDPOINT || 'http://127.0.0.1:8787',
@@ -1108,11 +1111,24 @@ async function sendMessage(text: string) {
     }
     const reply =
       outcome?.reply ?? offlineTutorReply(text, activeStage.value, guarded, lab.value)
+    const tutorState = outcome?.tutorState
+    const refused =
+      guarded || serverGuardrail || isTutorRefused(tutorState)
+    const messageMeta = {
+      hintLevel: tutorState?.hintLevel,
+      gate: tutorState?.gate,
+      evidenceRefs: tutorState?.evidenceRefs,
+      refused,
+    }
 
     const existing = messages.value.find((item) => item.id === replyId)
     if (existing) {
       existing.content = reply
       existing.guardrail = guarded || serverGuardrail
+      existing.hintLevel = messageMeta.hintLevel
+      existing.gate = messageMeta.gate
+      existing.evidenceRefs = messageMeta.evidenceRefs
+      existing.refused = messageMeta.refused
     } else {
       messages.value.push({
         id: replyId,
@@ -1122,6 +1138,7 @@ async function sendMessage(text: string) {
         timestamp: new Date().toISOString(),
         category,
         guardrail: guarded || serverGuardrail,
+        ...messageMeta,
       })
     }
     record('ai_response', {
@@ -1259,6 +1276,55 @@ function onTraceJump(payload: { path: string; line: number }) {
   panelOpen.value.practice = true
   persistPanels()
   void codePanelRef.value?.openAtLine(payload.path, payload.line)
+}
+
+/**
+ * 导师消息 / 证据条中的 run: / trace: / 诊断引用跳转。
+ * 无真实数据时只切面板并走可信空态，不造假事件或诊断行。
+ */
+async function navigateEvidenceRef(refValue: string) {
+  const raw = String(refValue || '').trim()
+  if (!raw) return
+  mobileView.value = 'practice'
+  panelOpen.value.practice = true
+  panelOpen.value.terminal = true
+  persistPanels()
+
+  if (raw.startsWith('run:')) {
+    const runId = raw.slice(4).trim()
+    if (runId) lastRunId.value = runId
+    terminalDockOpen.value = true
+    bottomTab.value = 'tests'
+    return
+  }
+
+  if (raw.startsWith('trace:')) {
+    const runId = raw.slice(6).trim()
+    if (runId) lastRunId.value = runId
+    rightTab.value = 'trace'
+    await nextTick()
+    traceViewerRef.value?.seek(0)
+    return
+  }
+
+  if (raw.startsWith('diag:') || raw.startsWith('diagnostic:') || raw === 'diag:latest') {
+    terminalDockOpen.value = true
+    bottomTab.value = 'problems'
+    await nextTick()
+    const diagnostic = problemsPanelRef.value?.firstDiagnostic?.() as
+      | { file?: string; line?: number; code?: string }
+      | null
+      | undefined
+    if (diagnostic?.file && Number.isFinite(Number(diagnostic.line)) && Number(diagnostic.line) > 0) {
+      void codePanelRef.value?.openAtLine(diagnostic.file, Number(diagnostic.line))
+      record('diagnostic_opened', {
+        runId: lastRunId.value,
+        file: diagnostic.file,
+        line: Number(diagnostic.line),
+        code: diagnostic.code || '',
+      })
+    }
+  }
 }
 
 /** Trace Viewer 查看：上报 trace_inspected 事件（事件 v2）。 */
@@ -1735,6 +1801,7 @@ onBeforeUnmount(() => {
                   @insert-report="onInsertReport"
                 />
                 <ProblemsPanel
+                  ref="problemsPanelRef"
                   v-show="bottomTab === 'problems'"
                   :run-id="lastRunId"
                   :endpoint="endpoint"
@@ -1859,6 +1926,7 @@ onBeforeUnmount(() => {
               @new-session="startSession"
               @check-connection="checkConnection"
               @use-prompt="usePrompt"
+              @open-evidence="navigateEvidenceRef"
             />
             <ReportPanel
               v-show="rightTab === 'report'"
@@ -1872,6 +1940,7 @@ onBeforeUnmount(() => {
               @notice="toast"
             />
             <TraceViewer
+              ref="traceViewerRef"
               v-show="rightTab === 'trace'"
               :run-id="lastRunId"
               :lab-id="lab.id"

@@ -44,6 +44,21 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   return defaultLinkOpen(tokens, idx, options, env, self)
 }
 
+/** 匹配正文中的 run:/trace: 引用（UUID 或演示 id）；code / fence 内不替换。 */
+const EVIDENCE_REF_RE = /\b((?:run|trace):[A-Za-z0-9][A-Za-z0-9._-]{3,120})\b/g
+
+function linkifyEvidenceRefs(html: string): string {
+  // 只处理标签外文本，避免破坏 code / button / a 属性。
+  return html.replace(/(<[^>]+>)|([^<]+)/g, (chunk, tag: string | undefined, text: string | undefined) => {
+    if (tag) return tag
+    if (!text) return chunk
+    return text.replace(EVIDENCE_REF_RE, (_match, ref: string) => {
+      const safe = md.utils.escapeHtml(ref)
+      return `<button type="button" class="ws-evidence-link" data-ref="${safe}">${safe}</button>`
+    })
+  })
+}
+
 export function renderTutorMarkdown(source: string): string {
-  return md.render(source || '')
+  return linkifyEvidenceRefs(md.render(source || ''))
 }
