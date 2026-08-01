@@ -191,6 +191,26 @@
 
 > AI 工具使用声明、成果归属与交互记录见 [项目总报告.md §8](项目总报告.md#8-开发时使用-ai-工具的成果) 与 `os-lab/docs/ai-collaboration.md`。
 
+## 2026-07-30 - Task: 成员 C C0-C1 基线与可信 Trace 证据链
+
+### What was done
+
+- **C0 基线冻结**：冻结 AI 导师后续实现共用的 `c0-v1` 基线，明确学习阶段及允许转移、阶段退出证据、事件权威性（服务端 / 服务端验证 / 客户端引用）和 Harness case v1 格式；新增基线实现、JSON Schema 与契约测试，避免后续导师、运行和评价模块各自定义规则。
+- **C1 可信 Trace 存储**：新增 Trace artifact 查询层，按运行记录读取 JSONL 事件，校验数据目录路径、文件大小、SHA-256、JSON/事件契约、严格递增序号和事件数量；支持 `offset/limit/startSeq/endSeq` 分页与范围过滤，并将完整性错误显式返回。
+- **服务端接入**：可信运行结束时持久化输出与 Trace artifact 的路径、哈希和数量；新增登录态隔离的 `GET /runs/:id/trace` 查询，并在 `trace_inspected` 学习事件中校验运行、Lab 和引用范围，保证前端观察行为只能引用当前账号的真实证据。
+
+### Testing
+
+- C0 基线测试：阶段转移、退出证据分类及 Harness case 必填约束通过。
+- C1 Trace store 测试：合法 artifact 分页/范围查询、路径越界、篡改哈希、非法 JSON、无效事件、序号/数量不一致等拒绝场景通过。
+- `npm test`：当前整套 41 项测试全部通过；C0/C1 对应测试分别见 `os-lab/tutor/baseline.test.mjs` 和 `os-lab/tutor/trace-store.test.mjs`。
+
+### Notes
+
+- 主要文件：`os-lab/tutor/C0-BASELINE.md`、`baseline.mjs`、`schema/harness-case-v1.schema.json`、`trace-store.mjs`、`trace-store.test.mjs`、`os-lab/handbook/tutor-server.mjs` 及服务端冒烟脚本。
+- 对应本地提交：`3c40f0a`（C0）、`ee02f3c`（C1）；两阶段均由 `AM-SuSh <10224602456@stu.ecnu.edu.cn>` 提交，无 co-author。
+- C0/C1 属于后端契约与证据基础设施，前端只消费真实 Trace 查询结果；没有 artifact 或查询失败时保持可信空态，不伪造事件。
+
 ## 2026-07-29 - Task: 提交成员B 第4-5周 Trace Viewer
 
 ### What was done
