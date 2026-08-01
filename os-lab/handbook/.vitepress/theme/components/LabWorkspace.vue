@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useData, useRouter, withBase } from 'vitepress'
-import { Blocks, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, Code2, LockKeyhole, Maximize2, MessagesSquare, Minimize2, Moon, PanelLeftClose, Play, Settings, Sun, UserRound } from 'lucide-vue-next'
+import { Blocks, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, Code2, GripVertical, LockKeyhole, Maximize2, MessagesSquare, Minimize2, Moon, PanelLeftClose, Play, Settings, Sun, UserRound, X } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
 import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
@@ -159,6 +159,7 @@ const activeStage = ref<TutorStageId>('orient')
 const lastTutorState = ref<TutorState | null>(null)
 const events = ref<LearningEvent[]>([])
 const messages = ref<TutorMessage[]>([])
+const tutorOpen = ref(false)
 const sending = ref(false)
 const streamingId = ref('')
 const connection = ref<'checking' | 'remote' | 'offline'>('checking')
@@ -167,9 +168,70 @@ const notice = ref('')
 const currentSection = ref({ h2: '', h3: '' })
 const teacherManualLocation = ref<{ h2: string; h3: string; offset: number } | null>(null)
 const mobileView = ref<'manual' | 'practice'>('manual')
-/** 右栏学习支持页签（AI / 报告 / Trace）；Problems 与测试结果在底部面板。 */
-const rightTab = ref<'tutor' | 'report' | 'trace'>('tutor')
-/** 工作区底部面板页签：终端 | Problems | 测试结果。 */
+/** 右栏学习支持页签（报告 / Trace）；AI 导师通过悬浮入口打开。 */
+const rightTab = ref<'report' | 'trace'>('report')
+
+const TUTOR_CONVERSATION_STORAGE_KEY = 'os-lab-tutor-conversations-v1'
+const MAX_STORED_TUTOR_MESSAGES = 120
+
+interface StoredTutorConversation {
+  sessionId: string
+  stage: TutorStageId
+  messages: TutorMessage[]
+  tutorState: TutorState | null
+  updatedAt: string
+}
+
+function tutorConversationKey() {
+  const user = studentId.value || 'guest'
+  return `${user}:${props.labId}`
+}
+
+function loadTutorConversation() {
+  if (typeof localStorage === 'undefined') return false
+  try {
+    const raw = localStorage.getItem(TUTOR_CONVERSATION_STORAGE_KEY)
+    if (!raw) return false
+    const all = JSON.parse(raw) as Record<string, StoredTutorConversation>
+    const stored = all[tutorConversationKey()]
+    if (!stored || typeof stored.sessionId !== 'string' || !Array.isArray(stored.messages) || stored.messages.length === 0) {
+      return false
+    }
+    const restored = stored.messages.filter((message) =>
+      message &&
+      (message.role === 'student' || message.role === 'assistant') &&
+      typeof message.content === 'string',
+    )
+    if (restored.length === 0) return false
+    const stage = tutorStages.some((item) => item.id === stored.stage) ? stored.stage : 'orient'
+    sessionId.value = stored.sessionId
+    activeStage.value = stage
+    messages.value = restored.slice(-MAX_STORED_TUTOR_MESSAGES)
+    lastTutorState.value = stored.tutorState || null
+    return true
+  } catch {
+    return false
+  }
+}
+
+function persistTutorConversation() {
+  if (typeof localStorage === 'undefined' || !sessionId.value || messages.value.length === 0) return
+  try {
+    const raw = localStorage.getItem(TUTOR_CONVERSATION_STORAGE_KEY)
+    const all = raw ? (JSON.parse(raw) as Record<string, StoredTutorConversation>) : {}
+    all[tutorConversationKey()] = {
+      sessionId: sessionId.value,
+      stage: activeStage.value,
+      messages: messages.value.slice(-MAX_STORED_TUTOR_MESSAGES),
+      tutorState: lastTutorState.value,
+      updatedAt: new Date().toISOString(),
+    }
+    localStorage.setItem(TUTOR_CONVERSATION_STORAGE_KEY, JSON.stringify(all))
+  } catch {
+    // Storage failures must not interrupt the active conversation.
+  }
+}
+
 const bottomTab = ref<'terminal' | 'problems' | 'tests'>('terminal')
 /** 最近一次运行的 runId，供 Trace/Problems 查询对应产物。 */
 const lastRunId = ref('')
@@ -308,7 +370,12 @@ function togglePanel(key: PanelKey) {
 }
 
 function closeMaximizedOnEscape(event: KeyboardEvent) {
-  if (event.key === 'Escape' && maximized.value !== 'none') maximized.value = 'none'
+  if (event.key !== 'Escape') return
+  if (tutorOpen.value) {
+    tutorOpen.value = false
+    return
+  }
+  if (maximized.value !== 'none') maximized.value = 'none'
 }
 
 function startRowResize(event: PointerEvent) {
@@ -428,6 +495,501 @@ const PANE_RESIZER_WIDTH = 10
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
+}
+
+const TUTOR_PANEL_WIDTH_KEY = 'os-lab-tutor-panel-width-v1'
+const TUTOR_PANEL_MIN_WIDTH = 360
+const TUTOR_PANEL_MAX_WIDTH = 840
+const TUTOR_PANEL_DEFAULT_WIDTH = 520
+const TUTOR_PANEL_VIEWPORT_GUTTER = 24
+const TUTOR_PANEL_POSITION_KEY = 'os-lab-tutor-panel-position-v1'
+const TUTOR_PANEL_FLOAT_MAX_HEIGHT = 720
+const TUTOR_PANEL_MIN_HEIGHT = 360
+const TUTOR_PANEL_HEIGHT_KEY = 'os-lab-tutor-panel-height-v1'
+const TUTOR_FAB_POSITION_KEY = 'os-lab-tutor-fab-position-v1'
+const TUTOR_FAB_SIZE = 48
+const TUTOR_POSITION_GUTTER = 8
+
+interface TutorPosition {
+  x: number
+  y: number
+}
+
+interface StoredTutorPanelPlacement extends TutorPosition {
+  floating: boolean
+}
+
+function tutorPanelMaxWidth() {
+  if (typeof window === 'undefined') return TUTOR_PANEL_MAX_WIDTH
+  return Math.min(TUTOR_PANEL_MAX_WIDTH, window.innerWidth - TUTOR_PANEL_VIEWPORT_GUTTER)
+}
+
+function loadTutorPanelWidth() {
+  if (typeof localStorage === 'undefined') return TUTOR_PANEL_DEFAULT_WIDTH
+  try {
+    const raw = localStorage.getItem(TUTOR_PANEL_WIDTH_KEY)
+    if (raw === null) return TUTOR_PANEL_DEFAULT_WIDTH
+    const stored = Number(raw)
+    return Number.isFinite(stored)
+      ? clamp(stored, TUTOR_PANEL_MIN_WIDTH, TUTOR_PANEL_MAX_WIDTH)
+      : TUTOR_PANEL_DEFAULT_WIDTH
+  } catch {
+    return TUTOR_PANEL_DEFAULT_WIDTH
+  }
+}
+
+const tutorPanelWidth = ref(loadTutorPanelWidth())
+const tutorResizing = ref(false)
+const tutorHeightResizing = ref(false)
+
+function loadTutorPanelPlacement(): StoredTutorPanelPlacement {
+  if (typeof localStorage === 'undefined') return { x: 0, y: 0, floating: false }
+  try {
+    const raw = localStorage.getItem(TUTOR_PANEL_POSITION_KEY)
+    if (!raw) return { x: 0, y: 0, floating: false }
+    const stored = JSON.parse(raw) as Partial<StoredTutorPanelPlacement>
+    if (!Number.isFinite(stored.x) || !Number.isFinite(stored.y)) {
+      return { x: 0, y: 0, floating: false }
+    }
+    return { x: stored.x as number, y: stored.y as number, floating: stored.floating === true }
+  } catch {
+    return { x: 0, y: 0, floating: false }
+  }
+}
+
+function loadTutorFabPosition(): TutorPosition | null {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(TUTOR_FAB_POSITION_KEY)
+    if (!raw) return null
+    const stored = JSON.parse(raw) as Partial<TutorPosition>
+    return Number.isFinite(stored.x) && Number.isFinite(stored.y)
+      ? { x: stored.x as number, y: stored.y as number }
+      : null
+  } catch {
+    return null
+  }
+}
+
+const storedTutorPanelPlacement = loadTutorPanelPlacement()
+const tutorPanelFloating = ref(storedTutorPanelPlacement.floating)
+const tutorPanelPosition = ref<TutorPosition>({
+  x: storedTutorPanelPlacement.x,
+  y: storedTutorPanelPlacement.y,
+})
+const tutorPanelDragging = ref(false)
+const tutorFabPosition = ref<TutorPosition | null>(loadTutorFabPosition())
+const tutorFabDragging = ref(false)
+const tutorFabMoved = ref(false)
+let tutorPanelDragOrigin: (TutorPosition & { pointerX: number; pointerY: number }) | null = null
+let tutorFabDragOrigin: (TutorPosition & { pointerX: number; pointerY: number }) | null = null
+let tutorPanelHeightDragOrigin: { pointerY: number; height: number } | null = null
+
+function tutorTopbarHeight() {
+  if (typeof window === 'undefined') return 48
+  const stored = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ws-topbar-height'))
+  return Number.isFinite(stored) ? stored : 48
+}
+
+function tutorPanelHeightMax() {
+  if (typeof window === 'undefined') return TUTOR_PANEL_FLOAT_MAX_HEIGHT
+  return Math.max(240, Math.min(
+    TUTOR_PANEL_FLOAT_MAX_HEIGHT,
+    window.innerHeight - tutorTopbarHeight() - 2 * TUTOR_POSITION_GUTTER,
+  ))
+}
+
+function tutorPanelHeightMin() {
+  return Math.min(TUTOR_PANEL_MIN_HEIGHT, tutorPanelHeightMax())
+}
+
+function defaultTutorPanelHeight() {
+  return clamp(TUTOR_PANEL_FLOAT_MAX_HEIGHT, tutorPanelHeightMin(), tutorPanelHeightMax())
+}
+
+function loadTutorPanelHeight() {
+  if (typeof localStorage === 'undefined') return TUTOR_PANEL_FLOAT_MAX_HEIGHT
+  try {
+    const raw = localStorage.getItem(TUTOR_PANEL_HEIGHT_KEY)
+    if (raw === null) return TUTOR_PANEL_FLOAT_MAX_HEIGHT
+    const stored = Number(raw)
+    return Number.isFinite(stored)
+      ? clamp(stored, TUTOR_PANEL_MIN_HEIGHT, TUTOR_PANEL_FLOAT_MAX_HEIGHT)
+      : TUTOR_PANEL_FLOAT_MAX_HEIGHT
+  } catch {
+    return TUTOR_PANEL_FLOAT_MAX_HEIGHT
+  }
+}
+
+const tutorPanelHeight = ref(loadTutorPanelHeight())
+
+function setTutorPanelHeight(value: number, persist = false) {
+  tutorPanelHeight.value = clamp(value, tutorPanelHeightMin(), tutorPanelHeightMax())
+  if (!persist || typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(TUTOR_PANEL_HEIGHT_KEY, String(Math.round(tutorPanelHeight.value)))
+  } catch {
+    // Height persistence is optional; resizing the window must remain available.
+  }
+}
+
+function tutorPanelPositionBounds() {
+  if (typeof window === 'undefined') {
+    return { minX: 0, maxX: 0, minY: 0, maxY: 0 }
+  }
+  const minX = TUTOR_POSITION_GUTTER
+  const minY = tutorTopbarHeight() + TUTOR_POSITION_GUTTER
+  return {
+    minX,
+    maxX: Math.max(minX, window.innerWidth - tutorPanelWidth.value - TUTOR_POSITION_GUTTER),
+    minY,
+    maxY: Math.max(minY, window.innerHeight - tutorPanelHeight.value - TUTOR_POSITION_GUTTER),
+  }
+}
+
+function setTutorPanelPosition(x: number, y: number) {
+  const bounds = tutorPanelPositionBounds()
+  tutorPanelPosition.value = {
+    x: clamp(x, bounds.minX, bounds.maxX),
+    y: clamp(y, bounds.minY, bounds.maxY),
+  }
+}
+
+function persistTutorPanelPlacement() {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(TUTOR_PANEL_POSITION_KEY, JSON.stringify({
+      ...tutorPanelPosition.value,
+      floating: tutorPanelFloating.value,
+    }))
+  } catch {
+    // Position persistence is optional; moving the window must remain available.
+  }
+}
+
+function tutorFabPositionBounds() {
+  if (typeof window === 'undefined') {
+    return { minX: 0, maxX: 0, minY: 0, maxY: 0 }
+  }
+  const min = TUTOR_POSITION_GUTTER
+  return {
+    minX: min,
+    maxX: Math.max(min, window.innerWidth - TUTOR_FAB_SIZE - min),
+    minY: min,
+    maxY: Math.max(min, window.innerHeight - TUTOR_FAB_SIZE - min),
+  }
+}
+
+function defaultTutorFabPosition(): TutorPosition {
+  const bounds = tutorFabPositionBounds()
+  return { x: bounds.maxX, y: bounds.maxY }
+}
+
+function setTutorFabPosition(x: number, y: number, persist = false) {
+  const bounds = tutorFabPositionBounds()
+  tutorFabPosition.value = {
+    x: clamp(x, bounds.minX, bounds.maxX),
+    y: clamp(y, bounds.minY, bounds.maxY),
+  }
+  if (!persist || typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(TUTOR_FAB_POSITION_KEY, JSON.stringify(tutorFabPosition.value))
+  } catch {
+    // Position persistence is optional; dragging the entry point must remain available.
+  }
+}
+
+function clampTutorFabToViewport() {
+  const position = tutorFabPosition.value || defaultTutorFabPosition()
+  setTutorFabPosition(position.x, position.y)
+}
+
+function dockedTutorPanelLeft() {
+  if (typeof window === 'undefined') return 0
+  return Math.max(0, window.innerWidth - tutorPanelWidth.value)
+}
+
+const tutorPanelStyle = computed<Record<string, string>>(() => ({
+  '--ws-tutor-panel-width': `${tutorPanelWidth.value}px`,
+  '--ws-tutor-panel-left': `${tutorPanelPosition.value.x}px`,
+  '--ws-tutor-panel-top': `${tutorPanelPosition.value.y}px`,
+  '--ws-tutor-panel-height': `${tutorPanelHeight.value}px`,
+}))
+
+const tutorFloatStyle = computed<Record<string, string>>(() => {
+  if (!tutorFabPosition.value) return {}
+  return {
+    left: `${tutorFabPosition.value.x}px`,
+    top: `${tutorFabPosition.value.y}px`,
+    right: 'auto',
+    bottom: 'auto',
+  }
+})
+
+function setTutorPanelWidth(value: number, persist = false) {
+  const max = tutorPanelMaxWidth()
+  const min = Math.min(TUTOR_PANEL_MIN_WIDTH, max)
+  tutorPanelWidth.value = clamp(value, min, max)
+  if (!persist || typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(TUTOR_PANEL_WIDTH_KEY, String(Math.round(tutorPanelWidth.value)))
+  } catch {
+    // Width persistence is optional; resizing should still work when storage is unavailable.
+  }
+}
+
+function updateTutorPanelWidth(clientX: number) {
+  if (typeof window === 'undefined' || isMobileLayout.value) return
+  if (tutorPanelFloating.value) {
+    const right = tutorPanelPosition.value.x + tutorPanelWidth.value
+    setTutorPanelWidth(right - clientX)
+    setTutorPanelPosition(right - tutorPanelWidth.value, tutorPanelPosition.value.y)
+    return
+  }
+  setTutorPanelWidth(window.innerWidth - clientX)
+}
+
+function startTutorResize(event: PointerEvent) {
+  if (event.button !== 0 || isMobileLayout.value) return
+  tutorResizing.value = true
+  const target = event.currentTarget as HTMLElement
+  target.setPointerCapture(event.pointerId)
+  document.documentElement.classList.add('ws-tutor-resizing')
+  updateTutorPanelWidth(event.clientX)
+}
+
+function moveTutorResize(event: PointerEvent) {
+  if (!tutorResizing.value) return
+  updateTutorPanelWidth(event.clientX)
+}
+
+function finishTutorResize(event?: PointerEvent) {
+  if (!tutorResizing.value) return
+  tutorResizing.value = false
+  document.documentElement.classList.remove('ws-tutor-resizing')
+  if (event) {
+    const target = event.currentTarget as HTMLElement
+    if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId)
+  }
+  setTutorPanelWidth(tutorPanelWidth.value, true)
+  if (tutorPanelFloating.value) persistTutorPanelPlacement()
+}
+
+function resetTutorPanelWidth() {
+  setTutorPanelWidth(TUTOR_PANEL_DEFAULT_WIDTH, true)
+  if (tutorPanelFloating.value) {
+    setTutorPanelPosition(tutorPanelPosition.value.x, tutorPanelPosition.value.y)
+    persistTutorPanelPlacement()
+  }
+}
+
+function updateTutorPanelHeight(clientY: number) {
+  if (!tutorPanelHeightDragOrigin || isMobileLayout.value) return
+  setTutorPanelHeight(tutorPanelHeightDragOrigin.height + clientY - tutorPanelHeightDragOrigin.pointerY)
+  setTutorPanelPosition(tutorPanelPosition.value.x, tutorPanelPosition.value.y)
+}
+
+function startTutorHeightResize(event: PointerEvent) {
+  if (event.button !== 0 || isMobileLayout.value) return
+  const target = event.currentTarget as HTMLElement
+  const panel = target.closest('.ws-tutor-popover') as HTMLElement | null
+  if (!panel) return
+  const rect = panel.getBoundingClientRect()
+  if (!tutorPanelFloating.value) {
+    setTutorPanelHeight(rect.height)
+    tutorPanelFloating.value = true
+    setTutorPanelPosition(rect.left, rect.top)
+  }
+  tutorHeightResizing.value = true
+  tutorPanelHeightDragOrigin = { pointerY: event.clientY, height: tutorPanelHeight.value }
+  target.setPointerCapture(event.pointerId)
+  document.documentElement.classList.add('ws-tutor-height-resizing')
+}
+
+function moveTutorHeightResize(event: PointerEvent) {
+  if (!tutorHeightResizing.value) return
+  updateTutorPanelHeight(event.clientY)
+}
+
+function finishTutorHeightResize(event?: PointerEvent) {
+  if (!tutorHeightResizing.value) return
+  tutorHeightResizing.value = false
+  tutorPanelHeightDragOrigin = null
+  document.documentElement.classList.remove('ws-tutor-height-resizing')
+  if (event) {
+    const target = event.currentTarget as HTMLElement
+    if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId)
+  }
+  setTutorPanelHeight(tutorPanelHeight.value, true)
+  persistTutorPanelPlacement()
+}
+
+function resetTutorPanelHeight() {
+  setTutorPanelHeight(defaultTutorPanelHeight(), true)
+  if (tutorPanelFloating.value) {
+    setTutorPanelPosition(tutorPanelPosition.value.x, tutorPanelPosition.value.y)
+    persistTutorPanelPlacement()
+  }
+}
+
+function resizeTutorHeightByKeyboard(event: KeyboardEvent) {
+  const step = event.shiftKey ? 48 : 24
+  if (event.key === 'ArrowUp') setTutorPanelHeight(tutorPanelHeight.value - step, true)
+  else if (event.key === 'ArrowDown') setTutorPanelHeight(tutorPanelHeight.value + step, true)
+  else if (event.key === 'Home') setTutorPanelHeight(tutorPanelHeightMin(), true)
+  else if (event.key === 'End') setTutorPanelHeight(tutorPanelHeightMax(), true)
+  else return
+
+  if (!tutorPanelFloating.value) {
+    tutorPanelFloating.value = true
+    setTutorPanelPosition(dockedTutorPanelLeft(), tutorTopbarHeight())
+  } else {
+    setTutorPanelPosition(tutorPanelPosition.value.x, tutorPanelPosition.value.y)
+  }
+  persistTutorPanelPlacement()
+  event.preventDefault()
+}
+
+function startTutorPanelDrag(event: PointerEvent) {
+  if (event.button !== 0 || isMobileLayout.value) return
+  const source = event.target as HTMLElement | null
+  if (source?.closest('button, input, textarea, a')) return
+  const target = event.currentTarget as HTMLElement | null
+  if (!target) return
+  const panel = target.closest('.ws-tutor-popover') as HTMLElement | null
+  if (!panel) return
+  const rect = panel.getBoundingClientRect()
+  if (!tutorPanelFloating.value) setTutorPanelHeight(defaultTutorPanelHeight())
+  tutorPanelFloating.value = true
+  setTutorPanelPosition(rect.left, rect.top)
+  tutorPanelDragOrigin = {
+    pointerX: event.clientX,
+    pointerY: event.clientY,
+    ...tutorPanelPosition.value,
+  }
+  tutorPanelDragging.value = true
+  target.setPointerCapture(event.pointerId)
+  document.documentElement.classList.add('ws-tutor-moving')
+}
+
+function moveTutorPanel(event: PointerEvent) {
+  if (!tutorPanelDragging.value || !tutorPanelDragOrigin) return
+  setTutorPanelPosition(
+    tutorPanelDragOrigin.x + event.clientX - tutorPanelDragOrigin.pointerX,
+    tutorPanelDragOrigin.y + event.clientY - tutorPanelDragOrigin.pointerY,
+  )
+}
+
+function finishTutorPanelDrag(event?: PointerEvent) {
+  if (!tutorPanelDragging.value) return
+  tutorPanelDragging.value = false
+  tutorPanelDragOrigin = null
+  document.documentElement.classList.remove('ws-tutor-moving')
+  if (event) {
+    const target = event.currentTarget as HTMLElement
+    if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId)
+  }
+  persistTutorPanelPlacement()
+}
+
+function dockTutorPanel() {
+  tutorPanelFloating.value = false
+  persistTutorPanelPlacement()
+}
+
+function moveTutorPanelByKeyboard(event: KeyboardEvent) {
+  const step = event.shiftKey ? 48 : 24
+  let deltaX = 0
+  let deltaY = 0
+  if (event.key === 'ArrowLeft') deltaX = -step
+  else if (event.key === 'ArrowRight') deltaX = step
+  else if (event.key === 'ArrowUp') deltaY = -step
+  else if (event.key === 'ArrowDown') deltaY = step
+  else return
+
+  if (!tutorPanelFloating.value) {
+    tutorPanelFloating.value = true
+    setTutorPanelPosition(dockedTutorPanelLeft(), tutorTopbarHeight())
+  }
+  setTutorPanelPosition(tutorPanelPosition.value.x + deltaX, tutorPanelPosition.value.y + deltaY)
+  persistTutorPanelPlacement()
+  event.preventDefault()
+}
+
+function startTutorFabDrag(event: PointerEvent) {
+  if (event.button !== 0 || tutorOpen.value) return
+  const position = tutorFabPosition.value || defaultTutorFabPosition()
+  tutorFabDragOrigin = { pointerX: event.clientX, pointerY: event.clientY, ...position }
+  tutorFabDragging.value = true
+  tutorFabMoved.value = false
+  const target = event.currentTarget as HTMLElement
+  target.setPointerCapture(event.pointerId)
+  document.documentElement.classList.add('ws-tutor-fab-moving')
+}
+
+function moveTutorFab(event: PointerEvent) {
+  if (!tutorFabDragging.value || !tutorFabDragOrigin) return
+  const deltaX = event.clientX - tutorFabDragOrigin.pointerX
+  const deltaY = event.clientY - tutorFabDragOrigin.pointerY
+  if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) tutorFabMoved.value = true
+  if (!tutorFabMoved.value) return
+  setTutorFabPosition(tutorFabDragOrigin.x + deltaX, tutorFabDragOrigin.y + deltaY)
+}
+
+function finishTutorFabDrag(event?: PointerEvent) {
+  if (!tutorFabDragging.value) return
+  tutorFabDragging.value = false
+  tutorFabDragOrigin = null
+  document.documentElement.classList.remove('ws-tutor-fab-moving')
+  if (event) {
+    const target = event.currentTarget as HTMLElement
+    if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId)
+  }
+  if (tutorFabMoved.value && tutorFabPosition.value) {
+    setTutorFabPosition(tutorFabPosition.value.x, tutorFabPosition.value.y, true)
+  }
+  if (event?.type === 'pointercancel') tutorFabMoved.value = false
+}
+
+function moveTutorFabByKeyboard(event: KeyboardEvent) {
+  const step = event.shiftKey ? 48 : 24
+  const position = tutorFabPosition.value || defaultTutorFabPosition()
+  if (event.key === 'ArrowLeft') setTutorFabPosition(position.x - step, position.y, true)
+  else if (event.key === 'ArrowRight') setTutorFabPosition(position.x + step, position.y, true)
+  else if (event.key === 'ArrowUp') setTutorFabPosition(position.x, position.y - step, true)
+  else if (event.key === 'ArrowDown') setTutorFabPosition(position.x, position.y + step, true)
+  else return
+  event.preventDefault()
+}
+
+function toggleTutor() {
+  if (!tutorOpen.value && tutorFabMoved.value) {
+    tutorFabMoved.value = false
+    return
+  }
+  tutorOpen.value = !tutorOpen.value
+}
+
+function resizeTutorByKeyboard(event: KeyboardEvent) {
+  const step = event.shiftKey ? 40 : 16
+  if (event.key === 'ArrowLeft') setTutorPanelWidth(tutorPanelWidth.value + step, true)
+  else if (event.key === 'ArrowRight') setTutorPanelWidth(tutorPanelWidth.value - step, true)
+  else if (event.key === 'Home') setTutorPanelWidth(TUTOR_PANEL_MIN_WIDTH, true)
+  else if (event.key === 'End') setTutorPanelWidth(tutorPanelMaxWidth(), true)
+  else return
+  if (tutorPanelFloating.value) {
+    setTutorPanelPosition(tutorPanelPosition.value.x, tutorPanelPosition.value.y)
+    persistTutorPanelPlacement()
+  }
+  event.preventDefault()
+}
+
+function clampTutorPanelToViewport() {
+  setTutorPanelWidth(tutorPanelWidth.value)
+  setTutorPanelHeight(tutorPanelHeight.value)
+  if (tutorPanelFloating.value) {
+    setTutorPanelPosition(tutorPanelPosition.value.x, tutorPanelPosition.value.y)
+  }
 }
 
 function loadPaneSplit() {
@@ -897,6 +1459,7 @@ function startSession() {
     },
   })
   record('stage_enter', { metadata: { title: activeStageData.value.title } })
+  persistTutorConversation()
 }
 
 async function checkConnection() {
@@ -1074,6 +1637,7 @@ async function sendMessage(text: string) {
     guardrail: guarded,
   })
   record('student_message', { category, content: text })
+  persistTutorConversation()
   if (guarded) record('guardrail_triggered', { category, content: text })
 
   sending.value = true
@@ -1129,6 +1693,7 @@ async function sendMessage(text: string) {
       content: reply,
       metadata: { guarded: guarded || serverGuardrail, mode: connection.value },
     })
+    persistTutorConversation()
   } catch (error) {
     const detail = error instanceof Error && error.message ? error.message : '未知错误'
     // 单次失败（超时/限流/网络抖动）不该把整个会话打成离线：
@@ -1153,6 +1718,7 @@ async function sendMessage(text: string) {
       })
     }
     record('ai_response', { category, content: reply, metadata: { mode: 'fallback', error: detail } })
+    persistTutorConversation()
   } finally {
     sending.value = false
     streamingId.value = ''
@@ -1283,7 +1849,7 @@ function onInsertReport(text: string) {
 
 /** 报告面板请导师点评：切到对话页签并把报告作为提问发送。 */
 function reviewReport(content: string) {
-  rightTab.value = 'tutor'
+  tutorOpen.value = true
   mobileView.value = 'practice'
   panelOpen.value.terminal = true
   persistPanels()
@@ -1307,6 +1873,7 @@ function submitReflection(content: string) {
     timestamp: new Date().toISOString(),
   })
   toast('复盘已保存。')
+  persistTutorConversation()
   announceUnlock(wasCompleted)
 }
 
@@ -1332,6 +1899,18 @@ function exportGrowth() {
   toast('成长档案已导出为 JSONL。')
 }
 
+watch(studentId, (next, previous) => {
+  if (next === previous) return
+  if (next) {
+    if (!loadTutorConversation()) startSession()
+    return
+  }
+  tutorOpen.value = false
+  messages.value = []
+  sessionId.value = ''
+  activeStage.value = 'orient'
+  lastTutorState.value = null
+})
 onBeforeMount(() => {
   syncMobileLayout()
 })
@@ -1341,13 +1920,17 @@ onMounted(async () => {
   syncMobileLayout()
   window.addEventListener('resize', syncMobileLayout)
   window.addEventListener('resize', clampPaneSplitToViewport)
+  window.addEventListener('resize', clampTutorPanelToViewport)
+  window.addEventListener('resize', clampTutorFabToViewport)
   window.addEventListener('keydown', closeMaximizedOnEscape)
   clampPaneSplitToViewport()
+  clampTutorPanelToViewport()
+  clampTutorFabToViewport()
   events.value = loadEvents()
   if (!studentId.value) showIdentity.value = true
   await checkConnection()
   await refreshLearningAccess()
-  startSession()
+  if (!loadTutorConversation()) startSession()
   void refreshScaffold()
   void loadMyFeedback()
   void loadReportTemplate()
@@ -1365,8 +1948,14 @@ onBeforeUnmount(() => {
   document.documentElement.classList.remove('ws-lock')
   document.documentElement.classList.remove('ws-pane-resizing')
   document.documentElement.classList.remove('ws-row-resizing')
+  document.documentElement.classList.remove('ws-tutor-resizing')
+  document.documentElement.classList.remove('ws-tutor-height-resizing')
+  document.documentElement.classList.remove('ws-tutor-moving')
+  document.documentElement.classList.remove('ws-tutor-fab-moving')
   window.removeEventListener('resize', syncMobileLayout)
   window.removeEventListener('resize', clampPaneSplitToViewport)
+  window.removeEventListener('resize', clampTutorPanelToViewport)
+  window.removeEventListener('resize', clampTutorFabToViewport)
   window.removeEventListener('keydown', closeMaximizedOnEscape)
   window.clearTimeout(noticeTimer)
 })
@@ -1437,7 +2026,7 @@ onBeforeUnmount(() => {
           type="button"
           class="ws-topbar-link"
           :class="{ 'ws-topbar-link--active': panelOpen.terminal }"
-          title="显示/隐藏 AI 导师、报告与诊断"
+          title="显示/隐藏报告与 Trace"
           @click="togglePanel('terminal')"
         >
           <MessagesSquare :size="15" aria-hidden="true" /><span>学习支持</span>
@@ -1803,13 +2392,6 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 role="tab"
-                :aria-selected="rightTab === 'tutor'"
-                :class="{ active: rightTab === 'tutor' }"
-                @click="rightTab = 'tutor'"
-              >AI 导师</button>
-              <button
-                type="button"
-                role="tab"
                 :aria-selected="rightTab === 'report'"
                 :class="{ active: rightTab === 'report' }"
                 @click="rightTab = 'report'"
@@ -1845,21 +2427,6 @@ onBeforeUnmount(() => {
             </button>
           </header>
           <div class="ws-zone-body ws-assistant-body">
-            <TutorPane
-              v-show="rightTab === 'tutor'"
-              :lab="lab"
-              :messages="messages"
-              :sending="sending"
-              :streaming-id="streamingId"
-              :connection="connection"
-              :connection-label="connectionLabel"
-              :tutor-state="lastTutorState"
-              :active-stage="activeStage"
-              @send="sendMessage"
-              @new-session="startSession"
-              @check-connection="checkConnection"
-              @use-prompt="usePrompt"
-            />
             <ReportPanel
               v-show="rightTab === 'report'"
               :lab="lab"
@@ -1885,6 +2452,136 @@ onBeforeUnmount(() => {
       </div>
     </main>
 
+    <div
+      v-if="!isTeacherRole"
+      class="ws-tutor-float"
+      :class="{ 'is-open': tutorOpen }"
+      :style="tutorFloatStyle"
+    >
+      <div
+        v-if="tutorOpen && isMobileLayout"
+        class="ws-tutor-float-backdrop"
+        aria-hidden="true"
+        @click="tutorOpen = false"
+      />
+      <aside
+        v-if="tutorOpen"
+        class="ws-tutor-popover"
+        :class="{ 'is-floating': tutorPanelFloating, 'is-moving': tutorPanelDragging }"
+        :style="tutorPanelStyle"
+        role="dialog"
+        aria-label="AI 导师对话"
+        @click.stop
+      >
+        <div
+          v-if="!isMobileLayout"
+          class="ws-tutor-drag-handle"
+          :class="{ active: tutorPanelDragging }"
+          role="button"
+          aria-label="移动 AI 导师窗口"
+          tabindex="0"
+          title="拖动窗口；双击恢复右侧停靠"
+          @pointerdown="startTutorPanelDrag"
+          @pointermove="moveTutorPanel"
+          @pointerup="finishTutorPanelDrag"
+          @pointercancel="finishTutorPanelDrag"
+          @lostpointercapture="finishTutorPanelDrag"
+          @keydown="moveTutorPanelByKeyboard"
+          @dblclick="dockTutorPanel"
+        >
+          <GripVertical :size="17" aria-hidden="true" />
+        </div>
+        <button
+          type="button"
+          class="ws-tutor-close"
+          aria-label="关闭 AI 导师"
+          title="关闭 AI 导师"
+          @click="tutorOpen = false"
+        >
+          <X :size="18" aria-hidden="true" />
+        </button>
+        <div
+          v-if="!isMobileLayout"
+          class="ws-tutor-resizer"
+          :class="{ active: tutorResizing }"
+          role="separator"
+          aria-label="调整 AI 导师宽度"
+          aria-orientation="vertical"
+          :aria-valuemin="TUTOR_PANEL_MIN_WIDTH"
+          :aria-valuemax="Math.round(tutorPanelMaxWidth())"
+          :aria-valuenow="Math.round(tutorPanelWidth)"
+          tabindex="0"
+          title="拖动调整宽度；双击恢复默认宽度"
+          @pointerdown="startTutorResize"
+          @pointermove="moveTutorResize"
+          @pointerup="finishTutorResize"
+          @pointercancel="finishTutorResize"
+          @lostpointercapture="finishTutorResize"
+          @keydown="resizeTutorByKeyboard"
+          @dblclick="resetTutorPanelWidth"
+        >
+          <span aria-hidden="true" />
+        </div>
+        <div
+          v-if="!isMobileLayout"
+          class="ws-tutor-height-resizer"
+          :class="{ active: tutorHeightResizing }"
+          role="separator"
+          aria-label="调整 AI 导师高度"
+          aria-orientation="horizontal"
+          :aria-valuemin="Math.round(tutorPanelHeightMin())"
+          :aria-valuemax="Math.round(tutorPanelHeightMax())"
+          :aria-valuenow="Math.round(tutorPanelHeight)"
+          tabindex="0"
+          title="上下拖动调整高度；双击恢复默认高度"
+          @pointerdown="startTutorHeightResize"
+          @pointermove="moveTutorHeightResize"
+          @pointerup="finishTutorHeightResize"
+          @pointercancel="finishTutorHeightResize"
+          @lostpointercapture="finishTutorHeightResize"
+          @keydown="resizeTutorHeightByKeyboard"
+          @dblclick="resetTutorPanelHeight"
+        >
+          <span aria-hidden="true" />
+        </div>
+        <TutorPane
+          :lab="lab"
+          :messages="messages"
+          :sending="sending"
+          :streaming-id="streamingId"
+          :connection="connection"
+          :connection-label="connectionLabel"
+          :tutor-state="lastTutorState"
+          :active-stage="activeStage"
+          @send="sendMessage"
+          @new-session="startSession"
+          @check-connection="checkConnection"
+          @use-prompt="usePrompt"
+          @drag-start="startTutorPanelDrag"
+          @drag-move="moveTutorPanel"
+          @drag-end="finishTutorPanelDrag"
+        />
+      </aside>
+      <button
+        v-if="!tutorOpen"
+        type="button"
+        class="ws-tutor-fab"
+        :class="{ 'is-moving': tutorFabDragging }"
+        :aria-expanded="tutorOpen"
+        aria-label="打开 AI 导师"
+        title="点击打开；拖动调整位置"
+        @pointerdown="startTutorFabDrag"
+        @pointermove="moveTutorFab"
+        @pointerup="finishTutorFabDrag"
+        @pointercancel="finishTutorFabDrag"
+        @lostpointercapture="finishTutorFabDrag"
+        @keydown="moveTutorFabByKeyboard"
+        @click="toggleTutor"
+      >
+        <MessagesSquare :size="20" aria-hidden="true" />
+        <span v-if="messages.length > 1" class="ws-tutor-fab-dot" aria-hidden="true" />
+      </button>
+    </div>
     <p v-if="notice" class="ws-toast" role="status">{{ notice }}</p>
 
     <div v-if="teacherNotice && !noticeDismissed" class="ws-teacher-notice" role="status">
@@ -2609,6 +3306,246 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
+
+.ws-tutor-float {
+  position: fixed;
+  right: var(--ws-space-5);
+  bottom: var(--ws-space-5);
+  z-index: 80;
+  display: grid;
+  justify-items: end;
+  gap: var(--ws-space-2);
+  pointer-events: none;
+}
+
+.ws-tutor-float > * {
+  pointer-events: auto;
+}
+
+.ws-tutor-fab {
+  position: relative;
+  display: grid;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  color: var(--ws-accent-contrast);
+  border: 1px solid var(--ws-accent);
+  border-radius: var(--ws-radius-full);
+  background: var(--ws-accent);
+  box-shadow: var(--ws-shadow-3);
+  place-items: center;
+  cursor: grab;
+  touch-action: none;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.ws-tutor-fab.is-moving {
+  cursor: grabbing;
+  transform: scale(1.04);
+}
+
+.ws-tutor-fab:hover,
+.ws-tutor-fab:focus-visible,
+.ws-tutor-fab.active {
+  background: var(--ws-accent-strong, var(--ws-accent));
+  transform: translateY(-2px);
+}
+
+.ws-tutor-fab.is-moving:hover {
+  transform: scale(1.04);
+}
+
+.ws-tutor-fab:focus-visible {
+  outline: 2px solid var(--ws-accent);
+  outline-offset: 3px;
+}
+
+.ws-tutor-fab-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--ws-surface);
+  border-radius: var(--ws-radius-full);
+  background: var(--ws-ok, #1a7f37);
+}
+
+.ws-tutor-popover {
+  position: fixed;
+  top: var(--ws-topbar-height);
+  right: 0;
+  bottom: 0;
+  z-index: 81;
+  display: flex;
+  width: var(--ws-tutor-panel-width, 520px);
+  max-width: calc(100vw - 24px);
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  border: 1px solid var(--ws-line-strong, var(--ws-line));
+  border-right: 0;
+  border-radius: var(--ws-radius-md) 0 0 var(--ws-radius-md);
+  background: var(--ws-surface);
+  box-shadow: var(--ws-shadow-3);
+}
+
+.ws-tutor-popover.is-floating {
+  top: var(--ws-tutor-panel-top);
+  right: auto;
+  bottom: auto;
+  left: var(--ws-tutor-panel-left);
+  height: var(--ws-tutor-panel-height);
+  max-height: calc(100dvh - var(--ws-tutor-panel-top) - 8px);
+  min-height: 0;
+  border-right: 1px solid var(--ws-line-strong, var(--ws-line));
+  border-radius: var(--ws-radius-md);
+}
+
+.ws-tutor-popover.is-moving {
+  box-shadow: 0 18px 52px rgba(15, 23, 42, 0.24);
+}
+
+.ws-tutor-popover :deep(.ws-tutor-pane) {
+  width: 100%;
+  height: 100%;
+}
+
+.ws-tutor-popover :deep(.ws-tutor-head) {
+  padding-right: 44px;
+  padding-left: 44px;
+}
+
+.ws-tutor-drag-handle {
+  position: absolute;
+  top: 0;
+  left: 12px;
+  z-index: 3;
+  display: grid;
+  width: 32px;
+  height: 41px;
+  border-radius: var(--ws-radius-sm, 4px);
+  outline: 0;
+  place-items: center;
+  cursor: grab;
+  touch-action: none;
+}
+
+.ws-tutor-drag-handle svg {
+  color: var(--ws-ink-faint);
+}
+
+.ws-tutor-drag-handle:hover,
+.ws-tutor-drag-handle:focus-visible,
+.ws-tutor-drag-handle.active {
+  background: var(--ws-surface-hover, var(--ws-surface));
+}
+
+.ws-tutor-drag-handle:hover svg,
+.ws-tutor-drag-handle:focus-visible svg,
+.ws-tutor-drag-handle.active svg {
+  color: var(--ws-accent);
+}
+
+.ws-tutor-drag-handle.active {
+  cursor: grabbing;
+}
+
+.ws-tutor-close {
+  position: absolute;
+  top: 5px;
+  right: 8px;
+  z-index: 3;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--ws-ink-muted);
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius-md);
+  background: transparent;
+  place-items: center;
+  cursor: pointer;
+}
+
+.ws-tutor-close:hover,
+.ws-tutor-close:focus-visible {
+  color: var(--ws-ink);
+  border-color: var(--ws-line);
+  background: var(--ws-surface);
+}
+
+.ws-tutor-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  width: 12px;
+  border: 0;
+  outline: 0;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.ws-tutor-resizer span {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 3px;
+  height: 64px;
+  border-radius: 0 var(--ws-radius-full) var(--ws-radius-full) 0;
+  background: var(--ws-line-strong, var(--ws-line));
+  transform: translateY(-50%);
+  transition: width 0.15s ease, background 0.15s ease;
+}
+
+.ws-tutor-resizer:hover span,
+.ws-tutor-resizer:focus-visible span,
+.ws-tutor-resizer.active span {
+  width: 5px;
+  background: var(--ws-accent);
+}
+
+.ws-tutor-height-resizer {
+  position: absolute;
+  right: 16px;
+  bottom: 0;
+  left: 16px;
+  z-index: 3;
+  height: 12px;
+  border: 0;
+  outline: 0;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.ws-tutor-height-resizer span {
+  position: absolute;
+  right: 50%;
+  bottom: 0;
+  left: 50%;
+  width: 64px;
+  height: 3px;
+  border-radius: var(--ws-radius-full) var(--ws-radius-full) 0 0;
+  background: var(--ws-line-strong, var(--ws-line));
+  transform: translateX(-50%);
+  transition: height 0.15s ease, background 0.15s ease;
+}
+
+.ws-tutor-height-resizer:hover span,
+.ws-tutor-height-resizer:focus-visible span,
+.ws-tutor-height-resizer.active span {
+  height: 5px;
+  background: var(--ws-accent);
+}
+
+.ws-tutor-float-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: rgba(15, 23, 42, 0.22);
+}
 .ws-zone-maximized {
   position: fixed;
   top: var(--ws-topbar-height);
@@ -3079,8 +4016,78 @@ onBeforeUnmount(() => {
   line-height: var(--ws-leading-normal);
 }
 
+
+@media (max-width: 900px) {
+  .ws-tutor-float {
+    right: var(--ws-space-3);
+    bottom: var(--ws-space-3);
+  }
+
+  .ws-tutor-popover {
+    top: var(--ws-topbar-height);
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: auto;
+    max-height: none;
+    min-height: 0;
+    width: 100%;
+    max-width: none;
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+  }
+
+  .ws-tutor-popover.is-floating {
+    top: var(--ws-topbar-height);
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: auto;
+    max-height: none;
+    border-radius: 0;
+  }
+
+  .ws-tutor-popover :deep(.ws-tutor-head) {
+    padding-left: var(--ws-space-4);
+  }
+}
+
+.ws-tutor-resizing,
+.ws-tutor-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+.ws-tutor-height-resizing,
+.ws-tutor-height-resizing * {
+  cursor: row-resize !important;
+  user-select: none !important;
+}
+
+.ws-tutor-moving,
+.ws-tutor-moving * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+.ws-tutor-fab-moving,
+.ws-tutor-fab-moving * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ws-pane-resizer span {
+    transition: none;
+  }
+
+  .ws-tutor-resizer span {
+    transition: none;
+  }
+
+  .ws-tutor-height-resizer span {
     transition: none;
   }
 }

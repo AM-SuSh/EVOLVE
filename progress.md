@@ -1,5 +1,29 @@
 # os-lab 项目进度总览
 
+## 2026-08-01 - Task: AI 导师悬浮窗口、持久化对话与可调尺寸收口
+
+### What was done
+
+- **独立导师入口**：将 AI 导师从“学习支持”页签移出，学生端改为可移动的悬浮图标；报告和 Trace 继续保留在学习支持区，教师端不显示导师悬浮入口。
+- **对话连续性**：按“当前用户 + Lab”保存最近 120 条 AI 导师消息、当前阶段与导师状态；刷新或切换回同一实验后恢复会话，仍保留服务端 `student_message` / `ai_response` 学习事件记录。
+- **窗口交互**：默认打开为右侧全高面板；拖动标题栏或握把可转为浮窗并在桌面视口内移动。左边缘可调宽，底边可调高；图标、位置、宽度和高度均保存到本地。双击标题栏握把恢复右侧停靠，双击边缘握把恢复默认尺寸。
+- **操作与无障碍**：窗口、宽度和高度握把均提供键盘方向键调节（`Shift` 加大步长）；关闭按钮独立于输入区，移动端保持全屏对话以避免压缩输入体验。
+- **文档同步**：更新成员 C C0-C7 使用指南中的导师入口与 Trace 路径，补充当前窗口操作和刷新保留行为。
+
+### Testing
+
+- `npm test`（`os-lab/handbook`）：41 项全部通过。
+- Vite 直接转译：`LabWorkspace.vue` 与 `TutorPane.vue` 均返回 HTTP 200。
+- `git diff --check`：通过。
+
+### Notes
+
+- 主要文件：`os-lab/handbook/.vitepress/theme/components/LabWorkspace.vue`、`os-lab/handbook/.vitepress/theme/components/TutorPane.vue`、`os-lab/docs/member-c-c0-c7-guide.md`、`progress.md`。
+- `npm run build` 仍会被既有 `handbook/docs/day1-workbench-audit.md` 中两个失效链接阻断，与本轮改动无关。
+- 回滚：还原上述四个文件即可；本轮新增的本地存储键以 `os-lab-tutor-*` 为前缀，清除它们即可复位用户界面状态。
+
+---
+
 ## 2026-08-01 - Task: 成员 B Day2 TutorEvidenceBar
 
 ### What was done
