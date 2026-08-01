@@ -17,7 +17,7 @@
 | --- | --- | --- |
 | 左栏 | `ManualPane` | 实验手册（Markdown 渲染、目录、阅读位置）；知识路径条属本周 Day5 挂载，当前未实现 |
 | 右栏 · 工作区 | `CodePanel`（Monaco）+ 内联底部 dock | 源码编辑；底栏页签：**终端** / **Problems** / **测试结果** |
-| 右栏 · 学习支持 | `TutorPane` / `ReportPanel` / `TraceViewer` | 页签：**AI 导师** / **实验报告** / **Trace** |
+| 右栏 · 学习支持 | `TutorPane`（含 `TutorEvidenceBar`）/ `ReportPanel` / `TraceViewer` | 页签：**AI 导师** / **实验报告** / **Trace** |
 
 桌面端为「左手册 + 右实践区（上：工作区；下：学习支持）」布局；工作区内部再分「代码 + 底栏」。
 
@@ -39,6 +39,16 @@
 | ! | 冲突/过期 | 基线升级无法合并 |
 
 工作区通过 `GET /fs/status?labId=...` 获取服务端基线哈希与当前哈希；前端不再维护文件状态 mock 或重复的 Lab 文件清单。请求失败时不显示徽章（`source='none'`），不回落假状态。
+
+## AI 导师 · 证据条（TutorEvidenceBar）
+
+挂载位置：学习支持 · **AI 导师**页签，顶栏与消息列表之间。
+
+- 数据来源：`POST /chat`（及 SSE `meta`/`done` 帧）回传的 `tutorState`（成员 C 状态机权威字段）。
+- 展示三列：**阶段**（`stage` → `tutorStages` 短名）· **已有证据**（`toolContext` / `evidenceRefs`）· **下一步所需**（`gate` / `actions` 中文映射）。
+- 次要徽章：`hintLevel` → `L0`…`L4`（完整提示阶梯文案属 Day3，本条仅展示层级）。
+- 空态：尚未收到服务端 `tutorState` 时用本地 `activeStage` +「还没有服务端证据摘要…」，**不 mock** run / 断言；无 `latestRun.verified` 时不出现「已验证通过」话术。
+- 新对话清空证据条状态；消息内 `run:`/`trace:` 点击跳转属 Day3。
 
 ## Problems 面板
 

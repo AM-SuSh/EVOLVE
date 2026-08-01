@@ -43,10 +43,10 @@
 
 | 缺口（A 表） | 说明 | 计划日 |
 | --- | --- | --- |
-| G2 提示阶梯不可见 | 导师界面不显示 hint 层级 | Day 2–3 |
+| G2 提示阶梯不可见 | 证据条已显示 `L{hintLevel}`；完整阶梯文案/拒答态仍待 Day3 | Day 3 |
 | G7 OPRE 入口 | Trace/手册旁无「插入报告」OPRE 条 | Day 5 |
 | G8 知识路径条 | 手册顶无紧凑路径条 | Day 5 |
-| 导师证据条 | 无 `TutorEvidenceBar`（chat 已回 `tutorState`） | Day 2 |
+| 导师证据条 | **已落地** `TutorEvidenceBar`（消费 chat `tutorState`） | Day 2 ✅ |
 
 ## 5. 本轮已修正的空态文案
 
@@ -65,7 +65,7 @@
 2. 未运行命令时打开 Problems / Trace / 测试结果：无假列表、无预设动画。  
 3. 断开 tutor 或故意用无效 `runId`：Trace/Problems 显示失败/空态，不填充示例事件。
 
-## 7. 明日堵点（Day2）
+## 7. 后续堵点（Day3）
 
-- 消费 chat 已有的 `tutorState`，落地 `TutorEvidenceBar`（阶段 / 已有证据 / 下一步所需）。  
-- 与 C 字段对齐，缺证据时禁止「已验证」话术的 UI 侧呈现。
+- 消息内 `run:` / `trace:` / 诊断可点回对应面板；完善提示层级与拒答态展示（G2 收口）。
+- Day2 证据条已挂载：见 `TutorEvidenceBar.vue` 与 `workbench-ui.md`「AI 导师 · 证据条」。

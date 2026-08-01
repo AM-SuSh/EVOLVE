@@ -42,6 +42,7 @@ import {
   type TutorMessage,
   type TutorPrompt,
   type TutorStageId,
+  type TutorState,
 } from '../tutor-model'
 
 const props = defineProps<{ labId: TutorLabId }>()
@@ -154,6 +155,8 @@ const router = useRouter()
 
 const sessionId = ref('')
 const activeStage = ref<TutorStageId>('orient')
+/** 最近一次 chat 回传的导师门控状态；未对话前为 null（证据条走可信空态）。 */
+const lastTutorState = ref<TutorState | null>(null)
 const events = ref<LearningEvent[]>([])
 const messages = ref<TutorMessage[]>([])
 const sending = ref(false)
@@ -874,6 +877,7 @@ function openingMessage() {
 
 function startSession() {
   activeStage.value = 'orient'
+  lastTutorState.value = null
   sessionId.value = createId(props.labId)
   messages.value = [
     {
@@ -957,7 +961,7 @@ interface ReplyOutcome {
   reply: string
   guardrail: boolean
   rule?: string
-  tutorState?: { stage?: TutorStageId; hintLevel?: number; gate?: string; actions?: string[] }
+  tutorState?: TutorState
 }
 
 function chatPayload(message: string) {
@@ -1094,6 +1098,7 @@ async function sendMessage(text: string) {
     })
 
     const serverGuardrail = outcome?.guardrail ?? false
+    if (outcome?.tutorState) lastTutorState.value = outcome.tutorState
     const serverStage = outcome?.tutorState?.stage
     if (serverStage && tutorStages.some((stage) => stage.id === serverStage)) {
       activeStage.value = serverStage
@@ -1848,6 +1853,8 @@ onBeforeUnmount(() => {
               :streaming-id="streamingId"
               :connection="connection"
               :connection-label="connectionLabel"
+              :tutor-state="lastTutorState"
+              :active-stage="activeStage"
               @send="sendMessage"
               @new-session="startSession"
               @check-connection="checkConnection"

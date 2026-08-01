@@ -70,6 +70,111 @@ export interface TutorMessage {
   guardrail?: boolean
 }
 
+/** 服务端 decideTutorTurn 回传字段（成员 C · Day2 契约）。 */
+export interface TutorToolContext {
+  latestRun?: {
+    runId?: string
+    verified?: boolean
+    status?: string
+    traceCount?: number
+  } | null
+  diagnosticCount?: number
+  traceCount?: number
+}
+
+export interface TutorState {
+  version?: string
+  stage?: TutorStageId
+  previousStage?: TutorStageId
+  requestedStage?: TutorStageId
+  transitioned?: boolean
+  gate?: string
+  hintLevel?: number
+  hintAdvanced?: boolean
+  actions?: string[]
+  evidenceRefs?: string[]
+  toolContext?: TutorToolContext
+}
+
+const TUTOR_ACTION_NEXT: Record<string, string> = {
+  'ask-for-judgment': '先用自己的话写出初始判断',
+  'request-source-evidence': '打开相关源码并指出关键位置',
+  'request-trusted-run': '在工作台发起一次可信验证运行',
+  'request-regression-run': '修改后重新跑一次可信验证',
+  'request-falsifiable-hypothesis': '写出可证伪假设与下一步观察点',
+  'inspect-run-evidence': '对照本次运行输出与断言差异',
+  'inspect-diagnostic': '打开 Problems 查看编译诊断',
+  'ask-causal-explanation': '用因果链解释：现象 → 机制 → 证据',
+  'request-evidence-linked-reflection': '提交含「我 / AI / 验证」的复盘',
+  'ask-transfer-question': '尝试一条迁移问题并说明如何验证',
+  'cite-server-evidence': '引用本次可信 run / 断言，勿凭空声称已通过',
+  'apply-answer-guardrail': '不要索要完整代码；先给出判断或观察',
+}
+
+const TUTOR_GATE_NEXT: Record<string, string> = {
+  'missing-initial-judgment': '缺初始判断：先说出实验要解决的系统问题',
+  'missing-source-evidence': '缺源码证据：打开 trap/调度相关文件并指出位置',
+  'missing-trusted-run': '缺可信运行：先发起工作台里的可信验证',
+  'missing-debug-hypothesis': '缺可证伪假设：先写现象与下一步观察',
+  'missing-reflection-evidence': '缺复盘证据：提交含「我 / AI / 验证」的反思',
+  'answer-guardrail': '请求被护栏拦截：改为描述判断或观察',
+  'diagnostic-available': '已有诊断：先定位问题再改代码',
+  'trusted-run-failed': '验证未通过：用最小实验区分失败原因',
+  'trusted-run-passed': '已有通过的可信 run：解释断言各证明什么',
+  'change-awaits-regression': '已改代码：再跑一次回归验证',
+  'initial-judgment-observed': '继续：打开源码核对机制路径',
+  'source-evidence-observed': '继续：发起可信验证',
+  'regression-passed': '回归已过：进入因果解释与复盘',
+  'reflection-evidence-complete': '复盘证据齐：尝试迁移检验',
+  'transfer-check': '完成一条带预测的迁移回答',
+}
+
+/** 从 tutorState 归纳「已有证据」文案；无 verified run 时绝不写「已验证通过」。 */
+export function describeTutorEvidenceHave(state: TutorState | null | undefined): string {
+  if (!state) return '尚无服务端证据'
+  const parts: string[] = []
+  const run = state.toolContext?.latestRun
+  if (run?.runId) {
+    parts.push(run.verified ? `可信 run 已通过（${shortRef(run.runId)}）` : `可信 run 未通过（${shortRef(run.runId)}）`)
+  }
+  const diagnostics = Number(state.toolContext?.diagnosticCount || 0)
+  if (diagnostics > 0) parts.push(`诊断 ${diagnostics} 条`)
+  const traces = Number(state.toolContext?.traceCount ?? run?.traceCount ?? 0)
+  if (traces > 0) parts.push(`trace ${traces} 条`)
+  const refs = (state.evidenceRefs || []).filter((ref) => !ref.startsWith('event:'))
+  if (refs.length && !run?.runId) {
+    parts.push(refs.slice(0, 2).map(shortRef).join('、'))
+  }
+  return parts.length ? parts.join(' · ') : '尚无服务端证据'
+}
+
+/** 从 gate / actions 归纳「下一步所需」；优先强调 missing-* 缺口。 */
+export function describeTutorEvidenceNext(state: TutorState | null | undefined): string {
+  if (!state) return '先向导师提问，或跑一次可信验证'
+  const gate = String(state.gate || '')
+  if (gate.startsWith('missing-') && TUTOR_GATE_NEXT[gate]) return TUTOR_GATE_NEXT[gate]
+  if (gate && TUTOR_GATE_NEXT[gate]) return TUTOR_GATE_NEXT[gate]
+  const actions = state.actions || []
+  for (const action of actions) {
+    if (action.startsWith('offer-hint-')) continue
+    if (action === 'apply-answer-guardrail') continue
+    if (TUTOR_ACTION_NEXT[action]) return TUTOR_ACTION_NEXT[action]
+  }
+  if (actions.includes('apply-answer-guardrail')) return TUTOR_ACTION_NEXT['apply-answer-guardrail']
+  return '保持当前阶段，补充可观察证据后再推进'
+}
+
+export function tutorStageMeta(stageId: TutorStageId | undefined) {
+  return tutorStages.find((stage) => stage.id === stageId) || tutorStages[0]
+}
+
+function shortRef(ref: string): string {
+  const value = String(ref || '')
+  if (value.startsWith('run:')) return `run:${value.slice(4, 12)}…`
+  if (value.length > 14) return `${value.slice(0, 12)}…`
+  return value
+}
+
 export interface LearningEvent {
   version: 1 | 2
   id: string

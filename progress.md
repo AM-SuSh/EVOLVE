@@ -1,5 +1,27 @@
 # os-lab 项目进度总览
 
+## 2026-08-01 - Task: 成员 B Day2 TutorEvidenceBar
+
+### What was done
+
+- **证据条落地**：新增 `TutorEvidenceBar.vue`，挂在 `TutorPane` 顶栏与消息列表之间；三列展示阶段 / 已有证据 / 下一步所需，次要徽章显示 `L{hintLevel}`。
+- **对齐 C 契约**：`LabWorkspace` 持久化 chat 回传的完整 `tutorState`；`tutor-model.ts` 增加 `TutorState` 类型与 `describeTutorEvidenceHave` / `describeTutorEvidenceNext` 文案映射（无 `verified` run 不写「已验证通过」）。
+- **可信空态**：未对话前 `lastTutorState=null`，用本地 `activeStage` +「还没有服务端证据摘要…」；新对话清空状态。
+- **文档**：`workbench-ui.md` 补充证据条契约；`day1-workbench-audit.md` 将证据条标为已落地，堵点改为 Day3 引用跳转。
+
+### Testing
+
+- `npm test`（handbook）：41 项全部通过。
+- `git diff --check`：本轮改动文件无空白错误。
+- 手工：打开 AI 导师页签可见证据条空态；对话成功后阶段/证据/下一步随 `tutorState` 更新。
+
+### Notes
+
+- 主要文件：`TutorEvidenceBar.vue`、`TutorPane.vue`、`LabWorkspace.vue`、`tutor-model.ts`、`docs/workbench-ui.md`、`docs/day1-workbench-audit.md`、`progress.md`。
+- 未做（属 Day3+）：消息内 `run:`/`trace:` 点击跳转、完整提示阶梯文案与拒答态 UI。
+
+---
+
 ## 2026-08-01 - Task: 成员 B Day1 工作台空态与文档核对
 
 ### What was done

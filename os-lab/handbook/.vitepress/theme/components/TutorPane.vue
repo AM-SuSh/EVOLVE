@@ -2,16 +2,19 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { Plus, RefreshCw, Send, Server } from 'lucide-vue-next'
 import TutorMessage from './TutorMessage.vue'
+import TutorEvidenceBar from './TutorEvidenceBar.vue'
 import {
   tutorPromptsFor,
   type TutorLab,
   type TutorMessage as TutorMessageType,
   type TutorPrompt,
+  type TutorStageId,
+  type TutorState,
 } from '../tutor-model'
 
 /**
  * AI 导师对话栏。阶段机制退到数据层（事件仍带 stage 字段），
- * 界面上只保留对话本身：学生写实验报告或排错时按需展开提问。
+ * 顶栏下挂 TutorEvidenceBar 展示门控阶段 / 证据 / 下一步。
  */
 const props = defineProps<{
   lab: TutorLab
@@ -20,6 +23,8 @@ const props = defineProps<{
   streamingId: string
   connection: 'checking' | 'remote' | 'offline'
   connectionLabel: string
+  tutorState: TutorState | null
+  activeStage: TutorStageId
 }>()
 
 const emit = defineEmits<{
@@ -109,6 +114,8 @@ defineExpose({ scrollToLatest })
       </div>
     </header>
 
+    <TutorEvidenceBar :tutor-state="tutorState" :fallback-stage="activeStage" />
+
     <div ref="messageList" class="ws-message-list" aria-live="polite">
       <div class="ws-message-inner">
         <TutorMessage
@@ -155,7 +162,7 @@ defineExpose({ scrollToLatest })
 <style scoped>
 .ws-tutor-pane {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
   background: var(--ws-surface);
