@@ -547,6 +547,10 @@ function askReview() {
 }
 
 async function submitToTeacher() {
+  const ok = window.confirm(
+    '确认把当前实验报告提交给老师吗？\n\n重复提交会覆盖本实验上一份提交；提交后老师可在验收页查看。',
+  )
+  if (!ok) return
   persist(false)
   busyAttach.value = true
   try {
@@ -1130,13 +1134,17 @@ const modeLabel = computed(() =>
         <small v-else>写在本机浏览器里；提交以当前下拉格式为准</small>
       </div>
       <div class="ws-report-actions">
-        <button type="button" title="把当前报告发给 AI 导师" @click="askReview">
-          <MessageSquareQuote :size="14" aria-hidden="true" /><span>请导师点评</span>
+        <button
+          type="button"
+          title="把当前报告发给 AI 助手点评（不是真人老师）"
+          @click="askReview"
+        >
+          <MessageSquareQuote :size="14" aria-hidden="true" /><span>AI 点评</span>
         </button>
         <button type="button" title="导出当前格式的报告" @click="exportMarkdown">
           <Download :size="14" aria-hidden="true" /><span>导出报告</span>
         </button>
-        <button type="button" title="按当前格式提交给老师" :disabled="busyAttach" @click="submitToTeacher">
+        <button type="button" title="按当前格式提交给老师（会先确认）" :disabled="busyAttach" @click="submitToTeacher">
           <Send :size="14" aria-hidden="true" /><span>{{ busyAttach ? '准备中…' : '提交给老师' }}</span>
         </button>
         <button type="button" class="primary" @click="save">

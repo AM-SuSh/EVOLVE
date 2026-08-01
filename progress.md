@@ -1,5 +1,31 @@
 # os-lab 项目进度总览
 
+## 2026-08-02 - Task: 成员 B Day4 评分 v2 界面
+
+### What was done
+
+- **共享细项面板**：新增 `AssessmentScorePanel.vue`；`tutor-model.ts` 增加 Assessment v2 类型、`normalizeAssessmentV2` / 状态文案 / 证据 chips 辅助。
+- **学生得分区**：新增 `AssessmentPane.vue`，学习支持区与实验报告同级页签「学习评价」；`POST /assessment` 生成评价；细项展开后点 `run:`/`trace:`/`diag:`/`event:` 经 `navigateEvidenceRef` 跳对应面板（`event:` → 报告）。
+- **教师报告**：`TeacherReport` 改为消费 `GET /teacher/reviews` 的 `automaticResult`，与学生同一套细项；无队列时可信空态，不再用本地 `scoreEvents` 冒充 v2；教师页点击引用仅复制。
+- **报告操作收口**：原「请导师点评」改为「AI 点评」（强调 AI 助手非真人老师）；「提交给老师」增加二次确认（覆盖上一份提交）。
+- **文档**：`workbench-ui.md` 补充评分 v2 / 评价页签 / 报告按钮契约；`teacher-report.md`、`day1-workbench-audit.md` 同步。
+
+### Testing
+
+- `npm test`（handbook）：41 项全部通过。
+- `git diff --check`：本轮改动文件无空白错误。
+- 手工：学生登录 →「学习评价」生成评价 → 展开 R*/P* → 点 run/trace；报告区「AI 点评」/「提交给老师」确认框；教师登录 `/guide/teacher-report` 看同一 automaticResult（门控入队场景）。
+
+### Notes
+
+- 主要文件：`AssessmentScorePanel.vue`、`AssessmentPane.vue`、`ReportPanel.vue`、`LabWorkspace.vue`、`TeacherReport.vue`、`tutor-model.ts`、`docs/workbench-ui.md`、`progress.md`。
+- 计划 Day4 B 完成标准已满足（学生得分区 + TeacherReport 细项/证据跳转；教师与学生同证据链）。
+- 未入复核队列的评价教师端不可见（无 `GET /teacher/assessments`）；属可信空态，不造假（依赖 C 的 reviews API）。
+- 未做（Day5+）：教师改分留痕、OPRE/知识路径条、Lab 向导。
+- 联调附带：`student-labs/stu` Lab2 fill 补全 `find_next_task`，便于本地跑出可信断言（非手册前端交付）。
+
+---
+
 ## 2026-08-02 - Task: 终端暗色适配 · 测试结果保留 · 多会话新开
 
 ### What was done

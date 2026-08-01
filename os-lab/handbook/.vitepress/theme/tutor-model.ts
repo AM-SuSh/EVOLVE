@@ -320,6 +320,136 @@ export interface TutorScore {
   summary: string
 }
 
+/** 评分量规 v2 细项（与 learning/rubric-v2.mjs 对齐）。 */
+export type AssessmentItemStatus = 'unobserved' | 'met' | 'partial' | 'not-met' | string
+
+export interface AssessmentItem {
+  id: string
+  dimension: 'process' | 'result' | 'reflection' | string
+  label: string
+  score: number | null
+  status: AssessmentItemStatus
+  evidenceRefs: string[]
+  note?: string
+}
+
+export interface AssessmentDimensions {
+  process: number
+  result: number
+  reflection: number
+}
+
+export interface AssessmentV2 {
+  version: string
+  labId?: string
+  sessionId?: string
+  total: number
+  dimensions: AssessmentDimensions
+  items: AssessmentItem[]
+  uncertainty?: string
+}
+
+export type AssessmentEvidenceKind = 'run' | 'trace' | 'diag' | 'event' | 'other'
+
+export type AssessmentEvidenceChip = { ref: string; label: string; kind: AssessmentEvidenceKind }
+
+const ASSESSMENT_DIMENSION_LABELS: Record<string, string> = {
+  process: '过程',
+  result: '结果',
+  reflection: '反思',
+}
+
+/** 细项状态 → 中文；unobserved / 无分一律「未观察到」。 */
+export function describeAssessmentStatus(status: AssessmentItemStatus | undefined | null, score?: number | null): string {
+  if (score === null || status === 'unobserved' || !status) return '未观察到'
+  if (status === 'met') return '已满足'
+  if (status === 'partial') return '部分'
+  if (status === 'not-met') return '未满足'
+  return String(status)
+}
+
+export function describeAssessmentDimension(dimension: string | undefined): string {
+  return ASSESSMENT_DIMENSION_LABELS[String(dimension || '')] || String(dimension || '其他')
+}
+
+/** 将 API / automaticResult 规范为 AssessmentV2；缺字段时不造假分。 */
+export function normalizeAssessmentV2(
+  raw: Partial<AssessmentV2> | null | undefined,
+  extras?: { version?: string; labId?: string; sessionId?: string },
+): AssessmentV2 | null {
+  if (!raw || typeof raw !== 'object') return null
+  const dimensions = raw.dimensions
+  if (!dimensions || typeof raw.total !== 'number' || !Array.isArray(raw.items)) return null
+  return {
+    version: String(raw.version || extras?.version || 'rubric-v2'),
+    labId: raw.labId || extras?.labId,
+    sessionId: raw.sessionId || extras?.sessionId,
+    total: Math.round(raw.total),
+    dimensions: {
+      process: Math.round(Number(dimensions.process) || 0),
+      result: Math.round(Number(dimensions.result) || 0),
+      reflection: Math.round(Number(dimensions.reflection) || 0),
+    },
+    items: raw.items.map((item) => ({
+      id: String(item.id || ''),
+      dimension: String(item.dimension || ''),
+      label: String(item.label || item.id || ''),
+      score: item.score === null || item.score === undefined ? null : Number(item.score),
+      status: (item.score === null || item.score === undefined ? 'unobserved' : item.status) || 'unobserved',
+      evidenceRefs: Array.isArray(item.evidenceRefs) ? item.evidenceRefs.map(String) : [],
+      note: item.note ? String(item.note) : '',
+    })),
+    uncertainty: raw.uncertainty ? String(raw.uncertainty) : undefined,
+  }
+}
+
+export function assessmentEvidenceKind(ref: string): AssessmentEvidenceKind {
+  const value = String(ref || '')
+  if (value.startsWith('run:')) return 'run'
+  if (value.startsWith('trace:')) return 'trace'
+  if (value.startsWith('diag:') || value.startsWith('diagnostic:')) return 'diag'
+  if (value.startsWith('event:')) return 'event'
+  return 'other'
+}
+
+/** 细项证据 chips（含 event:，供得分区展示）。 */
+export function assessmentEvidenceChips(refs: string[] | undefined | null): AssessmentEvidenceChip[] {
+  const chips: AssessmentEvidenceChip[] = []
+  const seen = new Set<string>()
+  for (const ref of refs || []) {
+    const value = String(ref || '').trim()
+    if (!value || seen.has(value)) continue
+    seen.add(value)
+    const kind = assessmentEvidenceKind(value)
+    chips.push({
+      ref: value,
+      label: kind === 'event' ? `event:${value.slice(6, 14)}${value.length > 14 ? '…' : ''}` : shortRef(value),
+      kind,
+    })
+  }
+  return chips
+}
+
+export function groupAssessmentItems(items: AssessmentItem[]): Array<{ dimension: string; label: string; items: AssessmentItem[] }> {
+  const order = ['process', 'result', 'reflection']
+  const groups = new Map<string, AssessmentItem[]>()
+  for (const item of items) {
+    const key = item.dimension || 'other'
+    const list = groups.get(key) || []
+    list.push(item)
+    groups.set(key, list)
+  }
+  const keys = [
+    ...order.filter((key) => groups.has(key)),
+    ...[...groups.keys()].filter((key) => !order.includes(key)),
+  ]
+  return keys.map((dimension) => ({
+    dimension,
+    label: describeAssessmentDimension(dimension),
+    items: groups.get(dimension) || [],
+  }))
+}
+
 export const categoryLabels: Record<QuestionCategory, string> = {
   concept: '概念澄清',
   phenomenon: '现象描述',

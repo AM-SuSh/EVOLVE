@@ -17,7 +17,7 @@
 | --- | --- | --- |
 | 左栏 | `ManualPane` | 实验手册（Markdown 渲染、目录、阅读位置）；知识路径条属本周 Day5 挂载，当前未实现 |
 | 右栏 · 工作区 | `CodePanel`（Monaco）+ 内联底部 dock | 源码编辑；底栏页签：**终端** / **Problems** / **测试结果** |
-| 右栏 · 学习支持 | `TutorPane`（含 `TutorEvidenceBar`）/ `ReportPanel` / `TraceViewer` | 页签：**AI 导师** / **实验报告** / **Trace** |
+| 右栏 · 学习支持 | `ReportPanel` / `AssessmentPane` / `TraceViewer`；AI 对话为浮层 | 页签：**实验报告** / **学习评价** / **Trace** |
 
 桌面端为「左手册 + 右实践区（上：工作区；下：学习支持）」布局；工作区内部再分「代码 + 底栏」。
 
@@ -124,6 +124,33 @@
 - 「收获与反思」系统固定。终端插入当前正在编辑的位置。
 - **预览最终稿**：与导出 / `POST /reports` 使用同一份 Markdown。
 - **教师布置 UI**：弹窗编辑；可导入 Markdown；无需配置「用途 / 行数」。
+
+## 评分 v2 · 学生得分区（Day4）
+
+挂载位置：学习支持 · **学习评价**页签（与实验报告同级；`AssessmentPane` → `AssessmentScorePanel`）。
+
+- **生成**：学生登录后点「生成 / 刷新评价」→ `POST /assessment`，body `{ labId, sessionId }`；权威结果为 `assessment`（`rubric-v2.0.0`：`total` / `dimensions` / 14 `items` / `evidenceRefs`）。
+- **展示**：综合分 + 过程/结果/反思；细项可展开；`status === unobserved` 或无分显示「未观察到」，禁止凭空满分话术。
+- **跳转**：细项 chips 经 `LabWorkspace.navigateEvidenceRef`：
+  - `run:` → 底部测试结果（无断言则终端）
+  - `trace:` → Trace
+  - `diag:` → Problems
+  - `event:` → 实验报告页签（事件证据落点）
+- **空态**：未登录 / 无 session / 请求失败时说明原因，**不**用本地 `scoreEvents` 启发式冒充 v2。
+
+## 实验报告操作文案
+
+- **AI 点评**：把报告发给 AI 助手（浮层对话），不是真人老师。
+- **提交给老师**：提交前弹窗二次确认；重复提交覆盖本实验上一份。
+
+## 评分 v2 · 教师报告（Day4）
+
+挂载：`/guide/teacher-report`（`TeacherReport`）。
+
+- **数据**：教师登录后 `GET /teacher/reviews` → `automaticResult`（与学生 items 同形）；主区复用同一 `AssessmentScorePanel`。
+- **限制**：仅展示已进入复核队列的评价；未触门控的会话显示可信空态，不回落旧启发式分。
+- **引用**：教师页无学生工作台；点击 evidenceRefs 复制引用并提示，不假装跳进 IDE。
+- 改分 + 理由留痕属 Day5（`TeacherReview` / `POST /teacher/review`）。
 
 ## 终端（xterm）
 

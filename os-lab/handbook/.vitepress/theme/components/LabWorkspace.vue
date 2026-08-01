@@ -6,6 +6,7 @@ import ManualPane from './ManualPane.vue'
 import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
 import ReportPanel from './ReportPanel.vue'
+import AssessmentPane from './AssessmentPane.vue'
 import CodePanel from './CodePanel.vue'
 import ProblemsPanel from './ProblemsPanel.vue'
 import TraceViewer from './TraceViewer.vue'
@@ -185,7 +186,7 @@ const currentSection = ref({ h2: '', h3: '' })
 const teacherManualLocation = ref<{ h2: string; h3: string; offset: number } | null>(null)
 const mobileView = ref<'manual' | 'practice'>('manual')
 /** 右栏学习支持页签（报告 / Trace）；AI 导师通过悬浮入口打开。 */
-const rightTab = ref<'report' | 'trace'>('report')
+const rightTab = ref<'report' | 'assessment' | 'trace'>('report')
 
 const TUTOR_CONVERSATION_STORAGE_KEY = 'os-lab-tutor-conversations-v1'
 const MAX_STORED_TUTOR_MESSAGES = 120
@@ -2259,6 +2260,12 @@ async function navigateEvidenceRef(refValue: string) {
   panelOpen.value.terminal = true
   persistPanels()
 
+  if (raw.startsWith('event:')) {
+    rightTab.value = 'report'
+    toast(`已打开实验报告 · ${raw.slice(0, 18)}${raw.length > 18 ? '…' : ''}（事件证据落点）`)
+    return
+  }
+
   if (raw.startsWith('run:')) {
     const runId = raw.slice(4).trim()
     let hasAssertions = false
@@ -2345,17 +2352,17 @@ function onInsertReport(text: string) {
   toast('输出已插入实验报告。')
 }
 
-/** 报告面板请导师点评：切到对话页签并把报告作为提问发送。 */
+/** 报告面板请 AI 点评：打开对话并把报告作为提问发送。 */
 function reviewReport(content: string) {
   tutorOpen.value = true
   mobileView.value = 'practice'
   panelOpen.value.terminal = true
   persistPanels()
   if (sending.value) {
-    toast('导师正在回复上一条消息，稍后再试。')
+    toast('AI 正在回复上一条消息，稍后再试。')
     return
   }
-  void sendMessage(`这是我目前的实验报告，请指出记录不完整或理解有偏差的地方，并追问我一个能检验理解的问题：\n\n${content}`)
+  void sendMessage(`这是我目前的实验报告，请你作为 AI 助教指出记录不完整或理解有偏差的地方，并追问我一个能检验理解的问题：\n\n${content}`)
 }
 
 function submitReflection(content: string) {
@@ -2991,6 +2998,14 @@ onBeforeUnmount(() => {
               <button
                 type="button"
                 role="tab"
+                :aria-selected="rightTab === 'assessment'"
+                :class="{ active: rightTab === 'assessment' }"
+                title="量规 v2 学习评价与证据链"
+                @click="rightTab = 'assessment'"
+              >学习评价</button>
+              <button
+                type="button"
+                role="tab"
                 :aria-selected="rightTab === 'trace'"
                 :class="{ active: rightTab === 'trace' }"
                 title="运行时 trap / 任务切换事件回放"
@@ -3029,6 +3044,15 @@ onBeforeUnmount(() => {
               @review="reviewReport"
               @submit-teacher="submitReportToTeacher"
               @notice="toast"
+            />
+            <AssessmentPane
+              v-show="rightTab === 'assessment'"
+              :lab="lab"
+              :endpoint="endpoint"
+              :session-id="sessionId"
+              :can-assess="Boolean(auth && !isTeacherRole)"
+              @notice="toast"
+              @open-evidence="navigateEvidenceRef"
             />
             <TraceViewer
               ref="traceViewerRef"

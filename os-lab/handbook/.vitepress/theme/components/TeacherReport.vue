@@ -1,79 +1,184 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { Download, ShieldAlert } from 'lucide-vue-next'
+import { computed, onMounted, ref, watch } from 'vue'
+import { withBase } from 'vitepress'
+import { ClipboardList, Download, RefreshCw, ShieldAlert } from 'lucide-vue-next'
+import AssessmentScorePanel from './AssessmentScorePanel.vue'
 import {
-  categoryLabels,
-  loadEvents,
-  scoreEvents,
+  authHeaders,
+  loadAuth,
+  normalizeAssessmentV2,
+  shortRef,
   tutorLabs,
-  type LearningEvent,
-  type QuestionCategory,
+  type AssessmentV2,
 } from '../tutor-model'
 
-const events = ref<LearningEvent[]>([])
-const selectedSession = ref('')
+/**
+ * 教师学习报告：消费 GET /teacher/reviews 的 automaticResult（评分 v2）。
+ * 与学生得分区同一套 items / evidenceRefs；无复核队列时可信空态，不回落启发式假分。
+ */
+const endpoint = String(
+  import.meta.env.VITE_OS_LAB_TUTOR_ENDPOINT || 'http://127.0.0.1:8787',
+).replace(/\/$/, '')
 
-const sessions = computed(() => {
-  const grouped = new Map<string, LearningEvent[]>()
-  for (const event of events.value) {
-    grouped.set(event.sessionId, [...(grouped.get(event.sessionId) || []), event])
-  }
-  return [...grouped.entries()]
-    .map(([id, items]) => ({
-      id,
-      labId: items[0]?.labId || 'lab2',
-      startedAt: items.find((event) => event.type === 'session_start')?.timestamp || items[0]?.timestamp,
-      count: items.length,
-    }))
-    .sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)))
-})
-
-const sessionEvents = computed(() =>
-  events.value.filter((event) => event.sessionId === selectedSession.value),
-)
-const score = computed(() => scoreEvents(sessionEvents.value))
-const selectedLab = computed(() => {
-  const labId = sessionEvents.value[0]?.labId || 'lab2'
-  return tutorLabs.find((lab) => lab.id === labId) || tutorLabs[1]
-})
-const categories = computed(() => {
-  const counts: Partial<Record<QuestionCategory, number>> = {}
-  for (const event of sessionEvents.value) {
-    if (event.type === 'student_message' && event.category) {
-      counts[event.category] = (counts[event.category] || 0) + 1
-    }
-  }
-  return Object.entries(counts).map(([category, count]) => ({
-    category: category as QuestionCategory,
-    label: categoryLabels[category as QuestionCategory],
-    count,
-  }))
-})
-const verificationCount = computed(
-  () => sessionEvents.value.filter((event) => event.type === 'verification_attempt').length,
-)
-const guardrailCount = computed(
-  () => sessionEvents.value.filter((event) => event.type === 'guardrail_triggered').length,
-)
-
-function formatSession(session: { id: string; labId: string; startedAt?: string }) {
-  const date = session.startedAt ? new Date(session.startedAt).toLocaleString('zh-CN') : '未知时间'
-  return `${session.labId.toUpperCase()} · ${date} · ${session.id.slice(-8)}`
+interface ReviewGate {
+  code?: string
+  severity?: string
+  reason?: string
+  evidenceRefs?: string[]
 }
 
-function exportReport() {
-  const body = JSON.stringify({ sessionId: selectedSession.value, score: score.value, events: sessionEvents.value }, null, 2)
+interface AssessmentReview {
+  reviewId: string
+  assessmentId: string
+  student: string
+  className?: string
+  sessionId: string
+  labId: string
+  status: string
+  rubricVersion?: string
+  gates?: ReviewGate[]
+  evidenceRefs?: string[]
+  automaticResult: {
+    total: number
+    dimensions: { process: number; result: number; reflection: number }
+    items: AssessmentV2['items']
+    uncertainty?: string
+  }
+  createdAt?: string
+  updatedAt?: string
+}
+
+const authed = ref(false)
+const denied = ref(false)
+const loading = ref(false)
+const note = ref('')
+const toast = ref('')
+const reviews = ref<AssessmentReview[]>([])
+const selectedId = ref('')
+const statusFilter = ref<'pending' | 'all'>('pending')
+
+const filtered = computed(() => {
+  if (statusFilter.value === 'all') return reviews.value
+  return reviews.value.filter((item) => item.status === 'pending')
+})
+
+const active = computed(() =>
+  filtered.value.find((item) => item.reviewId === selectedId.value)
+  || reviews.value.find((item) => item.reviewId === selectedId.value)
+  || null,
+)
+
+const assessment = computed(() => {
+  const review = active.value
+  if (!review) return null
+  return normalizeAssessmentV2(review.automaticResult, {
+    version: review.rubricVersion || 'rubric-v2.0.0',
+    labId: review.labId,
+    sessionId: review.sessionId,
+  })
+})
+
+const selectedLab = computed(() => {
+  const labId = active.value?.labId || 'lab2'
+  return tutorLabs.find((lab) => lab.id === labId) || tutorLabs[1]
+})
+
+const emptyHint = computed(() => {
+  if (denied.value) return '请先以教师账号登录后再查看评分 v2。'
+  if (!reviews.value.length) {
+    return '暂无服务端评价进入复核队列。请学生先在「学习评价」页签生成评价，且触发门控后会出现在此；不显示本地启发式假分。'
+  }
+  if (statusFilter.value === 'pending' && !filtered.value.length) {
+    return '没有待复核评价。可切换到「全部」查看已处理项。'
+  }
+  return '选择左侧一条评价查看细项与证据链。'
+})
+
+function formatReview(review: AssessmentReview) {
+  const when = review.createdAt ? new Date(review.createdAt).toLocaleString('zh-CN') : '未知时间'
+  const cls = review.className ? ` · ${review.className}` : ''
+  return `${review.student}${cls} · ${review.labId.toUpperCase()} · ${review.automaticResult.total} 分 · ${when}`
+}
+
+async function load() {
+  loading.value = true
+  note.value = ''
+  denied.value = false
+  try {
+    const auth = loadAuth()
+    if (!auth?.token) {
+      denied.value = true
+      authed.value = false
+      reviews.value = []
+      return
+    }
+    const response = await fetch(`${endpoint}/teacher/reviews`, { headers: authHeaders() })
+    if (response.status === 401) {
+      denied.value = true
+      authed.value = false
+      reviews.value = []
+      return
+    }
+    if (!response.ok) throw new Error(`导师服务返回 ${response.status}`)
+    const payload = await response.json()
+    reviews.value = Array.isArray(payload.reviews) ? payload.reviews : []
+    authed.value = true
+    if (!reviews.value.some((item) => item.reviewId === selectedId.value)) {
+      selectedId.value = filtered.value[0]?.reviewId || reviews.value[0]?.reviewId || ''
+    }
+  } catch (err) {
+    note.value = err instanceof Error ? err.message : '无法连接导师服务（npm run tutor）'
+    reviews.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+function exportAssessment() {
+  if (!active.value || !assessment.value) return
+  const body = JSON.stringify(
+    {
+      reviewId: active.value.reviewId,
+      assessmentId: active.value.assessmentId,
+      student: active.value.student,
+      labId: active.value.labId,
+      sessionId: active.value.sessionId,
+      gates: active.value.gates || [],
+      assessment: assessment.value,
+    },
+    null,
+    2,
+  )
   const url = URL.createObjectURL(new Blob([body], { type: 'application/json;charset=utf-8' }))
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = `${selectedSession.value}-teacher-report.json`
+  anchor.download = `${active.value.student}-${active.value.labId}-assessment-v2.json`
   anchor.click()
   URL.revokeObjectURL(url)
 }
 
+async function onOpenEvidence(refValue: string) {
+  const raw = String(refValue || '').trim()
+  if (!raw) return
+  try {
+    await navigator.clipboard.writeText(raw)
+    toast.value = `已复制 ${shortRef(raw)}（教师页无学生工作台，请到引导式学习中跳转面板）`
+  } catch {
+    toast.value = `${raw}（教师页仅展示/复制引用，不跳转学生 IDE）`
+  }
+  window.setTimeout(() => {
+    if (toast.value.includes(raw.slice(0, 8)) || toast.value.includes(shortRef(raw))) toast.value = ''
+  }, 4200)
+}
+
+watch(statusFilter, () => {
+  if (!filtered.value.some((item) => item.reviewId === selectedId.value)) {
+    selectedId.value = filtered.value[0]?.reviewId || ''
+  }
+})
+
 onMounted(() => {
-  events.value = loadEvents()
-  selectedSession.value = sessions.value[0]?.id || ''
+  void load()
 })
 </script>
 
@@ -82,65 +187,86 @@ onMounted(() => {
     <header class="teacher-report-header">
       <div>
         <span>os-lab · 教师端</span>
-        <h1>{{ selectedSession ? `${selectedLab.label} 学习过程报告` : '学习过程报告' }}</h1>
-        <p>依据匿名交互事件生成，规则评分不由 LLM 直接决定。</p>
+        <h1>{{ active ? `${selectedLab.label} · 评分 v2` : '学习评价（评分 v2）' }}</h1>
+        <p>数据来自服务端 automaticResult（与学生「学习评价」页签同一套细项与 evidenceRefs）。</p>
       </div>
       <div class="teacher-report-actions">
-        <label for="teacher-session">学习会话</label>
-        <select id="teacher-session" v-model="selectedSession" :disabled="!sessions.length">
-          <option v-for="session in sessions" :key="session.id" :value="session.id">
-            {{ formatSession(session) }}
+        <label for="teacher-review-filter">队列筛选</label>
+        <select id="teacher-review-filter" v-model="statusFilter" :disabled="!authed">
+          <option value="pending">待复核</option>
+          <option value="all">全部</option>
+        </select>
+        <label for="teacher-review-session">评价条目</label>
+        <select
+          id="teacher-review-session"
+          v-model="selectedId"
+          :disabled="!filtered.length"
+        >
+          <option v-for="review in filtered" :key="review.reviewId" :value="review.reviewId">
+            {{ formatReview(review) }}
           </option>
         </select>
-        <button type="button" :disabled="!selectedSession" @click="exportReport">
-          <Download :size="15" aria-hidden="true" />导出报告
+        <button type="button" :disabled="loading" title="刷新复核队列" @click="load">
+          <RefreshCw :size="15" aria-hidden="true" />刷新
+        </button>
+        <button type="button" :disabled="!assessment" @click="exportAssessment">
+          <Download :size="15" aria-hidden="true" />导出评价
         </button>
       </div>
     </header>
 
-    <section v-if="!selectedSession" class="teacher-empty">
+    <p v-if="toast" class="teacher-toast" role="status">{{ toast }}</p>
+    <p v-if="note" class="teacher-note" role="alert">{{ note }}</p>
+
+    <section v-if="denied" class="teacher-empty">
       <ShieldAlert :size="28" aria-hidden="true" />
-      <h2>暂无可分析会话</h2>
-      <p>学生完成一次 AI 引导学习后，匿名事件会出现在这里。</p>
+      <h2>需要教师账号</h2>
+      <p>请先在引导式学习登录教师账号，再打开本页查看评分 v2。</p>
+      <a :href="withBase('/guide/ai-tutor')">返回引导式学习</a>
     </section>
 
-    <template v-else>
-      <section class="teacher-score-band">
-        <div class="teacher-total-score"><strong>{{ score.total }}</strong><span>综合分</span></div>
-        <div><span>过程</span><strong>{{ score.process }}</strong></div>
-        <div><span>结果</span><strong>{{ score.result }}</strong></div>
-        <div><span>反思</span><strong>{{ score.reflection }}</strong></div>
-        <div><span>验证记录</span><strong>{{ verificationCount }}</strong></div>
-        <div><span>护栏触发</span><strong>{{ guardrailCount }}</strong></div>
+    <div v-else class="teacher-layout">
+      <aside class="teacher-queue" aria-label="复核评价列表">
+        <header>
+          <ClipboardList :size="16" aria-hidden="true" />
+          <strong>{{ filtered.length }}</strong>
+          <span>条</span>
+        </header>
+        <button
+          v-for="review in filtered"
+          :key="review.reviewId"
+          type="button"
+          class="teacher-queue-item"
+          :class="{ active: review.reviewId === selectedId }"
+          @click="selectedId = review.reviewId"
+        >
+          <strong>{{ review.student }}</strong>
+          <span>{{ review.labId.toUpperCase() }} · {{ review.automaticResult.total }} 分 · {{ review.status }}</span>
+          <small v-if="review.gates?.length">门控 {{ review.gates.map((g) => g.code).filter(Boolean).join(', ') }}</small>
+        </button>
+        <p v-if="!filtered.length" class="teacher-queue-empty">{{ loading ? '加载中…' : '队列为空' }}</p>
+      </aside>
+
+      <section class="teacher-main">
+        <AssessmentScorePanel
+          :assessment="assessment"
+          :loading="loading"
+          :empty-hint="emptyHint"
+          :show-refresh="false"
+          @open-evidence="onOpenEvidence"
+        />
+
+        <section v-if="active?.gates?.length" class="teacher-gates">
+          <header><h2>触发门控</h2><span>{{ active.gates.length }}</span></header>
+          <ul>
+            <li v-for="(gate, index) in active.gates" :key="`${gate.code || 'g'}-${index}`">
+              <strong>{{ gate.code || 'gate' }}</strong>
+              <span>{{ gate.severity || '—' }} · {{ gate.reason || '无说明' }}</span>
+            </li>
+          </ul>
+        </section>
       </section>
-
-      <div class="teacher-report-grid">
-        <section class="teacher-dimensions">
-          <header><h2>过程维度</h2><span>可解释规则</span></header>
-          <div v-for="item in [
-            { label: '先想后问', value: score.thinking },
-            { label: '问法质量', value: score.questionQuality },
-            { label: '追问深度', value: score.depth },
-            { label: '实验验证', value: score.verification },
-            { label: '复盘完整', value: score.reflection },
-          ]" :key="item.label" class="teacher-dimension-row">
-            <span>{{ item.label }}</span><i><b :style="{ width: `${item.value}%` }" /></i><strong>{{ item.value }}</strong>
-          </div>
-        </section>
-
-        <section class="teacher-question-types">
-          <header><h2>提问类型</h2><span>{{ categories.reduce((sum, item) => sum + item.count, 0) }} 次</span></header>
-          <p v-if="!categories.length">当前会话还没有学生提问。</p>
-          <div v-for="item in categories" :key="item.category"><span>{{ item.label }}</span><strong>{{ item.count }}</strong></div>
-        </section>
-
-        <section class="teacher-feedback">
-          <span>规则反馈</span>
-          <h2>{{ score.summary }}</h2>
-          <p>扣分项：护栏 {{ score.guardrailPenalty }} 分。报告只用于教师诊断学习过程，不在学生对话界面展示。</p>
-        </section>
-      </div>
-    </template>
+    </div>
   </main>
 </template>
 
@@ -186,14 +312,25 @@ onMounted(() => {
 
 .teacher-report-actions {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto;
+  grid-template-columns: minmax(160px, 0.7fr) minmax(240px, 1.2fr) auto auto;
   gap: var(--ws-space-2);
+  align-items: end;
 }
 
 .teacher-report-actions label {
-  grid-column: 1 / -1;
+  grid-column: span 1;
   color: var(--ws-ink-muted);
   font-size: var(--ws-text-xs);
+}
+
+.teacher-report-actions label:nth-of-type(1) {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.teacher-report-actions label:nth-of-type(2) {
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .teacher-report-actions select,
@@ -226,64 +363,92 @@ onMounted(() => {
   opacity: 0.45;
 }
 
-.teacher-score-band {
+.teacher-toast,
+.teacher-note {
+  margin: var(--ws-space-3) 0 0;
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border-radius: var(--ws-radius-md);
+  font-size: var(--ws-text-sm);
+}
+
+.teacher-toast {
+  background: var(--ws-accent-soft, color-mix(in srgb, var(--ws-accent) 12%, transparent));
+  color: var(--ws-ink);
+}
+
+.teacher-note {
+  background: color-mix(in srgb, #c2410c 12%, transparent);
+  color: #9a3412;
+}
+
+.teacher-layout {
   display: grid;
-  grid-template-columns: 160px repeat(5, 1fr);
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: var(--ws-space-4);
   margin-top: var(--ws-space-6);
+}
+
+.teacher-queue {
+  display: grid;
+  align-content: start;
+  gap: var(--ws-space-2);
+  padding: var(--ws-space-3);
   border: 1px solid var(--ws-line);
   border-radius: var(--ws-radius-md);
   background: var(--ws-surface);
-  overflow: hidden;
 }
 
-.teacher-score-band > div {
-  display: grid;
-  min-height: 92px;
-  padding: var(--ws-space-4);
-  border-right: 1px solid var(--ws-line);
-  place-content: center;
-  text-align: center;
-}
-
-.teacher-score-band > div:last-child {
-  border-right: 0;
-}
-
-.teacher-score-band span {
+.teacher-queue > header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--ws-space-1);
   color: var(--ws-ink-muted);
   font-size: var(--ws-text-xs);
 }
 
-.teacher-score-band strong {
-  margin-top: var(--ws-space-1);
-  font-size: 24px;
-  font-variant-numeric: tabular-nums;
-}
-
-.teacher-total-score {
-  color: var(--ws-accent-contrast);
-  background: var(--ws-accent);
-}
-
-.teacher-total-score strong {
-  font-size: 36px;
-}
-
-.teacher-total-score span {
-  color: var(--ws-accent-contrast);
-  opacity: 0.85;
-}
-
-.teacher-report-grid {
+.teacher-queue-item {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.75fr);
-  gap: var(--ws-space-4);
-  margin-top: var(--ws-space-4);
+  gap: 2px;
+  width: 100%;
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.teacher-dimensions,
-.teacher-question-types,
-.teacher-feedback,
+.teacher-queue-item:hover,
+.teacher-queue-item.active {
+  border-color: var(--ws-line-strong);
+  background: var(--ws-surface-soft);
+}
+
+.teacher-queue-item.active {
+  border-color: var(--ws-accent);
+}
+
+.teacher-queue-item strong {
+  font-size: var(--ws-text-sm);
+}
+
+.teacher-queue-item span,
+.teacher-queue-item small,
+.teacher-queue-empty {
+  color: var(--ws-ink-muted);
+  font-size: 12px;
+}
+
+.teacher-main {
+  display: grid;
+  gap: var(--ws-space-4);
+  min-width: 0;
+}
+
+.teacher-gates,
 .teacher-empty {
   padding: var(--ws-space-5);
   border: 1px solid var(--ws-line);
@@ -291,88 +456,44 @@ onMounted(() => {
   background: var(--ws-surface);
 }
 
-.teacher-dimensions > header,
-.teacher-question-types > header {
+.teacher-gates > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--ws-space-4);
+  margin-bottom: var(--ws-space-3);
 }
 
-.teacher-dimensions h2,
-.teacher-question-types h2,
-.teacher-feedback h2,
+.teacher-gates h2,
 .teacher-empty h2 {
   margin: 0;
   font-size: var(--ws-text-lg);
 }
 
-.teacher-dimensions header span,
-.teacher-question-types header span,
-.teacher-feedback > span {
+.teacher-gates header span {
   color: var(--ws-ink-muted);
   font-size: var(--ws-text-xs);
 }
 
-.teacher-dimension-row {
+.teacher-gates ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.teacher-gates li {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr) 32px;
-  align-items: center;
-  gap: var(--ws-space-3);
-  margin: var(--ws-space-3) 0;
-  color: var(--ws-ink-muted);
-  font-size: var(--ws-text-sm);
-}
-
-.teacher-dimension-row i {
-  height: 8px;
-  border-radius: var(--ws-radius-full);
-  background: var(--ws-surface-soft);
-  overflow: hidden;
-}
-
-.teacher-dimension-row i b {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--ws-accent);
-}
-
-.teacher-dimension-row strong {
-  color: var(--ws-ink);
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.teacher-question-types > div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  gap: 2px;
   padding: var(--ws-space-2) 0;
-  color: var(--ws-ink-muted);
   border-bottom: 1px solid var(--ws-line);
   font-size: var(--ws-text-sm);
 }
 
-.teacher-question-types > div:last-child {
+.teacher-gates li:last-child {
   border-bottom: 0;
 }
 
-.teacher-question-types p,
-.teacher-feedback p,
-.teacher-empty p {
+.teacher-gates li span {
   color: var(--ws-ink-muted);
-  font-size: var(--ws-text-sm);
-  line-height: var(--ws-leading-normal);
-}
-
-.teacher-feedback {
-  grid-column: 1 / -1;
-  border-left: 4px solid var(--ws-accent);
-}
-
-.teacher-feedback h2 {
-  margin-top: var(--ws-space-2);
 }
 
 .teacher-empty {
@@ -388,13 +509,26 @@ onMounted(() => {
   margin-top: var(--ws-space-3);
 }
 
-@media (max-width: 1040px) {
-  .teacher-score-band {
-    grid-template-columns: repeat(3, 1fr);
+.teacher-empty p,
+.teacher-empty a {
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-sm);
+}
+
+.teacher-empty a {
+  display: inline-block;
+  margin-top: var(--ws-space-3);
+  color: var(--ws-accent);
+}
+
+@media (max-width: 900px) {
+  .teacher-report-actions {
+    width: 100%;
+    grid-template-columns: 1fr 1fr;
   }
 
-  .teacher-score-band > div {
-    border-bottom: 1px solid var(--ws-line);
+  .teacher-layout {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -407,23 +541,6 @@ onMounted(() => {
   .teacher-report-header {
     display: grid;
     align-items: start;
-  }
-
-  .teacher-report-actions {
-    width: 100%;
-  }
-
-  .teacher-score-band {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .teacher-report-grid {
-    display: block;
-  }
-
-  .teacher-question-types,
-  .teacher-feedback {
-    margin-top: var(--ws-space-3);
   }
 }
 </style>
