@@ -580,6 +580,7 @@ onBeforeUnmount(() => {
   display: flex;
   min-height: 0;
   min-width: 0;
+  isolation: isolate;
   overflow: hidden;
 }
 
@@ -643,7 +644,8 @@ onBeforeUnmount(() => {
   top: calc(var(--ws-control-sm) + var(--ws-space-2));
   right: var(--ws-space-2);
   z-index: 5;
-  width: min(420px, calc(100% - var(--ws-space-4)));
+  width: calc(100% - var(--ws-space-4));
+  max-width: 460px;
   max-height: calc(100% - var(--ws-control-sm) - var(--ws-space-4));
   box-sizing: border-box;
   padding: var(--ws-space-2) var(--ws-space-3);
@@ -693,7 +695,7 @@ onBeforeUnmount(() => {
 
 .ws-terminal-help-list dt {
   flex: 0 0 auto;
-  min-width: 92px;
+  min-width: 104px;
   color: var(--ws-ink-muted);
 }
 
