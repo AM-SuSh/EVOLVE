@@ -214,6 +214,13 @@ All processes exited.
 
 **修改 3**（进阶）：对照 `reference-patches/ch6-exercise.patch`，找出一处与参考实现不同的设计取舍并写成短文。
 
+### 提交清单（自查）
+
+- [ ] `make test-lab6` 输出任务一列出的全部 `pass` / `OK!` 行，且 QEMU 正常退出
+- [ ] 能说明 VirtIO → easy-fs → fd → link/fstat 这条主线
+- [ ] 完成【任务二】5 道阅读理解题（对照答案自查）
+- [ ] 能解释 `unlink` 为什么不能直接 `inode.clear()`、`spawn` 和 `exec` 的区别
+
 ## 四、验证
 
 
@@ -228,6 +235,8 @@ All processes exited.
 
 
 ## 五、AI 提问模板
+
+做实验时，建议用以下切入点和 AI 交互，引导自己思考而非直接要答案：
 
 1. **概念澄清型**：「MMIO 和端口 I/O 有什么区别？为什么 RISC-V virt 上的 VirtIO 用 MMIO？」
 2. **现象解释型**：「`linkat` 成功后两个路径的 `fstat.ino` 为什么相同？`unlink` 一个路径后另一个还能读吗？」

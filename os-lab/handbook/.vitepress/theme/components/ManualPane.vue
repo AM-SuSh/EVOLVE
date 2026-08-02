@@ -573,6 +573,8 @@ onBeforeUnmount(() => {
 
 .ws-manual-body {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -682,7 +684,7 @@ onBeforeUnmount(() => {
 
 .ws-toc-drawer.open .ws-toc-edge,
 .ws-toc-drawer:focus-within .ws-toc-edge {
-  left: calc(100% - 30px);
+  left: 100%;
   color: var(--ws-accent);
   border-color: var(--ws-accent);
 }
@@ -707,6 +709,7 @@ onBeforeUnmount(() => {
 
 /* -- 正文 ------------------------------------------------------------------ */
 .ws-manual-scroll {
+  flex: 1 1 auto;
   min-height: 0;
   padding: var(--ws-space-6) var(--ws-space-6) var(--ws-space-8);
   overflow-y: auto;

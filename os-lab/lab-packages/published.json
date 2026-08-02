@@ -50,6 +50,103 @@
         }
       },
       "release": "releases/lab3/0.1.2-draft/release.json"
+    },
+    "lab2": {
+      "version": "1.0.0",
+      "title": "中断处理与多任务",
+      "feature": "lab2",
+      "status": "stable",
+      "manual": "labs/lab2-trap-and-task.md",
+      "answers": "labs/answers/lab2-answers.md",
+      "tutorContext": "tutor/prompts/lab2/context.md",
+      "verification": {
+        "recipe": "lab2.verify-trace.v1",
+        "command": "cargo run -p kernel --features lab2 --release",
+        "command_with_trace": "cargo run -p kernel --features lab2,trace-edu --release",
+        "assertions": [
+          {
+            "id": "hello-output",
+            "kind": "output-contains",
+            "text": "Hello from user app!",
+            "assesses": [
+              "os.trap.syscall-abi"
+            ]
+          },
+          {
+            "id": "power-result",
+            "kind": "output-contains",
+            "text": "409684505",
+            "assesses": [
+              "os.trap.syscall-abi",
+              "os.sched.round-robin"
+            ]
+          },
+          {
+            "id": "yield-five-rounds",
+            "kind": "output-count",
+            "text": "Yield round",
+            "min": 5,
+            "assesses": [
+              "os.sched.round-robin",
+              "os.sched.task-state"
+            ]
+          },
+          {
+            "id": "all-exited",
+            "kind": "output-contains",
+            "text": "All user apps exited.",
+            "assesses": [
+              "os.sched.task-state"
+            ]
+          }
+        ],
+        "negative_assertions": [
+          {
+            "id": "not-early-shutdown-after-one-yield",
+            "kind": "output-count",
+            "text": "Yield round",
+            "min": 5,
+            "note": "防止「退出码 0 + 提前关机」被记为通过"
+          }
+        ],
+        "observable_trace": [
+          "trap_enter",
+          "task_switch"
+        ]
+      },
+      "variants": {
+        "fill": {
+          "label": "学生独立实现 `TaskManager::find_next_task`，理解 Ready 集合选取与",
+          "files": [
+            "kernel/src/task.rs"
+          ],
+          "sources": {
+            "kernel/src/task.rs": "scaffold/exercises/lab2/fill/kernel/src/task.rs"
+          },
+          "manifest": "lab-packages/lab2/variants/fill/manifest.yaml"
+        },
+        "debug": {
+          "label": "学生按「现象→假设→最小实验→证据→结论」排查：yield 只打印 1 次 Yield round",
+          "files": [
+            "kernel/src/task.rs"
+          ],
+          "sources": {
+            "kernel/src/task.rs": "scaffold/exercises/lab2/debug/kernel/src/task.rs"
+          },
+          "manifest": "lab-packages/lab2/variants/debug/manifest.yaml"
+        },
+        "remedial": {
+          "label": "面向「已接触 debug/fill 但仍混淆让出与退出」的学生。",
+          "files": [
+            "kernel/src/task.rs"
+          ],
+          "sources": {
+            "kernel/src/task.rs": "scaffold/exercises/lab2/debug/kernel/src/task.rs"
+          },
+          "manifest": "lab-packages/lab2/variants/remedial/manifest.yaml"
+        }
+      },
+      "release": "releases/lab2/1.0.0/release.json"
     }
   }
 }

@@ -966,6 +966,9 @@ export default { components: { CodeTreeNode } }
   justify-content: center;
   gap: var(--ws-space-4);
   min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: var(--ws-space-6);
   text-align: center;
 }

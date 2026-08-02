@@ -1,5 +1,64 @@
 # os-lab 项目进度总览
 
+## 2026-08-03 - Task: 实验手册/工作台 UI 收口 + Day6 链路验收
+
+### What was done
+
+- 修复 `/learn/labN` 手册正文无法滚动：`ManualPane.vue` 的 `.ws-manual-body` 改为 flex column，`.ws-manual-scroll` 用 `flex: 1 1 auto` + `min-height: 0` 占满剩余高度并内部滚动。
+- 修复学生工作区代码页“本 Lab 相关”空态无法滚动：`CodePanel.vue` 的 `.ws-code-empty` 增加 `overflow-y: auto`、`overscroll-behavior: contain`、`-webkit-overflow-scrolling: touch`。
+- 修复手册目录显示不全：目录打开时 `.ws-toc-edge` 移到面板外侧（`left: 100%`），不再遮挡目录条目右侧内容。
+- 修复 Lab 工厂发布后 CTA：由 `documentRoute` 静态手册页改为 `/learn/labN?view=teaching&variant=...`，直达教师工作台教学安排。
+- 发布成功后自动保存“待下发”记录（`localStorage['os-lab-factory-publish-saved-v1']`），下次打开 Lab 工厂可继续打开教学安排或清除记录。
+- 增加自然点击入口：教师导航、教师工作台顶栏、Lab 工厂页均提供“教学安排/打开教学安排”。
+- `TeacherPublishPanel` 接收发布变体 hint，预选全局默认任务类型，并新增“开放并下发”一键完成 `openLab` + assignment，成功后清除待办记录。
+- 实验手册章节核对：Lab1–8 必要 H2（零～五）全部齐全；发现 Lab5–8 缺“提交清单（自查）”，已按各 Lab 验证命令与主线补上。
+- AI 提问模板核对：Lab1–8 均已有 5 类提问；Lab2–8 缺少“做实验时，建议用以下切入点和 AI 交互……”引导语，已统一补全。
+- 修正 `docs/day1-workbench-audit.md` 两个外部 `.md` 链接为代码路径，解决 VitePress dead link。
+
+### Testing
+
+- `cd os-lab/handbook && npm test`：41/41 通过。
+- `cd os-lab/handbook && npm run build`：构建通过。
+- 无头 Chrome 验证：
+  - `/learn/lab1` 手册正文可滚动；
+  - 学生端 `390x560` 下“本 Lab 相关”面板可滚动（`clientHeight 83 / scrollHeight 233`，`scrollTop` 可达 `150`）；
+  - 目录打开后 edge 不遮挡内容且无横向溢出；
+  - 教师点击“教学安排”可从 `/learn/lab2` 自然跳到 `/learn/lab2?view=teaching&variant=remedial`，教学安排预选 `remedial`。
+- 章节核对：`Select-String '^### 提交清单' lab*.md` 返回 Lab1–8 各 1 项。
+- AI 模板核对：Lab1–8 的“五、AI 提问模板”均为 5 类提问（概念澄清 / 现象解释 / 代码追因 / 对比深化 / 动手探索）；Lab2–8 已补统一引导语，脚本核对 `items=5 intro=True`。
+
+### Notes
+
+- 主要文件：`ManualPane.vue`、`CodePanel.vue`、`LabCreateWizard.vue`、`LabWorkspace.vue`、`TeacherNav.vue`、`TeacherPublishPanel.vue`、`labs/lab2-8-*.md`、`docs/workbench-ui.md`、`docs/day1-workbench-audit.md`、`progress.md`。
+- 另发现 Lab1–4 的“六、思考题与参考答案”正文仍直接包含参考答案，与“答案只在 `answers/`”的约定不一致；本轮未删除，建议后续单独清理。
+- 未重跑真实 QEMU lab2 发布；如需 Day6 实机验收证据，需在本地按手册跑一次教师发布 → 学生领取。
+- 回滚：还原上述前端/文档/实验手册文件，并清除 `localStorage['os-lab-factory-publish-saved-v1']`。
+
+## 2026-08-02 - Task: 成员 B Day6 LabCreateWizard
+
+### What was done
+
+- **Lab 工厂向导**：新增 `LabCreateWizard.vue`，四步对接 C 侧契约：选包元数据（`GET /teacher/lab-factory`）→ schema/dry-run（`POST …/validate`）→ 隔离测试（`POST …/test`）→ 批准发布（`POST …/publish`，必填批准勾选与审批说明）。
+- **挂载与导航**：`/guide/lab-factory` 页面；`theme/index.ts` 注册组件；`TeacherNav` 增加「Lab 工厂」入口（仅教师）。
+- **边界**：操作仓库内已有 Lab 包，不在线改写 `lab.yaml`；发布成功后 CTA 链到对应 Lab 工作台「教学安排」下发变体（与 `TeacherPublishPanel` 分工）。
+- **文档**：`workbench-ui.md`、`day1-workbench-audit.md` 同步 Day6 契约。
+
+### Testing
+
+- `npm test`（handbook）：41 项全部通过。
+- `git diff --check`：本轮改动文件无空白错误。
+- 手工建议：教师登录 → Lab 工厂 → lab2 + remedial → validate → test → 批准发布 → 工作台下发变体；非教师见空态。
+
+### Notes
+
+- 主要文件：`LabCreateWizard.vue`、`guide/lab-factory.md`、`theme/index.ts`、`TeacherNav.vue`、`docs/workbench-ui.md`、`progress.md`。
+- 计划 Day6 B 完成标准：不必手改多处配置即可走通 lint → dry-run → 发布；学生领取依赖既有 access/scaffold + 教学安排。
+- 发布后链路修复：工厂发布自动保存待下发记录，向导顶部保留「打开工作台并下发变体」入口；CTA 直达 `/learn/labN?view=teaching&variant=...`，教学安排预选变体并提供「开放并下发」。
+- 自然点击入口：教师导航、教师工作台顶栏、Lab 工厂页均新增「教学安排」入口，会带出已保存的 Lab/变体并直达教学安排 URL。
+- 验收：`npm test` 41/41 通过，`npm run build` 通过；顺手将 `day1-workbench-audit.md` 两个外部 `.md` 链接改为代码路径，解决 VitePress dead link 检查。
+
+---
+
 ## 2026-08-02 - Task: 成员 B Day5 复核改分 + OPRE + 知识路径
 
 ### What was done

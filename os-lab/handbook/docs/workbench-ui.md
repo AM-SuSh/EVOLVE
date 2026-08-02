@@ -161,6 +161,26 @@
 - 点击段：滚到手册内标题匹配章节（背景/任务/验证/思考等）；无匹配仅高亮该段。
 - 变体弱提示：`scaffold.variants[labId]` 为 `debug|remedial` / `fill` 时显示一行焦点说明；其它 Lab 不展示假路径。
 
+## Lab 工厂向导（Day6）
+
+挂载：`/guide/lab-factory`（`LabCreateWizard`）。导航「Lab 工厂」仅教师可见。
+
+与工作台右栏「教学安排」（`TeacherPublishPanel`：班级开放 / 任务变体下发）分工不同：本页只做 **包校验与版本发布**，不在线新建或改写 `lab.yaml`。
+
+| 步骤 | 动作 | API |
+| --- | --- | --- |
+| 1 元数据 | 选 `labId` + `variant`；只读展示 inspect（title/version/status/recipe/已发布） | `GET /teacher/lab-factory?labId=` |
+| 2 校验 | schema lint + 临时目录 dry-run | `POST /teacher/lab-factory/validate` |
+| 3 隔离测试 | 取得通过的 `testRunId` | `POST /teacher/lab-factory/test` |
+| 4 批准发布 | 勾选明确批准 + 审批说明 | `POST /teacher/lab-factory/publish` |
+
+- **门控**：未通过前一步不可跳到后续；测试未通过不能发布；错误展示服务端 `error`/`errors`，不伪造通过态。
+- **发布后**：提示到对应 Lab 工作台「教学安排」下发变体（学生领取仍走 access/scaffold）。
+- **保存待下发**：发布成功会自动保存最近一次发布记录；下次打开 Lab 工厂时顶部会显示「打开工作台并下发变体」入口，不必重跑发布向导。
+- **直达教学安排**：发布 CTA 跳转到 `/learn/labN?view=teaching&variant=...`，工作台会自动切到「教学」视图并预选工厂发布的变体，可一键「开放并下发」。
+- **自然入口**：教师导航、教师工作台顶栏、Lab 工厂页都提供「教学安排」入口；存在已保存发布记录时会自动带上对应 Lab 和变体。
+- **空态**：非教师 / 未登录显示「需要教师账号」；连不上 tutor 时说明原因。
+
 ## 终端（xterm）
 
 挂载位置：工作区**底部**页签。

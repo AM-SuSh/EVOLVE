@@ -315,6 +315,9 @@ export async function scaffoldStatus(user, effective) {
     openLab: teacher.openLab,
     extraBins: state.extraBins,
     variants: state.variants,
+    defaults: Object.fromEntries(
+      Object.entries(getExerciseCatalog()).map(([labId, exercise]) => [labId, exercise.default]),
+    ),
   }
 }
 

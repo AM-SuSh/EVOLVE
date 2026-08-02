@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -14,6 +15,60 @@ const defaultOsLabRoot = path.resolve(handbookRoot, '..')
 const defaultPackageRoot = path.join(defaultOsLabRoot, 'lab-packages')
 const defaultReleaseRoot = path.join(defaultPackageRoot, 'releases')
 const defaultRunRoot = path.join(defaultOsLabRoot, 'learning', 'factory-runs')
+
+/** 与 tutor-server 一致：未 activate 时仍能找到本机 cargo / qemu。 */
+const TOOL_BIN_DIRS = [
+  process.env.CARGO_HOME ? path.join(process.env.CARGO_HOME, 'bin') : '',
+  'D:\\AppGallery\\Rust\\cargo\\bin',
+  'D:\\Rust\\cargo\\bin',
+  path.join(process.env.USERPROFILE || os.homedir() || '', '.cargo', 'bin'),
+  process.env.OS_LAB_QEMU_DIR || '',
+  'D:\\AppGallery\\QEMU',
+  'D:\\QEMU',
+].filter(Boolean)
+
+const resolvedBinCache = new Map()
+
+function enrichFactoryEnv(baseEnv = process.env) {
+  const env = { ...baseEnv }
+  // 与 resolve 到的 cargo 对齐，避免进程继承错误的 CARGO_HOME/RUSTUP_HOME。
+  if (existsSync('D:\\AppGallery\\Rust\\cargo\\bin\\cargo.exe')) {
+    env.CARGO_HOME = 'D:\\AppGallery\\Rust\\cargo'
+    env.RUSTUP_HOME = 'D:\\AppGallery\\Rust\\rustup'
+  } else if (existsSync('D:\\Rust\\cargo\\bin\\cargo.exe')) {
+    env.CARGO_HOME = 'D:\\Rust\\cargo'
+    env.RUSTUP_HOME = 'D:\\Rust\\rustup'
+  } else if (!env.CARGO_HOME) {
+    const homeCargo = path.join(process.env.USERPROFILE || os.homedir() || '', '.cargo')
+    if (existsSync(path.join(homeCargo, 'bin', process.platform === 'win32' ? 'cargo.exe' : 'cargo'))) {
+      env.CARGO_HOME = homeCargo
+    }
+  }
+  const extra = TOOL_BIN_DIRS.filter((dir) => Boolean(dir) && existsSync(dir))
+  if (extra.length) {
+    const merged = [...extra, env.Path || env.PATH || ''].join(path.delimiter)
+    env.Path = merged
+    env.PATH = merged
+  }
+  return env
+}
+
+function resolveToolBin(cmd) {
+  if (resolvedBinCache.has(cmd)) return resolvedBinCache.get(cmd)
+  const bare = String(cmd || '').replace(/\.exe$/i, '')
+  const exe = process.platform === 'win32' ? `${bare}.exe` : bare
+  const pathDirs = `${process.env.Path || process.env.PATH || ''}`.split(path.delimiter)
+  for (const dir of [...TOOL_BIN_DIRS, ...pathDirs]) {
+    if (!dir) continue
+    const candidate = path.join(dir, exe)
+    if (existsSync(candidate)) {
+      resolvedBinCache.set(cmd, candidate)
+      return candidate
+    }
+  }
+  resolvedBinCache.set(cmd, cmd)
+  return cmd
+}
 
 function roots(options = {}) {
   const osLabRoot = path.resolve(options.osLabRoot || process.env.OS_LAB_FACTORY_OS_ROOT || defaultOsLabRoot)
@@ -185,13 +240,31 @@ export async function scaffoldDryRun(labId, options = {}) {
 
 function runCommand(command, args, options = {}) {
   return new Promise((resolve) => {
-    const child = spawn(command, args, { cwd: options.cwd, env: options.env || process.env, shell: false, stdio: ['ignore', 'pipe', 'pipe'] })
+    const bin = resolveToolBin(command)
+    const env = enrichFactoryEnv(options.env || process.env)
+    if (!existsSync(bin)) {
+      resolve({
+        code: -1,
+        output: `找不到可执行文件 ${command}（解析为 ${bin}）。已搜索: ${TOOL_BIN_DIRS.join(' | ') || '（无）'}。请确认本机已安装 Rust，并重启 npm run tutor。`,
+      })
+      return
+    }
+    const child = spawn(bin, args, {
+      cwd: options.cwd,
+      env,
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    })
     let output = ''
     const append = (chunk) => { if (output.length < 200_000) output += chunk.toString('utf8').slice(0, 200_000 - output.length) }
     child.stdout.on('data', append)
     child.stderr.on('data', append)
     const timer = setTimeout(() => child.kill('SIGKILL'), options.timeoutMs || 300_000)
-    child.on('error', (error) => { clearTimeout(timer); resolve({ code: -1, output: error.message }) })
+    child.on('error', (error) => {
+      clearTimeout(timer)
+      resolve({ code: -1, output: `spawn ${bin}: ${error.message}` })
+    })
     child.on('close', (code) => { clearTimeout(timer); resolve({ code: code ?? -1, output }) })
   })
 }

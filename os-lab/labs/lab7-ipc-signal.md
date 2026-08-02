@@ -212,6 +212,13 @@ All processes exited.
 
 
 
+### 提交清单（自查）
+
+- [ ] `make test-lab7` 输出 `dup_test pass`、`signal_test pass`、`signal_mask_test pass`、`pipe says hi`、`pipe_test pass`、`All processes exited.`
+- [ ] 能说明 fd 表统一入口 → 管道/dup → 信号异步事件这条主线
+- [ ] 完成【任务二】5 道阅读理解题（对照答案自查）
+- [ ] 能画出 `kill → pending → 交付 handler → sigreturn` 路径
+
 ## 四、验证
 
 
@@ -224,6 +231,8 @@ All processes exited.
 
 
 ## 五、AI 提问模板
+
+做实验时，建议用以下切入点和 AI 交互，引导自己思考而非直接要答案：
 
 1. **概念澄清型**：「管道是同步还是异步？信号是同步还是异步？能否用管道模拟信号？」
 2. **现象解释型**：「`signal_mask_test` 屏蔽期间 `kill` 自己，为何 handler 不立即执行？」

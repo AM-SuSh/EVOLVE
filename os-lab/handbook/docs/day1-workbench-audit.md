@@ -3,7 +3,7 @@
 > 日期：2026-08-01  
 > 对照：《三人小组后续实验发展实施计划》Day1 成员 B  
 > 完成标准：空态文案已核对；与 `workbench-ui.md` 不一致处已列表；**无 mock 冒充真数据**  
-> 教学缺口（规格有、产品无）见 [`MEMBER-A-7DAY/day1-gap-table.md`](../../lab-packages/MEMBER-A-7DAY/day1-gap-table.md)，本表不重复开票。
+> 教学缺口（规格有、产品无）见 `../../lab-packages/MEMBER-A-7DAY/day1-gap-table.md`，本表不重复开票。
 
 ## 1. Mock / 可信空态核查结论
 
@@ -51,7 +51,7 @@
 
 ## 5. 本轮已修正的空态文案
 
-对齐 [`lab2/ui-copy-review.md`](../../lab-packages/lab2/ui-copy-review.md)：
+对齐 `../../lab-packages/lab2/ui-copy-review.md`：
 
 | 位置 | 调整 |
 | --- | --- |
@@ -70,4 +70,5 @@
 
 - Day3 已收口：引用跳转 + 提示阶梯/拒答态（见 `workbench-ui.md`「证据引用跳转」）。
 - Day4 已落地：评分细项 UI（学生报告区 + TeacherReport）。
-- Day5 已落地：教师评分复核改分留痕（`POST /teacher/review`）、OPRE 条、知识路径条。下一优先级（Day6）：Lab 向导。
+- Day5 已落地：教师评分复核改分留痕（`POST /teacher/review`）、OPRE 条、知识路径条。
+- Day6 已落地：`LabCreateWizard`（`/guide/lab-factory`）对接 validate → test → publish；班级下发仍用 `TeacherPublishPanel`。

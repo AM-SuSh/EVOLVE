@@ -251,11 +251,20 @@ All processes exited.
 **修改 3：写满时 yield 再写（进阶）**  
 结合 yield，体验「阻塞式 I/O」雏形，争取写出超过缓冲区大小的数据。
 
+### 提交清单（自查）
+
+- [ ] `cargo run -p kernel --features lab5` 输出 `Hello from testfile!`、`fs_test pass`、`pipe says hi`、`pipe_test pass`、`All processes exited.`
+- [ ] 能说明 fd 表 → Regular/Pipe → 自旋锁这条主线
+- [ ] 完成【任务二】5 道阅读理解题（对照答案自查）
+- [ ] 能解释管道为何需要引用计数、fork 后为何要继承 fd 表
+
 ## 四、验证
 
 以 `cargo run -p kernel --features lab5` 输出 `Hello from testfile!`、`fs_test pass`、`pipe_test pass`、`All processes exited.` 并正常退出为主要标准。
 
 ## 五、AI 提问模板
+
+做实验时，建议用以下切入点和 AI 交互，引导自己思考而非直接要答案：
 
 1. **概念澄清型**：「《操作系统导论》里单核自旋可能有什么问题？和多核场景有何不同？」
 2. **现象解释型**：「pipe_test 偶尔乱码偶尔正常，像数据竞争吗？」

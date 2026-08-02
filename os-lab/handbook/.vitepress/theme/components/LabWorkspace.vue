@@ -185,6 +185,12 @@ const notice = ref('')
 const currentSection = ref({ h2: '', h3: '' })
 const teacherManualLocation = ref<{ h2: string; h3: string; offset: number } | null>(null)
 const mobileView = ref<'manual' | 'practice'>('manual')
+function routeParam(name: string) {
+  if (typeof window === 'undefined') return ''
+  return new URLSearchParams(window.location.search).get(name) || ''
+}
+
+const teachingVariantHint = computed(() => routeParam('variant'))
 /** 右栏学习支持页签（报告 / Trace）；AI 导师通过悬浮入口打开。 */
 const rightTab = ref<'report' | 'assessment' | 'trace'>('report')
 
@@ -1276,6 +1282,7 @@ interface ScaffoldStatus {
   openLab: string
   extraBins: string[]
   variants: Record<string, string>
+  defaults?: Record<string, string>
 }
 
 const scaffold = ref<ScaffoldStatus | null>(null)
@@ -1518,6 +1525,21 @@ const currentLabVariant = computed(() => {
   const labId = lab.value?.id
   if (!labId || !scaffold.value?.variants) return ''
   return String(scaffold.value.variants[labId] || '')
+})
+const currentLabDefaultVariant = computed(() => {
+  const labId = lab.value?.id
+  if (!labId || !scaffold.value?.defaults) return ''
+  return String(scaffold.value.defaults[labId] || '')
+})
+const isDefaultTask = computed(() => {
+  const variant = currentLabVariant.value
+  return !variant || variant === currentLabDefaultVariant.value
+})
+const taskLabel = computed(() => {
+  const variant = currentLabVariant.value
+  const fallback = currentLabDefaultVariant.value
+  if (!variant) return fallback ? `${fallback} · 默认任务` : '默认任务'
+  return variant === fallback ? `${variant} · 默认任务` : variant
 })
 const journey = computed(() => buildLabJourney(events.value, props.labId, learningAccess.value))
 const journeyItem = computed(() => journey.value.find((item) => item.lab.id === props.labId))
@@ -2430,6 +2452,9 @@ onBeforeMount(() => {
 onMounted(async () => {
   document.documentElement.classList.add('ws-lock')
   syncMobileLayout()
+  if (routeParam('view') === 'teaching' && isTeacherRole.value) {
+    mobileView.value = 'practice'
+  }
   window.addEventListener('resize', syncMobileLayout)
   window.addEventListener('resize', clampPaneSplitToViewport)
   window.addEventListener('resize', clampTutorPanelToViewport)
@@ -2483,6 +2508,16 @@ onBeforeUnmount(() => {
           <small>{{ lab.label }} · {{ lab.systemLayer }}</small>
         </span>
       </a>
+
+      <span
+        v-if="!isTeacherRole && studentId"
+        class="ws-task-badge"
+        :class="{ 'is-default': isDefaultTask }"
+        :title="taskLabel"
+      >
+        <span>当前任务</span>
+        <strong>{{ taskLabel }}</strong>
+      </span>
 
       <div class="ws-topbar-actions">
         <button
@@ -2685,7 +2720,12 @@ onBeforeUnmount(() => {
         class="ws-right ws-right-teacher"
         :class="{ 'ws-mobile-hidden': isMobileLayout && mobileView !== 'practice' }"
       >
-        <TeacherPublishPanel :lab="lab" :endpoint="endpoint" @notice="toast" />
+        <TeacherPublishPanel
+          :lab="lab"
+          :endpoint="endpoint"
+          :variant-hint="teachingVariantHint"
+          @notice="toast"
+        />
       </div>
 
       <div
@@ -3501,6 +3541,30 @@ onBeforeUnmount(() => {
 .ws-brand-text small {
   color: var(--ws-ink-muted);
   font-size: var(--ws-text-xs);
+}
+
+.ws-task-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--ws-space-1);
+  min-height: var(--ws-control-md);
+  padding: var(--ws-space-1) var(--ws-space-3);
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
+  font-size: var(--ws-text-xs);
+  white-space: nowrap;
+}
+
+.ws-task-badge strong {
+  color: var(--ws-ink);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-task-badge.is-default strong {
+  color: var(--ws-ok, #1a7f37);
 }
 
 .ws-topbar-actions {
@@ -4852,6 +4916,16 @@ onBeforeUnmount(() => {
   }
 
   .ws-brand-text small {
+    display: none;
+  }
+
+  .ws-task-badge {
+    min-height: var(--ws-control-sm);
+    padding: 3px 6px;
+    font-size: var(--ws-text-xs);
+  }
+
+  .ws-task-badge > span {
     display: none;
   }
 

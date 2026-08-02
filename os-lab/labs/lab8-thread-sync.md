@@ -241,6 +241,13 @@ All processes exited.
 
 **修改 3**（进阶）：阅读 `reference-patches/ch8-exercise.patch` 中 TCB 与 sync 模块，列出本环境的三处简化点。
 
+### 提交清单（自查）
+
+- [ ] `make test-lab8` 输出任务一列出的全部关键行，且 QEMU 正常退出
+- [ ] 能说明线程 → 阻塞 → 信号量/条件变量 → 死锁检测这条主线
+- [ ] 完成【任务二】5 道阅读理解题（对照答案自查）
+- [ ] 能解释 `condvar_wait` 为什么必须关联 mutex、`-0xDEAD` 与普通 `-1` 的区别
+
 ## 四、验证
 
 
@@ -255,6 +262,8 @@ All processes exited.
 Windows 默认 Rust target 为 riscv 时，host 单测**必须**显式指定宿主机 triple。
 
 ## 五、AI 提问模板
+
+做实验时，建议用以下切入点和 AI 交互，引导自己思考而非直接要答案：
 
 1. **概念澄清型**：「线程与进程的区别是什么？同一进程的线程共享哪些资源？」
 2. **现象解释型**：「`mutex_lock` 返回 -1 后用户态为什么要 while 重试，而不是 sleep？」

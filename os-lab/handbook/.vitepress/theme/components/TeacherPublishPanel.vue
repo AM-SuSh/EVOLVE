@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import {
   ArrowDown,
   ArrowUp,
+  Factory,
   FileText,
   Megaphone,
   Plus,
@@ -34,7 +35,7 @@ import {
  *  - 每个班级独立一行：A 班留 fill、B 班留 debug 互不影响，也可跟随全局默认；
  *  - 附带开放进度、个别学生调整、作业公告与报告版式布置。
  */
-const props = defineProps<{ lab: TutorLab; endpoint: string }>()
+const props = defineProps<{ lab: TutorLab; endpoint: string; variantHint?: string }>()
 const emit = defineEmits<{ (event: 'notice', text: string): void }>()
 
 interface ScopeConfig {
@@ -102,7 +103,23 @@ const classList = computed(() =>
   [...new Set((overview.value?.students || []).map((s) => s.className).filter(Boolean))],
 )
 const studentList = computed(() => (overview.value?.students || []).map((s) => s.user))
-const variants = computed(() => overview.value?.exercises?.[props.lab.id]?.variants || [])
+const defaultVariant = computed(() => overview.value?.exercises?.[props.lab.id]?.default || '')
+const variants = computed(() =>
+  (overview.value?.exercises?.[props.lab.id]?.variants || []).map((v) => ({
+    name: v.name,
+    label: v.name === defaultVariant.value ? `${v.label}（默认）` : v.label,
+  })),
+)
+const factoryHint = computed(() => {
+  const hint = props.variantHint?.trim() || ''
+  if (!hint || !overview.value || !variants.value.some((v) => v.name === hint)) return ''
+  return hint
+})
+const factoryHintResolved = computed(() => {
+  const hint = factoryHint.value
+  if (!hint) return false
+  return isOpen(undefined) && assignedVariant(undefined)[0] === hint
+})
 const targetCount = computed(() => classList.value.length + 1)
 const openTargetCount = computed(() => {
   const entries: Array<ScopeConfig | undefined> = [
@@ -170,6 +187,7 @@ async function load() {
     const response = await fetch(`${props.endpoint}/teacher/overview`, { headers: authHeaders() })
     if (response.ok) {
       overview.value = await response.json()
+      seedVariantHint()
       if (!noticeScope.value) noticeDraft.value = overview.value?.config.notice || ''
       await loadReportTemplate()
     } else {
@@ -183,6 +201,12 @@ async function load() {
 }
 
 /** 发布一项配置到指定作用域，成功后刷新总览让状态即时可见。 */
+function seedVariantHint() {
+  const hint = props.variantHint?.trim() || ''
+  if (!hint || !overview.value || variantDrafts.value['']) return
+  if (variants.value.some((v) => v.name === hint)) variantDrafts.value[''] = hint
+}
+
 async function publish(
   scope: { type: 'global' | 'class' | 'student'; id: string },
   extra: Record<string, unknown>,
@@ -237,6 +261,28 @@ async function assignTo(key: string) {
 /** 开放本实验：把阶段代码下发到当前 Lab。 */
 async function openTo(key: string) {
   await publish(scopeOf(key), { openLab: props.lab.id }, `${scopeName(key)}：已开放到 ${props.lab.id}。`)
+}
+
+async function openAndDistributeVariant() {
+  const hint = variantDrafts.value['']
+  if (!hint || busy.value) return
+  await openTo('')
+  if (noteOk.value && variantDrafts.value['']) {
+    await assignTo('')
+    if (noteOk.value) clearSavedFactoryPublish()
+  }
+}
+
+function clearSavedFactoryPublish() {
+  if (typeof localStorage === 'undefined') return
+  try {
+    const saved = JSON.parse(localStorage.getItem('os-lab-factory-publish-saved-v1') || 'null')
+    if (saved?.labId === props.lab.id && saved?.variant === props.variantHint?.trim()) {
+      localStorage.removeItem('os-lab-factory-publish-saved-v1')
+    }
+  } catch {
+    /* ignore malformed local record */
+  }
 }
 
 async function publishNotice() {
@@ -357,12 +403,71 @@ onMounted(load)
 
     <p v-if="note" class="ws-pub-note" :class="{ ok: noteOk }">{{ note }}</p>
 
+    <div v-if="false" class="ws-pub-factory-hint">
+      <Factory :size="16" aria-hidden="true" />
+      <div>
+        <strong>工厂发布待下发</strong>
+        <span>
+          上次发布 <code>{{ factoryHint }}</code>，已预填为全局默认任务类型。点击后会同时开放本实验并下发任务。
+        </span>
+      </div>
+      <button
+        type="button"
+        :disabled="busy || !variantDrafts['']"
+        @click="openAndDistributeVariant"
+      >
+        <Unlock :size="14" aria-hidden="true" />开放并下发
+      </button>
+    </div>
+
     <div v-if="overview" class="ws-pub-scroll">
       <div class="ws-pub-summary" aria-label="发布概况">
         <span><strong>{{ openTargetCount }}/{{ targetCount }}</strong>目标已开放</span>
         <span><strong>{{ classList.length }}</strong>个班级</span>
         <span><strong>{{ studentList.length }}</strong>名学生</span>
       </div>
+
+      <section class="ws-pub-block ws-pub-quick">
+        <div class="ws-pub-section-title">
+          <span>快速</span>
+          <div>
+            <h3>快速下发</h3>
+            <p>选择全局默认任务后，一个按钮同时开放并下发当前 Lab。</p>
+          </div>
+        </div>
+        <div class="ws-pub-target ws-pub-target-global">
+          <div class="ws-pub-target-info">
+            <strong><Users :size="15" aria-hidden="true" />全局默认</strong>
+            <span class="ws-pub-badge" :class="isOpen(undefined) ? 'open' : 'closed'">
+              {{ isOpen(undefined) ? '本实验已开放' : `当前开放到 ${effectiveOpenLab(undefined) || '—'}` }}
+            </span>
+            <small>当前任务：{{ assignedVariant(undefined)[0] }}<template v-if="variantLabel(assignedVariant(undefined)[0])"> · {{ variantLabel(assignedVariant(undefined)[0]) }}</template></small>
+          </div>
+          <div class="ws-pub-target-actions">
+            <template v-if="variants.length">
+              <select v-model="variantDrafts['']" aria-label="快速下发任务类型">
+                <option value="" disabled>选择任务类型</option>
+                <option v-for="v in variants" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
+                <option value="random">random · 每人随机</option>
+              </select>
+              <button
+                type="button"
+                :disabled="busy || !variantDrafts['']"
+                @click="openAndDistributeVariant"
+              >
+                <Unlock :size="14" aria-hidden="true" />开放并下发
+              </button>
+            </template>
+            <span v-else class="ws-pub-no-variants">暂无任务变体</span>
+          </div>
+        </div>
+        <p v-if="factoryHint" class="ws-pub-quick-note">
+          已预选工厂发布变体 <code>{{ factoryHint }}</code>。
+        </p>
+        <p v-if="defaultVariant" class="ws-pub-quick-note">
+          本实验默认任务：<code>{{ defaultVariant }}</code>
+        </p>
+      </section>
 
       <section class="ws-pub-block">
         <div class="ws-pub-section-title">
@@ -688,6 +793,68 @@ onMounted(load)
   flex: 0 0 auto;
 }
 
+.ws-pub-factory-hint {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ws-space-2) var(--ws-space-3);
+  margin: 0 var(--ws-space-4) var(--ws-space-3);
+  padding: var(--ws-space-3);
+  border: 1px solid var(--ws-accent);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-accent-soft);
+}
+
+.ws-pub-factory-hint > svg {
+  flex: 0 0 auto;
+  color: var(--ws-accent);
+}
+
+.ws-pub-factory-hint > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ws-pub-factory-hint strong {
+  display: block;
+  color: var(--ws-ink);
+  font-size: var(--ws-text-sm);
+}
+
+.ws-pub-factory-hint span {
+  display: block;
+  margin-top: 2px;
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+  line-height: 1.5;
+}
+
+.ws-pub-factory-hint code {
+  color: var(--ws-accent);
+}
+
+.ws-pub-factory-hint button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--ws-control-sm);
+  padding: 6px 10px;
+  color: var(--ws-accent-contrast);
+  border: 1px solid var(--ws-accent);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-accent);
+  font: inherit;
+  font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-semibold);
+  cursor: pointer;
+}
+
+.ws-pub-factory-hint button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .ws-pub-scroll {
   flex: 1 1 auto;
   min-height: 0;
@@ -816,6 +983,16 @@ onMounted(load)
 .ws-pub-no-variants {
   color: var(--ws-ink-faint);
   font-size: var(--ws-text-xs);
+}
+
+.ws-pub-quick-note {
+  margin: var(--ws-space-2) 0 0;
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-pub-block:not(.ws-pub-quick) > .ws-pub-target-global {
+  display: none;
 }
 
 .ws-pub-variant-help {
