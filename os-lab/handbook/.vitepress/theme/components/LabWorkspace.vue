@@ -1545,6 +1545,18 @@ const journey = computed(() => buildLabJourney(events.value, props.labId, learni
 const journeyItem = computed(() => journey.value.find((item) => item.lab.id === props.labId))
 const currentAccess = computed(() => learningAccess.value.find((item) => item.labId === props.labId))
 
+/** 本 Lab 的关键断言（如 Lab2 的 Yield round ×5），用于测试结果页防“只看退出码”。 */
+const keyAssertion = computed(() => lab.value?.keyAssertion || null)
+const keyAssertionPassed = computed(() => {
+  const key = keyAssertion.value
+  if (!key) return null
+  const item = lastAssertions.value.find((assertion) => assertion.id === key.id)
+  return item ? item.passed : null
+})
+function isKeyAssertion(id: string) {
+  return keyAssertion.value?.id === id
+}
+
 watch(activeStage, (stage) => {
   if (workspaceContext) workspaceContext.currentStage = stage
 })
@@ -2910,6 +2922,19 @@ onBeforeUnmount(() => {
                     </p>
                   </header>
                   <div class="ws-tests-body">
+                    <div
+                      v-if="keyAssertion"
+                      class="ws-tests-focus"
+                      :data-state="keyAssertionPassed === null ? 'unknown' : keyAssertionPassed ? 'ok' : 'fail'"
+                    >
+                      <strong>{{ keyAssertion.label }}</strong>
+                      <span>{{ keyAssertion.note }}</span>
+                      <span class="ws-tests-focus-state" v-if="keyAssertionPassed === null">
+                        尚未看到该断言；请运行可信验证。
+                      </span>
+                      <span class="ws-tests-focus-state" v-else-if="keyAssertionPassed">已观察到。</span>
+                      <span class="ws-tests-focus-state" v-else>当前结果中未通过。</span>
+                    </div>
                     <p v-if="!lastAssertionsRunId && !runResultHistory.length">
                       在「终端」页签运行可信验证命令后，断言结果将汇总在此。
                     </p>
@@ -2923,7 +2948,7 @@ onBeforeUnmount(() => {
                           <li
                             v-for="item in lastAssertions"
                             :key="item.id"
-                            :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed }]"
+                            :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed, focus: isKeyAssertion(item.id) }]"
                           >
                             <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
                             <span class="ws-test-label">{{ item.label || item.id }}</span>
@@ -2983,7 +3008,7 @@ onBeforeUnmount(() => {
                             <li
                               v-for="item in entry.assertions"
                               :key="`${entry.runId}:${item.id}`"
-                              :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed }]"
+                              :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed, focus: isKeyAssertion(item.id) }]"
                             >
                               <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
                               <span class="ws-test-label">{{ item.label || item.id }}</span>
@@ -3967,6 +3992,7 @@ onBeforeUnmount(() => {
 
 .ws-tests-intro-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--ws-space-2);
@@ -3998,6 +4024,43 @@ onBeforeUnmount(() => {
   color: var(--ws-ink);
   border-color: var(--ws-accent, #3b82f6);
   background: var(--ws-surface-alt);
+}
+
+.ws-tests-focus {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin: 0 0 var(--ws-space-3);
+  padding: 8px 10px;
+  color: var(--ws-ink);
+  border: 1px solid var(--ws-line);
+  border-left: 3px solid var(--ws-accent);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-accent-soft);
+  font-size: var(--ws-text-xs);
+  line-height: var(--ws-leading-normal);
+}
+
+.ws-tests-focus strong {
+  color: var(--ws-accent);
+  font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-tests-focus-state {
+  color: var(--ws-ink-muted);
+  font-weight: 500;
+}
+
+.ws-tests-focus[data-state='ok'] {
+  border-left-color: var(--ws-ok, #1a7f37);
+  background: var(--ws-ok-soft, color-mix(in srgb, var(--ws-ok, #1a7f37) 12%, transparent));
+}
+
+.ws-tests-focus[data-state='fail'] {
+  border-left-color: var(--ws-danger, #c0392b);
+  background: var(--ws-danger-soft, color-mix(in srgb, var(--ws-danger, #c0392b) 12%, transparent));
 }
 
 .ws-tests-history-add {
@@ -4522,6 +4585,7 @@ onBeforeUnmount(() => {
   border-radius: var(--ws-radius-md);
   background: var(--ws-surface-alt);
   font-size: var(--ws-text-xs);
+  min-width: 0;
 }
 
 .ws-test-assertion-add {
@@ -4541,6 +4605,12 @@ onBeforeUnmount(() => {
   border-color: color-mix(in srgb, var(--ws-danger, #c0392b) 40%, var(--ws-line));
 }
 
+.ws-test-assertion.focus {
+  border-color: var(--ws-accent);
+  background: color-mix(in srgb, var(--ws-accent) 7%, var(--ws-surface-alt));
+  box-shadow: inset 3px 0 0 var(--ws-accent);
+}
+
 .ws-test-mark {
   grid-area: mark;
   align-self: center;
@@ -4558,14 +4628,18 @@ onBeforeUnmount(() => {
 
 .ws-test-label {
   grid-area: label;
+  min-width: 0;
   color: var(--ws-ink);
   font-weight: var(--ws-weight-semibold);
 }
 
 .ws-test-expected,
 .ws-test-observed {
+  min-width: 0;
   color: var(--ws-ink-muted);
   font-family: var(--ws-font-mono);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* 教师右栏：整栏一个作业发布面板。 */
@@ -4917,6 +4991,22 @@ onBeforeUnmount(() => {
 
   .ws-brand-text small {
     display: none;
+  }
+
+  .ws-topbar {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .ws-topbar-actions {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
   }
 
   .ws-task-badge {

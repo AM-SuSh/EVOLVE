@@ -1,5 +1,30 @@
 # os-lab 项目进度总览
 
+## 2026-08-03 - Task: 成员 B Day7 收口
+
+### What was done
+
+- 新建 `plan.md`，把成员 B Day7 的 Top3 摩擦、窄屏不崩、文档与实现一致拆成逐项勾选清单，并逐项更新完成状态。
+- **F1 只看退出码**：`tutor-model.ts` 给 Lab2 增加 `keyAssertion`（`yield-five-rounds` / `Yield round ×5` / 退出码 0 不足为凭）；`LabWorkspace.vue` 测试结果页新增“关键证据”横幅，并高亮当前结果与近期历史中的对应断言。
+- **F2 提示阶梯**：复核 `TutorEvidenceBar` / `TutorMessage` 已展示 `L{n}` 与拒答态；无需新增缺失入口。
+- **F3 OPRE / 知识路径**：复核 `OpreBar` 已挂 Trace、`KnowledgePathBar` 已挂手册；无需新增缺失入口。
+- **窄屏不崩**：移动端 `.ws-topbar` 与 `.ws-topbar-actions` 增加横向滚动容器；测试结果断言区增加 `min-width: 0`、`overflow-wrap: anywhere`、`word-break: break-word`，标题行允许换行。
+- **文档对齐**：更新 `handbook/docs/workbench-ui.md` 的终端（交互式 xterm / 多会话 / 非 PTY）、AI 导师（悬浮窗口）、Trace 页签与测试结果关键断言描述；更新 `handbook/docs/day1-workbench-audit.md` Day7 复核结论。
+
+### Testing
+
+- `cd os-lab/handbook && npm test`：41/41 通过。
+- `cd os-lab/handbook && npm run build`：构建通过。
+- 无头 Chrome 390px 抽查 `/learn/lab2`：`body.scrollWidth` 不超过 viewport，无 body 横向溢出；登录后测试结果页由组件逻辑与 build 覆盖。
+- `git diff --check`：通过。
+
+### Notes
+
+- 主要文件：`plan.md`、`tutor-model.ts`、`LabWorkspace.vue`、`handbook/docs/workbench-ui.md`、`handbook/docs/day1-workbench-audit.md`、`progress.md`。
+- 验证过程中启动的 preview/tutor 服务已停止；`scaffold/teacher.json` 已恢复 `openLab: lab1`；临时浏览器 profile、日志与截图已清理。
+- 未跑真实 QEMU；真实 Lab2 运行验收仍按手册主链执行。
+- 回滚：还原上述源码/文档文件，删除 `plan.md` 与 `progress.md` 本条记录。
+
 ## 2026-08-03 - Task: 实验手册/工作台 UI 收口 + Day6 链路验收
 
 ### What was done

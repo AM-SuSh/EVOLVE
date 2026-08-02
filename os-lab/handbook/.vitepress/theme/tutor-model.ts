@@ -56,6 +56,8 @@ export interface TutorLab {
   verificationCommand: string
   /** 本 Lab 常用推荐指令库，供终端上下方向键循环选用；首条约定为验证命令。 */
   commands: { label: string; command: string }[]
+  /** 本 Lab 最需要学生在测试结果页盯住的关键断言；不强制所有 Lab 配置。 */
+  keyAssertion?: { id: string; label: string; note: string }
   resources: Record<Exclude<TutorStageId, 'transfer'>, StageResource> & { transfer?: StageResource }
 }
 
@@ -563,6 +565,11 @@ export const tutorLabs: TutorLab[] = [
     documentRoute: '/labs/lab2-trap-and-task',
     initialQuestion: '用户程序为什么不能直接调用内核里的普通函数？先写下你的判断（不必完美），我们再把它对到代码路径，并用 QEMU 输出验证。',
     verificationCommand: 'cargo run -p kernel --features lab2 --release',
+    keyAssertion: {
+      id: 'yield-five-rounds',
+      label: 'Yield round ×5',
+      note: '退出码 0 不足为凭；必须看到 5 次 Yield round。',
+    },
     commands: [
       { label: '验证运行', command: 'cargo run -p kernel --features lab2 --release' },
       { label: '运行（debug）', command: 'cargo run -p kernel --features lab2' },

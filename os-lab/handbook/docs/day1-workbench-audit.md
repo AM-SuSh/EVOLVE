@@ -21,7 +21,7 @@
 | 能力 | 证据 |
 | --- | --- |
 | Monaco 多标签编辑 | `MonacoEditor.vue` → `CodePanel.vue` |
-| 终端只读输出 + 命令行 | `TerminalPanel.vue`（非 PTY） |
+| 交互式 xterm + 多会话 | `TerminalPanel.vue` / `TerminalSession.vue`（非 PTY） |
 | Problems 点击跳行 | `openAtLine` |
 | Trace Trap / 任务时间线 + 播放控制 | `TraceViewer` / `TraceTrapView` / `TraceTimelineView` |
 | 实验报告模板 / Markdown | `ReportPanel.vue` |
@@ -32,7 +32,7 @@
 
 | ID | 文档原写法（`workbench-ui.md`） | 当前实现 | 责任 | Day1 处置 |
 | --- | --- | --- | --- | --- |
-| D1 | 右上：报告/导师/工作区；右下 BottomDock 含 Problems/**Trace**/测试 | 工作区底：终端 / Problems / 测试结果；**学习支持**：AI / 报告 / **Trace** | 文档 | 已同步 `workbench-ui.md` |
+| D1 | 右上：报告/导师/工作区；右下 BottomDock 含 Problems/**Trace**/测试 | 工作区底：终端 / Problems / 测试结果；**学习支持**：报告 / 学习评价 / **Trace**；AI 导师为悬浮窗口 | 文档 | 已同步 `workbench-ui.md` |
 | D2 | 收起后出现「展开…」条 | 8/1 已删 rail；顶栏开关恢复 | 文档 | 已同步 |
 | D3 | 仍写独立 `BottomDock` 组件 | `LabWorkspace` 内联底部 dock | 文档 | 已同步 |
 | D4 | `ManualPane` 含「知识路径、阶段任务」 | 仅手册 Markdown；知识路径条未挂载 | 文档 + Day5 产品 | 文档改为「手册」；产品见 G8 |
@@ -72,3 +72,4 @@
 - Day4 已落地：评分细项 UI（学生报告区 + TeacherReport）。
 - Day5 已落地：教师评分复核改分留痕（`POST /teacher/review`）、OPRE 条、知识路径条。
 - Day6 已落地：`LabCreateWizard`（`/guide/lab-factory`）对接 validate → test → publish；班级下发仍用 `TeacherPublishPanel`。
+- Day7 已复核：Top3 摩擦分别落到测试结果关键断言、提示阶梯证据条、OPRE/知识路径入口；窄屏断言区换行与底部页签溢出已修；`workbench-ui.md` 终端/AI 导师挂载描述已对齐实现。
