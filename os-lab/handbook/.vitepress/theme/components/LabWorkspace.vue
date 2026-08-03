@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useData, useRouter, withBase } from 'vitepress'
-import { Blocks, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, Code2, GripVertical, LockKeyhole, Maximize2, MessageSquarePlus, MessagesSquare, Minimize2, Moon, PanelLeftClose, Play, Settings, Sun, UserRound, X } from 'lucide-vue-next'
+import { Blocks, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, Code2, GripVertical, LockKeyhole, Maximize2, MessageSquarePlus, MessagesSquare, Minimize2, Moon, PanelLeftClose, Play, Settings, Sun, TableOfContents, UserRound, X } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
 import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
@@ -65,6 +65,7 @@ provideWorkspaceContext(workspaceContext)
 /** 代码区 ref：手册「源码引用」与 Problems 诊断点击都通过它跳转。 */
 const codePanelRef = ref<InstanceType<typeof CodePanel> | null>(null)
 const manualPaneRef = ref<InstanceType<typeof ManualPane> | null>(null)
+const manualTocOpen = ref(false)
 const problemsPanelRef = ref<InstanceType<typeof ProblemsPanel> | null>(null)
 const traceViewerRef = ref<InstanceType<typeof TraceViewer> | null>(null)
 const tutorPaneRef = ref<InstanceType<typeof TutorPane> | null>(null)
@@ -2491,6 +2492,7 @@ onMounted(async () => {
 watch(
   () => props.labId,
   () => {
+    manualTocOpen.value = false
     void loadMyFeedback()
     void loadReportTemplate()
   },
@@ -2661,9 +2663,21 @@ onBeforeUnmount(() => {
         <header class="ws-zone-head">
           <span class="ws-zone-title"><BookOpen :size="14" aria-hidden="true" />实验手册</span>
           <button
-            v-if="!isTeacherRole && !isMobileLayout"
             type="button"
             class="ws-zone-toggle"
+            :class="{ active: manualTocOpen }"
+            :title="manualTocOpen ? '收起目录' : '展开目录'"
+            :aria-label="manualTocOpen ? '收起实验手册目录' : '展开实验手册目录'"
+            :aria-expanded="manualTocOpen"
+            aria-controls="ws-manual-toc"
+            @click="manualTocOpen = !manualTocOpen"
+          >
+            <TableOfContents :size="14" aria-hidden="true" />
+          </button>
+          <button
+            v-if="!isTeacherRole && !isMobileLayout"
+            type="button"
+            class="ws-zone-toggle ws-zone-collapse"
             title="收起手册"
             aria-label="收起手册"
             @click="togglePanel('manual')"
@@ -2678,6 +2692,7 @@ onBeforeUnmount(() => {
             :lab="lab"
             :editable="isTeacherRole"
             :restore-location="teacherManualLocation"
+            v-model:toc-open="manualTocOpen"
             @edit="startTeacherEditing"
             @section-change="currentSection = $event"
             @source-jump="onSourceJump"
@@ -3816,9 +3831,12 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.ws-zone-toggle:hover {
+.ws-zone-toggle:hover,
+.ws-zone-toggle:focus-visible,
+.ws-zone-toggle.active {
   color: var(--ws-accent);
   border-color: var(--ws-accent);
+  background: var(--ws-accent-soft);
 }
 
 .ws-zone-collapse {

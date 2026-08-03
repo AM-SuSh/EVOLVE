@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, withBase } from 'vitepress'
 import MarkdownIt from 'markdown-it'
 import mermaid from 'mermaid'
-import { LockKeyhole, MessageSquareQuote, Pencil, RefreshCw, TableOfContents } from 'lucide-vue-next'
+import { LockKeyhole, MessageSquareQuote, Pencil, RefreshCw } from 'lucide-vue-next'
 import { authHeaders, collapsedSectionPrefix, sectionPrefixOf, type TutorLab } from '../tutor-model'
 
 /**
@@ -22,6 +22,7 @@ const props = defineProps<{
   lab: TutorLab
   editable?: boolean
   restoreLocation?: ManualLocation | null
+  tocOpen?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -30,6 +31,7 @@ const emit = defineEmits<{
   (event: 'edit', location: ManualLocation): void
   /** 学生点手册中的源码引用（`kernel/src/trap.rs` 或 `...:42`）：跳到工作区对应文件/行。 */
   (event: 'source-jump', payload: { path: string; line: number }): void
+  (event: 'update:tocOpen', value: boolean): void
   /** 学生选中手册中的一小段文字后，只把该选段附给 AI 导师。 */
   (event: 'add-to-chat', payload: {
     source: 'manual'
@@ -62,7 +64,10 @@ const docRoot = ref<HTMLElement>()
 const sections = ref<ManualSection[]>([])
 const activeIndex = ref(0)
 const promptSectionCollapsed = ref(true)
-const tocOpen = ref(false)
+const tocOpen = computed({
+  get: () => props.tocOpen === true,
+  set: (value: boolean) => emit('update:tocOpen', value),
+})
 const manualHtml = ref('')
 const loading = ref(true)
 const error = ref('')
@@ -450,12 +455,9 @@ onBeforeUnmount(() => {
       <div
         class="ws-toc-drawer"
         :class="{ open: tocOpen }"
-        @mouseenter="tocOpen = true"
-        @mouseleave="tocOpen = false"
-        @focusin="tocOpen = true"
         @focusout="closeTocAfterFocus"
       >
-        <nav class="ws-toc-panel" aria-label="章节目录" :aria-hidden="!tocOpen">
+        <nav id="ws-manual-toc" class="ws-toc-panel" aria-label="章节目录" :aria-hidden="!tocOpen">
           <strong>目录</strong>
           <button
             v-for="(section, index) in sections"
@@ -468,16 +470,6 @@ onBeforeUnmount(() => {
             {{ section.title }}
           </button>
         </nav>
-        <button
-          class="ws-toc-edge"
-          type="button"
-          :aria-expanded="tocOpen"
-          title="章节目录"
-          :aria-label="tocOpen ? '收起章节目录' : '展开章节目录'"
-          @click="tocOpen = !tocOpen"
-        >
-          <TableOfContents :size="16" aria-hidden="true" />
-        </button>
       </div>
 
       <div ref="scroller" class="ws-manual-scroll">
@@ -578,20 +570,21 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-/* 目录覆盖在正文之上，不占用纵向空间。 */
+/* 目录仅由标题栏按钮打开；关闭时不占据左侧命中区域，避免干扰正文选取。 */
 .ws-toc-drawer {
   position: absolute;
   top: 0;
   bottom: 0;
   left: 0;
   z-index: 7;
-  width: 30px;
+  width: 0;
+  pointer-events: none;
   transition: width 160ms ease;
 }
 
-.ws-toc-drawer.open,
-.ws-toc-drawer:focus-within {
+.ws-toc-drawer.open {
   width: min(300px, calc(100% - var(--ws-space-4)));
+  pointer-events: auto;
 }
 
 .ws-toc-panel {
@@ -612,8 +605,7 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-.ws-toc-drawer.open .ws-toc-panel,
-.ws-toc-drawer:focus-within .ws-toc-panel {
+.ws-toc-drawer.open .ws-toc-panel {
   opacity: 1;
   transform: translateX(0);
   pointer-events: auto;
@@ -659,39 +651,6 @@ onBeforeUnmount(() => {
   border-left-color: var(--ws-accent);
   background: var(--ws-accent-soft);
   font-weight: var(--ws-weight-semibold);
-}
-
-.ws-toc-edge {
-  position: absolute;
-  top: var(--ws-space-4);
-  left: 0;
-  z-index: 2;
-  display: grid;
-  width: 30px;
-  height: 44px;
-  color: var(--ws-ink-muted);
-  border: 1px solid var(--ws-line);
-  border-left: 0;
-  border-radius: 0 var(--ws-radius-md) var(--ws-radius-md) 0;
-  background: var(--ws-surface);
-  box-shadow: var(--ws-shadow-1);
-  place-items: center;
-  cursor: pointer;
-  transition: left 160ms ease, color 140ms ease, border-color 140ms ease;
-}
-
-.ws-toc-drawer.open .ws-toc-edge,
-.ws-toc-drawer:focus-within .ws-toc-edge {
-  left: 100%;
-  color: var(--ws-accent);
-  border-color: var(--ws-accent);
-}
-
-.ws-toc-edge:hover,
-.ws-toc-edge:focus-visible {
-  color: var(--ws-accent);
-  border-color: var(--ws-accent);
-  outline: none;
 }
 
 .ws-manual-edit {
@@ -804,8 +763,7 @@ onBeforeUnmount(() => {
 
 @media (prefers-reduced-motion: reduce) {
   .ws-toc-drawer,
-  .ws-toc-panel,
-  .ws-toc-edge {
+  .ws-toc-panel {
     transition: none;
   }
 }

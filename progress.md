@@ -1,5 +1,30 @@
 # os-lab 项目进度总览
 
+## 2026-08-03 - Task: 下午工作补记：CI 收口、手册证据入口与目录 UI 调整
+
+### What was done
+
+- 补记 Day7 工程收口：完成 Lab Factory CLI、Tutor Chat 证据引用归属校验、GitHub Actions `os-lab-ci` 与 `npm run test:day7` 链路；CI 使用同一套本地测试命令，避免远端单独维护验证逻辑。
+- 修复 CI 环境缺少 Rust 二进制工具的问题：在 `.github/workflows/os-lab-ci.yml` 中固定安装 `cargo-binutils 0.4.0`，并用 `rust-objcopy --version` 做安装校验；smoke 失败时补充 Lab Factory 响应载荷，便于定位。
+- 移除冗余学习链路：删除 Lab2 专用 Knowledge Path 条和相关文档/数据，去掉“将当前手册整章添加到对话”的入口；保留代码、断言、Trace、诊断和手册选段等可追溯证据附件。
+- 恢复手册选段证据入口：学生选中手册中的一小段文字后显示“就此询问导师”，只将选中文字作为 `manual` 附件传入 AI 导师，并保留章节来源定位；同时补充 Windows Cargo 路径归一化和跨平台诊断回归测试。
+- 当前未提交的 UI 收口：移除实验手册左侧目录悬停/聚焦触发区和覆盖式按钮，将目录按钮移到标题栏并放在“收起手册”按钮左侧；目录关闭时设置 `pointer-events: none`，避免遮挡正文开头的文字选取；目录状态由 `LabWorkspace` 管理，切换 Lab 时自动关闭，并补充 `aria-expanded`、`aria-controls` 和键盘焦点状态。
+
+### Testing
+
+- `cd os-lab/handbook && npm test`：43/43 通过。
+- `cd os-lab/handbook && npm run test:smoke`：通过（4 次运行、6 个事件、12 条断言、1 次发布链路）。
+- `cd os-lab/handbook && npm run build`：VitePress 构建通过。
+- `git diff --check`：通过。
+- 本地 VitePress 开发服务 `http://localhost:5173/` 可访问；当前环境没有可用浏览器实例，未生成截图。
+
+### Notes
+
+- 下午已有的 CI/Lab Factory/证据恢复提交按原提交记录保留；本轮目录 UI 修改与本条 process 记录仅写入本地工作区，未执行 `git commit` 或 GitHub 推送。
+- 三个无关未跟踪 Markdown 文件继续保持未跟踪：`Lab手册复核指南.md`、`教师使用指南.md`、`os-lab 三人小组 · 7 日实施计划(1).md`。
+- 本轮未重新安装 QEMU，也未执行真实 QEMU 验收；CI 修复只涉及 `cargo-binutils` 工具链准备。
+- 回滚：恢复 `os-lab/handbook/.vitepress/theme/components/LabWorkspace.vue` 与 `ManualPane.vue`，删除本条记录；不触碰上述三个未跟踪 Markdown 文件。
+
 ## 2026-08-03 - Task: 成员 B Day7 收口
 
 ### What was done
