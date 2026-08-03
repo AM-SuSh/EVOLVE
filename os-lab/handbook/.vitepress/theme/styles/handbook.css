@@ -8,6 +8,52 @@
   letter-spacing: 0;
 }
 
+/* -- 文档页标题 -------------------------------------------------------------
+   在 h1 下方加一条柔和分隔线，强化页面层级（首页与工作台手册各自的 h1 规则
+   特异性更高，会覆盖此处）。 */
+.vp-doc h1 {
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+/* -- 行内代码 --------------------------------------------------------------- */
+.vp-doc :not(pre) > code {
+  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 14%, transparent);
+  border-radius: var(--ws-radius-sm);
+  padding: 2px 6px;
+  font-size: 0.88em;
+}
+
+/* -- 提示块：柔和圆角，弱化默认硬边框 --------------------------------------- */
+.vp-doc .custom-block {
+  border-radius: var(--ws-radius-md);
+}
+
+/* -- 滚动条：Windows 下替换系统粗滚动条，暗色模式自动继承 --vp-c-* ---------- */
+@media (pointer: fine) {
+  :root {
+    scrollbar-width: thin;
+    scrollbar-color: var(--vp-c-divider) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 8px;
+    background: var(--vp-c-divider);
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--vp-c-text-3);
+    background-clip: content-box;
+  }
+}
+
 /* -- mermaid ---------------------------------------------------------------
    正文里的知识地图与控制流图。旧版没装插件，这些图曾以源码形式暴露给学生。 */
 .vp-doc .mermaid {

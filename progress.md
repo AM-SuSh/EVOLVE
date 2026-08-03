@@ -1,5 +1,98 @@
 # os-lab 项目进度总览
 
+## 2026-08-03 - Task: 首页移除页脚并锁定单屏高度
+
+### What was done
+
+- 在首页 frontmatter 设置 `footer: false`，只对首页取消 VitePress 默认的项目名称与许可证页脚；普通文档页不受影响。
+- 将首页 `VPContent`、`VPHome`、Markdown 容器、`os-home` 和 Hero 的高度链统一为单个动态视口高度；桌面端扣除导航栏高度，首页本身关闭纵向溢出，不再出现页面滚动轴。
+
+### Testing
+
+- `cd os-lab/handbook && npm run build`：VitePress 构建通过。
+- 构建后 SSR 首页检查：`VPFooter` 不存在，`os-home` 和终端场景正常保留。
+- `git diff --check`：通过；仅有 Git 对 CRLF 的提示，没有空白错误。
+- 核对 VitePress 导航定位后分别设置高度：移动端内容区为 `100dvh - 导航栏`，桌面端内容区为 `100dvh` 且内部首页扣除固定导航栏；手机首屏同步压缩纵向间距，避免关闭滚动后裁切主要入口。
+
+### Notes
+
+- 本轮只修改本地首页 frontmatter、首页样式和过程记录，未执行 `git commit` 或 GitHub 推送。
+
+## 2026-08-03 - Task: 删除终端错位叠影并加快打字
+
+### What was done
+
+- 根据截图确认错位的绿色矩形来自终端 `.os-terminal::before` 叠影层，直接删除该装饰；终端只保留自身边框、阴影和以终端为中心的柔和辉光。
+- 将终端入场缩短为 360ms，将四行启动日志和命令提示符的逐字打印总时长由约 4 秒压缩到约 1.9 秒，仍保持逐行顺序。
+
+### Testing
+
+- `cd os-lab/handbook && npm run build`：VitePress 构建通过。
+- `git diff --check`：通过；仅有 Git 对 CRLF 的提示，没有空白错误。
+- 选择器检查确认 `.os-terminal::before` 与原偏移 `inset` 已完全移除；打字时序最后一行在 1.9 秒内结束，光标从 1.92 秒开始闪烁。
+
+### Notes
+
+- 本轮只修改本地首页组件、首页样式和过程记录，未执行 `git commit` 或 GitHub 推送。
+
+## 2026-08-03 - Task: 首页单屏收口与终端打字机动效
+
+### What was done
+
+- 按反馈删除首页 `YOUR KERNEL / LAB 01—08` 学习轨道及其后的实验流程、能力说明和底部 CTA，只保留首屏品牌、平台简介、主要入口和平台特性。
+- 将右侧终端与青绿色辉光放进同一个 `os-terminal-scene` 定位容器，辉光位置改为相对终端计算，避免遮罩与终端在不同分辨率下错位。
+- 将终端启动日志由整行淡入改为等宽字符逐字、逐行打印；上一行完成后再打印下一行，最后显示闪烁光标，并为 `prefers-reduced-motion` 保留静态完整文本。
+- 清理已删除分页对应的数据、Lucide 图标导入、模板和 CSS，避免首页继续加载无用结构。
+
+### Testing
+
+- `cd os-lab/handbook && npm run build`：VitePress 构建通过，终端逐字动画及内联时序变量完成 SSR/资源编译。
+- `git diff --check`：通过；仅有 Git 对 CRLF 的提示，没有空白错误。
+- 源码检索确认 `YOUR KERNEL`、`os-kernel-track`、`os-process`、`os-capabilities` 和 `os-final-cta` 已从首页组件与样式中移除；只保留单屏 Hero 与终端场景。
+- 打字终点使用显式 `ch` 宽度，避免依赖较新的 CSS 长度乘法；减少动效模式直接显示全部终端文本。
+
+### Notes
+
+- 本轮只修改本地首页组件、首页样式和过程记录，未执行 `git commit` 或 GitHub 推送。
+
+## 2026-08-03 - Task: 重设计平台首页
+
+### What was done
+
+- 参考根目录 `home.html` 的开阔首屏、分段信息层级和克制动效，新增独立 `HomeLanding.vue` 与首页专用 `home.css`；保留现有导航与业务入口，不改实验工作台流程。
+- 首页改为面向学生的操作系统实验入口：以 `os-lab` 品牌、开始实验和新手指南为首屏重点，用 Lab1–8“内核成长轨道”展示真实课程顺序，并将完成一次 Lab 的流程重组为“读手册 → 改代码 → 跑验证 → 写报告”。
+- 移除首页 emoji 功能卡，统一使用 Lucide 线性图标；补充键盘焦点、移动端 4/2/1 列响应式布局、暗色主题和 `prefers-reduced-motion` 降级。
+
+### Testing
+
+- `cd os-lab/handbook && npm run build`：VitePress 构建通过，首页组件与 Lucide 图标完成 SSR 渲染。
+- `git diff --check`：通过；仅有 Git 对 CRLF 的提示，没有空白错误。
+- 本地开发服务 `http://localhost:5173/` 返回新首页 DOM；静态检查确认 Lab1–8 轨道、流程区、能力区和 CTA 均已渲染，并补充首页 `vp-doc.container` 全宽重置，避免默认 1280px Markdown 容器压缩分区背景。
+- 当前环境没有可用浏览器实例，无法生成桌面/移动端截图；已按 960px、640px 断点进行 CSS 响应式与横向溢出检查。
+
+### Notes
+
+- 本轮只修改本地首页组件、样式、入口文档和过程记录，未执行 `git commit` 或 GitHub 推送。
+- 根目录 `home.html` 只作为布局与动效参考，未修改；三个无关未跟踪 Markdown 文件继续保持未跟踪。
+
+## 2026-08-03 - Task: 新增平台新手操作指南
+
+### What was done
+
+- 新增 `os-lab/handbook/guide/beginner.md`，面向第一次使用平台的学生说明阅读顺序、工作台区域职责、代码修改、可信验证、Problems/测试结果/Trace、证据附件、AI 导师提问、实验报告、提交与下一 Lab 解锁的完整闭环。
+- 明确 Lab1–5 常见 `cargo run -p kernel --features labN --release`、Lab6–8 使用 `make test-labN` 的区别，并强调不能只凭退出码 0 判断实验通过。
+- 在 `guide/start.md` 增加新手操作指南入口，在 VitePress 入门侧栏增加文档链接。
+
+### Testing
+
+- `cd os-lab/handbook && npm run build`：VitePress 构建通过，并生成 24 个同步 Markdown 页面和 8 个工作台路由壳。
+- `git diff --check`：通过；仅有 Git 对 CRLF 的提示，没有空白错误。
+
+### Notes
+
+- 本轮只修改本地文档和 VitePress 导航，未执行 `git commit` 或 GitHub 推送。
+- 三个无关未跟踪 Markdown 文件继续保持未跟踪。
+
 ## 2026-08-03 - Task: 下午工作补记：CI 收口、手册证据入口与目录 UI 调整
 
 ### What was done

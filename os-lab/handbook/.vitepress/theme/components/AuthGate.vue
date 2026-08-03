@@ -150,7 +150,22 @@ onMounted(async () => {
   background: var(--vp-c-bg);
 }
 
+/* 背景：左上角一抹品牌色辉光 + 淡网格，延续首页“图纸”语言 */
+.ag-overlay::before {
+  position: absolute;
+  inset: 0;
+  content: '';
+  background:
+    radial-gradient(60% 55% at 16% 4%, color-mix(in srgb, var(--vp-c-brand-1) 10%, transparent), transparent 70%),
+    linear-gradient(to right, color-mix(in srgb, var(--vp-c-divider) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--vp-c-divider) 45%, transparent) 1px, transparent 1px);
+  background-size: 72px 72px, 100% 100%;
+  mask-image: radial-gradient(90% 90% at 30% 0, #000, transparent 78%);
+  pointer-events: none;
+}
+
 .ag-card {
+  position: relative;
   width: min(400px, 100%);
   padding: 32px 30px 22px;
   border: 1px solid var(--vp-c-divider);
@@ -179,6 +194,7 @@ onMounted(async () => {
   place-items: center;
   font-size: 13px;
   font-weight: 700;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--vp-c-brand-1) 34%, transparent);
 }
 
 .ag-card h1 {
@@ -205,11 +221,13 @@ onMounted(async () => {
   border-radius: 8px;
   background: var(--vp-c-bg);
   font: inherit;
+  transition: border-color 160ms ease-out, box-shadow 160ms ease-out;
 }
 
 .ag-card input:focus {
   border-color: var(--vp-c-brand-1);
   outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vp-c-brand-1) 16%, transparent);
 }
 
 .ag-warn {
@@ -232,15 +250,27 @@ onMounted(async () => {
   color: #fff;
   border: 0;
   border-radius: 8px;
-  background: var(--vp-c-brand-1);
+  background: linear-gradient(180deg, var(--vp-c-brand-2) 0%, var(--vp-c-brand-1) 60%);
   font: inherit;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
+  transition: filter 160ms ease-out, transform 160ms ease-out, box-shadow 160ms ease-out;
+}
+
+.ag-primary:hover:not(:disabled) {
+  filter: brightness(1.04);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--vp-c-brand-1) 30%, transparent);
+  transform: translateY(-1px);
+}
+
+.ag-primary:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .ag-primary:disabled {
   opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .ag-foot {
