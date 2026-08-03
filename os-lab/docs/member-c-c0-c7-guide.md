@@ -137,11 +137,14 @@ Rubric v2 评价 + 概念掌握画像
 - 把阶段推进权从前端和 LLM 收回服务端。
 - 每次对话根据历史事件计算当前阶段、缺失证据和允许的教学动作。
 - LLM 只能生成当前阶段允许的表达，不能自行跳阶段或宣告完成。
+- 工作台附件将 `run:`、`trace:`、`diag:` 作为结构化 `evidenceRefs` 提交；服务端逐条校验当前账号与 Lab，伪造其他学生 runId 直接拒绝。
+- AI 回复中的证据引用必须出现在服务端白名单中；出现越权引用时丢弃原回复并返回安全追问。
 - 新增迁移阶段提示词，并将服务端状态返回前端用于持续交互。
 
 主要文件：
 
 - [`../tutor/state-machine.mjs`](../tutor/state-machine.mjs)
+- [`../tutor/evidence-refs.mjs`](../tutor/evidence-refs.mjs)
 - `os-lab/tutor/prompts/stages/stage-transfer.md`
 - [`../handbook/tutor-server.mjs`](../handbook/tutor-server.mjs)
 
@@ -177,10 +180,12 @@ Rubric v2 评价 + 概念掌握画像
 - 在临时目录生成脚手架并执行 dry run，避免修改真实学生工作区。
 - 执行测试并生成有 ID 的测试记录；发布必须引用成功的 test run，并要求教师显式批准。
 - 发布生成不可变 release 目录和 `published.json` 索引，内容同步流程优先读取已发布版本。
+- 提供 `lint`、`dry-run`、`test`、`publish` CLI；发布回归会用临时测试账号实际领取变体并核对文件来源。
 
 主要文件：
 
 - [`../handbook/lab-factory.mjs`](../handbook/lab-factory.mjs)
+- [`../handbook/lab-factory-cli.mjs`](../handbook/lab-factory-cli.mjs)
 - [`../lab-packages/published.json`](../lab-packages/published.json)
 - [`../scripts/scaffold.mjs`](../scripts/scaffold.mjs)
 
@@ -218,7 +223,18 @@ Rubric v2 评价 + 概念掌握画像
 | 教师 | `GET /teacher/trial/analysis` | 获取匿名聚合分析 |
 | 教师 | `POST /teacher/trial/backup` | 创建学习数据库一致性备份 |
 
-接口的完整贯通示例已经写入 [`../handbook/tutor-server.smoke.mjs`](../handbook/tutor-server.smoke.mjs)，它覆盖学生评价、掌握画像、教师复核、匿名分析和在线备份，适合用作后续前端接入时的请求契约。
+接口的完整贯通示例已经写入 [`../handbook/tutor-server.smoke.mjs`](../handbook/tutor-server.smoke.mjs)，它覆盖 chat 证据归属、学生评价、掌握画像、教师复核、Lab 发布与测试账号领取、匿名分析和在线备份。
+
+Lab Factory CLI 示例：
+
+```bash
+npm run lab-factory -- lint lab3
+npm run lab-factory -- dry-run lab3 --variant debug
+npm run lab-factory -- test lab3 --variant debug --author teacher
+npm run lab-factory -- publish lab3 --test-run-id <id> --teacher teacher --approval-note "测试通过，批准发布"
+```
+
+Day7 完整演示步骤见 [`day7-demo-runbook.md`](day7-demo-runbook.md)；工程与 CI 共用 `npm run test:day7`。
 
 C7 也可以直接使用 CLI：
 

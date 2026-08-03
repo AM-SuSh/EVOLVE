@@ -1,0 +1,44 @@
+name: os-lab-ci
+
+on:
+  push:
+    paths:
+      - '.github/workflows/os-lab-ci.yml'
+      - 'os-lab/**'
+  pull_request:
+    paths:
+      - '.github/workflows/os-lab-ci.yml'
+      - 'os-lab/**'
+
+jobs:
+  trusted-teaching-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: os-lab/handbook
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: os-lab/handbook/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: riscv64gc-unknown-none-elf
+          components: rust-src, llvm-tools-preview
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-misc
+
+      - name: Install handbook dependencies
+        run: npm ci
+
+      - name: Verify trusted teaching chain
+        run: npm run test:day7

@@ -3,7 +3,7 @@
 > 日期：2026-08-01  
 > 对照：《三人小组后续实验发展实施计划》Day1 成员 B  
 > 完成标准：空态文案已核对；与 `workbench-ui.md` 不一致处已列表；**无 mock 冒充真数据**  
-> 教学缺口（规格有、产品无）见 `../../lab-packages/MEMBER-A-7DAY/day1-gap-table.md`，本表不重复开票。
+> 教学缺口（规格有、产品无）见 [`MEMBER-A-7DAY/day1-gap-table.md`](https://github.com/AM-SuSh/Or2-1-OS/blob/main/os-lab/lab-packages/MEMBER-A-7DAY/day1-gap-table.md)，本表不重复开票。
 
 ## 1. Mock / 可信空态核查结论
 
@@ -51,7 +51,7 @@
 
 ## 5. 本轮已修正的空态文案
 
-对齐 `../../lab-packages/lab2/ui-copy-review.md`：
+对齐 [`lab2/ui-copy-review.md`](https://github.com/AM-SuSh/Or2-1-OS/blob/main/os-lab/lab-packages/lab2/ui-copy-review.md)：
 
 | 位置 | 调整 |
 | --- | --- |

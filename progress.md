@@ -104,6 +104,31 @@
 
 - 主要文件：`TeacherReport.vue`、`TeacherNav.vue`、`OpreBar.vue`、`KnowledgePathBar.vue`、`TraceViewer.vue`、`ManualPane.vue`、`LabWorkspace.vue`、`docs/workbench-ui.md`、`progress.md`。
 - 计划 Day5 B 完成标准：教师能改一条分并留痕；OPRE/路径在页面有入口。Lab 向导属 Day6。
+## 2026-08-02 - Task: 成员 C Day3–Day7 缺口收口
+
+### What was done
+
+- **Chat 证据归属**：工作台附件将 `run:`、`trace:`、`diag:` 作为结构化 `evidenceRefs` 提交；Tutor Server 按当前账号和 Lab 校验 run 归属，伪造其他学生 runId 返回 400。AI 回复中的证据引用增加服务端白名单检查，越权引用会被替换为安全追问。
+- **Lab Factory CLI**：新增 `lint`、`dry-run`、`test`、`publish`、`list` 命令入口；保留既有教师 API。脚手架学生根目录改为运行时读取环境变量，测试可以在临时目录完成真实领取而不污染仓库。
+- **发布后实领**：单测与 tutor smoke 均覆盖发布 catalog 接入 scaffold；smoke 经教师 API 完成 Lab3 debug 隔离测试和发布，学生在完成 Lab2 可信验证与复盘后实际领取 Lab3，并核对 `.scaffold-state.json` 和变体源码。
+- **Day7 CI/演示**：新增 GitHub Actions `os-lab-ci` 和统一命令 `npm run test:day7`；补充 3–5 分钟全链路演示清单与工程预演记录。
+- **构建收口**：将 Day1 核查文档中两个越出 VitePress 内容根的相对链接改为仓库链接，恢复链接检查和完整构建。
+
+### Testing
+
+- `npm run test:day7`：一次通过，总耗时约 88 秒。
+- `npm test`：42/42 通过，新增伪造 runId 拒绝和 AI 引用白名单回归。
+- `npm run test:harness`：25 个用例通过；答案泄漏率 0、阶段/动作/引用指标全部达标。
+- `npm run test:smoke`：通过；包含 4 次可信运行、12 条通过断言、1 次发布、测试账号累计领取 3 个 Lab。
+- `npm run build`：VitePress 客户端/服务端 bundle、页面渲染与链接检查全部通过。
+- `npm run lab-factory -- lint lab3`：通过。
+
+### Notes
+
+- 主要文件：`tutor/evidence-refs.mjs`、`tutor/state-machine.mjs`、`handbook/tutor-server.mjs`、`handbook/lab-factory-cli.mjs`、`handbook/tutor-server.smoke.mjs`、`scripts/scaffold.mjs`、`.github/workflows/os-lab-ci.yml`、`docs/day7-demo-runbook.md`。
+- CI 与本地共用同一命令，远端运行状态需在推送后由 GitHub Actions 生成；本轮没有伪造远端 CI 成功记录。
+- 真人课堂试用、正式演示账号和远端部署仍属于线下执行，不写入虚构结果；工程预演与演示步骤已经就绪。
+- 回滚时移除新增证据校验/CLI/CI/演示文件，并还原上述服务端、前端附件、脚手架、测试与文档文件。
 
 ---
 
