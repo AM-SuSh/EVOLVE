@@ -32,6 +32,11 @@ jobs:
           targets: riscv64gc-unknown-none-elf
           components: rust-src, llvm-tools-preview
 
+      - name: Install Rust binary utilities
+        run: |
+          cargo install cargo-binutils --version 0.4.0 --locked
+          rust-objcopy --version
+
       - name: Install QEMU
         run: |
           sudo apt-get update

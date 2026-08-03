@@ -180,8 +180,8 @@ try {
     labId: 'lab3',
     variant: 'debug',
   })
-  assert.equal(factoryTest.status, 200)
   const factoryTestPayload = await factoryTest.json()
+  assert.equal(factoryTest.status, 200, JSON.stringify(factoryTestPayload, null, 2))
   assert.equal(factoryTestPayload.ok, true)
   assert.equal(factoryTestPayload.isolated, true)
   const factoryPublish = await postJson('/teacher/lab-factory/publish', teacherHeaders, {
