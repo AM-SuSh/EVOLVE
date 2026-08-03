@@ -32,6 +32,7 @@ import { createCargoJsonCollector } from '../tutor/cargo-diagnostics.mjs'
 import { evaluateRunAssertions, getRunRecipe } from '../tutor/run-recipes.mjs'
 import { parseTraceQuery, readTracePage, TraceIntegrityError } from '../tutor/trace-store.mjs'
 import { decideTutorTurn, enforceTutorOutput, tutorPolicyPrompt } from '../tutor/state-machine.mjs'
+import { validateChatEvidenceRefs } from '../tutor/evidence-refs.mjs'
 import {
   LAB_ORDER,
   addUserBin,
@@ -644,6 +645,15 @@ async function handleChat(body, request, response, origin, session) {
     json(response, 400, { error: 'message 必须为 1-4000 字符' }, origin)
     return
   }
+  const requestedEvidence = validateChatEvidenceRefs(body.evidenceRefs, {
+    userId: session.id,
+    labId,
+    getRun,
+  })
+  if (!requestedEvidence.ok) {
+    json(response, 400, { error: requestedEvidence.error }, origin)
+    return
+  }
 
   const guardrail = matchGuardrail(message)
   const storedState = getTutorSessionState(session.id, learningSessionId, labId)
@@ -655,6 +665,10 @@ async function handleChat(body, request, response, origin, session) {
     evidence,
     hintLevel: storedState.hintLevel,
   })
+  tutorState.evidenceRefs = [...new Set([
+    ...tutorState.evidenceRefs,
+    ...requestedEvidence.evidenceRefs,
+  ])].slice(0, 20)
   saveTutorSessionState(session.id, learningSessionId, labId, tutorState)
   const decisionEvents = []
   const timestamp = new Date().toISOString()

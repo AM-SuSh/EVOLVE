@@ -21,6 +21,7 @@ import {
 } from '../composables/useWorkspaceContext'
 import {
   CHAT_ATTACHMENT_MAX_COUNT,
+  chatEvidenceRefs,
   chatSourceLabels,
   clampChatBody,
   formatChatWithAttachments,
@@ -1735,12 +1736,13 @@ interface ReplyOutcome {
   tutorState?: TutorState
 }
 
-function chatPayload(message: string) {
+function chatPayload(message: string, evidenceRefs: string[] = []) {
   return {
     sessionId: sessionId.value,
     labId: props.labId,
     stage: activeStage.value,
     message,
+    evidenceRefs,
     // 前端配置的模型接入随请求下发；全空时服务端使用默认上游。
     ...(hasCustomLlmConfig(llmConfig.value) ? { llm: llmConfig.value } : {}),
     // 学生正在读哪一节 —— 导师据此说「你刚读到 sscratch 那节」。
@@ -1761,6 +1763,7 @@ function chatPayload(message: string) {
 /** 逐 delta 回调；返回完整回复。服务端不支持 SSE 时自动回退到整段 JSON。 */
 async function requestReply(
   message: string,
+  evidenceRefs: string[],
   onDelta: (text: string) => void,
 ): Promise<ReplyOutcome | null> {
   if (connection.value !== 'remote') return null
@@ -1768,7 +1771,7 @@ async function requestReply(
   const response = await fetch(`${endpoint}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...authHeaders() },
-    body: JSON.stringify(chatPayload(message)),
+    body: JSON.stringify(chatPayload(message, evidenceRefs)),
   })
   if (!response.ok) throw new Error(`导师服务返回 ${response.status}`)
 
@@ -2063,7 +2066,7 @@ async function sendMessage(text: string, attached: ChatAttachment[] = []) {
   const replyId = createId('message')
 
   try {
-    const outcome = await requestReply(text, (partial) => {
+    const outcome = await requestReply(text, chatEvidenceRefs(attached), (partial) => {
       const existing = messages.value.find((item) => item.id === replyId)
       if (existing) {
         existing.content = partial

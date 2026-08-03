@@ -56,6 +56,26 @@ export function formatChatWithAttachments(userText: string, attachments: ChatAtt
   return `请结合以下工作台内容引导我（先追问我的判断，不要直接给完整代码）：\n\n${blocks}`
 }
 
+export function chatEvidenceRefs(attachments: ChatAttachment[]) {
+  const refs: string[] = []
+  for (const item of attachments) {
+    const runId = String(item.origin?.runId || '').trim()
+    if (!runId) continue
+    const prefix =
+      item.source === 'trace'
+        ? 'trace'
+        : item.source === 'problems'
+          ? 'diag'
+          : item.source === 'tests' || item.source === 'terminal'
+            ? 'run'
+            : ''
+    if (!prefix) continue
+    const ref = `${prefix}:${runId}`
+    if (!refs.includes(ref)) refs.push(ref)
+  }
+  return refs.slice(0, 20)
+}
+
 /** 从完整发送正文拆出「学生原问题」——附件块之前的部分，供消息气泡展示。 */
 export function studentQuestionFromChat(fullText: string) {
   const text = String(fullText || '')
