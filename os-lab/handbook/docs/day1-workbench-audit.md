@@ -35,7 +35,7 @@
 | D1 | 右上：报告/导师/工作区；右下 BottomDock 含 Problems/**Trace**/测试 | 工作区底：终端 / Problems / 测试结果；**学习支持**：报告 / 学习评价 / **Trace**；AI 导师为悬浮窗口 | 文档 | 已同步 `workbench-ui.md` |
 | D2 | 收起后出现「展开…」条 | 8/1 已删 rail；顶栏开关恢复 | 文档 | 已同步 |
 | D3 | 仍写独立 `BottomDock` 组件 | `LabWorkspace` 内联底部 dock | 文档 | 已同步 |
-| D4 | `ManualPane` 含「知识路径、阶段任务」 | 仅手册 Markdown；知识路径条未挂载 | 文档 + Day5 产品 | 文档改为「手册」；产品见 G8 |
+| D4 | `ManualPane` 含「知识路径、阶段任务」 | 仅保留手册 Markdown 与 H2/H3 目录 | 文档 | 已按实际实现收敛为「手册」 |
 | D5 | Problems 未写 API 路径 | 实现为 `/run/diagnostics?runId=` | 文档 | 已补路径 |
 | D6 | Trace「接口未就绪」口吻偏旧 | 接口已就绪；404/无事件仍走可信空态 | 文档 | 已改为「查询失败/无事件」表述 |
 
@@ -45,7 +45,6 @@
 | --- | --- | --- |
 | G2 提示阶梯不可见 | **已落地**：证据条 `L{n} · 短文案` + 拒答标记；消息 meta 同步 | Day 3 ✅ |
 | G7 OPRE 入口 | **已落地**：`OpreBar` 挂 Trace intro 下（T-OPRE-1 / S-OPRE-1 + 插入报告） | Day 5 ✅ |
-| G8 知识路径条 | **已落地**：`KnowledgePathBar` 挂 `ManualPane` 顶（Lab2 五段） | Day 5 ✅ |
 | 导师证据条 | **已落地** `TutorEvidenceBar`（消费 chat `tutorState`） | Day 2 ✅ |
 | 证据引用跳转 | **已落地**：消息内 `run:`/`trace:`/诊断 chips → 对应面板 | Day 3 ✅ |
 
@@ -70,6 +69,6 @@
 
 - Day3 已收口：引用跳转 + 提示阶梯/拒答态（见 `workbench-ui.md`「证据引用跳转」）。
 - Day4 已落地：评分细项 UI（学生报告区 + TeacherReport）。
-- Day5 已落地：教师评分复核改分留痕（`POST /teacher/review`）、OPRE 条、知识路径条。
+- Day5 已落地：教师评分复核改分留痕（`POST /teacher/review`）、OPRE 条。
 - Day6 已落地：`LabCreateWizard`（`/guide/lab-factory`）对接 validate → test → publish；班级下发仍用 `TeacherPublishPanel`。
-- Day7 已复核：Top3 摩擦分别落到测试结果关键断言、提示阶梯证据条、OPRE/知识路径入口；窄屏断言区换行与底部页签溢出已修；`workbench-ui.md` 终端/AI 导师挂载描述已对齐实现。
+- Day7 已复核：关键断言、提示阶梯证据条与 OPRE 入口可用；窄屏断言区换行与底部页签溢出已修；`workbench-ui.md` 终端/AI 导师挂载描述已对齐实现。

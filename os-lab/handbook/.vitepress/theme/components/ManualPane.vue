@@ -3,16 +3,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, withBase } from 'vitepress'
 import MarkdownIt from 'markdown-it'
 import mermaid from 'mermaid'
-import { LockKeyhole, MessageSquarePlus, Pencil, RefreshCw, TableOfContents } from 'lucide-vue-next'
+import { LockKeyhole, Pencil, RefreshCw, TableOfContents } from 'lucide-vue-next'
 import { authHeaders, collapsedSectionPrefix, sectionPrefixOf, type TutorLab } from '../tutor-model'
-import KnowledgePathBar from './KnowledgePathBar.vue'
-
-type KnowledgePathSegmentId =
-  | 'prerequisite'
-  | 'mechanism'
-  | 'artifact'
-  | 'evidence'
-  | 'transfer'
 
 /**
  * 实验手册栏。
@@ -30,8 +22,6 @@ const props = defineProps<{
   lab: TutorLab
   editable?: boolean
   restoreLocation?: ManualLocation | null
-  /** 当前 Lab 变体名（scaffold.variants），供知识路径弱提示 */
-  variant?: string
 }>()
 
 const emit = defineEmits<{
@@ -40,12 +30,6 @@ const emit = defineEmits<{
   (event: 'edit', location: ManualLocation): void
   /** 学生点手册中的源码引用（`kernel/src/trap.rs` 或 `...:42`）：跳到工作区对应文件/行。 */
   (event: 'source-jump', payload: { path: string; line: number }): void
-  (event: 'add-to-chat', payload: {
-    source: 'manual'
-    title: string
-    body: string
-    origin?: { h2?: string; h3?: string }
-  }): void
 }>()
 
 interface ManualSection {
@@ -307,66 +291,11 @@ function currentReadingLocation(): ManualLocation {
   }
 }
 
-/** 当前阅读章节正文（标题到下一标题之间），供「添加到对话」。 */
-function currentSectionPlainText() {
-  updateActiveSection()
-  const section = activeSection.value || sections.value[0]
-  if (!section) return { title: '', body: '' }
-  const index = sections.value.indexOf(section)
-  const end = index >= 0 ? sections.value[index + 1]?.el : undefined
-  const chunks: string[] = [section.title]
-  let node: ChildNode | null = section.el.nextSibling
-  while (node && node !== end) {
-    if (node.nodeType === Node.ELEMENT_NODE) {
-      const text = ((node as HTMLElement).innerText || node.textContent || '').trim()
-      if (text) chunks.push(text)
-    } else if (node.nodeType === Node.TEXT_NODE) {
-      const text = (node.textContent || '').trim()
-      if (text) chunks.push(text)
-    }
-    node = node.nextSibling
-  }
-  const title =
-    [activeH2.value?.title, activeH3.value?.title].filter(Boolean).join(' / ') || section.title
-  return { title, body: chunks.join('\n\n').trim() }
-}
-
-function addCurrentSectionToChat() {
-  const { title, body } = currentSectionPlainText()
-  if (!body) return
-  emit('add-to-chat', {
-    source: 'manual',
-    title: title || '当前章节',
-    body,
-    origin: {
-      h2: activeH2.value?.title || undefined,
-      h3: activeH3.value?.title || undefined,
-    },
-  })
-}
-
 /** 供附件溯源：按章节标题跳转。 */
 function jumpToTitles(h2?: string, h3?: string) {
   const target =
     (h3 && sections.value.find((section) => section.level === 3 && section.title === h3)) ||
     (h2 && sections.value.find((section) => section.level === 2 && section.title === h2))
-  if (target) jumpTo(target)
-}
-
-const PATH_SEGMENT_MATCHERS: Record<KnowledgePathSegmentId, RegExp[]> = {
-  prerequisite: [/先修|Lab\s*1|裸机|启动/i],
-  mechanism: [/背景|概念|Trap|系统调用|调度|机制/i],
-  artifact: [/实验任务|任务|目标|要求/i],
-  evidence: [/验证|断言|验收|观察/i],
-  transfer: [/迁移|思考|拓展|检查点/i],
-}
-
-/** 知识路径条：按段滚到手册内最近匹配章节；无匹配则仅高亮该段（由子组件处理）。 */
-function onKnowledgePathNavigate(segment: KnowledgePathSegmentId) {
-  const matchers = PATH_SEGMENT_MATCHERS[segment] || []
-  const target = sections.value.find((section) =>
-    matchers.some((pattern) => pattern.test(section.title)),
-  )
   if (target) jumpTo(target)
 }
 
@@ -429,19 +358,8 @@ onBeforeUnmount(() => {
     :class="{ 'ws-manual-pane--editable': props.editable }"
     aria-label="实验手册"
   >
-    <header class="ws-manual-toolbar">
+    <header v-if="props.editable" class="ws-manual-toolbar">
       <button
-        class="ws-manual-add-chat"
-        type="button"
-        title="把当前阅读章节添加到 AI 导师对话"
-        :disabled="loading || locked || !manualHtml"
-        @click="addCurrentSectionToChat"
-      >
-        <MessageSquarePlus :size="15" aria-hidden="true" />
-        <span>添加到对话</span>
-      </button>
-      <button
-        v-if="props.editable"
         class="ws-manual-edit"
         type="button"
         title="编辑本实验指导书，增补知识点"
@@ -451,12 +369,6 @@ onBeforeUnmount(() => {
         <span>编辑手册</span>
       </button>
     </header>
-
-    <KnowledgePathBar
-      :lab-id="lab.id"
-      :variant="variant"
-      @navigate="onKnowledgePathNavigate"
-    />
 
     <div class="ws-manual-body">
       <div
@@ -523,12 +435,16 @@ onBeforeUnmount(() => {
 .ws-manual-pane {
   position: relative;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   border-right: 1px solid var(--ws-line);
   background: var(--ws-surface);
+}
+
+.ws-manual-pane--editable {
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .ws-manual-toolbar {
@@ -541,7 +457,6 @@ onBeforeUnmount(() => {
   background: var(--ws-surface-alt);
 }
 
-.ws-manual-add-chat,
 .ws-manual-edit {
   display: inline-flex;
   align-items: center;
@@ -557,18 +472,11 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.ws-manual-add-chat:hover:not(:disabled),
 .ws-manual-edit:hover,
-.ws-manual-add-chat:focus-visible,
 .ws-manual-edit:focus-visible {
   color: var(--ws-ink);
   border-color: var(--ws-accent, #3b82f6);
   background: var(--ws-surface-alt);
-}
-
-.ws-manual-add-chat:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .ws-manual-body {

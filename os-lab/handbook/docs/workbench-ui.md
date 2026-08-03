@@ -15,7 +15,7 @@
 
 | 区域 | 组件 | 职责 |
 | --- | --- | --- |
-| 左栏 | `ManualPane` + `KnowledgePathBar` | 实验手册（Markdown 渲染、目录、阅读位置）；Lab2 手册顶挂知识路径五段条（定稿见 `lab2/knowledge-path.md`） |
+| 左栏 | `ManualPane` | 实验手册（Markdown 渲染、H2/H3 目录、阅读位置） |
 | 右栏 · 工作区 | `CodePanel`（Monaco）+ 内联底部 dock | 源码编辑；底栏页签：**终端** / **Problems** / **测试结果** |
 | 右栏 · 学习支持 | `ReportPanel` / `AssessmentPane` / `TraceViewer`；AI 对话为浮层 | 页签：**实验报告** / **学习评价** / **Trace** |
 
@@ -70,11 +70,10 @@
 | 终端 | **xterm 选区优先**；无选区则本次完整输出 |
 | Problems | 全部诊断或**单条** |
 | 测试结果 | 全部断言，或**单条断言** |
-| 手册 | 当前阅读章节正文 |
 | Trace | 当前选中事件（`formatTraceEvidence`） |
 
 - 附件以 chips 显示在输入框上方，可单独移除；最多 5 段、单段约 6000 字截断。
-- **点击 chip 可溯源**：跳回工作区行号 / 终端 / Problems / 测试结果 / 手册章节 / Trace 事件。
+- **点击 chip 可溯源**：跳回工作区行号 / 终端 / Problems / 测试结果 / Trace 事件。
 - 发送后学生气泡保留可点附件 chips；完整拼装正文仍交给导师。
 - 发送时由 `formatChatWithAttachments` 拼进用户消息；新会话清空待发附件。
 
@@ -153,14 +152,6 @@
 - **限制**：仅展示已进入复核队列的评价；未触门控的会话显示可信空态，不回落旧启发式分。
 - **引用**：教师页无学生工作台；点击 evidenceRefs 复制引用并提示，不假装跳进 IDE。
 - **改分留痕（Day5）**：`pending` 项可提交 `POST /teacher/review`（`confirmed` / `corrected` / `dismissed` + 必填 `rationale` + 合法 `evidenceRefs`；`corrected` 时带维度总分 `correctedResult`）。`automaticResult` 只读不变；`decisions[]` 作审计时间线。导航「评分复核」指向本页。
-
-## 知识路径条（Day5）
-
-挂载：`ManualPane` 工具栏与正文之间（`KnowledgePathBar`）。
-
-- Lab2：五段（先修 / 本机制 / 产物 / 必观证据 / 迁移），文案对齐 `lab2/knowledge-path.md`。
-- 点击段：滚到手册内标题匹配章节（背景/任务/验证/思考等）；无匹配仅高亮该段。
-- 变体弱提示：`scaffold.variants[labId]` 为 `debug|remedial` / `fill` 时显示一行焦点说明；其它 Lab 不展示假路径。
 
 ## Lab 工厂向导（Day6）
 

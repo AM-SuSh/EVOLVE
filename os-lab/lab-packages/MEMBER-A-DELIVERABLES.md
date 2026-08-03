@@ -12,7 +12,7 @@
 | 2 检查点 YAML | `lab2/checkpoints.yaml` |
 | 3 金标准对话 | `../learning/tutor-golden-dialogues-lab2.json` |
 | 4 量规冻结 | `../learning/rubric-v2-frozen.md` |
-| 5 路径/OPRE/补救装箱 | `lab2/knowledge-path.md`、`visualization/opre-copy-final.md`、`lab2/variants/remedial/PACKAGE.md` |
+| 5 OPRE/补救装箱 | `visualization/opre-copy-final.md`、`lab2/variants/remedial/PACKAGE.md` |
 | 6 变式验收 | `lab2/variants/remedial/TEACHER_ACCEPTANCE.md` |
 | 7 可用性脚本 | `../learning/usability-script-5person.md` |
 
@@ -42,5 +42,5 @@
 ## 使用方式
 
 - **C**：先读 `checkpoints.yaml`、`tutor-golden-dialogues-lab2.json`、`rubric-v2-frozen.md`  
-- **B**：先读 `knowledge-path.md`、`opre-copy-final.md`  
+- **B**：先读 `opre-copy-final.md`
 - **教师发布补救变式**：`variants/remedial/TEACHER_ACCEPTANCE.md` + `PACKAGE.md`
