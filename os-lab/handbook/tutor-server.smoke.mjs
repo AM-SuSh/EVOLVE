@@ -12,6 +12,9 @@ const dbPath = path.join(smokeRoot, 'learning.db')
 const dataDir = path.join(smokeRoot, 'sessions')
 const studentsRoot = path.join(smokeRoot, 'student-labs')
 const teacherFile = path.join(smokeRoot, 'teacher.json')
+const factoryCatalogPath = path.join(smokeRoot, 'factory-published.json')
+const factoryReleaseRoot = path.join(smokeRoot, 'factory-releases')
+const factoryRunRoot = path.join(smokeRoot, 'factory-runs')
 const port = 18_000 + Math.floor(Math.random() * 1_000)
 const endpoint = `http://127.0.0.1:${port}`
 let logs = ''
@@ -59,6 +62,9 @@ const server = spawn(process.execPath, ['tutor-server.mjs'], {
     OS_LAB_STUDENTS_ROOT: studentsRoot,
     OS_LAB_TEACHER_FILE: teacherFile,
     OS_LAB_BACKUP_ROOT: path.join(smokeRoot, 'backups'),
+    OS_LAB_FACTORY_CATALOG_PATH: factoryCatalogPath,
+    OS_LAB_FACTORY_RELEASE_ROOT: factoryReleaseRoot,
+    OS_LAB_FACTORY_DATA_DIR: factoryRunRoot,
     OS_LAB_LLM_BASE_URL: mockBaseUrl,
     OS_LAB_LLM_MODEL: 'm0-smoke-model',
   },
@@ -170,6 +176,24 @@ try {
   const factoryPayload = await factoryValidation.json()
   assert.equal(factoryPayload.stage, 'dry-run')
   assert.equal(factoryPayload.variants[0].variant, 'debug')
+  const factoryTest = await postJson('/teacher/lab-factory/test', teacherHeaders, {
+    labId: 'lab3',
+    variant: 'debug',
+  })
+  assert.equal(factoryTest.status, 200)
+  const factoryTestPayload = await factoryTest.json()
+  assert.equal(factoryTestPayload.ok, true)
+  assert.equal(factoryTestPayload.isolated, true)
+  const factoryPublish = await postJson('/teacher/lab-factory/publish', teacherHeaders, {
+    labId: 'lab3',
+    testRunId: factoryTestPayload.runId,
+    approved: true,
+    approvalNote: 'smoke：隔离测试通过，批准发布到测试账号。',
+  })
+  assert.equal(factoryPublish.status, 200)
+  const factoryPublishPayload = await factoryPublish.json()
+  assert.equal(factoryPublishPayload.ok, true)
+  assert.equal(factoryPublishPayload.labId, 'lab3')
   assert.equal(
     (await fetch(`${endpoint}/manual?labId=lab8`, {
       headers: { Authorization: `Bearer ${teacher.token}` },
@@ -339,6 +363,19 @@ try {
   assert.equal(exitFrame.assertions.length, 6)
   assert.equal(exitFrame.assertions.every((item) => item.passed), true)
 
+  const forgedChat = await fetch(`${endpoint}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...studentHeaders },
+    body: JSON.stringify({
+      sessionId: 'smoke-learning-session',
+      labId: 'lab2',
+      stage: 'reflect',
+      message: '请引用这个运行。',
+      evidenceRefs: [`run:${otherExitFrame.result.runId}`],
+    }),
+  })
+  assert.equal(forgedChat.status, 400)
+
   const chat = await fetch(`${endpoint}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...studentHeaders },
@@ -347,12 +384,15 @@ try {
       labId: 'lab2',
       stage: 'reflect',
       message: '我观察到 trace 中发生了 task_switch，这能说明调度器做了什么？',
+      evidenceRefs: [`run:${runFrame.runId}`, `trace:${runFrame.runId}`],
     }),
   }).then((chatResponse) => chatResponse.json())
   assert.equal(chat.mode, 'remote', JSON.stringify(chat))
   assert.match(chat.reply, /请结合.*解释/)
   assert.equal(chat.tutorState.stage, 'read')
   assert.equal(chat.tutorState.requestedStage, 'reflect')
+  assert.equal(chat.tutorState.evidenceRefs.includes(`run:${runFrame.runId}`), true)
+  assert.equal(chat.tutorState.evidenceRefs.includes(`trace:${runFrame.runId}`), true)
   assert.equal(mockChatRequests.length, 1)
   assert.match(mockChatRequests[0].messages[0].content, /Lab2/)
 
@@ -461,6 +501,15 @@ try {
   assert.equal(eventSync.status, 202)
   assert.equal((await eventSync.json()).accepted, learningEvents.length)
 
+  const lab3Upgrade = await postJson('/scaffold/upgrade', studentHeaders, { variant: 'debug' })
+  assert.equal(lab3Upgrade.status, 200)
+  const lab3UpgradePayload = await lab3Upgrade.json()
+  assert.equal(lab3UpgradePayload.lab, 'lab3')
+  assert.equal(lab3UpgradePayload.status.variants.lab3, 'debug')
+  const issuedLab3 = await fetch(`${endpoint}/fs/file?path=kernel%2Fsrc%2Fmm.rs`, { headers: studentHeaders })
+    .then((response) => response.json())
+  assert.match(issuedLab3.content, /PLANTED BUG: preserve R\/W\/X but strip U/)
+
   const assessmentResponse = await postJson('/assessment', studentHeaders, {
     sessionId: 'smoke-learning-session',
     labId: 'lab2',
@@ -545,6 +594,8 @@ try {
     reviewDecisions: db.prepare('SELECT count(*) AS value FROM review_decisions').get().value,
     teacherReviews: db.prepare("SELECT count(*) AS value FROM events WHERE type = 'teacher_reviewed'").get().value,
     reports: db.prepare("SELECT count(*) AS value FROM reports WHERE lab_id = 'lab2'").get().value,
+    factoryPublishes: Object.keys(JSON.parse(readFileSync(factoryCatalogPath, 'utf8')).labs || {}).length,
+    issuedLabs: JSON.parse(readFileSync(path.join(studentsRoot, 'member-c-smoke', '.scaffold-state.json'), 'utf8')).applied.length,
   }
   db.close()
   assert.equal(counts.runs, 4)
@@ -561,6 +612,8 @@ try {
   assert.equal(counts.reviewDecisions, 1)
   assert.equal(counts.teacherReviews, 1)
   assert.equal(counts.reports, 1)
+  assert.equal(counts.factoryPublishes, 1)
+  assert.equal(counts.issuedLabs, 3)
   console.log(`tutor smoke passed: ${JSON.stringify(counts)}`)
 } catch (error) {
   console.error(logs)

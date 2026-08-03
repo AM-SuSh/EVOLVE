@@ -30,9 +30,6 @@ import { cp, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 
 const OS_LAB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const REPO_ROOT = path.resolve(OS_LAB_ROOT, '..')
-const STUDENTS_ROOT = process.env.OS_LAB_STUDENTS_ROOT
-  ? path.resolve(process.env.OS_LAB_STUDENTS_ROOT)
-  : path.join(REPO_ROOT, 'student-labs')
 const EXERCISE_ROOT = path.join(OS_LAB_ROOT, 'scaffold', 'exercises')
 const TEACHER_FILE = process.env.OS_LAB_TEACHER_FILE
   ? path.resolve(process.env.OS_LAB_TEACHER_FILE)
@@ -48,7 +45,10 @@ export function sanitizeUser(user) {
 }
 
 export function studentRootFor(user) {
-  return path.join(STUDENTS_ROOT, user)
+  const studentsRoot = process.env.OS_LAB_STUDENTS_ROOT
+    ? path.resolve(process.env.OS_LAB_STUDENTS_ROOT)
+    : path.join(REPO_ROOT, 'student-labs')
+  return path.join(studentsRoot, user)
 }
 
 /** 每个 Lab 需要新增的文件（相对 os-lab/）。kernel 模块全部按 feature 门控，

@@ -5,7 +5,7 @@ import path from 'node:path'
 import test, { after } from 'node:test'
 
 import { inspectLabPackage, listPublishedLabs, publishLabPackage, scaffoldDryRun, testLabPackage } from './lab-factory.mjs'
-import { getExerciseCatalog } from '../scripts/scaffold.mjs'
+import { applyNext, getExerciseCatalog } from '../scripts/scaffold.mjs'
 
 const repositoryRoot = path.resolve(new URL('../', import.meta.url).pathname.slice(process.platform === 'win32' ? 1 : 0))
 const temporary = await mkdtemp(path.join(os.tmpdir(), 'os-lab-factory-contract-'))
@@ -64,8 +64,28 @@ test('C6 requires an isolated passing test and explicit teacher approval for imm
   const previousCatalogPath = process.env.OS_LAB_FACTORY_CATALOG_PATH
   process.env.OS_LAB_FACTORY_CATALOG_PATH = options.catalogPath
   assert.equal(getExerciseCatalog().lab3.variants.debug.sources['kernel/src/mm.rs'], 'scaffold/exercises/lab3/debug/kernel/src/mm.rs')
-  if (previousCatalogPath === undefined) delete process.env.OS_LAB_FACTORY_CATALOG_PATH
-  else process.env.OS_LAB_FACTORY_CATALOG_PATH = previousCatalogPath
+  const previousStudentsRoot = process.env.OS_LAB_STUDENTS_ROOT
+  const studentsRoot = path.join(temporary, 'students')
+  process.env.OS_LAB_STUDENTS_ROOT = studentsRoot
+  try {
+    const teacher = { openLab: 'lab3', assignments: {} }
+    assert.equal((await applyNext('factory-student', undefined, teacher)).lab, 'lab1')
+    assert.equal((await applyNext('factory-student', 'fill', teacher)).lab, 'lab2')
+    const issued = await applyNext('factory-student', 'debug', teacher)
+    assert.equal(issued.ok, true)
+    assert.equal(issued.lab, 'lab3')
+    const state = JSON.parse(await readFile(path.join(studentsRoot, 'factory-student', '.scaffold-state.json'), 'utf8'))
+    assert.equal(state.variants.lab3, 'debug')
+    assert.match(
+      await readFile(path.join(studentsRoot, 'factory-student', 'kernel', 'src', 'mm.rs'), 'utf8'),
+      /PLANTED BUG: preserve R\/W\/X but strip U/,
+    )
+  } finally {
+    if (previousStudentsRoot === undefined) delete process.env.OS_LAB_STUDENTS_ROOT
+    else process.env.OS_LAB_STUDENTS_ROOT = previousStudentsRoot
+    if (previousCatalogPath === undefined) delete process.env.OS_LAB_FACTORY_CATALOG_PATH
+    else process.env.OS_LAB_FACTORY_CATALOG_PATH = previousCatalogPath
+  }
 
   const overwrite = await publishLabPackage('lab3', {
     testRunId: run.runId, approved: true, approvalNote: '再次发布', teacher: 'teacher-test',
