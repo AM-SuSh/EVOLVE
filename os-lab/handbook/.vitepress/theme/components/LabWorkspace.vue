@@ -2681,6 +2681,7 @@ onBeforeUnmount(() => {
             @edit="startTeacherEditing"
             @section-change="currentSection = $event"
             @source-jump="onSourceJump"
+            @add-to-chat="addToChat"
           >
             <slot />
           </ManualPane>

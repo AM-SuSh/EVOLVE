@@ -1,14 +1,25 @@
 import path from 'node:path'
 
 const ANSI_CSI_RE = /\x1B\[[0-?]*[ -/]*[@-~]/g
+const WINDOWS_ABSOLUTE_PATH_RE = /^[A-Za-z]:[\\/]/
+
+function isWindowsAbsolutePath(value) {
+  return WINDOWS_ABSOLUTE_PATH_RE.test(value) || value.startsWith('\\\\') || value.startsWith('//')
+}
 
 function workspacePath(fileName, workspaceRoot) {
   const raw = String(fileName || '')
   if (!raw) return null
-  const relative = path.isAbsolute(raw) ? path.relative(workspaceRoot, raw) : raw
+  const windowsPath = isWindowsAbsolutePath(raw)
+  const windowsRoot = isWindowsAbsolutePath(String(workspaceRoot || ''))
+  const relative = windowsPath && windowsRoot
+    ? path.win32.relative(workspaceRoot, raw)
+    : !windowsPath && path.isAbsolute(raw)
+      ? path.relative(workspaceRoot, raw)
+      : raw
   const normalized = relative.replace(/\\/g, '/').replace(/^\.\//, '')
   if (!normalized || normalized === '..') return null
-  if (normalized.startsWith('../')) {
+  if (normalized.startsWith('../') || isWindowsAbsolutePath(normalized)) {
     // Windows 的 TEMP 可能以 8.3 短路径作为 cwd，而 rustc span 返回长路径。
     // 只从已知工作区 crate 根恢复相对路径，最终打开文件时仍会再次做目录边界校验。
     const absoluteNormalized = raw.replace(/\\/g, '/')

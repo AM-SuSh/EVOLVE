@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, withBase } from 'vitepress'
 import MarkdownIt from 'markdown-it'
 import mermaid from 'mermaid'
-import { LockKeyhole, Pencil, RefreshCw, TableOfContents } from 'lucide-vue-next'
+import { LockKeyhole, MessageSquareQuote, Pencil, RefreshCw, TableOfContents } from 'lucide-vue-next'
 import { authHeaders, collapsedSectionPrefix, sectionPrefixOf, type TutorLab } from '../tutor-model'
 
 /**
@@ -30,6 +30,13 @@ const emit = defineEmits<{
   (event: 'edit', location: ManualLocation): void
   /** 学生点手册中的源码引用（`kernel/src/trap.rs` 或 `...:42`）：跳到工作区对应文件/行。 */
   (event: 'source-jump', payload: { path: string; line: number }): void
+  /** 学生选中手册中的一小段文字后，只把该选段附给 AI 导师。 */
+  (event: 'add-to-chat', payload: {
+    source: 'manual'
+    title: string
+    body: string
+    origin?: { h2?: string; h3?: string; scope?: 'selection' }
+  }): void
 }>()
 
 interface ManualSection {
@@ -38,6 +45,12 @@ interface ManualSection {
   level: number
   prefix: string
   el: HTMLElement
+}
+
+interface ManualSelectionAction {
+  text: string
+  left: number
+  top: number
 }
 
 const route = useRoute()
@@ -54,6 +67,7 @@ const manualHtml = ref('')
 const loading = ref(true)
 const error = ref('')
 const locked = ref(false)
+const selectionAction = ref<ManualSelectionAction | null>(null)
 
 const markdown = new MarkdownIt({ html: true, linkify: true })
 const defaultFence = markdown.renderer.rules.fence
@@ -142,6 +156,7 @@ async function loadManual() {
   loading.value = true
   error.value = ''
   locked.value = false
+  selectionAction.value = null
   manualHtml.value = ''
   sections.value = []
   try {
@@ -220,6 +235,64 @@ function onDocClick(event: MouseEvent) {
   }
 }
 
+function updateSelectionAction() {
+  if (props.editable) {
+    selectionAction.value = null
+    return
+  }
+  const root = docRoot.value
+  const container = scroller.value
+  const selection = window.getSelection()
+  const anchor = selection?.anchorNode
+  const focus = selection?.focusNode
+  if (!root || !container || !selection || selection.isCollapsed || !anchor || !focus) {
+    selectionAction.value = null
+    return
+  }
+  if (!root.contains(anchor) || !root.contains(focus)) {
+    selectionAction.value = null
+    return
+  }
+  const text = selection.toString().replace(/\r\n/g, '\n').trim()
+  if (!text || !selection.rangeCount) {
+    selectionAction.value = null
+    return
+  }
+  const rangeRect = selection.getRangeAt(0).getBoundingClientRect()
+  const rootRect = root.getBoundingClientRect()
+  const containerRect = container.getBoundingClientRect()
+  if (!rangeRect.width && !rangeRect.height) {
+    selectionAction.value = null
+    return
+  }
+  const actionHalfWidth = 76
+  const left = Math.max(
+    actionHalfWidth,
+    Math.min(rootRect.width - actionHalfWidth, rangeRect.left - rootRect.left + rangeRect.width / 2),
+  )
+  const belowTop = rangeRect.bottom - rootRect.top + 8
+  const aboveTop = rangeRect.top - rootRect.top - 40
+  const top = rangeRect.bottom + 44 <= containerRect.bottom ? belowTop : Math.max(8, aboveTop)
+  selectionAction.value = { text, left, top }
+}
+
+function askAboutSelection() {
+  const selected = selectionAction.value
+  if (!selected) return
+  emit('add-to-chat', {
+    source: 'manual',
+    title: `选段 · ${[activeH2.value?.title, activeH3.value?.title].filter(Boolean).join(' / ') || '当前手册'}`,
+    body: selected.text,
+    origin: {
+      h2: activeH2.value?.title || undefined,
+      h3: activeH3.value?.title || undefined,
+      scope: 'selection',
+    },
+  })
+  selectionAction.value = null
+  window.getSelection()?.removeAllRanges()
+}
+
 function onDocKeydown(event: KeyboardEvent) {
   if (event.key !== 'Enter' && event.key !== ' ') return
   const heading = (event.target as HTMLElement | null)?.closest('.ws-section-collapsible')
@@ -247,6 +320,7 @@ function updateActiveSection() {
 }
 
 function onScroll() {
+  selectionAction.value = null
   if (frame) return
   frame = window.requestAnimationFrame(() => {
     frame = 0
@@ -343,12 +417,14 @@ onMounted(async () => {
   await loadManual()
   scroller.value?.addEventListener('scroll', onScroll, { passive: true })
   window.addEventListener('resize', onScroll, { passive: true })
+  document.addEventListener('selectionchange', updateSelectionAction)
 })
 
 onBeforeUnmount(() => {
   if (frame) window.cancelAnimationFrame(frame)
   scroller.value?.removeEventListener('scroll', onScroll)
   window.removeEventListener('resize', onScroll)
+  document.removeEventListener('selectionchange', updateSelectionAction)
 })
 </script>
 
@@ -410,6 +486,8 @@ onBeforeUnmount(() => {
           class="ws-manual-doc vp-doc"
           @click="onDocClick"
           @keydown="onDocKeydown"
+          @mouseup="updateSelectionAction"
+          @keyup="updateSelectionAction"
         >
           <div v-if="loading" class="ws-manual-state" role="status">
             <RefreshCw :size="22" class="ws-spin" aria-hidden="true" />
@@ -425,6 +503,18 @@ onBeforeUnmount(() => {
             <button v-else type="button" @click="loadManual">重新加载</button>
           </div>
           <div v-else v-html="manualHtml" />
+          <button
+            v-if="selectionAction"
+            type="button"
+            class="ws-manual-selection-action"
+            :style="{ left: `${selectionAction.left}px`, top: `${selectionAction.top}px` }"
+            title="只把选中的手册文字附给 AI 导师"
+            @mousedown.prevent
+            @click.stop="askAboutSelection"
+          >
+            <MessageSquareQuote :size="14" aria-hidden="true" />
+            <span>就此询问导师</span>
+          </button>
         </div>
       </div>
     </div>
@@ -624,6 +714,37 @@ onBeforeUnmount(() => {
   scroll-behavior: smooth;
 }
 
+.ws-manual-doc {
+  position: relative;
+}
+
+.ws-manual-selection-action {
+  position: absolute;
+  z-index: 8;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  color: var(--ws-accent-contrast, #fff);
+  border: 1px solid var(--ws-accent-strong, var(--ws-accent));
+  border-radius: var(--ws-radius-sm, 4px);
+  background: var(--ws-accent-strong, var(--ws-accent));
+  box-shadow: var(--ws-shadow-2, 0 4px 12px rgba(15, 23, 42, 0.18));
+  font: inherit;
+  font-size: var(--ws-text-xs);
+  white-space: nowrap;
+  transform: translateX(-50%);
+  cursor: pointer;
+}
+
+.ws-manual-selection-action:hover,
+.ws-manual-selection-action:focus-visible {
+  background: var(--ws-accent, #2563eb);
+  outline: 2px solid color-mix(in srgb, var(--ws-accent) 35%, transparent);
+  outline-offset: 2px;
+}
+
 .ws-manual-state {
   display: grid;
   min-height: 320px;
@@ -676,7 +797,6 @@ onBeforeUnmount(() => {
     padding: var(--ws-space-4) var(--ws-space-4) var(--ws-space-6);
   }
 
-  .ws-manual-add-chat span,
   .ws-manual-edit span {
     display: none;
   }

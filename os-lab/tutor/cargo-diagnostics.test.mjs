@@ -67,3 +67,17 @@ test('Cargo diagnostics recover workspace paths across Windows short and long te
   }), 'C:\\Users\\STUDEN~1\\Temp\\workspace')
   assert.equal(parsed.diagnostic.file, 'kernel/src/task.rs')
 })
+
+test('Cargo diagnostics normalize Windows paths when tests run on a POSIX runner', () => {
+  const parsed = parseCargoMessageLine(cargoDiagnostic({
+    spans: [{
+      file_name: 'C:\\student-workspace\\kernel\\src\\task.rs',
+      line_start: 9,
+      line_end: 9,
+      column_start: 1,
+      column_end: 5,
+      is_primary: true,
+    }],
+  }), 'C:\\student-workspace')
+  assert.equal(parsed.diagnostic.file, 'kernel/src/task.rs')
+})
