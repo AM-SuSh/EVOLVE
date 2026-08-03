@@ -39,6 +39,7 @@ export default withMermaid(defineConfig({
           text: '入门指南',
           items: [
             { text: '认识 os-lab', link: '/guide/start' },
+            { text: '新手操作指南', link: '/guide/beginner' },
             { text: '引导式学习', link: '/guide/ai-tutor' },
             { text: '环境安装', link: '/setup/environment' },
           ],
@@ -49,6 +50,7 @@ export default withMermaid(defineConfig({
           text: '入门指南',
           items: [
             { text: '认识 os-lab', link: '/guide/start' },
+            { text: '新手操作指南', link: '/guide/beginner' },
             { text: '引导式学习', link: '/guide/ai-tutor' },
             { text: '环境安装', link: '/setup/environment' },
           ],
