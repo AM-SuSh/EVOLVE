@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "labId": "lab7",
+  "version": "1.0.0",
+  "title": "IPC 与信号",
+  "status": "stable",
+  "feature": "lab7",
+  "manual": "labs/lab7-ipc-signal.md",
+  "answers": "labs/answers/lab7-answers.md",
+  "tutorContext": "tutor/prompts/lab7/context.md",
+  "verification": {
+    "recipe": "lab7.verify.v1",
+    "command": "make test-lab7",
+    "assertions": [
+      {
+        "id": "dup-pass",
+        "kind": "output-contains",
+        "text": "dup_test pass",
+        "assesses": [
+          "os.fd.dup"
+        ]
+      },
+      {
+        "id": "signal-pass",
+        "kind": "output-contains",
+        "text": "signal_test pass",
+        "assesses": [
+          "os.signal.mask"
+        ]
+      },
+      {
+        "id": "signal-mask-pass",
+        "kind": "output-contains",
+        "text": "signal_mask_test pass",
+        "assesses": [
+          "os.signal.mask"
+        ]
+      },
+      {
+        "id": "pipe-pass",
+        "kind": "output-contains",
+        "text": "pipe_test pass"
+      }
+    ],
+    "observable_trace": []
+  },
+  "variants": {
+    "debug": {
+      "label": "区分信号 pending 与 delivery，修复未真正屏蔽 SIGUSR1 的掩码设置。",
+      "files": [
+        "user/src/bin/signal_mask_test.rs"
+      ],
+      "sources": {
+        "user/src/bin/signal_mask_test.rs": "scaffold/exercises/lab7/debug/user/src/bin/signal_mask_test.rs"
+      },
+      "manifest": "lab-packages/lab7/variants/debug/manifest.yaml"
+    }
+  },
+  "source": {
+    "specHash": "38693152ce755583923ea2e15a312e68c0b6ce9146f6cbd0bbeecefdd479da77",
+    "specPath": "lab-packages/lab7/lab.yaml"
+  },
+  "test": {
+    "runId": "063639da-f8af-427d-a93e-b667ac4ab650",
+    "labId": "lab7",
+    "version": "1.0.0",
+    "variant": "debug",
+    "specHash": "38693152ce755583923ea2e15a312e68c0b6ce9146f6cbd0bbeecefdd479da77",
+    "status": "passed",
+    "isolated": true,
+    "commands": [
+      {
+        "kind": "baseline-build",
+        "exitCode": 0,
+        "outputHash": "a36ac45305ed2dd769b0791c95621156b407675a9e621afc1c7382e7a224d1c6"
+      },
+      {
+        "kind": "baseline-trusted-test",
+        "exitCode": 0,
+        "outputHash": "c9bc51fbf2688fee26f74e85b170637f6ba6fd240b55aacd721f2055b02caf73"
+      },
+      {
+        "kind": "baseline-trusted-test",
+        "exitCode": 0,
+        "outputHash": "d2f46655ba63048eebbd0bd49561eb410d0eb99b31cffa5cd765429a0fe49781"
+      },
+      {
+        "kind": "variant-build",
+        "exitCode": 0,
+        "outputHash": "7da3a6684fc97711d0b7fe6e2f6cce689b487963959e4a0a0b46221f09ab84c9"
+      },
+      {
+        "kind": "variant-trusted-test",
+        "exitCode": 0,
+        "outputHash": "f45caf38661316b8b2421283747a5720dc0dfb05ade707dbbcec1de67fe82ff8"
+      },
+      {
+        "kind": "variant-trusted-test",
+        "exitCode": 0,
+        "outputHash": "e11ae38db6369db9873a2da4c0da2df092d09c292d6850aeed65fba9c753192e"
+      }
+    ],
+    "baselineAssertions": [
+      {
+        "id": "dup-pass",
+        "passed": true
+      },
+      {
+        "id": "signal-pass",
+        "passed": true
+      },
+      {
+        "id": "signal-mask-pass",
+        "passed": true
+      },
+      {
+        "id": "pipe-pass",
+        "passed": true
+      }
+    ],
+    "variantAssertions": [
+      {
+        "id": "dup-pass",
+        "passed": true
+      },
+      {
+        "id": "signal-pass",
+        "passed": true
+      },
+      {
+        "id": "signal-mask-pass",
+        "passed": false
+      },
+      {
+        "id": "pipe-pass",
+        "passed": false
+      }
+    ],
+    "negativeMatched": true,
+    "startedAt": "2026-08-04T03:53:50.481Z",
+    "finishedAt": "2026-08-04T03:54:18.876Z",
+    "author": "BC-alignment"
+  },
+  "approval": {
+    "approved": true,
+    "teacher": "BC-alignment",
+    "note": "LAB7 stable 1.0.0: schema, dry-run, isolated baseline, negative variant, and teaching acceptance passed.",
+    "approvedAt": "2026-08-04T03:58:49.535Z"
+  },
+  "author": "BC-alignment",
+  "publishedAt": "2026-08-04T03:58:49.535Z"
+}

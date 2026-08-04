@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "labId": "lab4",
+  "version": "1.0.0",
+  "title": "进程管理",
+  "status": "stable",
+  "feature": "lab4",
+  "manual": "labs/lab4-process.md",
+  "answers": "labs/answers/lab4-answers.md",
+  "tutorContext": "tutor/prompts/lab4/context.md",
+  "verification": {
+    "recipe": "lab4.verify.v1",
+    "command": "cargo run -p kernel --features lab4 --release",
+    "assertions": [
+      {
+        "id": "parent-output",
+        "kind": "output-contains",
+        "text": "I am parent",
+        "assesses": [
+          "os.process.fork-wait"
+        ]
+      },
+      {
+        "id": "child-output",
+        "kind": "output-contains",
+        "text": "I am child",
+        "assesses": [
+          "os.process.fork-wait"
+        ]
+      },
+      {
+        "id": "fork-pass",
+        "kind": "output-contains",
+        "text": "fork_test pass",
+        "assesses": [
+          "os.process.fork-wait"
+        ]
+      },
+      {
+        "id": "all-processes-exited",
+        "kind": "output-contains",
+        "text": "All processes exited."
+      }
+    ],
+    "observable_trace": []
+  },
+  "variants": {
+    "debug": {
+      "label": "区分 waitpid 返回的子进程 pid 与独立写回的 exit code，修复错误的通过条件。",
+      "files": [
+        "user/src/bin/fork_test.rs"
+      ],
+      "sources": {
+        "user/src/bin/fork_test.rs": "scaffold/exercises/lab4/debug/user/src/bin/fork_test.rs"
+      },
+      "manifest": "lab-packages/lab4/variants/debug/manifest.yaml"
+    }
+  },
+  "source": {
+    "specHash": "82315b77c7821f666dbee2fa95b97874260faf67c07f374fbb9ab4a5ec0209aa",
+    "specPath": "lab-packages/lab4/lab.yaml"
+  },
+  "test": {
+    "runId": "ccd59493-4020-408a-9df6-59c515aa4520",
+    "labId": "lab4",
+    "version": "1.0.0",
+    "variant": "debug",
+    "specHash": "82315b77c7821f666dbee2fa95b97874260faf67c07f374fbb9ab4a5ec0209aa",
+    "status": "passed",
+    "isolated": true,
+    "commands": [
+      {
+        "kind": "baseline-build",
+        "exitCode": 0,
+        "outputHash": "0869784dc26c083a3440b645992703237a96459dcafe924b0c26b2cd17fb50a4"
+      },
+      {
+        "kind": "baseline-trusted-test",
+        "exitCode": 0,
+        "outputHash": "a639ae749c101bb3d44f57a6954b8507fc803932a03d1f363e1b3827ab3725d2"
+      },
+      {
+        "kind": "variant-build",
+        "exitCode": 0,
+        "outputHash": "7048fe6a78f455cc5ddf0ab751da47d5948f7f30a5fac4c7061c5bb826c493dd"
+      },
+      {
+        "kind": "variant-trusted-test",
+        "exitCode": 0,
+        "outputHash": "9a8c928d79ebf5f38cc78625985262138e4ac8aa2e176caa6d8ff23f1e22cbc9"
+      }
+    ],
+    "baselineAssertions": [
+      {
+        "id": "parent-output",
+        "passed": true
+      },
+      {
+        "id": "child-output",
+        "passed": true
+      },
+      {
+        "id": "fork-pass",
+        "passed": true
+      },
+      {
+        "id": "all-processes-exited",
+        "passed": true
+      }
+    ],
+    "variantAssertions": [
+      {
+        "id": "parent-output",
+        "passed": true
+      },
+      {
+        "id": "child-output",
+        "passed": true
+      },
+      {
+        "id": "fork-pass",
+        "passed": false
+      },
+      {
+        "id": "all-processes-exited",
+        "passed": true
+      }
+    ],
+    "negativeMatched": true,
+    "startedAt": "2026-08-04T03:48:56.108Z",
+    "finishedAt": "2026-08-04T03:49:09.872Z",
+    "author": "BC-alignment"
+  },
+  "approval": {
+    "approved": true,
+    "teacher": "BC-alignment",
+    "note": "LAB4 stable 1.0.0: schema, dry-run, isolated baseline, negative variant, and teaching acceptance passed.",
+    "approvedAt": "2026-08-04T03:58:38.908Z"
+  },
+  "author": "BC-alignment",
+  "publishedAt": "2026-08-04T03:58:38.908Z"
+}

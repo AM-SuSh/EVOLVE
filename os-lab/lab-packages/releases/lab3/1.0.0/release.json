@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "labId": "lab3",
+  "version": "1.0.0",
+  "title": "内存管理与虚存",
+  "status": "stable",
+  "feature": "lab3",
+  "manual": "labs/lab3-memory.md",
+  "answers": "labs/answers/lab3-answers.md",
+  "tutorContext": "tutor/prompts/lab3/context.md",
+  "verification": {
+    "recipe": "lab3.verify.v1",
+    "command": "cargo run -p kernel --features lab3 --release",
+    "assertions": [
+      {
+        "id": "hello-output",
+        "kind": "output-contains",
+        "text": "Hello from user app!"
+      },
+      {
+        "id": "power-result",
+        "kind": "output-contains",
+        "text": "409684505"
+      },
+      {
+        "id": "yield-five-rounds",
+        "kind": "output-count",
+        "text": "Yield round",
+        "min": 5
+      },
+      {
+        "id": "all-exited",
+        "kind": "output-contains",
+        "text": "All user apps exited."
+      }
+    ],
+    "observable_trace": []
+  },
+  "variants": {
+    "debug": {
+      "label": "学生按现象→假设→最小实验排查：用户程序无法正确取指/访存。",
+      "files": [
+        "kernel/src/mm.rs"
+      ],
+      "sources": {
+        "kernel/src/mm.rs": "scaffold/exercises/lab3/debug/kernel/src/mm.rs"
+      },
+      "manifest": "lab-packages/lab3/variants/debug/manifest.yaml"
+    }
+  },
+  "source": {
+    "specHash": "10fec65242ccc5242839afd2ebad8c6883519c99b02436ee6b8799973d2bfdf3",
+    "specPath": "lab-packages/lab3/lab.yaml"
+  },
+  "test": {
+    "runId": "0a126131-8c37-4432-9c1d-31a8911fa820",
+    "labId": "lab3",
+    "version": "1.0.0",
+    "variant": "debug",
+    "specHash": "10fec65242ccc5242839afd2ebad8c6883519c99b02436ee6b8799973d2bfdf3",
+    "status": "passed",
+    "isolated": true,
+    "commands": [
+      {
+        "kind": "baseline-build",
+        "exitCode": 0,
+        "outputHash": "b9bd8b0aa53083dc8a76a23900cb713df4b7ceae54ed8ae421db2b184985e0bb"
+      },
+      {
+        "kind": "baseline-trusted-test",
+        "exitCode": 0,
+        "outputHash": "b4d11a4a1dd16c962dedbf5231c281731264018402b05db13c9501ba080ae0c4"
+      },
+      {
+        "kind": "variant-build",
+        "exitCode": 0,
+        "outputHash": "79b83e30465963026e3f2f8eb3d4e76e2d861fe234efc273848ab40ce27e3d8c"
+      },
+      {
+        "kind": "variant-trusted-test",
+        "exitCode": 0,
+        "outputHash": "b73ef081ab33224a57b804c6a3e372ce183f093de32761f53277f30d9f1bd785"
+      }
+    ],
+    "baselineAssertions": [
+      {
+        "id": "hello-output",
+        "passed": true
+      },
+      {
+        "id": "power-result",
+        "passed": true
+      },
+      {
+        "id": "yield-five-rounds",
+        "passed": true
+      },
+      {
+        "id": "all-exited",
+        "passed": true
+      }
+    ],
+    "variantAssertions": [
+      {
+        "id": "hello-output",
+        "passed": false
+      },
+      {
+        "id": "power-result",
+        "passed": false
+      },
+      {
+        "id": "yield-five-rounds",
+        "passed": false
+      },
+      {
+        "id": "all-exited",
+        "passed": false
+      }
+    ],
+    "negativeMatched": true,
+    "startedAt": "2026-08-04T03:43:12.391Z",
+    "finishedAt": "2026-08-04T03:43:39.748Z",
+    "author": "BC-alignment"
+  },
+  "approval": {
+    "approved": true,
+    "teacher": "BC-alignment",
+    "note": "LAB3 stable 1.0.0: schema, dry-run, isolated baseline, negative variant, and teaching acceptance passed.",
+    "approvedAt": "2026-08-04T03:58:35.415Z"
+  },
+  "author": "BC-alignment",
+  "publishedAt": "2026-08-04T03:58:35.415Z"
+}

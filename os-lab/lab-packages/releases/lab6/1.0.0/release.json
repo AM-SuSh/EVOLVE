@@ -1,0 +1,201 @@
+{
+  "schemaVersion": 1,
+  "labId": "lab6",
+  "version": "1.0.0",
+  "title": "磁盘文件系统",
+  "status": "stable",
+  "feature": "lab6",
+  "manual": "labs/lab6-disk-fs.md",
+  "answers": "labs/answers/lab6-answers.md",
+  "tutorContext": "tutor/prompts/lab6/context.md",
+  "verification": {
+    "recipe": "lab6.verify.v1",
+    "command": "make test-lab6",
+    "assertions": [
+      {
+        "id": "file-pass",
+        "kind": "output-contains",
+        "text": "file_test pass",
+        "assesses": [
+          "os.fs.virtio"
+        ]
+      },
+      {
+        "id": "link-pass",
+        "kind": "output-contains",
+        "text": "Test link OK!",
+        "assesses": [
+          "os.fs.hard-link"
+        ]
+      },
+      {
+        "id": "mmap-pass",
+        "kind": "output-contains",
+        "text": "mmap_test pass"
+      },
+      {
+        "id": "spawn-pass",
+        "kind": "output-contains",
+        "text": "spawn_test pass"
+      },
+      {
+        "id": "stride-pass",
+        "kind": "output-contains",
+        "text": "stride_test pass"
+      },
+      {
+        "id": "fs-pass",
+        "kind": "output-contains",
+        "text": "fs_test pass"
+      },
+      {
+        "id": "pipe-pass",
+        "kind": "output-contains",
+        "text": "pipe_test pass"
+      },
+      {
+        "id": "all-processes-exited",
+        "kind": "output-contains",
+        "text": "All processes exited."
+      }
+    ],
+    "observable_trace": []
+  },
+  "variants": {
+    "debug": {
+      "label": "用 fstat 证据解释硬链接共享 inode 与 nlink 计数，而不是把 linkat 当成文件复制。",
+      "files": [
+        "user/src/bin/link_test.rs"
+      ],
+      "sources": {
+        "user/src/bin/link_test.rs": "scaffold/exercises/lab6/debug/user/src/bin/link_test.rs"
+      },
+      "manifest": "lab-packages/lab6/variants/debug/manifest.yaml"
+    }
+  },
+  "source": {
+    "specHash": "3d8ae4bed7329c96a7bad1175e60a33690cc5b1a6dd901e92bc4da657a4f18bf",
+    "specPath": "lab-packages/lab6/lab.yaml"
+  },
+  "test": {
+    "runId": "6b3706e6-945a-4521-82fe-3fed3bf9bc68",
+    "labId": "lab6",
+    "version": "1.0.0",
+    "variant": "debug",
+    "specHash": "3d8ae4bed7329c96a7bad1175e60a33690cc5b1a6dd901e92bc4da657a4f18bf",
+    "status": "passed",
+    "isolated": true,
+    "commands": [
+      {
+        "kind": "baseline-build",
+        "exitCode": 0,
+        "outputHash": "e3057e037e0ac3a967f5d2f4ee19018ab35eb2c4dffc0909a972bdc00c34c078"
+      },
+      {
+        "kind": "baseline-trusted-test",
+        "exitCode": 0,
+        "outputHash": "bd58b9807960f7ca1e2ad6b8829912c6581a816aa5573619c7b4f5e81590d1bb"
+      },
+      {
+        "kind": "baseline-trusted-test",
+        "exitCode": 0,
+        "outputHash": "34a841c6e8da7d0f8181beeffe6a7505bbf95a3873eb78fc07cd866569f2dbbd"
+      },
+      {
+        "kind": "variant-build",
+        "exitCode": 0,
+        "outputHash": "ea27676e5276968331464e5bec5e6442fb20ab64185a13790e173b62b39039be"
+      },
+      {
+        "kind": "variant-trusted-test",
+        "exitCode": 0,
+        "outputHash": "2152b2a7346f1c4b029fef96a5ace29eab2a74651a7a88c897ea62308f631a6b"
+      },
+      {
+        "kind": "variant-trusted-test",
+        "exitCode": 0,
+        "outputHash": "1ca65b65fbd703e8ef84a5f25e2048d4a75d685917ddc683fe6633709e2a17e5"
+      }
+    ],
+    "baselineAssertions": [
+      {
+        "id": "file-pass",
+        "passed": true
+      },
+      {
+        "id": "link-pass",
+        "passed": true
+      },
+      {
+        "id": "mmap-pass",
+        "passed": true
+      },
+      {
+        "id": "spawn-pass",
+        "passed": true
+      },
+      {
+        "id": "stride-pass",
+        "passed": true
+      },
+      {
+        "id": "fs-pass",
+        "passed": true
+      },
+      {
+        "id": "pipe-pass",
+        "passed": true
+      },
+      {
+        "id": "all-processes-exited",
+        "passed": true
+      }
+    ],
+    "variantAssertions": [
+      {
+        "id": "file-pass",
+        "passed": true
+      },
+      {
+        "id": "link-pass",
+        "passed": false
+      },
+      {
+        "id": "mmap-pass",
+        "passed": false
+      },
+      {
+        "id": "spawn-pass",
+        "passed": false
+      },
+      {
+        "id": "stride-pass",
+        "passed": false
+      },
+      {
+        "id": "fs-pass",
+        "passed": false
+      },
+      {
+        "id": "pipe-pass",
+        "passed": false
+      },
+      {
+        "id": "all-processes-exited",
+        "passed": true
+      }
+    ],
+    "negativeMatched": true,
+    "startedAt": "2026-08-04T03:53:09.737Z",
+    "finishedAt": "2026-08-04T03:53:36.987Z",
+    "author": "BC-alignment"
+  },
+  "approval": {
+    "approved": true,
+    "teacher": "BC-alignment",
+    "note": "LAB6 stable 1.0.0: schema, dry-run, isolated baseline, negative variant, and teaching acceptance passed.",
+    "approvedAt": "2026-08-04T03:58:45.949Z"
+  },
+  "author": "BC-alignment",
+  "publishedAt": "2026-08-04T03:58:45.949Z"
+}

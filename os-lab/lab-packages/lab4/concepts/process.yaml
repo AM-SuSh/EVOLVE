@@ -1,0 +1,18 @@
+id: os.process.fork-wait
+title: fork 与 waitpid 生命周期
+level: mechanism
+summary: fork 复制进程执行状态，父子依据不同返回值分支；waitpid 回收子进程并独立返回退出码。
+source_anchors: [kernel/src/process.rs, user/src/bin/fork_test.rs]
+invariants:
+  - 父进程必须用返回的 child pid 选择回收对象
+  - waitpid 返回值与写回的 exit code 不可混用
+observable_evidence: [I am parent, I am child, fork_test pass]
+---
+id: os.process.exec
+title: exec 地址空间替换
+level: mechanism
+summary: exec 保留进程身份并用新 ELF 替换用户地址空间和入口上下文。
+source_anchors: [kernel/src/process.rs, kernel/src/loader.rs, user/src/bin/exec_test.rs]
+invariants:
+  - 成功 exec 不返回旧程序
+  - 新地址空间不得继续引用旧用户页

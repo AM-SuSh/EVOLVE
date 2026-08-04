@@ -1,9 +1,9 @@
-# Lab3 教学规格草案（成员 A · Lab2/3 样板）
+# Lab3 稳定教学规格
 
 schema_version: 1
 id: lab3
 title: 内存管理与虚存
-version: 0.1.2-draft
+version: 1.0.0
 feature: lab3
 prerequisites: [lab1, lab2]
 textbook:
@@ -11,8 +11,8 @@ textbook:
   - OSTEP Ch.14 Memory API
   - OSTEP Ch.15 Address Translation
   - OSTEP Ch.16 Paging
-status: sample
-manual_revision: lab3-debug-factory-sample
+status: stable
+manual_revision: lab3-debug-stable-v1
 manual: ../../labs/lab3-memory.md
 answers: ../../labs/answers/lab3-answers.md
 tutor_context: ../../tutor/prompts/lab3/context.md
@@ -95,4 +95,4 @@ misconceptions:
     statement: 改页表后不刷新 TLB/指令屏障
     counter: 映射变更后需要 sfence.vma（实现层约定）
 
-rubric_ref: ../../learning/rubric-v2-draft.md
+rubric_ref: ../../learning/rubric-v2-frozen.md

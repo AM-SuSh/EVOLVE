@@ -3,7 +3,7 @@
 id: lab3-debug
 lab: lab3
 variant: debug
-version: 0.1.0-draft
+version: 1.0.0
 
 learning_goal: |
   学生按现象→假设→最小实验排查：用户程序无法正确取指/访存。
@@ -19,7 +19,7 @@ source_template: ../../../scaffold/exercises/lab3/debug/kernel/src/mm.rs
 manual_anchor: labs/lab3-memory.md
 
 planted_bug:
-  location: 用户段 PTE 标志构造（教学占位）
+  location: kernel/src/mm.rs 的用户 ELF 映射权限收紧循环
   wrong: 映射用户页时未置 User 可访问位
   correct: 用户页必须置 U（及所需 X/R）
   symptom: |

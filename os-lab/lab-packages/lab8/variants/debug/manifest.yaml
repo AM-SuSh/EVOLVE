@@ -1,0 +1,25 @@
+id: lab8-debug-mutex-workload
+lab: lab8
+variant: debug
+version: 1.0.0
+learning_goal: 用最终共享计数不变量区分互斥失效与每线程工作量的 off-by-one 错误。
+target_concepts: [os.sync.mutex]
+student_file: user/src/bin/lab8_integration_test.rs
+source_template: ../../../../scaffold/exercises/lab8/debug/user/src/bin/lab8_integration_test.rs
+manual_anchor: labs/lab8-thread-sync.md#任务一跑通-lab8必做
+planted_bug:
+  location: mutex_test worker 的循环上界
+  wrong: 每个线程只执行 PER_THREAD - 1 次更新
+  correct: 每个线程执行完整 PER_THREAD 次更新
+  symptom: 线程创建与等待成功，但报告 mutex_test counter mismatch
+success_criteria:
+  recipe: lab8.verify.v1
+  assertions: [threads-pass, threads-arg-pass, mutex-pass, condvar-pass, pipetest-pass, deadlock-mutex-pass, deadlock-semaphore-pass, pipe-pass]
+negative_tests:
+  - { id: mutex-workload-off-by-one, expect_fail_assertions: [mutex-pass], description: 少一次更新必须让最终计数断言失败 }
+hint_ladder:
+  - { level: 0, when: 尚未运行, say: 先记录理论总数与实际失败位置。 }
+  - { level: 1, when: counter mismatch, say: 分别检查临界区是否加锁和每线程循环次数。 }
+  - { level: 2, when: 只怀疑锁, say: THREAD_COUNT × 实际循环次数是多少？ }
+  - { level: 3, when: 已定位边界, say: 修正循环边界后跑完整同步与死锁回归。 }
+report_prompts: [哪条证据说明线程创建和 waittid 已成功？, 如何区分丢更新与少执行一次？]

@@ -1,0 +1,53 @@
+schema_version: 1
+id: lab6
+title: 磁盘文件系统
+version: 1.0.0
+feature: lab6
+prerequisites: [lab1, lab2, lab3, lab4, lab5]
+textbook: [OSTEP Ch.40 File System Implementation, OSTEP Ch.43 Log-structured File Systems]
+status: stable
+manual_revision: lab6-hard-link-debug-stable-v1
+manual: ../../labs/lab6-disk-fs.md
+answers: ../../labs/answers/lab6-answers.md
+tutor_context: ../../tutor/prompts/lab6/context.md
+knowledge:
+  - { id: os.fs.virtio, level: implementation, concept_ref: concepts/disk-fs.yaml#os.fs.virtio }
+  - { id: os.fs.hard-link, level: mechanism, concept_ref: concepts/disk-fs.yaml#os.fs.hard-link }
+tasks:
+  - { id: orient, stage: orient, goal: 说明内嵌文件推进到 VirtIO 持久化文件系统后的新增层次 }
+  - { id: read, stage: read, goal: 沿块设备、inode、目录项和 fd 追踪一次文件访问 }
+  - { id: run, stage: run, goal: 用 VirtIO recipe 跑通文件、链接、mmap、spawn 与回归断言 }
+  - { id: debug, stage: debug, goal: 区分 inode 身份与目录项名字并验证 nlink 变化 }
+  - { id: reflect, stage: reflect, goal: 解释 unlink 名字后数据何时真正回收 }
+starter_files:
+  added:
+    - kernel/src/fs/disk.rs
+    - kernel/src/virtio_block.rs
+    - kernel/src/global_alloc.rs
+    - user/src/bin/file_test.rs
+    - user/src/bin/link_test.rs
+    - user/src/bin/mass_unlink_test.rs
+  editable_by_variant:
+    debug: [user/src/bin/link_test.rs]
+  generated: [Cargo.toml, kernel/Cargo.toml, user/Cargo.toml]
+variants:
+  debug:
+    manifest: variants/debug/manifest.yaml
+    source: ../../scaffold/exercises/lab6/debug/user/src/bin/link_test.rs
+verification:
+  recipe: lab6.verify.v1
+  command: make test-lab6
+  assertions:
+    - { id: file-pass, kind: output-contains, text: "file_test pass", assesses: [os.fs.virtio] }
+    - { id: link-pass, kind: output-contains, text: "Test link OK!", assesses: [os.fs.hard-link] }
+    - { id: mmap-pass, kind: output-contains, text: "mmap_test pass" }
+    - { id: spawn-pass, kind: output-contains, text: "spawn_test pass" }
+    - { id: stride-pass, kind: output-contains, text: "stride_test pass" }
+    - { id: fs-pass, kind: output-contains, text: "fs_test pass" }
+    - { id: pipe-pass, kind: output-contains, text: "pipe_test pass" }
+    - { id: all-processes-exited, kind: output-contains, text: "All processes exited." }
+  observable_trace: []
+misconceptions:
+  - { id: link-copies-file, statement: 硬链接会复制一份文件数据, counter: 两个目录项指向同一 inode，nlink 增加 }
+  - { id: unlink-always-frees, statement: 删除任一名字都会立即释放 inode, counter: 只有 nlink 与打开引用均归零后才能回收 }
+rubric_ref: ../../learning/rubric-v2-frozen.md

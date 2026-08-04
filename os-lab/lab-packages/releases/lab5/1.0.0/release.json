@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "labId": "lab5",
+  "version": "1.0.0",
+  "title": "文件系统与并发",
+  "status": "stable",
+  "feature": "lab5",
+  "manual": "labs/lab5-fs-and-sync.md",
+  "answers": "labs/answers/lab5-answers.md",
+  "tutorContext": "tutor/prompts/lab5/context.md",
+  "verification": {
+    "recipe": "lab5.verify.v1",
+    "command": "cargo run -p kernel --features lab5 --release",
+    "assertions": [
+      {
+        "id": "file-content",
+        "kind": "output-contains",
+        "text": "Hello from testfile!",
+        "assesses": [
+          "os.fs.fd"
+        ]
+      },
+      {
+        "id": "fs-pass",
+        "kind": "output-contains",
+        "text": "fs_test pass",
+        "assesses": [
+          "os.fs.fd"
+        ]
+      },
+      {
+        "id": "pipe-pass",
+        "kind": "output-contains",
+        "text": "pipe_test pass",
+        "assesses": [
+          "os.ipc.pipe"
+        ]
+      },
+      {
+        "id": "all-processes-exited",
+        "kind": "output-contains",
+        "text": "All processes exited."
+      }
+    ],
+    "observable_trace": []
+  },
+  "variants": {
+    "debug": {
+      "label": "用 open/read 的分层证据定位文件名查找失败，而不是把问题误归因于 fd 或管道。",
+      "files": [
+        "user/src/bin/fs_test.rs"
+      ],
+      "sources": {
+        "user/src/bin/fs_test.rs": "scaffold/exercises/lab5/debug/user/src/bin/fs_test.rs"
+      },
+      "manifest": "lab-packages/lab5/variants/debug/manifest.yaml"
+    }
+  },
+  "source": {
+    "specHash": "a860fed72e21ed3b7db51ff5481fb20f6f7951b9e429142c280a6b9ed9ed61e0",
+    "specPath": "lab-packages/lab5/lab.yaml"
+  },
+  "test": {
+    "runId": "59d0c1b3-035d-4dda-b912-ba103b659fb6",
+    "labId": "lab5",
+    "version": "1.0.0",
+    "variant": "debug",
+    "specHash": "a860fed72e21ed3b7db51ff5481fb20f6f7951b9e429142c280a6b9ed9ed61e0",
+    "status": "passed",
+    "isolated": true,
+    "commands": [
+      {
+        "kind": "baseline-build",
+        "exitCode": 0,
+        "outputHash": "0b167d3e310f622920e222c9029f0c7c190dd5b09b344056dc211bc2aab0cdfb"
+      },
+      {
+        "kind": "baseline-trusted-test",
+        "exitCode": 0,
+        "outputHash": "4b79a69a728916f83b29b733d904815abd2b6dad3f8dc3691e262bd2f4476b80"
+      },
+      {
+        "kind": "variant-build",
+        "exitCode": 0,
+        "outputHash": "ab987a4454a09ff6de73ad2db2165e8a18fa78c89d8fdcc132165a7d8102666b"
+      },
+      {
+        "kind": "variant-trusted-test",
+        "exitCode": 0,
+        "outputHash": "f128b47c2ab8a0b9413e902dec56ef9075b112e9fde4564bf4324eaa04d4f092"
+      }
+    ],
+    "baselineAssertions": [
+      {
+        "id": "file-content",
+        "passed": true
+      },
+      {
+        "id": "fs-pass",
+        "passed": true
+      },
+      {
+        "id": "pipe-pass",
+        "passed": true
+      },
+      {
+        "id": "all-processes-exited",
+        "passed": true
+      }
+    ],
+    "variantAssertions": [
+      {
+        "id": "file-content",
+        "passed": false
+      },
+      {
+        "id": "fs-pass",
+        "passed": false
+      },
+      {
+        "id": "pipe-pass",
+        "passed": false
+      },
+      {
+        "id": "all-processes-exited",
+        "passed": true
+      }
+    ],
+    "negativeMatched": true,
+    "startedAt": "2026-08-04T03:49:24.175Z",
+    "finishedAt": "2026-08-04T03:49:38.564Z",
+    "author": "BC-alignment"
+  },
+  "approval": {
+    "approved": true,
+    "teacher": "BC-alignment",
+    "note": "LAB5 stable 1.0.0: schema, dry-run, isolated baseline, negative variant, and teaching acceptance passed.",
+    "approvedAt": "2026-08-04T03:58:42.326Z"
+  },
+  "author": "BC-alignment",
+  "publishedAt": "2026-08-04T03:58:42.326Z"
+}

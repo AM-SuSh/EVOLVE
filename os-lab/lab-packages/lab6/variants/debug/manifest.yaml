@@ -1,0 +1,25 @@
+id: lab6-debug-hard-link-count
+lab: lab6
+variant: debug
+version: 1.0.0
+learning_goal: 用 fstat 证据解释硬链接共享 inode 与 nlink 计数，而不是把 linkat 当成文件复制。
+target_concepts: [os.fs.hard-link]
+student_file: user/src/bin/link_test.rs
+source_template: ../../../../scaffold/exercises/lab6/debug/user/src/bin/link_test.rs
+manual_anchor: labs/lab6-disk-fs.md#任务一跑通-lab6
+planted_bug:
+  location: linkat 后的 fstat 验收条件
+  wrong: 创建第二个名字后仍要求 nlink 等于 1
+  correct: 两个目录项共享 inode，二者 nlink 均为 2
+  symptom: file_test 通过后报告 fstat nlink mismatch，缺失链接及后续断言
+success_criteria:
+  recipe: lab6.verify.v1
+  assertions: [file-pass, link-pass, mmap-pass, spawn-pass, stride-pass, fs-pass, pipe-pass, all-processes-exited]
+negative_tests:
+  - { id: wrong-nlink-expectation, expect_fail_assertions: [link-pass], description: 错误 nlink 预期必须阻止 Test link OK! }
+hint_ladder:
+  - { level: 0, when: 尚未运行, say: 用带 VirtIO 的可信 recipe 保存第一个失败点。 }
+  - { level: 1, when: nlink mismatch, say: 同时打印两个 fd 的 ino 与 nlink，先确认是否同一 inode。 }
+  - { level: 2, when: 认为 link 复制数据, say: 两个目录项各贡献几个链接计数？ }
+  - { level: 3, when: 已定位条件, say: 修正计数预期后完整跑过八条回归。 }
+report_prompts: [linkat 后 inode 和 nlink 各发生了什么？, unlink 一个名字后为何另一个仍有效？]

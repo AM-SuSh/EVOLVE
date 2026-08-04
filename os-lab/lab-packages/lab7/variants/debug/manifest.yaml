@@ -1,0 +1,25 @@
+id: lab7-debug-signal-mask
+lab: lab7
+variant: debug
+version: 1.0.0
+learning_goal: 区分信号 pending 与 delivery，修复未真正屏蔽 SIGUSR1 的掩码设置。
+target_concepts: [os.signal.mask]
+student_file: user/src/bin/signal_mask_test.rs
+source_template: ../../../../scaffold/exercises/lab7/debug/user/src/bin/signal_mask_test.rs
+manual_anchor: labs/lab7-ipc-signal.md#任务一跑通-lab7
+planted_bug:
+  location: signal_mask_test 构造 mask 的位置
+  wrong: mask 设为 0，实际未屏蔽任何信号
+  correct: 设置 SIGUSR1 对应 bit
+  symptom: 输出 signal delivered while masked，缺少 signal_mask_test pass 和管道回归
+success_criteria:
+  recipe: lab7.verify.v1
+  assertions: [dup-pass, signal-pass, signal-mask-pass, pipe-pass]
+negative_tests:
+  - { id: zero-signal-mask, expect_fail_assertions: [signal-mask-pass, pipe-pass], description: 未屏蔽时 handler 提前执行，后续断言必须失败 }
+hint_ladder:
+  - { level: 0, when: 尚未运行, say: 先确认失败发生在发送、pending 还是投递阶段。 }
+  - { level: 1, when: 提前投递, say: 记录 sigprocmask 的入参与 SIGUSR1 编号。 }
+  - { level: 2, when: mask 为 0, say: 位图中 0 表示屏蔽全部还是一个都不屏蔽？ }
+  - { level: 3, when: 已定位位图, say: 只设置目标信号 bit，再跑四条回归。 }
+report_prompts: [哪条输出证明信号在清除 mask 前已投递？, pending 与 delivery 的状态边界是什么？]

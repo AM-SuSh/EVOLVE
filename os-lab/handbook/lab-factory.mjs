@@ -307,8 +307,11 @@ export async function testLabPackage(labId, options = {}) {
   try {
     await copyIsolatedWorkspace(config.osLabRoot, workspace)
     const recipe = getRunRecipe(inspected.labId)
+    const usesWorkspaceTarget = recipe.steps.some((step) => step.cmd === 'qemu-system-riscv64')
     const runPhase = async (phase) => {
-      const phaseTarget = path.join(temporary, `${phase}-target`)
+      const phaseTarget = usesWorkspaceTarget
+        ? path.join(workspace, 'target')
+        : path.join(temporary, `${phase}-target`)
       const commandOptions = { cwd: workspace, timeoutMs: options.timeoutMs, env: { ...process.env, CARGO_TARGET_DIR: phaseTarget } }
       const buildArgs = ['check', '-p', 'kernel', '--features', inspected.spec.feature, '--release', '--target-dir', phaseTarget]
       const build = await execute(process.platform === 'win32' ? 'cargo.exe' : 'cargo', buildArgs, commandOptions)
@@ -331,6 +334,9 @@ export async function testLabPackage(labId, options = {}) {
     if (!target) throw new Error(`${variant} 没有声明可编辑目标`)
     const source = path.resolve(path.dirname(inspected.specPath), inspected.spec.variants[variant].source)
     await copySource(source, path.join(workspace, target))
+    // kernel/build.rs keeps user binaries and disk images under workspace/target.
+    // Remove all baseline artifacts before compiling the planted variant.
+    await rm(path.join(workspace, 'target'), { recursive: true, force: true })
     const variantResult = await runPhase('variant')
     variantAssertions = variantResult.assertions
   } catch (error) {

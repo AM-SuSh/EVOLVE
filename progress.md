@@ -1,5 +1,27 @@
 # os-lab 项目进度总览
 
+## 2026-08-04 - Task: B+C Lab3–8 对齐到 Lab2 完成度
+
+### What was done
+
+- 将 Lab3–8 补齐为 `1.0.0/stable` Lab Factory 包：稳定 `lab.yaml`、概念映射、机器可读检查点、可编译 debug 植入、负向断言和 A/B/C 验收文档。
+- 对六个 Lab 逐一完成真实隔离测试：基线 QEMU 断言全部通过，debug 变式均在预期教学症状上失败并命中负向断言；Lab6–8 使用真实 VirtIO 磁盘配方。
+- 修复隔离测试器的两个真实性问题：基线/变式不再复用用户程序缓存，磁盘型 Lab 的内核与 `fs.img` 均在 QEMU 实际读取的隔离 target 中重建。
+- 将 Lab8 debug 目标改到默认 initproc 实际执行的 `lab8_integration_test.rs`，避免只修改未进入验收链的独立 `mutex_test.rs`。
+- 发布 Lab3–8 不可变 `1.0.0` release 并更新 `published.json`；保留 Lab3 历史 `0.1.2-draft` release。
+- 新增 Lab1→Lab8 顺序实领回归：教师为 Lab3–8 指定 debug，核对 `.scaffold-state.json` 以及六个学生落盘文件与发布源逐字一致。
+
+### Testing
+
+- `lint` 与 `dry-run --variant debug`：Lab3–8 全部通过。
+- 隔离测试 runId：Lab3 `0a126131-...`、Lab4 `ccd59493-...`、Lab5 `59d0c1b3-...`、Lab6 `6b3706e6-...`、Lab7 `063639da-...`、Lab8 `7e202ae8-...`，均为 `status=passed`、`isolated=true`、`negativeMatched=true`。
+- `cd os-lab/handbook && npm test`：46/46 通过，含新增的 B+C Lab3–8 顺序实领、源码一致性与隔离缓存回归。
+
+### Notes
+
+- 本项不恢复 Knowledge Path，不重复处理已通过的远端 CI。
+- 人工全链 UI 测试与最终验收由用户另行执行；本次 B 侧结论基于教学安排、领取契约、状态和实际源码证据，不虚构鼠标点击记录。
+
 ## 2026-08-04 - Task: B+C Lab2 remedial 实际领取验收
 
 ### What was done

@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "labs": {
     "lab3": {
-      "version": "0.1.2-draft",
+      "version": "1.0.0",
       "title": "内存管理与虚存",
       "feature": "lab3",
-      "status": "sample",
+      "status": "stable",
       "manual": "labs/lab3-memory.md",
       "answers": "labs/answers/lab3-answers.md",
       "tutorContext": "tutor/prompts/lab3/context.md",
@@ -49,7 +49,7 @@
           "manifest": "lab-packages/lab3/variants/debug/manifest.yaml"
         }
       },
-      "release": "releases/lab3/0.1.2-draft/release.json"
+      "release": "releases/lab3/1.0.0/release.json"
     },
     "lab2": {
       "version": "1.0.0",
@@ -147,6 +147,333 @@
         }
       },
       "release": "releases/lab2/1.0.0/release.json"
+    },
+    "lab4": {
+      "version": "1.0.0",
+      "title": "进程管理",
+      "feature": "lab4",
+      "status": "stable",
+      "manual": "labs/lab4-process.md",
+      "answers": "labs/answers/lab4-answers.md",
+      "tutorContext": "tutor/prompts/lab4/context.md",
+      "verification": {
+        "recipe": "lab4.verify.v1",
+        "command": "cargo run -p kernel --features lab4 --release",
+        "assertions": [
+          {
+            "id": "parent-output",
+            "kind": "output-contains",
+            "text": "I am parent",
+            "assesses": [
+              "os.process.fork-wait"
+            ]
+          },
+          {
+            "id": "child-output",
+            "kind": "output-contains",
+            "text": "I am child",
+            "assesses": [
+              "os.process.fork-wait"
+            ]
+          },
+          {
+            "id": "fork-pass",
+            "kind": "output-contains",
+            "text": "fork_test pass",
+            "assesses": [
+              "os.process.fork-wait"
+            ]
+          },
+          {
+            "id": "all-processes-exited",
+            "kind": "output-contains",
+            "text": "All processes exited."
+          }
+        ],
+        "observable_trace": []
+      },
+      "variants": {
+        "debug": {
+          "label": "区分 waitpid 返回的子进程 pid 与独立写回的 exit code，修复错误的通过条件。",
+          "files": [
+            "user/src/bin/fork_test.rs"
+          ],
+          "sources": {
+            "user/src/bin/fork_test.rs": "scaffold/exercises/lab4/debug/user/src/bin/fork_test.rs"
+          },
+          "manifest": "lab-packages/lab4/variants/debug/manifest.yaml"
+        }
+      },
+      "release": "releases/lab4/1.0.0/release.json"
+    },
+    "lab5": {
+      "version": "1.0.0",
+      "title": "文件系统与并发",
+      "feature": "lab5",
+      "status": "stable",
+      "manual": "labs/lab5-fs-and-sync.md",
+      "answers": "labs/answers/lab5-answers.md",
+      "tutorContext": "tutor/prompts/lab5/context.md",
+      "verification": {
+        "recipe": "lab5.verify.v1",
+        "command": "cargo run -p kernel --features lab5 --release",
+        "assertions": [
+          {
+            "id": "file-content",
+            "kind": "output-contains",
+            "text": "Hello from testfile!",
+            "assesses": [
+              "os.fs.fd"
+            ]
+          },
+          {
+            "id": "fs-pass",
+            "kind": "output-contains",
+            "text": "fs_test pass",
+            "assesses": [
+              "os.fs.fd"
+            ]
+          },
+          {
+            "id": "pipe-pass",
+            "kind": "output-contains",
+            "text": "pipe_test pass",
+            "assesses": [
+              "os.ipc.pipe"
+            ]
+          },
+          {
+            "id": "all-processes-exited",
+            "kind": "output-contains",
+            "text": "All processes exited."
+          }
+        ],
+        "observable_trace": []
+      },
+      "variants": {
+        "debug": {
+          "label": "用 open/read 的分层证据定位文件名查找失败，而不是把问题误归因于 fd 或管道。",
+          "files": [
+            "user/src/bin/fs_test.rs"
+          ],
+          "sources": {
+            "user/src/bin/fs_test.rs": "scaffold/exercises/lab5/debug/user/src/bin/fs_test.rs"
+          },
+          "manifest": "lab-packages/lab5/variants/debug/manifest.yaml"
+        }
+      },
+      "release": "releases/lab5/1.0.0/release.json"
+    },
+    "lab6": {
+      "version": "1.0.0",
+      "title": "磁盘文件系统",
+      "feature": "lab6",
+      "status": "stable",
+      "manual": "labs/lab6-disk-fs.md",
+      "answers": "labs/answers/lab6-answers.md",
+      "tutorContext": "tutor/prompts/lab6/context.md",
+      "verification": {
+        "recipe": "lab6.verify.v1",
+        "command": "make test-lab6",
+        "assertions": [
+          {
+            "id": "file-pass",
+            "kind": "output-contains",
+            "text": "file_test pass",
+            "assesses": [
+              "os.fs.virtio"
+            ]
+          },
+          {
+            "id": "link-pass",
+            "kind": "output-contains",
+            "text": "Test link OK!",
+            "assesses": [
+              "os.fs.hard-link"
+            ]
+          },
+          {
+            "id": "mmap-pass",
+            "kind": "output-contains",
+            "text": "mmap_test pass"
+          },
+          {
+            "id": "spawn-pass",
+            "kind": "output-contains",
+            "text": "spawn_test pass"
+          },
+          {
+            "id": "stride-pass",
+            "kind": "output-contains",
+            "text": "stride_test pass"
+          },
+          {
+            "id": "fs-pass",
+            "kind": "output-contains",
+            "text": "fs_test pass"
+          },
+          {
+            "id": "pipe-pass",
+            "kind": "output-contains",
+            "text": "pipe_test pass"
+          },
+          {
+            "id": "all-processes-exited",
+            "kind": "output-contains",
+            "text": "All processes exited."
+          }
+        ],
+        "observable_trace": []
+      },
+      "variants": {
+        "debug": {
+          "label": "用 fstat 证据解释硬链接共享 inode 与 nlink 计数，而不是把 linkat 当成文件复制。",
+          "files": [
+            "user/src/bin/link_test.rs"
+          ],
+          "sources": {
+            "user/src/bin/link_test.rs": "scaffold/exercises/lab6/debug/user/src/bin/link_test.rs"
+          },
+          "manifest": "lab-packages/lab6/variants/debug/manifest.yaml"
+        }
+      },
+      "release": "releases/lab6/1.0.0/release.json"
+    },
+    "lab7": {
+      "version": "1.0.0",
+      "title": "IPC 与信号",
+      "feature": "lab7",
+      "status": "stable",
+      "manual": "labs/lab7-ipc-signal.md",
+      "answers": "labs/answers/lab7-answers.md",
+      "tutorContext": "tutor/prompts/lab7/context.md",
+      "verification": {
+        "recipe": "lab7.verify.v1",
+        "command": "make test-lab7",
+        "assertions": [
+          {
+            "id": "dup-pass",
+            "kind": "output-contains",
+            "text": "dup_test pass",
+            "assesses": [
+              "os.fd.dup"
+            ]
+          },
+          {
+            "id": "signal-pass",
+            "kind": "output-contains",
+            "text": "signal_test pass",
+            "assesses": [
+              "os.signal.mask"
+            ]
+          },
+          {
+            "id": "signal-mask-pass",
+            "kind": "output-contains",
+            "text": "signal_mask_test pass",
+            "assesses": [
+              "os.signal.mask"
+            ]
+          },
+          {
+            "id": "pipe-pass",
+            "kind": "output-contains",
+            "text": "pipe_test pass"
+          }
+        ],
+        "observable_trace": []
+      },
+      "variants": {
+        "debug": {
+          "label": "区分信号 pending 与 delivery，修复未真正屏蔽 SIGUSR1 的掩码设置。",
+          "files": [
+            "user/src/bin/signal_mask_test.rs"
+          ],
+          "sources": {
+            "user/src/bin/signal_mask_test.rs": "scaffold/exercises/lab7/debug/user/src/bin/signal_mask_test.rs"
+          },
+          "manifest": "lab-packages/lab7/variants/debug/manifest.yaml"
+        }
+      },
+      "release": "releases/lab7/1.0.0/release.json"
+    },
+    "lab8": {
+      "version": "1.0.0",
+      "title": "线程与同步",
+      "feature": "lab8",
+      "status": "stable",
+      "manual": "labs/lab8-thread-sync.md",
+      "answers": "labs/answers/lab8-answers.md",
+      "tutorContext": "tutor/prompts/lab8/context.md",
+      "verification": {
+        "recipe": "lab8.verify.v1",
+        "command": "make test-lab8",
+        "assertions": [
+          {
+            "id": "threads-pass",
+            "kind": "output-contains",
+            "text": "threads_test pass",
+            "assesses": [
+              "os.thread.blocking"
+            ]
+          },
+          {
+            "id": "threads-arg-pass",
+            "kind": "output-contains",
+            "text": "threads_arg_test pass",
+            "assesses": [
+              "os.thread.blocking"
+            ]
+          },
+          {
+            "id": "mutex-pass",
+            "kind": "output-contains",
+            "text": "mutex_test pass",
+            "assesses": [
+              "os.sync.mutex"
+            ]
+          },
+          {
+            "id": "condvar-pass",
+            "kind": "output-contains",
+            "text": "condvar_test pass"
+          },
+          {
+            "id": "pipetest-pass",
+            "kind": "output-contains",
+            "text": "pipetest passed!"
+          },
+          {
+            "id": "deadlock-mutex-pass",
+            "kind": "output-contains",
+            "text": "deadlock test mutex 1 OK!"
+          },
+          {
+            "id": "deadlock-semaphore-pass",
+            "kind": "output-contains",
+            "text": "deadlock test semaphore 1 OK!"
+          },
+          {
+            "id": "pipe-pass",
+            "kind": "output-contains",
+            "text": "pipe_test pass"
+          }
+        ],
+        "observable_trace": []
+      },
+      "variants": {
+        "debug": {
+          "label": "用最终共享计数不变量区分互斥失效与每线程工作量的 off-by-one 错误。",
+          "files": [
+            "user/src/bin/lab8_integration_test.rs"
+          ],
+          "sources": {
+            "user/src/bin/lab8_integration_test.rs": "scaffold/exercises/lab8/debug/user/src/bin/lab8_integration_test.rs"
+          },
+          "manifest": "lab-packages/lab8/variants/debug/manifest.yaml"
+        }
+      },
+      "release": "releases/lab8/1.0.0/release.json"
     }
   }
 }

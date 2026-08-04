@@ -1,0 +1,15 @@
+id: os.fs.virtio
+title: VirtIO 块设备与磁盘文件系统
+level: implementation
+summary: VirtIO 提供块读写，easy-fs 在块上组织 inode、目录项与数据；fd 是进程访问这些对象的入口。
+source_anchors: [kernel/src/virtio_block.rs, kernel/src/fs/disk.rs, user/src/bin/file_test.rs]
+invariants: [带磁盘 recipe 才能访问 fs.img, 块层错误不可伪装成文件名错误]
+observable_evidence: [file_test pass]
+---
+id: os.fs.hard-link
+title: 硬链接与 inode 引用计数
+level: mechanism
+summary: linkat 增加指向同一 inode 的目录项与 nlink，unlinkat 删除名字并递减 nlink。
+source_anchors: [kernel/src/fs/disk.rs, user/src/bin/link_test.rs]
+invariants: [链接前后 inode 号相同, nlink 随目录项数量变化]
+observable_evidence: [Test link OK!]

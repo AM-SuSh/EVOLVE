@@ -1,0 +1,8 @@
+schema_version: 1
+lab_id: lab6
+checkpoints:
+  - { id: C6-1, stage: orient, required_evidence: [manual], prompt: 说明 VirtIO、块、inode、目录项和 fd 的层次。 }
+  - { id: C6-2, stage: read, required_evidence: [code], prompt: 找到 linkat 更新目录项和 nlink 的位置。 }
+  - { id: C6-3, stage: run, required_evidence: [run], prompt: 保存带 VirtIO 的八条可信断言。 }
+  - { id: C6-4, stage: debug, required_evidence: [run, code], prompt: 对照 link 前后 inode 与 nlink，定位错误预期。 }
+  - { id: C6-5, stage: reflect, required_evidence: [report], prompt: 解释 unlink 一个名字后数据为何仍可由另一个名字访问。 }

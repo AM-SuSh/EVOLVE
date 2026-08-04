@@ -1,0 +1,15 @@
+id: os.fs.fd
+title: 文件描述符与命名查找
+level: mechanism
+summary: open 先按名字解析对象，再把对象安装进进程 fd 表；read/close 只使用 fd，不重新解析名字。
+source_anchors: [kernel/src/fs/embedded.rs, os-fs/, user/src/bin/fs_test.rs]
+invariants: [不存在的名字必须让 open 失败, close 后 fd 不再指向原对象]
+observable_evidence: [Hello from testfile!, fs_test pass]
+---
+id: os.ipc.pipe
+title: 管道端点与跨进程 IPC
+level: mechanism
+summary: pipe 创建成对端点，fork 后父子关闭不用的一端并通过共享缓冲传递字节。
+source_anchors: [kernel/src/sync.rs, user/src/bin/pipe_test.rs]
+invariants: [读写端方向不可颠倒, 关闭规则影响 EOF 与资源回收]
+observable_evidence: [pipe says hi, pipe_test pass]

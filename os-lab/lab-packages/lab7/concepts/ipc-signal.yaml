@@ -1,0 +1,15 @@
+id: os.fd.dup
+title: dup 与共享打开对象
+level: mechanism
+summary: dup 新建 fd 表项但共享底层打开对象及偏移，重定向改变的是引用关系而不是复制文件。
+source_anchors: [os-fs/src/fd_kind.rs, user/src/bin/dup_test.rs]
+invariants: [新旧 fd 指向同一底层对象, 关闭一个 fd 不应提前销毁仍被引用的对象]
+observable_evidence: [dup_test pass]
+---
+id: os.signal.mask
+title: 信号 pending、mask 与投递
+level: mechanism
+summary: kill 设置 pending；mask 决定当前是否可投递；清除 mask 后在目标返回用户态前进入 handler。
+source_anchors: [kernel/src/signal.rs, os-signal/, user/src/bin/signal_mask_test.rs]
+invariants: [屏蔽期间 handler 不执行, 清除 mask 后 pending 信号最终投递]
+observable_evidence: [signal_test pass, signal_mask_test pass]

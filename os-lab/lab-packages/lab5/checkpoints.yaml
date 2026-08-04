@@ -1,0 +1,8 @@
+schema_version: 1
+lab_id: lab5
+checkpoints:
+  - { id: C5-1, stage: orient, required_evidence: [manual], prompt: 说明 fd 与具体文件对象的区别。 }
+  - { id: C5-2, stage: read, required_evidence: [code], prompt: 找到 open 名字解析和 fd 安装的边界。 }
+  - { id: C5-3, stage: run, required_evidence: [run], prompt: 保存文件内容与管道四条可信断言。 }
+  - { id: C5-4, stage: debug, required_evidence: [run, code], prompt: 用错误输出判断失败发生在 open 还是 read。 }
+  - { id: C5-5, stage: reflect, required_evidence: [report], prompt: 解释最小实验为何能排除管道实现问题。 }

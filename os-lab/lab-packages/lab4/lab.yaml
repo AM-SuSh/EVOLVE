@@ -1,0 +1,83 @@
+schema_version: 1
+id: lab4
+title: 进程管理
+version: 1.0.0
+feature: lab4
+prerequisites: [lab1, lab2, lab3]
+textbook:
+  - OSTEP Ch.5 Process API
+status: stable
+manual_revision: lab4-waitpid-debug-stable-v1
+manual: ../../labs/lab4-process.md
+answers: ../../labs/answers/lab4-answers.md
+tutor_context: ../../tutor/prompts/lab4/context.md
+
+knowledge:
+  - id: os.process.fork-wait
+    level: mechanism
+    concept_ref: concepts/process.yaml#os.process.fork-wait
+  - id: os.process.exec
+    level: mechanism
+    concept_ref: concepts/process.yaml#os.process.exec
+
+tasks:
+  - id: orient
+    stage: orient
+    goal: 说明任务抽象扩展为进程后新增的地址空间与资源所有权
+  - id: read
+    stage: read
+    goal: 沿 fork、exec、exit、waitpid 追踪父子进程生命周期
+  - id: run
+    stage: run
+    goal: 跑通父子分支、退出码回收与进程全部退出断言
+  - id: debug
+    stage: debug
+    goal: 区分 fork 返回值、wait 返回 pid 与子进程 exit code
+  - id: reflect
+    stage: reflect
+    goal: 用运行证据解释僵尸进程为何必须由父进程回收
+
+starter_files:
+  added:
+    - kernel/src/process.rs
+    - user/src/bin/fork_test.rs
+    - user/src/bin/exec_test.rs
+  editable_by_variant:
+    debug: [user/src/bin/fork_test.rs]
+  generated: [Cargo.toml, kernel/Cargo.toml, user/Cargo.toml]
+
+variants:
+  debug:
+    manifest: variants/debug/manifest.yaml
+    source: ../../scaffold/exercises/lab4/debug/user/src/bin/fork_test.rs
+
+verification:
+  recipe: lab4.verify.v1
+  command: cargo run -p kernel --features lab4 --release
+  assertions:
+    - id: parent-output
+      kind: output-contains
+      text: "I am parent"
+      assesses: [os.process.fork-wait]
+    - id: child-output
+      kind: output-contains
+      text: "I am child"
+      assesses: [os.process.fork-wait]
+    - id: fork-pass
+      kind: output-contains
+      text: "fork_test pass"
+      assesses: [os.process.fork-wait]
+    - id: all-processes-exited
+      kind: output-contains
+      text: "All processes exited."
+  observable_trace: []
+
+misconceptions:
+  - id: fork-single-return
+    statement: 认为 fork 只在父进程返回一次
+    counter: 父进程得到 child pid，子进程得到 0，二者从同一位置继续
+  - id: wait-result-is-exit-code
+    statement: 把 waitpid 的返回 pid 当成子进程退出码
+    counter: 返回值标识被回收进程，退出码通过独立指针写回
+
+rubric_ref: ../../learning/rubric-v2-frozen.md

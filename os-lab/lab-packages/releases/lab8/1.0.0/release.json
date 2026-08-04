@@ -1,0 +1,204 @@
+{
+  "schemaVersion": 1,
+  "labId": "lab8",
+  "version": "1.0.0",
+  "title": "线程与同步",
+  "status": "stable",
+  "feature": "lab8",
+  "manual": "labs/lab8-thread-sync.md",
+  "answers": "labs/answers/lab8-answers.md",
+  "tutorContext": "tutor/prompts/lab8/context.md",
+  "verification": {
+    "recipe": "lab8.verify.v1",
+    "command": "make test-lab8",
+    "assertions": [
+      {
+        "id": "threads-pass",
+        "kind": "output-contains",
+        "text": "threads_test pass",
+        "assesses": [
+          "os.thread.blocking"
+        ]
+      },
+      {
+        "id": "threads-arg-pass",
+        "kind": "output-contains",
+        "text": "threads_arg_test pass",
+        "assesses": [
+          "os.thread.blocking"
+        ]
+      },
+      {
+        "id": "mutex-pass",
+        "kind": "output-contains",
+        "text": "mutex_test pass",
+        "assesses": [
+          "os.sync.mutex"
+        ]
+      },
+      {
+        "id": "condvar-pass",
+        "kind": "output-contains",
+        "text": "condvar_test pass"
+      },
+      {
+        "id": "pipetest-pass",
+        "kind": "output-contains",
+        "text": "pipetest passed!"
+      },
+      {
+        "id": "deadlock-mutex-pass",
+        "kind": "output-contains",
+        "text": "deadlock test mutex 1 OK!"
+      },
+      {
+        "id": "deadlock-semaphore-pass",
+        "kind": "output-contains",
+        "text": "deadlock test semaphore 1 OK!"
+      },
+      {
+        "id": "pipe-pass",
+        "kind": "output-contains",
+        "text": "pipe_test pass"
+      }
+    ],
+    "observable_trace": []
+  },
+  "variants": {
+    "debug": {
+      "label": "用最终共享计数不变量区分互斥失效与每线程工作量的 off-by-one 错误。",
+      "files": [
+        "user/src/bin/lab8_integration_test.rs"
+      ],
+      "sources": {
+        "user/src/bin/lab8_integration_test.rs": "scaffold/exercises/lab8/debug/user/src/bin/lab8_integration_test.rs"
+      },
+      "manifest": "lab-packages/lab8/variants/debug/manifest.yaml"
+    }
+  },
+  "source": {
+    "specHash": "772d564c4f2796f7da84f5b0bea0d334bb479f2e27e9d7d10538b31e0673cdc3",
+    "specPath": "lab-packages/lab8/lab.yaml"
+  },
+  "test": {
+    "runId": "7e202ae8-8a9f-4517-9e78-314bd241134b",
+    "labId": "lab8",
+    "version": "1.0.0",
+    "variant": "debug",
+    "specHash": "772d564c4f2796f7da84f5b0bea0d334bb479f2e27e9d7d10538b31e0673cdc3",
+    "status": "passed",
+    "isolated": true,
+    "commands": [
+      {
+        "kind": "baseline-build",
+        "exitCode": 0,
+        "outputHash": "71723e9985f48c3744dae3d5034e1cd57ee448e54418f73cfda8018fa9f3bcc6"
+      },
+      {
+        "kind": "baseline-trusted-test",
+        "exitCode": 0,
+        "outputHash": "c1a6f7c9865276c885ca1d34f60a6f58473f5db2732a6aff868f002dc878a1b3"
+      },
+      {
+        "kind": "baseline-trusted-test",
+        "exitCode": 0,
+        "outputHash": "a92161a68b74861a233db8dced1b0138dda37b7334da2f25f7789c8ac27aac9a"
+      },
+      {
+        "kind": "variant-build",
+        "exitCode": 0,
+        "outputHash": "ae6729ca3f7810b826a56374c7876a9acbcf768c2b42cd38496bd5e17eba7678"
+      },
+      {
+        "kind": "variant-trusted-test",
+        "exitCode": 0,
+        "outputHash": "1baca8f23d22befe9e25e0ade32615de186c8b6d86cf969b20017e5bcee6f9dd"
+      },
+      {
+        "kind": "variant-trusted-test",
+        "exitCode": 0,
+        "outputHash": "56a5066a498890710cb19721f035446e6dfca5f9cb8d94eafd133ac529590336"
+      }
+    ],
+    "baselineAssertions": [
+      {
+        "id": "threads-pass",
+        "passed": true
+      },
+      {
+        "id": "threads-arg-pass",
+        "passed": true
+      },
+      {
+        "id": "mutex-pass",
+        "passed": true
+      },
+      {
+        "id": "condvar-pass",
+        "passed": true
+      },
+      {
+        "id": "pipetest-pass",
+        "passed": true
+      },
+      {
+        "id": "deadlock-mutex-pass",
+        "passed": true
+      },
+      {
+        "id": "deadlock-semaphore-pass",
+        "passed": true
+      },
+      {
+        "id": "pipe-pass",
+        "passed": true
+      }
+    ],
+    "variantAssertions": [
+      {
+        "id": "threads-pass",
+        "passed": true
+      },
+      {
+        "id": "threads-arg-pass",
+        "passed": true
+      },
+      {
+        "id": "mutex-pass",
+        "passed": false
+      },
+      {
+        "id": "condvar-pass",
+        "passed": false
+      },
+      {
+        "id": "pipetest-pass",
+        "passed": false
+      },
+      {
+        "id": "deadlock-mutex-pass",
+        "passed": false
+      },
+      {
+        "id": "deadlock-semaphore-pass",
+        "passed": false
+      },
+      {
+        "id": "pipe-pass",
+        "passed": false
+      }
+    ],
+    "negativeMatched": true,
+    "startedAt": "2026-08-04T03:57:38.818Z",
+    "finishedAt": "2026-08-04T03:58:14.327Z",
+    "author": "BC-alignment"
+  },
+  "approval": {
+    "approved": true,
+    "teacher": "BC-alignment",
+    "note": "LAB8 stable 1.0.0: schema, dry-run, isolated baseline, negative variant, and teaching acceptance passed.",
+    "approvedAt": "2026-08-04T03:58:53.164Z"
+  },
+  "author": "BC-alignment",
+  "publishedAt": "2026-08-04T03:58:53.164Z"
+}

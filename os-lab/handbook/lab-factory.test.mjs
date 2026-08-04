@@ -54,6 +54,91 @@ test('C6 issues the published Lab2 remedial variant through the normal scaffold 
   }
 })
 
+test('B+C sequentially issue every published Lab3-Lab8 debug variant with exact sources', async () => {
+  const previousStudentsRoot = process.env.OS_LAB_STUDENTS_ROOT
+  const previousCatalogPath = process.env.OS_LAB_FACTORY_CATALOG_PATH
+  const studentsRoot = path.join(temporary, 'lab3-lab8-students')
+  process.env.OS_LAB_STUDENTS_ROOT = studentsRoot
+  process.env.OS_LAB_FACTORY_CATALOG_PATH = path.join(repositoryRoot, 'lab-packages', 'published.json')
+  try {
+    const teacher = {
+      openLab: 'lab8',
+      assignments: {
+        lab2: 'fill',
+        lab3: 'debug',
+        lab4: 'debug',
+        lab5: 'debug',
+        lab6: 'debug',
+        lab7: 'debug',
+        lab8: 'debug',
+      },
+    }
+    for (const expectedLab of ['lab1', 'lab2', 'lab3', 'lab4', 'lab5', 'lab6', 'lab7', 'lab8']) {
+      const issued = await applyNext('bc-alignment-student', undefined, teacher)
+      assert.equal(issued.ok, true, issued.log?.join('\n'))
+      assert.equal(issued.lab, expectedLab)
+    }
+
+    const studentRoot = path.join(studentsRoot, 'bc-alignment-student')
+    const state = JSON.parse(await readFile(path.join(studentRoot, '.scaffold-state.json'), 'utf8'))
+    assert.deepEqual(state.applied, ['lab1', 'lab2', 'lab3', 'lab4', 'lab5', 'lab6', 'lab7', 'lab8'])
+    for (const labId of ['lab3', 'lab4', 'lab5', 'lab6', 'lab7', 'lab8']) {
+      assert.equal(state.variants[labId], 'debug')
+    }
+
+    const issuedSources = {
+      lab3: 'kernel/src/mm.rs',
+      lab4: 'user/src/bin/fork_test.rs',
+      lab5: 'user/src/bin/fs_test.rs',
+      lab6: 'user/src/bin/link_test.rs',
+      lab7: 'user/src/bin/signal_mask_test.rs',
+      lab8: 'user/src/bin/lab8_integration_test.rs',
+    }
+    const catalog = getExerciseCatalog()
+    for (const [labId, target] of Object.entries(issuedSources)) {
+      const publishedSource = catalog[labId].variants.debug.sources[target]
+      assert.ok(publishedSource, `${labId} debug source missing for ${target}`)
+      assert.equal(
+        await readFile(path.join(studentRoot, target), 'utf8'),
+        await readFile(path.join(repositoryRoot, publishedSource), 'utf8'),
+        `${labId} issued source differs from the published debug source`,
+      )
+    }
+  } finally {
+    if (previousStudentsRoot === undefined) delete process.env.OS_LAB_STUDENTS_ROOT
+    else process.env.OS_LAB_STUDENTS_ROOT = previousStudentsRoot
+    if (previousCatalogPath === undefined) delete process.env.OS_LAB_FACTORY_CATALOG_PATH
+    else process.env.OS_LAB_FACTORY_CATALOG_PATH = previousCatalogPath
+  }
+})
+
+test('C6 rebuilds disk-lab variants in the QEMU target without baseline user artifacts', async () => {
+  let call = 0
+  let baselineMarker
+  const baselineOutput = [
+    'file_test pass', 'Test link OK!', 'mmap_test pass', 'spawn_test pass',
+    'stride_test pass', 'fs_test pass', 'pipe_test pass', 'All processes exited.',
+  ].join('\n')
+  const executor = async (_command, _args, commandOptions) => {
+    call += 1
+    assert.equal(commandOptions.env.CARGO_TARGET_DIR, path.join(commandOptions.cwd, 'target'))
+    if (call === 1) {
+      baselineMarker = path.join(commandOptions.cwd, 'target', 'user-apps', 'baseline-marker')
+      await mkdir(path.dirname(baselineMarker), { recursive: true })
+      await writeFile(baselineMarker, 'baseline artifact', 'utf8')
+    }
+    if (call === 4) await assert.rejects(readFile(baselineMarker, 'utf8'))
+    if (call === 3) return { code: 0, output: baselineOutput }
+    if (call === 6) return { code: 0, output: 'file_test pass\nAll processes exited.\n' }
+    return { code: 0, output: '' }
+  }
+
+  const run = await testLabPackage('lab6', { ...options, variant: 'debug', executor, author: 'cache-test' })
+  assert.equal(run.ok, true)
+  assert.equal(run.negativeMatched, true)
+  assert.equal(call, 6)
+})
+
 test('C6 requires an isolated passing test and explicit teacher approval for immutable publication', async () => {
   let call = 0
   const passingOutput = 'Hello from user app!\n409684505\nYield round\nYield round\nYield round\nYield round\nYield round\nAll user apps exited.\n'

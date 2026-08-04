@@ -1,0 +1,23 @@
+schema_version: 1
+lab_id: lab3
+checkpoints:
+  - id: C3-1
+    stage: orient
+    required_evidence: [manual]
+    prompt: 说明独立地址空间解决了 Lab2 物理直访的什么问题。
+  - id: C3-2
+    stage: read
+    required_evidence: [code]
+    prompt: 沿 create_user_space 找到 ELF、用户栈与 PTE 权限的建立位置。
+  - id: C3-3
+    stage: run
+    required_evidence: [run]
+    prompt: 用 lab3.verify.v1 的四条断言记录缺 U 位时的真实现象。
+  - id: C3-4
+    stage: debug
+    required_evidence: [run, code]
+    prompt: 区分映射缺失、权限错误与 satp 未切换，并设计最小验证。
+  - id: C3-5
+    stage: reflect
+    required_evidence: [report]
+    prompt: 写清第一个假设、证伪证据和修复后的可信运行。

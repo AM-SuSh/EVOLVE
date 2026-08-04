@@ -1,0 +1,53 @@
+schema_version: 1
+id: lab8
+title: 线程与同步
+version: 1.0.0
+feature: lab8
+prerequisites: [lab1, lab2, lab3, lab4, lab5, lab6, lab7]
+textbook: [OSTEP Ch.26 Concurrency, OSTEP Ch.28 Locks, OSTEP Ch.30 Condition Variables, OSTEP Ch.32 Common Concurrency Problems]
+status: stable
+manual_revision: lab8-mutex-invariant-debug-stable-v1
+manual: ../../labs/lab8-thread-sync.md
+answers: ../../labs/answers/lab8-answers.md
+tutor_context: ../../tutor/prompts/lab8/context.md
+knowledge:
+  - { id: os.thread.blocking, level: mechanism, concept_ref: concepts/thread-sync.yaml#os.thread.blocking }
+  - { id: os.sync.mutex, level: mechanism, concept_ref: concepts/thread-sync.yaml#os.sync.mutex }
+tasks:
+  - { id: orient, stage: orient, goal: 区分进程资源与线程独占执行上下文 }
+  - { id: read, stage: read, goal: 沿 mutex lock、阻塞队列、unlock 唤醒追踪状态变化 }
+  - { id: run, stage: run, goal: 跑通线程、互斥、条件变量、死锁与管道回归断言 }
+  - { id: debug, stage: debug, goal: 用共享计数不变量定位工作量边界错误 }
+  - { id: reflect, stage: reflect, goal: 区分锁实现错误与测试工作量错误的证据 }
+starter_files:
+  added:
+    - kernel/src/processor.rs
+    - kernel/src/sync_syscall.rs
+    - kernel/src/deadlock.rs
+    - os-sync/
+    - user/src/bin/mutex_test.rs
+    - user/src/bin/condvar_test.rs
+  editable_by_variant:
+    debug: [user/src/bin/lab8_integration_test.rs]
+  generated: [Cargo.toml, kernel/Cargo.toml, user/Cargo.toml]
+variants:
+  debug:
+    manifest: variants/debug/manifest.yaml
+    source: ../../scaffold/exercises/lab8/debug/user/src/bin/lab8_integration_test.rs
+verification:
+  recipe: lab8.verify.v1
+  command: make test-lab8
+  assertions:
+    - { id: threads-pass, kind: output-contains, text: "threads_test pass", assesses: [os.thread.blocking] }
+    - { id: threads-arg-pass, kind: output-contains, text: "threads_arg_test pass", assesses: [os.thread.blocking] }
+    - { id: mutex-pass, kind: output-contains, text: "mutex_test pass", assesses: [os.sync.mutex] }
+    - { id: condvar-pass, kind: output-contains, text: "condvar_test pass" }
+    - { id: pipetest-pass, kind: output-contains, text: "pipetest passed!" }
+    - { id: deadlock-mutex-pass, kind: output-contains, text: "deadlock test mutex 1 OK!" }
+    - { id: deadlock-semaphore-pass, kind: output-contains, text: "deadlock test semaphore 1 OK!" }
+    - { id: pipe-pass, kind: output-contains, text: "pipe_test pass" }
+  observable_trace: []
+misconceptions:
+  - { id: mutex-fixes-workload, statement: 加锁会自动补偿遗漏的循环次数, counter: 锁只保证临界区互斥，不改变每个线程应执行的工作量 }
+  - { id: blocked-is-spinning, statement: 阻塞锁获取失败后仍持续占用 CPU 轮询, counter: 当前线程进入 Blocked 并由 unlock 唤醒重新入队 }
+rubric_ref: ../../learning/rubric-v2-frozen.md

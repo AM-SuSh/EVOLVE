@@ -1,0 +1,15 @@
+id: os.thread.blocking
+title: 线程状态与阻塞唤醒
+level: mechanism
+summary: 同进程线程共享地址空间与资源，但各自拥有 tid、栈和调度状态；阻塞时移出就绪队列，条件满足后重新入队。
+source_anchors: [kernel/src/processor.rs, kernel/src/sync_syscall.rs]
+invariants: [Blocked 线程不可被普通调度选中, 唤醒必须恢复为可调度状态]
+observable_evidence: [threads_test pass, threads_arg_test pass]
+---
+id: os.sync.mutex
+title: 互斥锁与共享计数不变量
+level: mechanism
+summary: 每次共享计数更新都必须位于同一把锁保护的临界区；最终值同时取决于互斥正确性和工作量边界。
+source_anchors: [os-sync/src/mutex.rs, user/src/bin/mutex_test.rs]
+invariants: [同一时刻最多一个持有者, 最终计数等于线程数乘每线程次数]
+observable_evidence: [mutex_test pass]
