@@ -477,19 +477,6 @@ watch(terminalDockOpen, (open) => {
 })
 const rightElement = ref<HTMLElement | null>(null)
 const workspaceBodyElement = ref<HTMLElement | null>(null)
-
-function workspaceStackRect() {
-  const exposed = codePanelRef.value?.editorStackEl as
-    | HTMLElement
-    | { value: HTMLElement | null }
-    | null
-    | undefined
-  const el =
-    exposed && typeof (exposed as HTMLElement).getBoundingClientRect === 'function'
-      ? (exposed as HTMLElement)
-      : (exposed as { value?: HTMLElement | null } | null | undefined)?.value || null
-  return el?.getBoundingClientRect() || workspaceBodyElement.value?.getBoundingClientRect() || null
-}
 const rowResizing = ref(false)
 const workspaceRowResizing = ref(false)
 
@@ -609,7 +596,7 @@ function startWorkspaceRowResize(event: PointerEvent) {
 
 function moveWorkspaceRowResize(event: PointerEvent) {
   if (!workspaceRowResizing.value) return
-  const rect = workspaceStackRect()
+  const rect = workspaceBodyElement.value?.getBoundingClientRect()
   if (!rect || rect.height <= 0) return
   const percent = ((event.clientY - rect.top) / rect.height) * 100
   workspaceCodeSplit.value = clamp(
@@ -2816,7 +2803,11 @@ onBeforeUnmount(() => {
               <ChevronUp :size="14" aria-hidden="true" />
             </button>
           </header>
-          <div class="ws-zone-body ws-workspace-body">
+          <div
+            ref="workspaceBodyElement"
+            class="ws-zone-body ws-workspace-body"
+            :style="workspaceGridStyle"
+          >
             <CodePanel
               ref="codePanelRef"
               class="ws-workspace-code"
@@ -2826,11 +2817,9 @@ onBeforeUnmount(() => {
               :student="studentId"
               :dark="isDark"
               :terminal-open="terminalDockOpen"
-              :editor-stack-style="workspaceGridStyle"
               @toggle-terminal="terminalDockOpen = !terminalDockOpen"
               @add-to-chat="addToChat"
-            >
-              <template #dock>
+            />
                 <div
                   v-show="showTerminalDock"
                   class="ws-workspace-row-resizer"
@@ -3055,8 +3044,6 @@ onBeforeUnmount(() => {
                     </div>
                   </div>
                 </div>
-              </template>
-            </CodePanel>
           </div>
         </section>
 
@@ -3867,21 +3854,15 @@ onBeforeUnmount(() => {
 }
 
 .ws-zone-workspace .ws-workspace-body {
-  display: flex;
+  display: grid;
   flex: 1 1 auto;
-  flex-direction: column;
+  grid-template-rows: minmax(180px, 1.25fr) minmax(130px, 0.75fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
-.ws-workspace-code {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-}
-
+.ws-workspace-code,
 .ws-workspace-terminal,
 .ws-workspace-terminal :deep(.ws-terminal-shell),
 .ws-workspace-terminal :deep(.ws-problems),

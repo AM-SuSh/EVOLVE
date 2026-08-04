@@ -1,5 +1,20 @@
 # os-lab 项目进度总览
 
+## 2026-08-04 - Task: 文件栏改回仅与编辑器同列
+
+### What was done
+- 取消「文件栏通栏到底」：文件夹栏回到代码编辑板块内，与编辑器并排；终端底栏重新横跨工作区整宽（在编辑区下方）。
+
+### Testing
+- 结构核对：`CodePanel` 恢复 `toolbar + tabs + (tree|editor)`；`LabWorkspace` 底栏为 `CodePanel` 的兄弟节点。
+- 需浏览器目视：手册/学习支持同时打开时，文件栏不贴通栏，只在工作区上半的代码板块内。
+
+### Notes
+- `CodePanel.vue`、`LabWorkspace.vue`、`docs/workbench-ui.md`
+- 回滚：若需恢复通栏到底，可按此前 dock 插槽方案再改。
+
+---
+
 ## 2026-08-04 - Task: 工作区文件栏通栏到底（对齐 VS Code）
 
 ### What was done

@@ -15,8 +15,6 @@ const props = defineProps<{
   student?: string
   dark?: boolean
   terminalOpen?: boolean
-  /** 右侧「编辑器 + 底栏」纵向 grid（由工作台传入，含终端时为 编辑区 | 分隔条 | 终端）。 */
-  editorStackStyle?: Record<string, string>
 }>()
 
 const emit = defineEmits<{
@@ -331,46 +329,112 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onWorkspaceSaveShortcut, true)
 })
 
-const editorStackEl = ref<HTMLElement | null>(null)
-
-defineExpose({ openAtLine, refreshFileStatus, editorStackEl })
+defineExpose({ openAtLine, refreshFileStatus })
 </script>
 
 <template>
   <section ref="codeRoot" class="ws-code" aria-label="系统代码">
-    <aside class="ws-code-tree-drawer" :class="{ open: treeOpen }" aria-label="目录结构">
-      <header class="ws-code-drawer-head">
-        <div>
-          <strong>文件</strong>
-          <small>{{ workspaceLabel }}</small>
-        </div>
-        <button type="button" class="ws-code-icon-btn" aria-label="关闭" @click="closeTree">
-          <X :size="14" aria-hidden="true" />
-        </button>
-      </header>
-      <div class="ws-code-tree">
-        <p v-if="loading" class="ws-code-note">目录加载中…</p>
-        <p v-else-if="error" class="ws-code-note error">{{ error }}</p>
-        <template v-else>
-          <template v-for="node in tree" :key="node.path">
-            <CodeTreeNode
-              :node="node"
-              :depth="0"
-              :expanded="expanded"
-              :active-path="activePath"
-              :lab-id="lab.id"
-              :student-root="isStudent"
-              :status-map="statusMap"
-              :status-source="source"
-              @toggle="toggleDir"
-              @open="openFile"
-            />
-          </template>
-        </template>
-      </div>
-    </aside>
+    <header class="ws-code-toolbar">
+      <button
+        type="button"
+        class="ws-code-tree-btn"
+        :class="{ active: treeOpen }"
+        :aria-expanded="treeOpen"
+        title="打开文件目录"
+        @click="toggleTree"
+      >
+        <FolderTree :size="15" aria-hidden="true" />
+        <span>目录</span>
+      </button>
 
-    <div class="ws-code-right">
+      <div v-if="activePath" class="ws-code-file-meta">
+        <FileCode2 :size="14" aria-hidden="true" />
+        <FileStatusBadge v-if="fileStatusFor(activePath)" :kind="fileStatusFor(activePath)!" />
+        <code>{{ activePath }}</code>
+        <em v-if="activeTab?.truncated">（已截断）</em>
+        <em v-else-if="hasUnsavedChanges" class="ws-code-unsaved">未保存</em>
+      </div>
+      <div v-else class="ws-code-file-meta ws-code-file-meta--hint">
+        <span>{{ workspaceLabel }}</span>
+        <small>代码编辑与下方运行共用此工作区</small>
+      </div>
+
+      <div class="ws-code-toolbar-actions">
+        <button
+          v-if="canEdit && activePath"
+          type="button"
+          class="ws-code-save"
+          :disabled="saving || !hasUnsavedChanges"
+          title="保存当前文件（Ctrl+S）"
+          aria-keyshortcuts="Control+s Meta+s"
+          @click="saveEdit"
+        >
+          {{ saving ? '保存中…' : '保存' }}
+        </button>
+        <button
+          v-if="activePath"
+          type="button"
+          class="ws-code-icon-btn"
+          title="添加到 AI 导师对话：有选区则只附选区，否则附光标附近代码"
+          aria-label="添加到对话"
+          @click="addCodeToChat"
+        >
+          <MessageSquarePlus :size="14" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          class="ws-code-icon-btn"
+          :class="{ 'ws-code-icon-btn--active': terminalOpen }"
+          :title="terminalOpen ? '隐藏底部面板' : '显示底部面板（终端 / Problems / 测试结果）'"
+          :aria-label="terminalOpen ? '隐藏底部面板' : '显示底部面板'"
+          @click="emit('toggle-terminal')"
+        >
+          <SquareTerminal :size="14" aria-hidden="true" />
+        </button>
+        <button type="button" class="ws-code-icon-btn" title="重新加载目录" @click="loadTree">
+          <RefreshCw :size="14" aria-hidden="true" />
+        </button>
+      </div>
+    </header>
+
+    <div v-if="openTabs.length" class="ws-code-tabs" role="tablist" aria-label="打开的文件">
+      <button
+        v-for="tab in openTabs"
+        :key="tab.path"
+        type="button"
+        role="tab"
+        :aria-selected="tab.path === activePath"
+        :class="['ws-code-tab', { active: tab.path === activePath }]"
+        :title="tab.path"
+        @click="openFile(tab.path)"
+      >
+        <FileStatusBadge v-if="fileStatusFor(tab.path)" :kind="fileStatusFor(tab.path)!" />
+        <span class="ws-code-tab-name">{{ tab.path.split('/').pop() }}</span>
+        <span
+          v-if="tab.draft !== tab.content"
+          class="ws-code-tab-dot"
+          aria-label="未保存"
+        ></span>
+        <span
+          class="ws-code-tab-close"
+          role="button"
+          tabindex="-1"
+          :aria-label="`关闭 ${tab.path}`"
+          @click.stop="closeTab(tab.path)"
+        >
+          <X :size="12" aria-hidden="true" />
+        </span>
+      </button>
+    </div>
+
+    <p
+      v-if="activeTab?.saveNote"
+      class="ws-code-flash"
+      :class="{ ok: activeTab.saveNote.startsWith('已保存') }"
+    >{{ activeTab.saveNote }}</p>
+
+    <!-- 文件栏只与编辑器同列，不与终端通栏；终端由工作区下方底栏承接。 -->
+    <div class="ws-code-main">
       <button
         v-if="treeOpen"
         type="button"
@@ -379,147 +443,71 @@ defineExpose({ openAtLine, refreshFileStatus, editorStackEl })
         @click="closeTree"
       />
 
-      <header class="ws-code-toolbar">
-        <button
-          type="button"
-          class="ws-code-tree-btn"
-          :class="{ active: treeOpen }"
-          :aria-expanded="treeOpen"
-          title="打开文件目录"
-          @click="toggleTree"
-        >
-          <FolderTree :size="15" aria-hidden="true" />
-          <span>目录</span>
-        </button>
-
-        <div v-if="activePath" class="ws-code-file-meta">
-          <FileCode2 :size="14" aria-hidden="true" />
-          <FileStatusBadge v-if="fileStatusFor(activePath)" :kind="fileStatusFor(activePath)!" />
-          <code>{{ activePath }}</code>
-          <em v-if="activeTab?.truncated">（已截断）</em>
-          <em v-else-if="hasUnsavedChanges" class="ws-code-unsaved">未保存</em>
-        </div>
-        <div v-else class="ws-code-file-meta ws-code-file-meta--hint">
-          <span>{{ workspaceLabel }}</span>
-          <small>代码编辑与下方运行共用此工作区</small>
-        </div>
-
-        <div class="ws-code-toolbar-actions">
-          <button
-            v-if="canEdit && activePath"
-            type="button"
-            class="ws-code-save"
-            :disabled="saving || !hasUnsavedChanges"
-            title="保存当前文件（Ctrl+S）"
-            aria-keyshortcuts="Control+s Meta+s"
-            @click="saveEdit"
-          >
-            {{ saving ? '保存中…' : '保存' }}
-          </button>
-          <button
-            v-if="activePath"
-            type="button"
-            class="ws-code-icon-btn"
-            title="添加到 AI 导师对话：有选区则只附选区，否则附光标附近代码"
-            aria-label="添加到对话"
-            @click="addCodeToChat"
-          >
-            <MessageSquarePlus :size="14" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            class="ws-code-icon-btn"
-            :class="{ 'ws-code-icon-btn--active': terminalOpen }"
-            :title="terminalOpen ? '隐藏底部面板' : '显示底部面板（终端 / Problems / 测试结果）'"
-            :aria-label="terminalOpen ? '隐藏底部面板' : '显示底部面板'"
-            @click="emit('toggle-terminal')"
-          >
-            <SquareTerminal :size="14" aria-hidden="true" />
-          </button>
-          <button type="button" class="ws-code-icon-btn" title="重新加载目录" @click="loadTree">
-            <RefreshCw :size="14" aria-hidden="true" />
-          </button>
-        </div>
-      </header>
-
-      <div v-if="openTabs.length" class="ws-code-tabs" role="tablist" aria-label="打开的文件">
-        <button
-          v-for="tab in openTabs"
-          :key="tab.path"
-          type="button"
-          role="tab"
-          :aria-selected="tab.path === activePath"
-          :class="['ws-code-tab', { active: tab.path === activePath }]"
-          :title="tab.path"
-          @click="openFile(tab.path)"
-        >
-          <FileStatusBadge v-if="fileStatusFor(tab.path)" :kind="fileStatusFor(tab.path)!" />
-          <span class="ws-code-tab-name">{{ tab.path.split('/').pop() }}</span>
-          <span
-            v-if="tab.draft !== tab.content"
-            class="ws-code-tab-dot"
-            aria-label="未保存"
-          ></span>
-          <span
-            class="ws-code-tab-close"
-            role="button"
-            tabindex="-1"
-            :aria-label="`关闭 ${tab.path}`"
-            @click.stop="closeTab(tab.path)"
-          >
-            <X :size="12" aria-hidden="true" />
-          </span>
-        </button>
-      </div>
-
-      <p
-        v-if="activeTab?.saveNote"
-        class="ws-code-flash"
-        :class="{ ok: activeTab.saveNote.startsWith('已保存') }"
-      >{{ activeTab.saveNote }}</p>
-
-      <div
-        ref="editorStackEl"
-        class="ws-code-stack"
-        :style="editorStackStyle"
-      >
-        <div class="ws-code-view">
-          <p v-if="activeTab?.error" class="ws-code-file-error">{{ activeTab.error }}</p>
-          <div v-if="!activePath" class="ws-code-empty">
-            <p class="ws-code-empty-lead">选择要查看或编辑的源码文件</p>
-            <p class="ws-code-empty-sub">{{ workspaceLabel }} · 从左侧文件栏浏览当前账号的实验代码</p>
-            <div v-if="labFiles.length" class="ws-code-picks">
-              <span>本 Lab 相关</span>
-              <div class="ws-code-picks-grid">
-                <button v-for="file in labFiles" :key="file" type="button" @click="openFile(file)">
-                  <FileCode2 :size="14" aria-hidden="true" />
-                  {{ file }}
-                </button>
-              </div>
-            </div>
-            <button type="button" class="ws-code-browse" @click="treeOpen = true">
-              <FolderTree :size="15" aria-hidden="true" />
-              浏览全部文件
-            </button>
+      <aside class="ws-code-tree-drawer" :class="{ open: treeOpen }" aria-label="目录结构">
+        <header class="ws-code-drawer-head">
+          <div>
+            <strong>文件</strong>
+            <small>{{ workspaceLabel }}</small>
           </div>
-
+          <button type="button" class="ws-code-icon-btn" aria-label="关闭" @click="closeTree">
+            <X :size="14" aria-hidden="true" />
+          </button>
+        </header>
+        <div class="ws-code-tree">
+          <p v-if="loading" class="ws-code-note">目录加载中…</p>
+          <p v-else-if="error" class="ws-code-note error">{{ error }}</p>
           <template v-else>
-            <p v-if="activeTab?.loading" class="ws-code-note">读取中…</p>
-            <MonacoEditor
-              v-else-if="showEditor && clientReady"
-              ref="editorRef"
-              v-model="draft"
-              :language="editorLanguage"
-              :read-only="!canEdit"
-              :dark="dark"
-              @save="onEditorSave"
-              @cursor="onEditorCursor"
-            />
+            <template v-for="node in tree" :key="node.path">
+              <CodeTreeNode
+                :node="node"
+                :depth="0"
+                :expanded="expanded"
+                :active-path="activePath"
+                :lab-id="lab.id"
+                :student-root="isStudent"
+                :status-map="statusMap"
+                :status-source="source"
+                @toggle="toggleDir"
+                @open="openFile"
+              />
+            </template>
           </template>
         </div>
+      </aside>
 
-        <!-- 底栏（终端等）由工作台注入，使左侧文件栏可通栏到底。 -->
-        <slot name="dock" />
+      <div class="ws-code-view">
+        <p v-if="activeTab?.error" class="ws-code-file-error">{{ activeTab.error }}</p>
+        <div v-if="!activePath" class="ws-code-empty">
+          <p class="ws-code-empty-lead">选择要查看或编辑的源码文件</p>
+          <p class="ws-code-empty-sub">{{ workspaceLabel }} · 从左侧文件栏浏览当前账号的实验代码</p>
+          <div v-if="labFiles.length" class="ws-code-picks">
+            <span>本 Lab 相关</span>
+            <div class="ws-code-picks-grid">
+              <button v-for="file in labFiles" :key="file" type="button" @click="openFile(file)">
+                <FileCode2 :size="14" aria-hidden="true" />
+                {{ file }}
+              </button>
+            </div>
+          </div>
+          <button type="button" class="ws-code-browse" @click="treeOpen = true">
+            <FolderTree :size="15" aria-hidden="true" />
+            浏览全部文件
+          </button>
+        </div>
+
+        <template v-else>
+          <p v-if="activeTab?.loading" class="ws-code-note">读取中…</p>
+          <MonacoEditor
+            v-else-if="showEditor && clientReady"
+            ref="editorRef"
+            v-model="draft"
+            :language="editorLanguage"
+            :read-only="!canEdit"
+            :dark="dark"
+            @save="onEditorSave"
+            @cursor="onEditorCursor"
+          />
+        </template>
       </div>
     </div>
   </section>
@@ -629,20 +617,12 @@ export default { components: { CodeTreeNode } }
 <style scoped>
 .ws-code {
   container-type: inline-size;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-width: 0;
   min-height: 0;
   background: var(--ws-surface);
-}
-
-.ws-code:not(:has(.ws-code-tree-drawer.open)) {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.ws-code:not(:has(.ws-code-tree-drawer.open)) .ws-code-tree-drawer {
-  display: none;
 }
 
 .ws-code-toolbar {
@@ -861,20 +841,11 @@ export default { components: { CodeTreeNode } }
   background: color-mix(in srgb, var(--ws-danger, #c0392b) 12%, transparent);
 }
 
-.ws-code-right {
+.ws-code-main {
   position: relative;
   display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  overflow: hidden;
-}
-
-.ws-code-stack {
-  display: grid;
   flex: 1 1 auto;
-  grid-template-rows: minmax(0, 1fr);
+  flex-direction: row;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -886,11 +857,9 @@ export default { components: { CodeTreeNode } }
 
 .ws-code-tree-drawer {
   display: none;
+  flex: 0 0 clamp(210px, 27%, 290px);
   grid-template-rows: auto minmax(0, 1fr);
-  width: clamp(210px, 27%, 290px);
   min-width: 0;
-  min-height: 0;
-  height: 100%;
   border-right: 1px solid var(--ws-line);
   background: var(--ws-surface);
 }
@@ -1100,10 +1069,6 @@ export default { components: { CodeTreeNode } }
 }
 
 @container (max-width: 620px) {
-  .ws-code {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .ws-code-tree-backdrop {
     position: absolute;
     inset: 0;
