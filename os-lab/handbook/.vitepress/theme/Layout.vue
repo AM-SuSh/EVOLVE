@@ -4,6 +4,7 @@ import { useData } from 'vitepress'
 import AuthGate from './components/AuthGate.vue'
 import LabWorkspace from './components/LabWorkspace.vue'
 import TeacherNav from './components/TeacherNav.vue'
+import UserNav from './components/UserNav.vue'
 import type { TutorLabId } from './tutor-model'
 
 /**
@@ -35,9 +36,10 @@ const { frontmatter } = useData()
     <Content />
   </div>
   <DefaultLayout v-else>
-    <!-- 教师复用「引导式学习」，只额外增加「实验验收」入口。 -->
+    <!-- 教师管理入口 + 当前用户（点击可退出）。 -->
     <template #nav-bar-content-after>
       <TeacherNav />
+      <UserNav />
     </template>
   </DefaultLayout>
 </template>

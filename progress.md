@@ -1,5 +1,81 @@
 # os-lab 项目进度总览
 
+## 2026-08-04 - Task: 工作区文件栏通栏到底（对齐 VS Code）
+
+### What was done
+- 调整工作区布局：左侧文件树与编辑器+终端同高通栏到底；终端底栏经 `CodePanel` `#dock` 插槽挂在右侧栏，不再压在整块工作区下方。
+
+### Testing
+- 结构核对：`CodePanel` 为「文件树 | 右侧（工具栏/标签/编辑栈+dock）」；`LabWorkspace` 将终端注入 `#dock`。
+- 需浏览器目视：打开目录后文件栏延伸到终端底；拖动编辑器/终端分隔条只改右侧高度。
+
+### Notes
+- `os-lab/handbook/.vitepress/theme/components/CodePanel.vue`、`LabWorkspace.vue`、`docs/workbench-ui.md`。
+- 回滚：还原上述文件。
+
+---
+
+## 2026-08-04 - Task: 终端右侧会话栏加宽并显示全名
+
+### What was done
+- 右侧会话竖栏加宽，标签改为「终端 1」「终端 2」全文显示，更接近 VS Code 多终端辨识。
+
+### Testing
+- 文案与样式核对：`TerminalPanel` 标签为 `终端 ${n}`，栏宽约 88px。
+
+### Notes
+- `os-lab/handbook/.vitepress/theme/components/TerminalPanel.vue`、`docs/workbench-ui.md`。
+- 回滚：还原上述文件。
+
+---
+
+## 2026-08-04 - Task: 终端多会话栏移到右侧
+
+### What was done
+- 将内层终端会话标签从顶部横条改为右侧竖栏（序号 + 底部新建），与外层「终端 / Problems / 测试结果」底栏区分。
+
+### Testing
+- 代码与样式核对：`TerminalPanel` 为 `内容 | 右侧会话栏` 网格；文档 `workbench-ui.md` 已同步。
+- 需在工作台目视：底栏仍横向；会话切换在终端右侧。
+
+### Notes
+- `os-lab/handbook/.vitepress/theme/components/TerminalPanel.vue`：会话栏布局改为右侧。
+- `os-lab/handbook/docs/workbench-ui.md`：多会话说明更新。
+- 回滚：还原上述两文件即可。
+
+---
+
+## 2026-08-04 - Task: 入门指南教材名链到学习材料页
+
+### What was done
+- 将 `guide/start.md` 中《操作系统导论》做成站内链接，指向 `/downloads/ostep-zh.pdf`（直接打开中译 PDF）。
+
+### Testing
+- 文案核对：第 9 行为 `[《操作系统导论》](/downloads/ostep-zh.pdf)`。
+
+### Notes
+- `os-lab/handbook/guide/start.md`：教材名加超链接。
+- 回滚：去掉 Markdown 链接，恢复纯加粗书名即可。
+
+---
+
+## 2026-08-04 - Task: 站点顶栏增加当前用户与退出登录
+
+### What was done
+- 在 VitePress 默认顶栏右上角增加当前登录用户显示；点击展开「退出登录」，便于教师/学生切换账号。
+
+### Testing
+- 静态核对：`Layout.vue` 已挂载 `UserNav`；组件在有 `os-lab-auth-v1` 会话时渲染用户名菜单。
+- 需在浏览器登录后目视：顶栏出现用户名 → 点开 → 退出后刷新出现登录门。
+
+### Notes
+- `os-lab/handbook/.vitepress/theme/components/UserNav.vue`：新建顶栏用户菜单。
+- `os-lab/handbook/.vitepress/theme/Layout.vue`：`nav-bar-content-after` 增加 `UserNav`。
+- `os-lab/handbook/docs/workbench-ui.md`：补充顶栏账号说明。
+- 回滚：删除 `UserNav.vue` 并还原 `Layout.vue` / `workbench-ui.md` 对应改动。
+
+---
+
 ## 2026-08-04 - Task: B+C Lab3–8 对齐到 Lab2 完成度
 
 ### What was done

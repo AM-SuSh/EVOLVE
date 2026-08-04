@@ -43,7 +43,10 @@ type TermTab = { id: string; label: string }
 let termSeq = 1
 function makeTab(): TermTab {
   const n = termSeq++
-  return { id: createId('term'), label: n === 1 ? '终端' : `终端 ${n}` }
+  return {
+    id: createId('term'),
+    label: `终端 ${n}`,
+  }
 }
 
 const tabs = ref<TermTab[]>([makeTab()])
@@ -78,47 +81,6 @@ function closeTab(id: string) {
     :class="{ 'ws-terminal-shell--dark': dark }"
     aria-label="当前实验运行与验证"
   >
-    <header class="ws-term-session-bar" aria-label="终端会话">
-      <div class="ws-term-session-tabs" role="tablist">
-        <div
-          v-for="tab in tabs"
-          :key="tab.id"
-          class="ws-term-session-tab"
-          :class="{ active: tab.id === activeId }"
-        >
-          <button
-            type="button"
-            role="tab"
-            class="ws-term-session-label"
-            :aria-selected="tab.id === activeId"
-            @click="selectTab(tab.id)"
-          >
-            {{ tab.label }}
-          </button>
-          <button
-            v-if="tabs.length > 1"
-            type="button"
-            class="ws-term-session-close"
-            :aria-label="`关闭 ${tab.label}`"
-            :title="`关闭 ${tab.label}`"
-            @click.stop="closeTab(tab.id)"
-          >
-            <X :size="12" aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-      <button
-        type="button"
-        class="ws-term-session-new"
-        :disabled="tabs.length >= MAX_SESSIONS"
-        :title="tabs.length >= MAX_SESSIONS ? `最多 ${MAX_SESSIONS} 个终端` : '新开终端'"
-        aria-label="新开终端"
-        @click="newTerminal"
-      >
-        <Plus :size="14" aria-hidden="true" />
-      </button>
-    </header>
-
     <div class="ws-term-session-body">
       <TerminalSession
         v-for="tab in tabs"
@@ -136,13 +98,58 @@ function closeTab(id: string) {
         @add-to-chat="emit('add-to-chat', $event)"
       />
     </div>
+
+    <!-- 会话栏靠右：与外层底栏「终端 / Problems / 测试结果」横向页签区分。 -->
+    <aside class="ws-term-session-rail" aria-label="终端会话">
+      <div class="ws-term-session-tabs" role="tablist" aria-orientation="vertical">
+        <div
+          v-for="tab in tabs"
+          :key="tab.id"
+          class="ws-term-session-tab"
+          :class="{ active: tab.id === activeId }"
+        >
+          <button
+            type="button"
+            role="tab"
+            class="ws-term-session-label"
+            :aria-selected="tab.id === activeId"
+            :title="tab.label"
+            :aria-label="tab.label"
+            @click="selectTab(tab.id)"
+          >
+            {{ tab.label }}
+          </button>
+          <button
+            v-if="tabs.length > 1"
+            type="button"
+            class="ws-term-session-close"
+            :aria-label="`关闭 ${tab.label}`"
+            :title="`关闭 ${tab.label}`"
+            @click.stop="closeTab(tab.id)"
+          >
+            <X :size="11" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+      <button
+        type="button"
+        class="ws-term-session-new"
+        :disabled="tabs.length >= MAX_SESSIONS"
+        :title="tabs.length >= MAX_SESSIONS ? `最多 ${MAX_SESSIONS} 个终端` : '新开终端'"
+        aria-label="新开终端"
+        @click="newTerminal"
+      >
+        <Plus :size="14" aria-hidden="true" />
+      </button>
+    </aside>
   </section>
 </template>
 
 <style scoped>
 .ws-terminal-shell {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -155,67 +162,81 @@ function closeTab(id: string) {
   color-scheme: dark;
 }
 
-.ws-term-session-bar {
+.ws-term-session-body {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ws-term-session-body > :deep(.ws-terminal) {
+  height: 100%;
+}
+
+.ws-term-session-rail {
   display: flex;
+  flex-direction: column;
   flex: 0 0 auto;
   align-items: stretch;
-  gap: 2px;
-  min-height: 28px;
-  padding: 0 var(--ws-space-1) 0 var(--ws-space-2);
-  border-bottom: 1px solid var(--ws-line);
+  gap: 6px;
+  width: 88px;
+  min-height: 0;
+  padding: 8px 6px;
+  border-left: 1px solid var(--ws-line);
   background: var(--ws-surface-alt);
 }
 
 .ws-term-session-tabs {
   display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
   align-items: stretch;
-  gap: 2px;
-  min-width: 0;
-  overflow-x: auto;
+  gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
   scrollbar-width: thin;
 }
 
 .ws-term-session-tab {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  max-width: 140px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-}
-
-.ws-term-session-tab.active {
-  border-bottom-color: var(--ws-accent);
-  background: var(--ws-surface-soft);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
 }
 
 .ws-term-session-label {
-  min-width: 0;
-  padding: 4px 8px;
-  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 4px;
   color: var(--ws-ink-muted);
-  border: 0;
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius-md, 6px);
   background: transparent;
   font: inherit;
-  font-size: var(--ws-text-xs);
-  font-weight: var(--ws-weight-semibold);
-  text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: var(--ws-weight-semibold, 600);
+  line-height: 1.2;
+  text-align: center;
   white-space: nowrap;
   cursor: pointer;
 }
 
 .ws-term-session-tab.active .ws-term-session-label {
   color: var(--ws-accent);
+  border-color: color-mix(in srgb, var(--ws-accent) 45%, transparent);
+  background: var(--ws-surface-soft);
+  box-shadow: inset 3px 0 0 var(--ws-accent);
 }
 
 .ws-term-session-close {
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
-  margin-right: 2px;
+  align-self: center;
+  width: 18px;
+  height: 18px;
   padding: 0;
   color: var(--ws-ink-faint);
   border: 0;
@@ -233,13 +254,12 @@ function closeTab(id: string) {
   display: grid;
   flex: 0 0 auto;
   place-items: center;
-  align-self: center;
-  width: var(--ws-control-sm);
-  height: var(--ws-control-sm);
-  margin-left: 2px;
+  width: 100%;
+  height: 32px;
+  margin-top: auto;
   color: var(--ws-ink-muted);
   border: 1px solid transparent;
-  border-radius: var(--ws-radius-md);
+  border-radius: var(--ws-radius-md, 6px);
   background: transparent;
   cursor: pointer;
 }
@@ -253,15 +273,5 @@ function closeTab(id: string) {
 .ws-term-session-new:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-}
-
-.ws-term-session-body {
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.ws-term-session-body > :deep(.ws-terminal) {
-  height: 100%;
 }
 </style>

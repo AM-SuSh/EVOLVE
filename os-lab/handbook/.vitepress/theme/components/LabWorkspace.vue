@@ -477,6 +477,19 @@ watch(terminalDockOpen, (open) => {
 })
 const rightElement = ref<HTMLElement | null>(null)
 const workspaceBodyElement = ref<HTMLElement | null>(null)
+
+function workspaceStackRect() {
+  const exposed = codePanelRef.value?.editorStackEl as
+    | HTMLElement
+    | { value: HTMLElement | null }
+    | null
+    | undefined
+  const el =
+    exposed && typeof (exposed as HTMLElement).getBoundingClientRect === 'function'
+      ? (exposed as HTMLElement)
+      : (exposed as { value?: HTMLElement | null } | null | undefined)?.value || null
+  return el?.getBoundingClientRect() || workspaceBodyElement.value?.getBoundingClientRect() || null
+}
 const rowResizing = ref(false)
 const workspaceRowResizing = ref(false)
 
@@ -596,7 +609,7 @@ function startWorkspaceRowResize(event: PointerEvent) {
 
 function moveWorkspaceRowResize(event: PointerEvent) {
   if (!workspaceRowResizing.value) return
-  const rect = workspaceBodyElement.value?.getBoundingClientRect()
+  const rect = workspaceStackRect()
   if (!rect || rect.height <= 0) return
   const percent = ((event.clientY - rect.top) / rect.height) * 100
   workspaceCodeSplit.value = clamp(
@@ -2803,11 +2816,7 @@ onBeforeUnmount(() => {
               <ChevronUp :size="14" aria-hidden="true" />
             </button>
           </header>
-          <div
-            ref="workspaceBodyElement"
-            class="ws-zone-body ws-workspace-body"
-            :style="workspaceGridStyle"
-          >
+          <div class="ws-zone-body ws-workspace-body">
             <CodePanel
               ref="codePanelRef"
               class="ws-workspace-code"
@@ -2817,233 +2826,237 @@ onBeforeUnmount(() => {
               :student="studentId"
               :dark="isDark"
               :terminal-open="terminalDockOpen"
+              :editor-stack-style="workspaceGridStyle"
               @toggle-terminal="terminalDockOpen = !terminalDockOpen"
               @add-to-chat="addToChat"
-            />
-            <div
-              v-show="showTerminalDock"
-              class="ws-workspace-row-resizer"
-              :class="{ active: workspaceRowResizing }"
-              role="separator"
-              aria-label="调整代码编辑器与终端高度"
-              aria-orientation="horizontal"
-              :aria-valuemin="100 - WORKSPACE_CODE_SPLIT_MAX"
-              :aria-valuemax="100 - WORKSPACE_CODE_SPLIT_MIN"
-              :aria-valuenow="Math.round(100 - workspaceCodeSplit)"
-              tabindex="0"
-              title="拖动调整终端高度；双击恢复默认"
-              @pointerdown="startWorkspaceRowResize"
-              @pointermove="moveWorkspaceRowResize"
-              @pointerup="finishWorkspaceRowResize"
-              @pointercancel="finishWorkspaceRowResize"
-              @lostpointercapture="finishWorkspaceRowResize"
-              @dblclick="resetWorkspaceCodeSplit"
-              @keydown="resizeWorkspaceByKeyboard"
             >
-              <span aria-hidden="true" />
-            </div>
-            <div
-              v-show="showTerminalDock"
-              class="ws-workspace-terminal"
-              :class="{ 'ws-dock-maximized': maximized === 'dock' }"
-            >
-              <header class="ws-bottom-dock-head">
-                <div class="ws-bottom-tabs" role="tablist" aria-label="底部面板：终端、Problems、测试结果">
-                  <button
-                    type="button"
-                    role="tab"
-                    :aria-selected="bottomTab === 'terminal'"
-                    :class="{ active: bottomTab === 'terminal' }"
-                    @click="bottomTab = 'terminal'"
-                  >终端</button>
-                  <button
-                    type="button"
-                    role="tab"
-                    :aria-selected="bottomTab === 'problems'"
-                    :class="{ active: bottomTab === 'problems' }"
-                    :title="'编译错误与警告列表；点击可跳到源码'"
-                    @click="bottomTab = 'problems'"
-                  >
-                    Problems
-                    <span v-if="lastDiagnosticCount > 0" class="ws-bottom-tab-badge" aria-label="诊断条数">{{ lastDiagnosticCount }}</span>
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    :aria-selected="bottomTab === 'tests'"
-                    :class="{ active: bottomTab === 'tests' }"
-                    title="可信验证命令的断言汇总"
-                    @click="bottomTab = 'tests'"
-                  >测试结果</button>
+              <template #dock>
+                <div
+                  v-show="showTerminalDock"
+                  class="ws-workspace-row-resizer"
+                  :class="{ active: workspaceRowResizing }"
+                  role="separator"
+                  aria-label="调整代码编辑器与终端高度"
+                  aria-orientation="horizontal"
+                  :aria-valuemin="100 - WORKSPACE_CODE_SPLIT_MAX"
+                  :aria-valuemax="100 - WORKSPACE_CODE_SPLIT_MIN"
+                  :aria-valuenow="Math.round(100 - workspaceCodeSplit)"
+                  tabindex="0"
+                  title="拖动调整终端高度；双击恢复默认"
+                  @pointerdown="startWorkspaceRowResize"
+                  @pointermove="moveWorkspaceRowResize"
+                  @pointerup="finishWorkspaceRowResize"
+                  @pointercancel="finishWorkspaceRowResize"
+                  @lostpointercapture="finishWorkspaceRowResize"
+                  @dblclick="resetWorkspaceCodeSplit"
+                  @keydown="resizeWorkspaceByKeyboard"
+                >
+                  <span aria-hidden="true" />
                 </div>
-                <div class="ws-bottom-dock-actions">
-                  <button
-                    type="button"
-                    class="ws-zone-toggle"
-                    :title="maximized === 'dock' ? '恢复布局' : '将底部面板铺满页面'"
-                    :aria-label="maximized === 'dock' ? '恢复底部面板布局' : '将底部面板铺满页面'"
-                    @click="toggleMaximized('dock')"
-                  >
-                    <Minimize2 v-if="maximized === 'dock'" :size="14" aria-hidden="true" />
-                    <Maximize2 v-else :size="14" aria-hidden="true" />
-                  </button>
-                </div>
-              </header>
-              <div class="ws-bottom-dock-body">
-                <TerminalPanel
-                  v-show="bottomTab === 'terminal'"
-                  :key="`terminal-${studentId}`"
-                  :lab="lab"
-                  :endpoint="endpoint"
-                  :student="studentId"
-                  :session-id="sessionId"
-                  :dark="isDark"
-                  @run-finished="onRunFinished"
-                  @run-exit="onRunExit"
-                  @run-diagnostics="onRunDiagnostics"
-                  @insert-report="onInsertReport"
-                  @add-to-chat="addToChat"
-                />
-                <ProblemsPanel
-                  ref="problemsPanelRef"
-                  v-show="bottomTab === 'problems'"
-                  :run-id="lastRunId"
-                  :endpoint="endpoint"
-                  @jump="onProblemJump"
-                  @diagnostics-loaded="onDiagnosticsLoaded"
-                  @add-to-chat="addToChat"
-                />
-                <div v-show="bottomTab === 'tests'" class="ws-tests-panel">
-                  <header class="ws-tests-intro">
-                    <div class="ws-tests-intro-row">
-                      <strong>测试结果 · 可信断言</strong>
+                <div
+                  v-show="showTerminalDock"
+                  class="ws-workspace-terminal"
+                  :class="{ 'ws-dock-maximized': maximized === 'dock' }"
+                >
+                  <header class="ws-bottom-dock-head">
+                    <div class="ws-bottom-tabs" role="tablist" aria-label="底部面板：终端、Problems、测试结果">
                       <button
-                        v-if="lastAssertions.length"
                         type="button"
-                        class="ws-tests-add-chat"
-                        title="把当前断言结果添加到 AI 导师对话"
-                        @click="addCurrentTestsToChat"
+                        role="tab"
+                        :aria-selected="bottomTab === 'terminal'"
+                        :class="{ active: bottomTab === 'terminal' }"
+                        @click="bottomTab = 'terminal'"
+                      >终端</button>
+                      <button
+                        type="button"
+                        role="tab"
+                        :aria-selected="bottomTab === 'problems'"
+                        :class="{ active: bottomTab === 'problems' }"
+                        :title="'编译错误与警告列表；点击可跳到源码'"
+                        @click="bottomTab = 'problems'"
                       >
-                        <MessageSquarePlus :size="13" aria-hidden="true" />添加到对话
+                        Problems
+                        <span v-if="lastDiagnosticCount > 0" class="ws-bottom-tab-badge" aria-label="诊断条数">{{ lastDiagnosticCount }}</span>
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        :aria-selected="bottomTab === 'tests'"
+                        :class="{ active: bottomTab === 'tests' }"
+                        title="可信验证命令的断言汇总"
+                        @click="bottomTab = 'tests'"
+                      >测试结果</button>
+                    </div>
+                    <div class="ws-bottom-dock-actions">
+                      <button
+                        type="button"
+                        class="ws-zone-toggle"
+                        :title="maximized === 'dock' ? '恢复布局' : '将底部面板铺满页面'"
+                        :aria-label="maximized === 'dock' ? '恢复底部面板布局' : '将底部面板铺满页面'"
+                        @click="toggleMaximized('dock')"
+                      >
+                        <Minimize2 v-if="maximized === 'dock'" :size="14" aria-hidden="true" />
+                        <Maximize2 v-else :size="14" aria-hidden="true" />
                       </button>
                     </div>
-                    <p>
-                      汇总<strong>可信验证命令</strong>的断言（期望 vs 实际）；停止或无断言的运行不会冲掉上一份结果。
-                      结果按 Lab/账号缓存在本机约 24 小时，刷新页面后仍可查看。
-                      与 Problems（编译诊断）、Trace（运行时事件回放）互补。
-                    </p>
                   </header>
-                  <div class="ws-tests-body">
-                    <div
-                      v-if="keyAssertion"
-                      class="ws-tests-focus"
-                      :data-state="keyAssertionPassed === null ? 'unknown' : keyAssertionPassed ? 'ok' : 'fail'"
-                    >
-                      <strong>{{ keyAssertion.label }}</strong>
-                      <span>{{ keyAssertion.note }}</span>
-                      <span class="ws-tests-focus-state" v-if="keyAssertionPassed === null">
-                        尚未看到该断言；请运行可信验证。
-                      </span>
-                      <span class="ws-tests-focus-state" v-else-if="keyAssertionPassed">已观察到。</span>
-                      <span class="ws-tests-focus-state" v-else>当前结果中未通过。</span>
-                    </div>
-                    <p v-if="!lastAssertionsRunId && !runResultHistory.length">
-                      在「终端」页签运行可信验证命令后，断言结果将汇总在此。
-                    </p>
-                    <template v-else>
-                      <section v-if="lastAssertions.length" class="ws-tests-current" aria-label="当前断言结果">
-                        <header class="ws-tests-run-head">
-                          <strong>当前结果</strong>
-                          <code v-if="lastAssertionsRunId">run:{{ lastAssertionsRunId.slice(0, 8) }}…</code>
-                        </header>
-                        <ul class="ws-tests-assertions">
-                          <li
-                            v-for="item in lastAssertions"
-                            :key="item.id"
-                            :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed, focus: isKeyAssertion(item.id) }]"
+                  <div class="ws-bottom-dock-body">
+                    <TerminalPanel
+                      v-show="bottomTab === 'terminal'"
+                      :key="`terminal-${studentId}`"
+                      :lab="lab"
+                      :endpoint="endpoint"
+                      :student="studentId"
+                      :session-id="sessionId"
+                      :dark="isDark"
+                      @run-finished="onRunFinished"
+                      @run-exit="onRunExit"
+                      @run-diagnostics="onRunDiagnostics"
+                      @insert-report="onInsertReport"
+                      @add-to-chat="addToChat"
+                    />
+                    <ProblemsPanel
+                      ref="problemsPanelRef"
+                      v-show="bottomTab === 'problems'"
+                      :run-id="lastRunId"
+                      :endpoint="endpoint"
+                      @jump="onProblemJump"
+                      @diagnostics-loaded="onDiagnosticsLoaded"
+                      @add-to-chat="addToChat"
+                    />
+                    <div v-show="bottomTab === 'tests'" class="ws-tests-panel">
+                      <header class="ws-tests-intro">
+                        <div class="ws-tests-intro-row">
+                          <strong>测试结果 · 可信断言</strong>
+                          <button
+                            v-if="lastAssertions.length"
+                            type="button"
+                            class="ws-tests-add-chat"
+                            title="把当前断言结果添加到 AI 导师对话"
+                            @click="addCurrentTestsToChat"
                           >
-                            <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
-                            <span class="ws-test-label">{{ item.label || item.id }}</span>
-                            <span class="ws-test-expected">期望：{{ item.expected }}</span>
-                            <span class="ws-test-observed">实际：{{ item.observed }}</span>
-                            <button
-                              type="button"
-                              class="ws-tests-add-chat ws-test-assertion-add"
-                              title="只把这一条断言添加到对话"
-                              @click="addOneAssertionToChat(item, lastAssertionsRunId)"
-                            >
-                              <MessageSquarePlus :size="12" aria-hidden="true" />
-                            </button>
-                          </li>
-                        </ul>
-                      </section>
-                      <p v-else-if="lastRunId" class="ws-tests-note">
-                        最近一次运行 <code>{{ lastRunId }}</code> 未返回可展示断言
-                        <template v-if="lastAssertionsRunId">；仍保留上一份
-                          <code>run:{{ lastAssertionsRunId.slice(0, 8) }}…</code>
-                          的结果如下方历史。</template>
-                        <strong> 不表示验证已通过。</strong>
-                      </p>
-                      <section v-if="runResultHistory.length" class="ws-tests-history" aria-label="近期运行历史">
-                        <header class="ws-tests-run-head">
-                          <strong>近期历史</strong>
-                          <span>{{ runResultHistory.length }} 次</span>
-                        </header>
-                        <details
-                          v-for="entry in runResultHistory"
-                          :key="entry.runId"
-                          class="ws-tests-history-item"
-                          :open="entry.runId === lastAssertionsRunId"
+                            <MessageSquarePlus :size="13" aria-hidden="true" />添加到对话
+                          </button>
+                        </div>
+                        <p>
+                          汇总<strong>可信验证命令</strong>的断言（期望 vs 实际）；停止或无断言的运行不会冲掉上一份结果。
+                          结果按 Lab/账号缓存在本机约 24 小时，刷新页面后仍可查看。
+                          与 Problems（编译诊断）、Trace（运行时事件回放）互补。
+                        </p>
+                      </header>
+                      <div class="ws-tests-body">
+                        <div
+                          v-if="keyAssertion"
+                          class="ws-tests-focus"
+                          :data-state="keyAssertionPassed === null ? 'unknown' : keyAssertionPassed ? 'ok' : 'fail'"
                         >
-                          <summary>
-                            <code>run:{{ entry.runId.slice(0, 8) }}…</code>
-                            <span
-                              class="ws-tests-history-badge"
-                              :data-state="entry.stopped ? 'stopped' : entry.verified ? 'ok' : 'fail'"
-                            >
-                              {{ entry.stopped ? '已停止' : entry.verified ? '已通过' : '未通过' }}
-                            </span>
-                            <span v-if="entry.assertions.length" class="ws-tests-history-count">
-                              {{ entry.assertions.filter((a) => a.passed).length }}/{{ entry.assertions.length }}
-                            </span>
-                            <button
-                              v-if="entry.assertions.length"
-                              type="button"
-                              class="ws-tests-add-chat ws-tests-history-add"
-                              title="添加到对话"
-                              @click.prevent.stop="addHistoryTestsToChat(entry)"
-                            >
-                              <MessageSquarePlus :size="12" aria-hidden="true" />
-                            </button>
-                          </summary>
-                          <ul v-if="entry.assertions.length" class="ws-tests-assertions">
-                            <li
-                              v-for="item in entry.assertions"
-                              :key="`${entry.runId}:${item.id}`"
-                              :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed, focus: isKeyAssertion(item.id) }]"
-                            >
-                              <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
-                              <span class="ws-test-label">{{ item.label || item.id }}</span>
-                              <span class="ws-test-expected">期望：{{ item.expected }}</span>
-                              <span class="ws-test-observed">实际：{{ item.observed }}</span>
-                              <button
-                                type="button"
-                                class="ws-tests-add-chat ws-test-assertion-add"
-                                title="只把这一条断言添加到对话"
-                                @click="addOneAssertionToChat(item, entry.runId)"
+                          <strong>{{ keyAssertion.label }}</strong>
+                          <span>{{ keyAssertion.note }}</span>
+                          <span class="ws-tests-focus-state" v-if="keyAssertionPassed === null">
+                            尚未看到该断言；请运行可信验证。
+                          </span>
+                          <span class="ws-tests-focus-state" v-else-if="keyAssertionPassed">已观察到。</span>
+                          <span class="ws-tests-focus-state" v-else>当前结果中未通过。</span>
+                        </div>
+                        <p v-if="!lastAssertionsRunId && !runResultHistory.length">
+                          在「终端」页签运行可信验证命令后，断言结果将汇总在此。
+                        </p>
+                        <template v-else>
+                          <section v-if="lastAssertions.length" class="ws-tests-current" aria-label="当前断言结果">
+                            <header class="ws-tests-run-head">
+                              <strong>当前结果</strong>
+                              <code v-if="lastAssertionsRunId">run:{{ lastAssertionsRunId.slice(0, 8) }}…</code>
+                            </header>
+                            <ul class="ws-tests-assertions">
+                              <li
+                                v-for="item in lastAssertions"
+                                :key="item.id"
+                                :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed, focus: isKeyAssertion(item.id) }]"
                               >
-                                <MessageSquarePlus :size="12" aria-hidden="true" />
-                              </button>
-                            </li>
-                          </ul>
-                          <p v-else class="ws-tests-note">本次无断言列表（可能被停止或未走可信 recipe）。</p>
-                        </details>
-                      </section>
-                    </template>
+                                <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
+                                <span class="ws-test-label">{{ item.label || item.id }}</span>
+                                <span class="ws-test-expected">期望：{{ item.expected }}</span>
+                                <span class="ws-test-observed">实际：{{ item.observed }}</span>
+                                <button
+                                  type="button"
+                                  class="ws-tests-add-chat ws-test-assertion-add"
+                                  title="只把这一条断言添加到对话"
+                                  @click="addOneAssertionToChat(item, lastAssertionsRunId)"
+                                >
+                                  <MessageSquarePlus :size="12" aria-hidden="true" />
+                                </button>
+                              </li>
+                            </ul>
+                          </section>
+                          <p v-else-if="lastRunId" class="ws-tests-note">
+                            最近一次运行 <code>{{ lastRunId }}</code> 未返回可展示断言
+                            <template v-if="lastAssertionsRunId">；仍保留上一份
+                              <code>run:{{ lastAssertionsRunId.slice(0, 8) }}…</code>
+                              的结果如下方历史。</template>
+                            <strong> 不表示验证已通过。</strong>
+                          </p>
+                          <section v-if="runResultHistory.length" class="ws-tests-history" aria-label="近期运行历史">
+                            <header class="ws-tests-run-head">
+                              <strong>近期历史</strong>
+                              <span>{{ runResultHistory.length }} 次</span>
+                            </header>
+                            <details
+                              v-for="entry in runResultHistory"
+                              :key="entry.runId"
+                              class="ws-tests-history-item"
+                              :open="entry.runId === lastAssertionsRunId"
+                            >
+                              <summary>
+                                <code>run:{{ entry.runId.slice(0, 8) }}…</code>
+                                <span
+                                  class="ws-tests-history-badge"
+                                  :data-state="entry.stopped ? 'stopped' : entry.verified ? 'ok' : 'fail'"
+                                >
+                                  {{ entry.stopped ? '已停止' : entry.verified ? '已通过' : '未通过' }}
+                                </span>
+                                <span v-if="entry.assertions.length" class="ws-tests-history-count">
+                                  {{ entry.assertions.filter((a) => a.passed).length }}/{{ entry.assertions.length }}
+                                </span>
+                                <button
+                                  v-if="entry.assertions.length"
+                                  type="button"
+                                  class="ws-tests-add-chat ws-tests-history-add"
+                                  title="添加到对话"
+                                  @click.prevent.stop="addHistoryTestsToChat(entry)"
+                                >
+                                  <MessageSquarePlus :size="12" aria-hidden="true" />
+                                </button>
+                              </summary>
+                              <ul v-if="entry.assertions.length" class="ws-tests-assertions">
+                                <li
+                                  v-for="item in entry.assertions"
+                                  :key="`${entry.runId}:${item.id}`"
+                                  :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed, focus: isKeyAssertion(item.id) }]"
+                                >
+                                  <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
+                                  <span class="ws-test-label">{{ item.label || item.id }}</span>
+                                  <span class="ws-test-expected">期望：{{ item.expected }}</span>
+                                  <span class="ws-test-observed">实际：{{ item.observed }}</span>
+                                  <button
+                                    type="button"
+                                    class="ws-tests-add-chat ws-test-assertion-add"
+                                    title="只把这一条断言添加到对话"
+                                    @click="addOneAssertionToChat(item, entry.runId)"
+                                  >
+                                    <MessageSquarePlus :size="12" aria-hidden="true" />
+                                  </button>
+                                </li>
+                              </ul>
+                              <p v-else class="ws-tests-note">本次无断言列表（可能被停止或未走可信 recipe）。</p>
+                            </details>
+                          </section>
+                        </template>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
+              </template>
+            </CodePanel>
           </div>
         </section>
 
@@ -3854,15 +3867,21 @@ onBeforeUnmount(() => {
 }
 
 .ws-zone-workspace .ws-workspace-body {
-  display: grid;
+  display: flex;
   flex: 1 1 auto;
-  grid-template-rows: minmax(180px, 1.25fr) minmax(130px, 0.75fr);
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
-.ws-workspace-code,
+.ws-workspace-code {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
 .ws-workspace-terminal,
 .ws-workspace-terminal :deep(.ws-terminal-shell),
 .ws-workspace-terminal :deep(.ws-problems),
