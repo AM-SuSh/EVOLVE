@@ -1,5 +1,27 @@
 # os-lab 项目进度总览
 
+## 2026-08-04 - Task: B+C Lab2 remedial 实际领取验收
+
+### What was done
+
+- 在独立临时数据库、教师配置和学生目录中建立验收账号 `acceptstudent`；先完成明确标记为验收前置的 Lab1 可信验证与复盘，使 Lab2 按正常 access 规则解锁。
+- 教师端按 `TeacherPublishPanel` 使用的同一 `/teacher/config` 契约设置 `openLab=lab2`、`assignments.lab2=remedial`；学生随后通过正常 `/scaffold/upgrade` 实际领取 Lab2。
+- 核对领取结果：`.scaffold-state.json` 为 `applied=[lab1,lab2]`、`variants.lab2=remedial`；下发的 `kernel/src/task.rs` 与发布目录指定模板 SHA-256 同为 `e3fbf3c9ae8a901b1aa92fb9976f0ee72f1394499238197a6a1e3a973437b9b7`。
+- 核对发布凭证：`lab2@1.0.0/remedial` 为 `test.status=passed`、`isolated=true`、`negativeMatched=true`，且已有教师审批；补齐 `TEACHER_ACCEPTANCE.md` 的 C 工程验收与 B 体验抽检签字。
+- 在 `lab-factory.test.mjs` 新增 remedial 正常 scaffold 实领回归，持续核对变式状态与源码内容。
+
+### Testing
+
+- 教师配置 API：返回 `openLab=lab2`、`assignments.lab2=remedial`。
+- 学生实领 API：领取前 `current=lab1`、`next=lab2`、`nextAllowed=true`；领取后 `current=lab2`、`variants.lab2=remedial`。
+- 文件校验：实际下发源码与 remedial 源模板 SHA-256 完全一致。
+- B 侧页面入口复用 2026-08-03 无头浏览器抽检证据：`/learn/lab2?view=teaching&variant=remedial` 进入教学安排并预选 remedial。本次 in-app Browser 控制模块因宿主禁用 `node:process` 未能初始化，未虚构新的鼠标点击记录。
+
+### Notes
+
+- 验收使用隔离临时数据，不修改正式学生目录、正式学习数据库或现有教师配置；验收服务结束后删除临时数据。
+- 本项只收口 B+C 的 Lab2 remedial 下发与领取，不恢复 Knowledge Path，也不重复处理已通过的远端 CI。
+
 ## 2026-08-03 - Task: 首页移除页脚并锁定单屏高度
 
 ### What was done

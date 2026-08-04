@@ -44,8 +44,19 @@
 
 | 角色 | 姓名 | 日期 | 结论 |
 | --- | --- | --- | --- |
-| 教学（A） | 成员 A | 2026-07-31 | **通过（内容包）**；发布仍须 C lint/dry-run + B 向导 |
-| 工程（C） | | | 待 lint / dry-run |
-| 体验抽检（B） | | | 待向导领取抽检 |
+| 教学（A） | 成员 A | 2026-07-31 | **通过（内容包）**；B/C 发布领取验收已于 2026-08-04 补齐 |
+| 工程（C） | B/C 联合验收 | 2026-08-04 | **通过**；`lab2@1.0.0/remedial` 隔离测试、审批、发布、access/scaffold 实领和源码一致性均通过 |
+| 体验抽检（B） | B/C 联合验收 | 2026-08-04 | **通过**；教学安排预选 remedial 的页面路由已有抽检，本次按同一前端契约完成教师下发与学生实领 |
+
+## B/C 联合验收证据（2026-08-04）
+
+- 隔离环境：独立数据库、教师配置和学生目录；测试账号 `acceptstudent`，不写入正式学生数据。
+- B 侧入口：`/learn/lab2?view=teaching&variant=remedial` 已在 Day6 无头浏览器抽检中确认会进入教学安排并预选 `remedial`；本次教师端按 `TeacherPublishPanel` 使用的同一 `/teacher/config` 契约写入 `openLab=lab2` 和 `assignments.lab2=remedial`。
+- C 侧发布：`lab-packages/releases/lab2/1.0.0/release.json` 记录 `variant=remedial`、`test.status=passed`、`isolated=true`、`negativeMatched=true` 和教师审批。
+- 学生实领：领取前为 `current=lab1`、`next=lab2`、`nextAllowed=true`；调用正常 `/scaffold/upgrade` 后为 `current=lab2`，状态文件记录 `variants.lab2=remedial`。
+- 源码一致性：学生目录 `kernel/src/task.rs` 与发布目录指定的 remedial 源模板 SHA-256 均为 `e3fbf3c9ae8a901b1aa92fb9976f0ee72f1394499238197a6a1e3a973437b9b7`。
+- 回归固化：`handbook/lab-factory.test.mjs` 增加“published Lab2 remedial 通过正常 scaffold 路径实领”的自动测试，核对 Lab、变式状态和源码内容。
+
+说明：本次 in-app Browser 控制模块受宿主环境限制未能初始化，因此没有把本次 API 实领描述成新的鼠标点击记录；B 侧页面结论复用 2026-08-03 已完成的无头浏览器路由抽检，C 侧实领证据来自本次真实服务与文件状态。
 
 **驳回条件（若 C 发现）**：scaffold 路径断裂、recipe 名漂移、提示 L3 贴出完整函数体。
