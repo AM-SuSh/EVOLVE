@@ -111,6 +111,17 @@ function syncContent() {
   renderedContent = props.content
 }
 
+function onXtermKeyEvent(event: KeyboardEvent) {
+  const isPasteShortcut =
+    props.interactive &&
+    (event.ctrlKey || event.metaKey) &&
+    !event.altKey &&
+    event.key.toLowerCase() === 'v'
+
+  // false prevents xterm from converting Ctrl+V to the \x16 control character.
+  return !isPasteShortcut
+}
+
 onMounted(() => {
   if (!host.value || typeof window === 'undefined') return
   terminal = new Terminal({
@@ -129,6 +140,7 @@ onMounted(() => {
   fitAddon = new FitAddon()
   terminal.loadAddon(fitAddon)
   terminal.open(host.value)
+  terminal.attachCustomKeyEventHandler(onXtermKeyEvent)
   applyTheme()
   syncContent()
   fit()
@@ -139,7 +151,8 @@ onMounted(() => {
   // 交互模式下拦截 Tab，并处理 Ctrl+C/V 与系统粘贴。
   if (props.interactive) {
     host.value.addEventListener('keydown', onHostKeydown)
-    host.value.addEventListener('paste', onHostPaste)
+    // Read native clipboardData before xterm's hidden textarea handles it.
+    host.value.addEventListener('paste', onHostPaste, true)
   }
   requestAnimationFrame(() => fit())
 })
@@ -162,27 +175,15 @@ function onHostKeydown(event: KeyboardEvent) {
     return
   }
   if (key === 'v') {
-    event.preventDefault()
-    event.stopPropagation()
-    void pasteFromClipboard()
-  }
-}
-
-async function pasteFromClipboard() {
-  try {
-    const text = await navigator.clipboard?.readText()
-    if (!text || !dataHandler) return
-    // 多行粘贴时只取第一行进输入缓冲，避免误触发多次运行
-    const firstLine = text.replace(/\r\n/g, '\n').split('\n')[0] ?? ''
-    if (firstLine) dataHandler(firstLine)
-  } catch {
-    // 剪贴板权限被拒时静默失败
+    // Let the browser dispatch a paste event; this does not require Clipboard API permission.
+    return
   }
 }
 
 function onHostPaste(event: ClipboardEvent) {
   if (!props.interactive) return
   event.preventDefault()
+  event.stopPropagation()
   const text = event.clipboardData?.getData('text') || ''
   const firstLine = text.replace(/\r\n/g, '\n').split('\n')[0] ?? ''
   if (firstLine && dataHandler) dataHandler(firstLine)
@@ -206,7 +207,7 @@ watch(
 onBeforeUnmount(() => {
   if (host.value) {
     host.value.removeEventListener('keydown', onHostKeydown)
-    host.value.removeEventListener('paste', onHostPaste)
+    host.value.removeEventListener('paste', onHostPaste, true)
   }
   resizeObserver?.disconnect()
   terminal?.dispose()
