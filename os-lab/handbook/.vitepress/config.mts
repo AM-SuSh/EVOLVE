@@ -39,7 +39,6 @@ export default withMermaid(defineConfig({
           text: '入门指南',
           items: [
             { text: '认识 os-lab', link: '/guide/start' },
-            { text: '新手操作指南', link: '/guide/beginner' },
             { text: '引导式学习', link: '/guide/ai-tutor' },
             { text: '环境安装', link: '/setup/environment' },
           ],
@@ -50,7 +49,6 @@ export default withMermaid(defineConfig({
           text: '入门指南',
           items: [
             { text: '认识 os-lab', link: '/guide/start' },
-            { text: '新手操作指南', link: '/guide/beginner' },
             { text: '引导式学习', link: '/guide/ai-tutor' },
             { text: '环境安装', link: '/setup/environment' },
           ],
@@ -63,16 +61,6 @@ export default withMermaid(defineConfig({
       copyright: 'BSD-3-Clause',
     },
     outline: { level: [2, 3] },
-    search: {
-      provider: 'local',
-      // /learn/* 是正文外壳（避免搜索重复）；teacher* 为教师页不进学生搜索。
-      options: {
-        exclude: (relativePath) =>
-          relativePath.startsWith('learn/') ||
-          relativePath.startsWith('teacher') ||
-          relativePath === 'materials.md',
-      },
-    },
   },
   vite: {
     resolve: {

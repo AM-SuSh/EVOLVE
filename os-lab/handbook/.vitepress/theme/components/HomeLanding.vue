@@ -27,7 +27,7 @@ import { ArrowRight, Check, Play } from 'lucide-vue-next'
             开始当前实验
             <ArrowRight :size="18" aria-hidden="true" />
           </a>
-          <a class="os-button os-button-secondary" href="/guide/beginner">
+          <a class="os-button os-button-secondary" href="/guide/start">
             第一次使用？先看这里
           </a>
         </div>

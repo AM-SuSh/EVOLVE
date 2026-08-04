@@ -24,6 +24,37 @@
   font-size: 0.88em;
 }
 
+/* MarkdownIt 手册与 VitePress 静态页面使用不同的代码块结构，统一提供可见边框。 */
+.vp-doc div[class*='language-'],
+.ws-manual-doc.vp-doc pre {
+  margin: var(--ws-space-5) 0;
+  border: 1px solid var(--ws-line-strong);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-soft);
+  box-shadow: var(--ws-shadow-1);
+  overflow: hidden;
+}
+
+.vp-doc div[class*='language-'] pre,
+.ws-manual-doc.vp-doc pre {
+  margin: 0;
+  padding: var(--ws-space-4) var(--ws-space-5);
+  overflow-x: auto;
+  background: transparent;
+}
+
+.vp-doc div[class*='language-'] code,
+.ws-manual-doc.vp-doc pre code {
+  display: block;
+  min-width: max-content;
+  padding: 0;
+  background: transparent;
+  color: var(--ws-ink);
+  font-family: var(--ws-font-mono);
+  font-size: var(--ws-text-sm);
+  line-height: var(--ws-leading-normal);
+}
+
 /* -- 提示块：柔和圆角，弱化默认硬边框 --------------------------------------- */
 .vp-doc .custom-block {
   border-radius: var(--ws-radius-md);
