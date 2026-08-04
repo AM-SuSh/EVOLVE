@@ -1855,10 +1855,8 @@ function addToChat(payload: {
     ...chatAttachments.value,
     { id: createId('chat'), source: payload.source, title, body, origin: payload.origin },
   ]
+  // AI 导师是独立悬浮窗，不改变“学习支持”面板或移动端视图。
   tutorOpen.value = true
-  mobileView.value = 'practice'
-  panelOpen.value.terminal = true
-  persistPanels()
   toast(`已添加到对话：${chatSourceLabels[payload.source]} · ${title}`)
   void nextTick(() => tutorPaneRef.value?.focusComposer?.())
 }
@@ -2400,9 +2398,6 @@ function onInsertReport(text: string) {
 /** 报告面板请 AI 点评：打开对话并把报告作为提问发送。 */
 function reviewReport(content: string) {
   tutorOpen.value = true
-  mobileView.value = 'practice'
-  panelOpen.value.terminal = true
-  persistPanels()
   if (sending.value) {
     toast('AI 正在回复上一条消息，稍后再试。')
     return
