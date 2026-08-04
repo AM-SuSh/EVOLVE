@@ -427,14 +427,14 @@ const reportInsert = ref<{ id: number; text: string } | null>(null)
 /* -- 三栏开关与纵向比例（手册 / 工作区 / 学习支持） ------------------------ */
 
 const PANEL_STORAGE_KEY = 'os-lab-panels-v1'
-const PRACTICE_SPLIT_KEY = 'os-lab-workspace-support-split-v2'
+const PRACTICE_SPLIT_KEY = 'os-lab-workspace-support-split-v1'
 const PRACTICE_SPLIT_MIN = 40
 const PRACTICE_SPLIT_MAX = 78
 const DEFAULT_PRACTICE_SPLIT = 64
 const WORKSPACE_CODE_SPLIT_KEY = 'os-lab-code-terminal-split-v1'
 const WORKSPACE_CODE_SPLIT_MIN = 35
 const WORKSPACE_CODE_SPLIT_MAX = 80
-const DEFAULT_WORKSPACE_CODE_SPLIT = 62
+const DEFAULT_WORKSPACE_CODE_SPLIT = WORKSPACE_CODE_SPLIT_MAX
 
 type PanelKey = 'manual' | 'practice' | 'terminal'
 
@@ -3856,7 +3856,7 @@ onBeforeUnmount(() => {
 .ws-zone-workspace .ws-workspace-body {
   display: grid;
   flex: 1 1 auto;
-  grid-template-rows: minmax(180px, 1.25fr) minmax(130px, 0.75fr);
+  grid-template-rows: minmax(140px, 4fr) minmax(100px, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;

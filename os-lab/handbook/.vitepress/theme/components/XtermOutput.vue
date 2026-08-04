@@ -112,14 +112,57 @@ function syncContent() {
 }
 
 function onXtermKeyEvent(event: KeyboardEvent) {
-  const isPasteShortcut =
-    props.interactive &&
-    (event.ctrlKey || event.metaKey) &&
-    !event.altKey &&
-    event.key.toLowerCase() === 'v'
+  if (!props.interactive || !(event.ctrlKey || event.metaKey) || event.altKey) return true
 
-  // false prevents xterm from converting Ctrl+V to the \x16 control character.
-  return !isPasteShortcut
+  const key = event.key.toLowerCase()
+  if (key === 'v') {
+    // false prevents xterm from converting Ctrl+V to the \x16 control character.
+    return false
+  }
+
+  if (key === 'c') {
+    const selected = terminal?.getSelection() || ''
+    if (!selected.trim()) return true
+    if (event.type === 'keydown') {
+      event.preventDefault()
+      event.stopPropagation()
+      void copyText(selected)
+    }
+    // With a selection Ctrl+C copies; without one xterm still sends \x03.
+    return false
+  }
+
+  return true
+}
+
+async function copyText(text: string) {
+  if (!text) return false
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // Fall back to the legacy copy command below when Clipboard API is unavailable or denied.
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.top = '0'
+  textarea.style.left = '-9999px'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  try {
+    textarea.focus()
+    textarea.select()
+    return document.execCommand('copy')
+  } catch {
+    return false
+  } finally {
+    textarea.remove()
+  }
 }
 
 onMounted(() => {
@@ -165,11 +208,11 @@ function onHostKeydown(event: KeyboardEvent) {
   if (!(event.ctrlKey || event.metaKey) || event.altKey) return
   const key = event.key.toLowerCase()
   if (key === 'c') {
-    const selected = terminal?.getSelection()?.trim()
-    if (selected) {
+    const selected = terminal?.getSelection() || ''
+    if (selected.trim()) {
       event.preventDefault()
       event.stopPropagation()
-      void navigator.clipboard?.writeText(selected)
+      void copyText(selected)
     }
     // 无选区时放行，让 xterm onData 收到 \x03 做中断/清行
     return

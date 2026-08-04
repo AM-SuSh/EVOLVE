@@ -509,13 +509,12 @@ onBeforeUnmount(() => {
         </div>
         <dl class="ws-terminal-help-list">
           <div><dt><kbd>↑</kbd> / <kbd>↓</kbd></dt><dd>循环切换本 Lab 常用命令</dd></div>
-          <div><dt><kbd>Tab</kbd></dt><dd>一键补全推荐命令（虚写部分）</dd></div>
+          <div><dt><kbd>Tab</kbd></dt><dd>补全推荐命令</dd></div>
           <div><dt><kbd>Enter</kbd></dt><dd>运行当前命令</dd></div>
           <div><dt><kbd>Ctrl</kbd>+<kbd>C</kbd></dt><dd>有选中文本则复制；否则清空当前行 / 停止运行</dd></div>
           <div><dt><kbd>Ctrl</kbd>+<kbd>V</kbd></dt><dd>粘贴到当前输入行</dd></div>
           <div><dt>⟲ 图标</dt><dd>恢复本 Lab 默认验证命令</dd></div>
-          <div><dt>+</dt><dd>会话栏「新开终端」（最多 4 个，互不影响滚动历史）</dd></div>
-          <div><dt><SquareTerminal :size="12" aria-hidden="true" /> 图标</dt><dd>代码工具栏：显示/隐藏底部面板（终端 / Problems / 测试结果）</dd></div>
+          <div><dt>+</dt><dd>会话栏「新开终端」</dd></div>
           <div><dt>⛶ 图标</dt><dd>底部面板标题栏：铺满 / 恢复页面</dd></div>
           <div><dt>添加到对话</dt><dd>有选中文本则只附选区；否则附本次完整输出</dd></div>
         </dl>
