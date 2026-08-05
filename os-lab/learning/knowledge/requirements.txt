@@ -1,0 +1,8 @@
+beautifulsoup4>=4.12
+jsonschema>=4.20
+markdown-it-py>=3.0
+pdfplumber>=0.11
+pypdf>=5.0
+PyYAML>=6.0
+lxml>=5.0
+

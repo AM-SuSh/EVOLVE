@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://os-lab.local/schema/knowledge-chunk-set-v1.json",
+  "title": "OS Lab chapter-aware knowledge chunk set",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "chunkSetId", "documentId", "sourceId", "chunking", "chunks"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "chunkSetId": { "type": "string", "minLength": 1 },
+    "documentId": { "type": "string", "minLength": 1 },
+    "sourceId": { "type": "string", "minLength": 1 },
+    "chunking": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "targetChars", "maxChars", "overlapChars", "chunkCount"],
+      "properties": {
+        "algorithm": { "const": "section-aware-v1" },
+        "targetChars": { "type": "integer", "minimum": 1 },
+        "maxChars": { "type": "integer", "minimum": 1 },
+        "overlapChars": { "const": 0 },
+        "chunkCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "chunks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id", "ordinal", "documentId", "sourceId", "chunkType", "text",
+          "sectionPath", "blockOrdinals", "locatorStart", "locatorEnd",
+          "contentClass", "labScope", "conceptIds", "answerRisk", "indexable", "metadata"
+        ],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "ordinal": { "type": "integer", "minimum": 0 },
+          "documentId": { "type": "string", "minLength": 1 },
+          "sourceId": { "type": "string", "minLength": 1 },
+          "chunkType": { "enum": ["text", "code", "mixed", "structured"] },
+          "text": { "type": "string", "minLength": 1 },
+          "sectionPath": { "type": "array", "items": { "type": "string" } },
+          "blockOrdinals": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "minItems": 1 },
+          "locatorStart": { "type": "object" },
+          "locatorEnd": { "type": "object" },
+          "contentClass": { "enum": ["student-safe", "guided-hint", "teacher-only", "system-metadata"] },
+          "labScope": { "type": "array", "items": { "type": "string" } },
+          "conceptIds": { "type": "array", "items": { "type": "string" } },
+          "answerRisk": { "enum": ["low", "medium", "high", "blocked"] },
+          "indexable": { "type": "boolean" },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["charCount", "tokenEstimate", "blockTypes", "sourcePath"],
+            "properties": {
+              "charCount": { "type": "integer", "minimum": 1 },
+              "tokenEstimate": { "type": "integer", "minimum": 1 },
+              "blockTypes": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+              "sourcePath": { "type": "string", "minLength": 1 },
+              "splitFromLongBlock": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
