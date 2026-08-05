@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://os-lab.local/schema/knowledge-document-v1.json",
+  "title": "OS Lab normalized knowledge document",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "documentId", "sourceId", "title", "format", "language", "contentHash", "metadata", "blocks"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "documentId": { "type": "string", "minLength": 1 },
+    "sourceId": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "format": { "enum": ["markdown", "html", "json", "yaml", "text", "pdf"] },
+    "language": { "enum": ["zh-CN", "en", "mixed", "unknown"] },
+    "contentHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "metadata": { "type": "object" },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "ordinal", "type", "text", "sectionPath", "locator"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "ordinal": { "type": "integer", "minimum": 0 },
+          "type": { "enum": ["heading", "paragraph", "list", "quote", "code", "table", "structured"] },
+          "text": { "type": "string", "minLength": 1 },
+          "language": { "type": ["string", "null"] },
+          "level": { "type": ["integer", "null"], "minimum": 1, "maximum": 6 },
+          "sectionPath": { "type": "array", "items": { "type": "string" } },
+          "locator": { "type": "object" }
+        }
+      }
+    }
+  }
+}
+

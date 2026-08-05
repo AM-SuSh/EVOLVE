@@ -1,0 +1,208 @@
+{
+  "schemaVersion": 1,
+  "policyVersion": "rag-access-v1",
+  "contentClasses": {
+    "student-safe": {
+      "retrievableBy": ["tutor", "assessment", "teacher"],
+      "studentVisible": true,
+      "allowCitation": true,
+      "allowVerbatimQuote": true,
+      "maxVerbatimChars": 240
+    },
+    "guided-hint": {
+      "retrievableBy": ["tutor", "assessment", "teacher"],
+      "studentVisible": false,
+      "allowCitation": false,
+      "allowVerbatimQuote": false,
+      "maxVerbatimChars": 0,
+      "requiredTransformation": "Convert the source into one stage-appropriate question or observation target without exposing a complete solution."
+    },
+    "teacher-only": {
+      "retrievableBy": ["assessment", "teacher"],
+      "studentVisible": false,
+      "allowCitation": false,
+      "allowVerbatimQuote": false,
+      "maxVerbatimChars": 0
+    },
+    "system-metadata": {
+      "retrievableBy": ["system"],
+      "studentVisible": false,
+      "allowCitation": false,
+      "allowVerbatimQuote": false,
+      "maxVerbatimChars": 0,
+      "fullTextIndex": false
+    }
+  },
+  "sourceBindings": [
+    {
+      "sourceId": "platform-lab-manuals",
+      "defaultClass": "student-safe",
+      "scope": {
+        "kind": "lab-derived-from-path",
+        "studentAccess": "current-or-unlocked-lab"
+      },
+      "authorityRank": 100,
+      "conflictRule": "Wins over external textbooks and guides for current platform behavior."
+    },
+    {
+      "sourceId": "platform-lab-packages",
+      "defaultClass": "guided-hint",
+      "scope": {
+        "kind": "lab-derived-from-path",
+        "studentAccess": "current-or-unlocked-lab"
+      },
+      "authorityRank": 100,
+      "pathOverrides": [
+        {
+          "pattern": "lab[2-8]/lab.yaml",
+          "contentClass": "system-metadata"
+        },
+        {
+          "pattern": "lab[2-8]/concepts/*.yaml",
+          "contentClass": "student-safe"
+        },
+        {
+          "pattern": "lab[2-8]/checkpoints.yaml",
+          "contentClass": "guided-hint"
+        },
+        {
+          "pattern": "lab[2-8]/knowledge-table.md",
+          "contentClass": "guided-hint"
+        }
+      ],
+      "conflictRule": "Checkpoint and concept metadata wins over generic course sources for Tutor stage guidance."
+    },
+    {
+      "sourceId": "platform-published-catalog",
+      "defaultClass": "system-metadata",
+      "scope": {
+        "kind": "platform-release",
+        "studentAccess": "not-directly-retrievable"
+      },
+      "authorityRank": 100,
+      "conflictRule": "Defines active Lab release and version metadata."
+    },
+    {
+      "sourceId": "ostep-zh-local-complete",
+      "defaultClass": "student-safe",
+      "scope": {
+        "kind": "global-concept",
+        "studentAccess": "all-enrolled-students"
+      },
+      "authorityRank": 70,
+      "conflictRule": "Conceptual supplement only; platform manuals win on implementation details."
+    },
+    {
+      "sourceId": "riscv-reader-zh-local",
+      "defaultClass": "student-safe",
+      "scope": {
+        "kind": "global-concept",
+        "preferredLabs": ["lab1", "lab2", "lab3"],
+        "studentAccess": "all-enrolled-students"
+      },
+      "authorityRank": 75,
+      "conflictRule": "Architecture reference wins on ISA facts but cannot establish a student's runtime result."
+    },
+    {
+      "sourceId": "learningos-os-lectures-source",
+      "defaultClass": "student-safe",
+      "scope": {
+        "kind": "global-concept",
+        "studentAccess": "all-enrolled-students"
+      },
+      "authorityRank": 80,
+      "conflictRule": "Course concept source; platform manuals still win on local Lab instructions."
+    },
+    {
+      "sourceId": "rcore-tutorial-guide-web",
+      "defaultClass": "student-safe",
+      "scope": {
+        "kind": "cross-lab-experiment-reference",
+        "studentAccess": "current-or-unlocked-lab"
+      },
+      "authorityRank": 60,
+      "requiresAnswerRiskReview": true,
+      "conflictRule": "Use for comparison and explanation; never override the current platform release."
+    },
+    {
+      "sourceId": "csapp-gitbook-zh",
+      "defaultClass": "student-safe",
+      "scope": {
+        "kind": "global-concept",
+        "preferredLabs": ["lab3", "lab4", "lab5", "lab8"],
+        "studentAccess": "all-enrolled-students"
+      },
+      "authorityRank": 50,
+      "conflictRule": "Supplemental systems background with the lowest authority among selected sources."
+    }
+  ],
+  "hardDenyPaths": [
+    "os-lab/labs/answers/**",
+    "reference-patches/**",
+    "reference/tg-rcore-tutorial/**",
+    "os-lab/scaffold/exercises/**",
+    "os-lab/lab-packages/**/variants/**",
+    "os-lab/lab-packages/**/TEACHER_ACCEPTANCE.md",
+    "os-lab/lab-packages/**/answers/**"
+  ],
+  "retrievalRules": {
+    "tutor": {
+      "allowedClasses": ["student-safe", "guided-hint"],
+      "maxChunks": 5,
+      "maxGlobalChunks": 2,
+      "requireLabAccessBeforeRetrieval": true,
+      "allowLockedLabFallback": false,
+      "runtimeEvidencePrecedesKnowledge": true,
+      "retrievedTextIsUntrustedData": true,
+      "directAnswerRequestsSkipRetrieval": true,
+      "citations": {
+        "prefix": "kb:",
+        "validateAgainstRetrievedChunks": true
+      }
+    },
+    "assessment": {
+      "allowedClasses": ["student-safe", "guided-hint", "teacher-only"],
+      "mayAffectFinalGrade": false,
+      "requiresEvidenceRefs": true
+    }
+  },
+  "authorityOrder": [
+    "platform-lab-manuals",
+    "platform-lab-packages",
+    "teacher-approved-lab-material",
+    "learningos-os-lectures-source",
+    "riscv-reader-zh-local",
+    "ostep-zh-local-complete",
+    "rcore-tutorial-guide-web",
+    "csapp-gitbook-zh"
+  ],
+  "teacherUploads": {
+    "defaultStatus": "pending-review",
+    "defaultClass": "teacher-only",
+    "allowedFormats": ["pdf", "markdown", "text", "html", "epub", "docx"],
+    "publishRequires": [
+      "title",
+      "licenseStatus",
+      "contentClass",
+      "scope",
+      "answerRiskReviewed",
+      "teacherApproval"
+    ],
+    "scopeOptions": [
+      "global",
+      "lab",
+      "class",
+      "student"
+    ],
+    "lifecycle": [
+      "uploaded",
+      "parsing",
+      "pending-review",
+      "published",
+      "disabled",
+      "deleted"
+    ],
+    "indexOnlyWhenStatus": "published"
+  }
+}
+

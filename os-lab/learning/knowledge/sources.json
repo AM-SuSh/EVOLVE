@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "inventoryVersion": "2026-08-05-step1.1",
+  "pathBase": "workspace-root",
+  "sources": [
+    {
+      "id": "platform-lab-manuals",
+      "title": "OS Lab 本地实验手册",
+      "status": "selected",
+      "sourceType": "local-files",
+      "format": "markdown",
+      "authority": "platform-authoritative",
+      "priority": 100,
+      "initialWave": 1,
+      "paths": [
+        "os-lab/labs/overview.md",
+        "os-lab/labs/lab1-bare-metal.md",
+        "os-lab/labs/lab2-trap-and-task.md",
+        "os-lab/labs/lab3-memory.md",
+        "os-lab/labs/lab4-process.md",
+        "os-lab/labs/lab5-fs-and-sync.md",
+        "os-lab/labs/lab6-disk-fs.md",
+        "os-lab/labs/lab7-ipc-signal.md",
+        "os-lab/labs/lab8-thread-sync.md"
+      ],
+      "notes": "Current platform manuals are the primary source for task wording and Lab-specific guidance."
+    },
+    {
+      "id": "platform-lab-packages",
+      "title": "OS Lab 结构化概念与检查点",
+      "status": "selected",
+      "sourceType": "local-directory",
+      "format": "yaml-markdown",
+      "authority": "platform-authoritative",
+      "priority": 100,
+      "initialWave": 1,
+      "path": "os-lab/lab-packages",
+      "includePatterns": [
+        "lab[2-8]/lab.yaml",
+        "lab[2-8]/checkpoints.yaml",
+        "lab[2-8]/concepts/*.yaml",
+        "lab[2-8]/knowledge-table.md"
+      ],
+      "excludePatterns": [
+        "**/variants/**",
+        "**/releases/**",
+        "**/TEACHER_ACCEPTANCE.md"
+      ],
+      "notes": "Provides concept IDs, stage checkpoints, and current Lab metadata without indexing exercise variants or teacher acceptance content."
+    },
+    {
+      "id": "platform-published-catalog",
+      "title": "OS Lab 发布目录",
+      "status": "selected",
+      "sourceType": "local-files",
+      "format": "json",
+      "authority": "platform-authoritative",
+      "priority": 100,
+      "initialWave": 1,
+      "paths": [
+        "os-lab/lab-packages/published.json"
+      ],
+      "notes": "Used as release and version metadata. It is not a free-text retrieval corpus."
+    },
+    {
+      "id": "ostep-zh-local-complete",
+      "title": "操作系统导论 OSTEP 中文完整版",
+      "status": "selected",
+      "sourceType": "local-files",
+      "format": "pdf",
+      "authority": "textbook",
+      "priority": 80,
+      "initialWave": 1,
+      "paths": [
+        "操作系统导论-OSTEP (王海鹏 译) .pdf"
+      ],
+      "licenseReview": "required-before-distribution",
+      "notes": "Canonical OSTEP copy for local ingestion because it is complete, stable, and already present."
+    },
+    {
+      "id": "riscv-reader-zh-local",
+      "title": "RISC-V Reader 中文版",
+      "status": "selected",
+      "sourceType": "local-files",
+      "format": "pdf",
+      "authority": "architecture-reference",
+      "priority": 80,
+      "initialWave": 1,
+      "paths": [
+        "RISC-V-Reader-Chinese-v2p1.pdf"
+      ],
+      "licenseReview": "required-before-distribution",
+      "notes": "Canonical local copy for RISC-V instruction and architecture background."
+    },
+    {
+      "id": "learningos-os-lectures-source",
+      "title": "LearningOS 操作系统课程讲义源文件",
+      "status": "selected",
+      "sourceType": "git",
+      "format": "markdown-repository",
+      "authority": "course-lecture",
+      "priority": 85,
+      "initialWave": 2,
+      "url": "https://github.com/LearningOS/os-lectures",
+      "versionPolicy": "pin-commit-before-ingestion",
+      "licenseReview": "required-before-snapshot",
+      "notes": "Chosen over rendered lecture pages because source Markdown is easier to pin, parse, and update reproducibly."
+    },
+    {
+      "id": "rcore-tutorial-guide-web",
+      "title": "rCore Tutorial Guide",
+      "status": "selected",
+      "sourceType": "website",
+      "format": "html-collection",
+      "authority": "experiment-guide",
+      "priority": 75,
+      "initialWave": 2,
+      "url": "https://learningos.github.io/rCore-Tutorial-Guide/",
+      "versionPolicy": "snapshot-with-content-hash",
+      "licenseReview": "required-before-snapshot",
+      "notes": "Student-facing rCore experiment reference. Complete implementations and test repositories are not part of this source."
+    },
+    {
+      "id": "csapp-gitbook-zh",
+      "title": "深入理解计算机系统中文电子书",
+      "status": "selected",
+      "sourceType": "website",
+      "format": "html-collection",
+      "authority": "supplemental-textbook",
+      "priority": 55,
+      "initialWave": 3,
+      "url": "https://hansimov.gitbook.io/csapp/",
+      "versionPolicy": "snapshot-with-content-hash",
+      "licenseReview": "required-before-snapshot",
+      "notes": "Supplemental source for processes, memory, linking, and concurrency; lower priority than OS-specific sources."
+    }
+  ]
+}
+

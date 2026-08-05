@@ -1,5 +1,66 @@
 # os-lab 项目进度总览
 
+## 2026-08-05 - Task: AI 导师 RAG 知识库 Step 3 · 多格式文档规范化
+
+### What was done
+
+- 完成 `os-lab/learning/knowledge/normalize.py`：将 Markdown、HTML、JSON、YAML、TXT 和 PDF 解析为统一的 Document/Block JSON，不在此阶段做权限判断、章节分块或向量化。
+- 保留跨格式可追溯元数据：`sourceId`、SHA-256 `contentHash`、章节路径、Markdown 行号、HTML anchor、PDF 页码/行号和解析器版本。
+- Markdown/HTML 保留标题、列表、引用、代码和表格语义；JSON/YAML 保留为 `structured` block；PDF 使用 `pdfplumber` 抽取文本、`pypdf` 读取元数据，并过滤重复页眉页脚。
+- 增加低文本密度检测：PDF 可能是扫描件时标记 `requiresOcr` 和 warning，不静默生成不可检索的低质量文本。
+- 修正规范化测试：含中文说明和 Rust/RISC-V 标识符的样例语言应判定为 `mixed`，而非 `zh-CN`。
+- 新建 `os-lab/docs/agent-system-technical.md`，补充 AI Tutor、AI Assessment、Tutor/Assessment Harness 的职责边界、状态机、RAG 分层、权限策略、教师上传接口，以及 Step 1-3 的技术实现记录。
+
+### Testing
+
+- `python -m unittest -v learning/knowledge/test_normalize.py`：3/3 通过。
+- Lab2 手册真实样本：145 个 block，章节路径和代码块 locator 正常。
+- OSTEP PDF 预览：492 页总量，处理 3 页，19 个 block，`partial=true`，`requiresOcr=false`。
+- RISC-V Reader PDF 预览：164 页总量，处理 2 页，6 个 block，`partial=true`，`requiresOcr=false`。
+- 三份 Document 输出均通过 `document-schema.json` Draft 2020-12 校验，block 非空且 ordinal 连续。
+
+### Notes
+
+- 本步骤完成的是可复现的规范化层，全量 PDF 入库、章节感知分块和数据库索引留到后续步骤。
+- 依照进度记录规则，最新记录放在文件开头；旧的 Step 1/2 重复记录已从文件末尾移除。
+
+## 2026-08-05 - Task: AI 导师 RAG 知识库 Step 2 · 权限与敏感级别矩阵
+
+### What was done
+
+- 新增 `os-lab/learning/knowledge/access-policy.json`，定义 `student-safe`、`guided-hint`、`teacher-only`、`system-metadata` 四种内容级别。
+- 为 8 个 canonical source 建立一对一权限绑定、Lab 作用域、权威等级和冲突规则；对 `lab-packages` 增加路径级覆盖。
+- 增加硬拒绝路径，覆盖答案目录、reference patch、完整参考仓库、scaffold 练习实现、变体答案与教师验收资料。
+- 固定 Tutor 检索约束：最多 5 个 chunk、公共资源最多 2 个、未解锁 Lab 不回退、运行证据优先、直接索要答案时跳过 RAG、`kb:` 引用必须来自本轮召回。
+- 预留教师资料生命周期：默认 `pending-review/teacher-only`，完成许可证、范围、答案风险和教师审批后才能发布并进入索引。
+- 新增 `validate-access-policy.mjs`，校验来源覆盖、Tutor 可访问类别、硬拒绝路径和教师上传默认策略。
+
+### Testing
+
+- `node learning/knowledge/validate-sources.mjs`：通过。
+- `node learning/knowledge/validate-access-policy.mjs`：通过；4 种内容级别、8 个来源绑定、7 条硬拒绝路径。
+
+### Notes
+
+- 该策略是后续规范化、分块、数据库和 Retriever 必须共同执行的权限契约；尚未接入 Tutor 服务端。
+
+## 2026-08-05 - Task: AI 导师 RAG 知识库 Step 1 · 知识源盘点
+
+### What was done
+
+- 新建 `os-lab/learning/knowledge/`，建立机器可读的 canonical 知识源清单和去重说明。
+- 选定 8 个实际入库来源：本地 Lab 手册、Lab concepts/checkpoints、发布目录、完整 OSTEP PDF、本地 RISC-V Reader PDF、LearningOS 讲义源仓库、rCore Tutorial Guide、CSAPP 中文电子书。
+- OSTEP 和 RISC-V Reader 采用工作区根目录的本地完整 PDF；LearningOS 采用 Markdown 源仓库；重复镜像、拆分 PDF、参考代码和测试仓库不写入 `sources.json`。
+- 新增零依赖 `validate-sources.mjs`，校验来源 ID、状态、格式、本地路径和工作区路径边界。
+
+### Testing
+
+- `node learning/knowledge/validate-sources.mjs`：通过；8 个选用来源，13 个本地路径均可访问。
+
+### Notes
+
+- 本步骤只完成来源登记，未下载远程资料、未解析文档、未创建数据库；远程来源入库前仍需固定 commit/快照哈希并核验许可证。
+
 ## 2026-08-04 - Task: 文件栏改回仅与编辑器同列
 
 ### What was done
