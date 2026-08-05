@@ -111,7 +111,7 @@ flowchart TB
 
 ## 5. 多格式规范化（Step 3）
 
-规范化入口是 [learning/knowledge/normalize.py](../learning/knowledge/normalize.py)，输出契约由 [document-schema.json](../learning/knowledge/document-schema.json) 固定。不同输入先解析成统一 `Document`，再由后续章节感知分块器消费：
+规范化入口是 `learning/knowledge/normalize.py`，输出契约由 [document-schema.json](../learning/knowledge/document-schema.json) 固定。不同输入先解析成统一 `Document`，再由后续章节感知分块器消费：
 
 ```json
 {
@@ -141,26 +141,73 @@ Markdown/HTML 保留标题层级、章节路径、代码语言、HTML anchor；J
 - OSTEP PDF 预览：492 页总量、处理 3 页、19 blocks、`partial=true`、`requiresOcr=false`。
 - RISC-V Reader PDF 预览：164 页总量、处理 2 页、6 blocks、`partial=true`、`requiresOcr=false`。
 - 三份输出均通过 `document-schema.json` 的 Draft 2020-12 校验，所有 block 非空且 ordinal 连续。
+- 已安装 Poppler 25.07.0-0，并用 `pdftoppm` 抽样渲染 OSTEP 正文页和 RISC-V Reader 封面；页面清晰，无裁切、重叠或乱码。
 
-这里的 PDF 预览只验证解析器和质量信号，尚未代表全量入库；全量处理应在 Step 4 的章节感知分块和去重策略确定后执行。
+这里的 PDF 预览只验证解析器和质量信号，尚未代表全量入库；全量处理应在数据库表结构、增量更新和失败恢复策略确定后执行。
 
-## 6. 教师新增知识的接口预留
+## 6. 章节感知分块（Step 4）
+
+分块入口是 `learning/knowledge/chunk.py`，输出契约由 [chunk-schema.json](../learning/knowledge/chunk-schema.json) 固定。算法以规范化 block 为最小可追溯单元，相邻 block 只有在 `sectionPath` 完全相同时才允许合并；遇到新标题立即结束当前 chunk，因此不会把“Trap 入口”和“任务切换”混成同一检索证据。
+
+```mermaid
+flowchart LR
+  D[Normalized Document] --> H[按 sectionPath 分组]
+  H --> B[按 target/max chars 聚合]
+  B --> L[保留 block ordinals\n起止 locator\n父标题链]
+  L --> P[应用 access policy\ncontentClass / indexable]
+  P --> R[Lab scope / concept IDs\nanswer risk]
+  R --> C[Chunk Set JSON]
+```
+
+每个 chunk 保存以下关键字段：
+
+- `sectionPath`：完整父标题链，作为检索过滤与提示上下文，不把标题字符串重复写入正文。
+- `blockOrdinals`、`locatorStart`、`locatorEnd`：支持从 `kb:` 引用回到 Markdown 行号、HTML anchor 或 PDF 页码。
+- `contentClass`、`indexable`：由来源绑定、路径覆盖和硬拒绝规则推导；`system-metadata` 和硬拒绝路径不会进入全文索引。
+- `labScope`：同时识别 `lab2/` 目录和 `lab2-trap-and-task.md` 文件名，公共教材标为 `global`。
+- `conceptIds`：从结构化 block 的 `id/conceptId/concept_id` 字段抽取，供后续概念过滤和学习评价关联。
+- `answerRisk`：`low/medium/high/blocked` 四级；代码、guided hint、答案关键词和硬拒绝路径逐级提高风险。
+
+默认目标长度为 1000 字符、硬上限 1400 字符。算法不做隐式 overlap：跨 chunk 复制文本会让引用范围和泄漏审计变得含糊，而完整标题链已经提供稳定上下文。超长单 block 会按句子或固定窗口切分，并标记 `splitFromLongBlock=true`。
+
+### Step 4 验证结果
+
+- 新增 `build_lab_chunks.py`，从 `sources.json` 自动发现且强制要求 Lab1-Lab8 齐全；每个 Lab 依次执行 normalize、Document Schema、chunk、Chunk Schema 校验。
+- 规范化、分块与八 Lab 集成测试合计 10/10 通过，覆盖章节边界、locator、Lab 文件名识别、概念 ID、权限覆盖、硬拒绝路径、超长代码 fence 和全 Lab 产物完整性。
+- Lab1-Lab8 共 840 blocks 生成 145 chunks；每个 chunk 都只属于对应 Lab，locator 使用工作区相对路径，不写入本机盘符。
+- OSTEP 三页预览：19 blocks 生成 3 chunks，全部为 `global` scope。
+- 所有 Chunk Set 均通过 Draft 2020-12 Schema 校验，chunk ordinal 连续且保留有效 block 引用。
+
+| Lab | Blocks | Chunks | Chunk characters |
+| --- | ---: | ---: | ---: |
+| Lab1 | 133 | 16 | 9,692 |
+| Lab2 | 145 | 22 | 10,356 |
+| Lab3 | 100 | 19 | 6,378 |
+| Lab4 | 91 | 19 | 5,883 |
+| Lab5 | 102 | 17 | 8,137 |
+| Lab6 | 89 | 17 | 7,475 |
+| Lab7 | 87 | 17 | 7,253 |
+| Lab8 | 93 | 18 | 7,327 |
+
+可检查产物位于 `learning/knowledge/build/lab-manuals/`：`manifest.json` 是总览，`documents/` 保存规范化中间层，`chunks/` 保存每个 Lab 的实际分块。该目录是确定性构建输出并被 Git 忽略，源手册或算法变化后重新运行 `python learning/knowledge/build_lab_chunks.py` 即可刷新。
+
+## 7. 教师新增知识的接口预留
 
 教师资料不应直接写入向量表。建议由服务端提供 `POST /teacher/knowledge-sources`：先保存原文件、SHA-256、上传者和 MIME，生成 `sourceId`，进入 `pending-review`；审核接口补充 `licenseStatus`、`contentClass`、`scope`、`answerRiskReviewed` 和 `teacherApproval` 后才允许发布。发布动作触发规范化、分块、索引任务，并保留 parser/version/content hash，便于回滚到上一版。
 
 该接口与 `sources.json` 的静态平台清单并不冲突：平台内置来源走版本控制，教师来源走数据库生命周期；两者最终都必须产出相同的 Document/Block 元数据和同一套 access policy 决策。
 
-## 7. 当前状态与后续步骤
+## 8. 当前状态与后续步骤
 
 | 步骤 | 状态 | 交付物 |
 | --- | --- | --- |
 | 1. 知识源盘点 | 已完成 | `sources.json`、校验脚本、去重规则 |
 | 2. 权限矩阵 | 已完成 | `access-policy.json`、校验脚本、教师上传生命周期 |
 | 3. 多格式规范化 | 已完成 | `normalize.py`、Schema、单测和 PDF 预览 |
-| 4. 章节感知分块 | 待确认 | chunk schema、父子章节关系、答案风险标记 |
+| 4. 章节感知分块 | 已完成 | `chunk.py`、Chunk Schema、权限/范围/风险元数据和单测 |
 | 5. SQLite + FTS | 待确认 | 文档/块/来源表、FTS5、版本和回滚 |
 | 6. Tutor 服务接入 | 待确认 | policy gate、检索 API、prompt adapter |
 | 7. 向量检索与混合排序 | 待确认 | embedding、BM25/FTS + 向量融合、重排 |
 | 8. RAG Tutor Harness | 待确认 | RAG 泄漏、引用归属、权限越权和稳定性回归 |
 
-第 4 步开始前，必须先确认 chunk 是否需要保留标题父链、代码块是否独立索引，以及每个 Lab 的概念 ID 是否作为检索过滤字段。这些选择会直接影响 SQLite 表结构和后续向量索引兼容性。
+Step 5 将把 Source、Document、Chunk 和 ingestion run 分开建表，以 FTS5 只索引 `indexable=true` 的正文；`contentClass`、`labScope`、`conceptIds` 和 `answerRisk` 保留为结构化过滤字段，而不是拼进检索文本。
