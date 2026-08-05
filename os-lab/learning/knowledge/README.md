@@ -44,6 +44,10 @@ stored as Source records.
   crossing section boundaries, retaining policy and source locators.
 - `build_lab_chunks.py`: normalize, chunk, and validate all Lab1-Lab8 manuals,
   then write an inspectable local build manifest.
+- `knowledge-schema.sql` and `knowledge-store.mjs`: versioned SQLite/FTS5
+  persistence, scoped search, ingestion audit, and rollback.
+- `knowledge-cli.mjs`: initialize, ingest, inspect, search, and roll back the
+  local knowledge database.
 - `test_normalize.py`, `test_chunk.py`, and `test_build_lab_chunks.py`: parser,
   chunking, and eight-Lab integration tests.
 
@@ -83,6 +87,39 @@ Get-Content learning/knowledge/build/lab-manuals/chunks/lab1.chunks.json -Encodi
 `manifest.json` records each Lab's source hash, block/chunk counts, risk counts,
 content classes, and scope. The `build/` directory is ignored by Git because it
 is reproducible; run the build command after source or chunking changes.
+
+## SQLite and FTS5
+
+The knowledge database is separate from the account/evidence database and is
+stored at `learning/knowledge/knowledge.db` by default. It is ignored by Git and
+can be rebuilt from versioned sources.
+
+```powershell
+# From os-lab/handbook
+npm run knowledge:build
+npm run knowledge:ingest
+npm run knowledge:stats
+
+# Search from os-lab/
+node learning/knowledge/knowledge-cli.mjs search --lab lab2 --query "任务切换" --limit 3
+node learning/knowledge/knowledge-cli.mjs versions --source platform-lab-manuals
+```
+
+FTS5 uses the `trigram` tokenizer for Chinese substring retrieval. Queries with
+fewer than three Unicode characters use a policy-filtered `LIKE` fallback.
+Search always requires the current published version, `active=1`,
+`indexable=1`, an allowed content class, and a matching Lab or `global` binding.
+
+Re-ingesting the same manifest is idempotent. A changed manifest creates a new
+immutable source version, atomically activates its chunks, removes the previous
+version from FTS, and retains the old rows for audit and rollback:
+
+```powershell
+node learning/knowledge/knowledge-cli.mjs rollback `
+  --source platform-lab-manuals `
+  --version "<version-id>" `
+  --actor "<teacher>"
+```
 
 Normalize and chunk one document when debugging a specific source:
 

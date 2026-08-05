@@ -39,6 +39,10 @@ papers/
 os-lab/learning/sessions/
 os-lab/learning/uploads/
 os-lab/learning/knowledge/build/
+os-lab/learning/knowledge/*.db
+os-lab/learning/knowledge/*.db-journal
+os-lab/learning/knowledge/*.db-shm
+os-lab/learning/knowledge/*.db-wal
 os-lab/learning/*.db
 os-lab/learning/*.db-journal
 os-lab/learning/factory-runs/

@@ -191,13 +191,56 @@ flowchart LR
 
 可检查产物位于 `learning/knowledge/build/lab-manuals/`：`manifest.json` 是总览，`documents/` 保存规范化中间层，`chunks/` 保存每个 Lab 的实际分块。该目录是确定性构建输出并被 Git 忽略，源手册或算法变化后重新运行 `python learning/knowledge/build_lab_chunks.py` 即可刷新。
 
-## 7. 教师新增知识的接口预留
+## 7. SQLite 知识库与 FTS5（Step 5）
+
+知识数据使用独立的 `learning/knowledge/knowledge.db`，不与账号、学习事件和评分库混放。知识库可以从受版本控制的 Source/Document/Chunk 重新构建，而学习事件库是不可替代的业务记录；隔离后可以独立重建 FTS、回滚资料版本或迁移 embedding，而不锁住学生运行数据。
+
+```mermaid
+erDiagram
+  KNOWLEDGE_SOURCES ||--o{ SOURCE_VERSIONS : has
+  SOURCE_VERSIONS ||--o{ DOCUMENTS : contains
+  DOCUMENTS ||--o{ CHUNKS : splits_into
+  CHUNKS ||--o{ CHUNK_LABS : scoped_to
+  KNOWLEDGE_SOURCES ||--o{ INGESTION_RUNS : ingested_by
+  KNOWLEDGE_SOURCES ||--o{ AUDIT_LOG : audited_by
+  CHUNKS ||--o| FTS5 : indexes_current_safe
+```
+
+核心表及职责：
+
+- `knowledge_sources`：逻辑资料身份、来源类型、默认权限和当前激活版本。
+- `knowledge_source_versions`：不可变内容版本、hash、解析器/分块器版本、审核和发布时间。
+- `knowledge_documents`：规范化文档及其来源路径、格式、语言和 block 数。
+- `knowledge_chunks`：正文、章节链、locator、权限、风险、概念和 active/indexable 状态。
+- `knowledge_chunk_labs`：`global` 或 Lab1-Lab8 的多值绑定，并预留教师绑定、置信度和理由。
+- `knowledge_ingestion_runs`：导入触发者、输入 hash、状态、文档/chunk/索引计数和错误。
+- `knowledge_audit_log`：发布、复用、回滚等动作的前后版本记录。
+- `knowledge_chunks_fts`：只保存当前发布且允许索引的 chunk；旧版本仍在关系表中但不会被召回。
+
+### 导入与版本切换
+
+`knowledge-store.mjs` 读取 Lab build manifest，在一个 `BEGIN IMMEDIATE` 事务中写入 Version、Document、Chunk 和 Lab binding，再原子激活版本并重建该 Source 的 FTS 行。相同 manifest hash 再次导入会复用原版本，不复制 document/chunk；内容变化则产生新版本，旧版本改为 `superseded`。回滚会重新激活指定版本并重建 FTS，同时写 ingestion run 和 audit log。
+
+### 中文检索与权限过滤
+
+SQLite 的 `unicode61` 会把连续中文视为一个长 token，因此本项目使用 FTS5 `trigram`，支持三个及以上 Unicode 字符的子串查询；一到两个字符使用带同等权限条件的 `LIKE` 回退。查询必须同时满足：Source 当前版本、Version 已发布、Chunk active/indexable、调用方允许的 `contentClass`，以及目标 Lab 或 `global` binding。FTS 排名只是 Step 5 的词面候选分，Step 7 再与向量相似度和权威等级融合。
+
+### Step 5 验证结果
+
+- 实际导入 Lab1-Lab8：1 Source、1 Version、8 Documents、145 active/indexed Chunks、8 个 Lab scope。
+- Lab2 查询“任务切换”返回带章节链和行号的合法 chunk；Lab3 两字查询“页表”通过回退检索命中；跨 Lab 查询不返回其他 Lab 的专属内容。
+- KnowledgeStore 集成测试覆盖幂等导入、不可索引答案、中文 FTS/短词回退、新版本替换和旧版本回滚。
+- `npm test` 全量 47/47 通过；Python 规范化/分块/八 Lab 构建测试 10/10 通过。
+
+Store 已提供 `knowledgeTree()`、`listSources()`、`listChunks()`、`getChunk()` 和 `listVersions()`，供 Step 6 教师知识库页面使用；写操作仍必须经 Tutor Server 的教师身份校验。
+
+## 8. 教师新增知识的接口预留
 
 教师资料不应直接写入向量表。建议由服务端提供 `POST /teacher/knowledge-sources`：先保存原文件、SHA-256、上传者和 MIME，生成 `sourceId`，进入 `pending-review`；审核接口补充 `licenseStatus`、`contentClass`、`scope`、`answerRiskReviewed` 和 `teacherApproval` 后才允许发布。发布动作触发规范化、分块、索引任务，并保留 parser/version/content hash，便于回滚到上一版。
 
 该接口与 `sources.json` 的静态平台清单并不冲突：平台内置来源走版本控制，教师来源走数据库生命周期；两者最终都必须产出相同的 Document/Block 元数据和同一套 access policy 决策。
 
-## 8. 当前状态与后续步骤
+## 9. 当前状态与后续步骤
 
 | 步骤 | 状态 | 交付物 |
 | --- | --- | --- |
@@ -205,9 +248,9 @@ flowchart LR
 | 2. 权限矩阵 | 已完成 | `access-policy.json`、校验脚本、教师上传生命周期 |
 | 3. 多格式规范化 | 已完成 | `normalize.py`、Schema、单测和 PDF 预览 |
 | 4. 章节感知分块 | 已完成 | `chunk.py`、Chunk Schema、权限/范围/风险元数据和单测 |
-| 5. SQLite + FTS | 待确认 | 文档/块/来源表、FTS5、版本和回滚 |
+| 5. SQLite + FTS | 已完成 | 独立知识库、版本化导入、中文 FTS、Lab 过滤、审计与回滚 |
 | 6. Tutor 服务接入 | 待确认 | policy gate、检索 API、prompt adapter |
 | 7. 向量检索与混合排序 | 待确认 | embedding、BM25/FTS + 向量融合、重排 |
 | 8. RAG Tutor Harness | 待确认 | RAG 泄漏、引用归属、权限越权和稳定性回归 |
 
-Step 5 将把 Source、Document、Chunk 和 ingestion run 分开建表，以 FTS5 只索引 `indexable=true` 的正文；`contentClass`、`labScope`、`conceptIds` 和 `answerRisk` 保留为结构化过滤字段，而不是拼进检索文本。
+Step 6 将在 Tutor Server 增加教师知识库 API，并实现 `/teacher/knowledge` 三栏管理页：知识树、来源/章节列表、chunk 检查器，以及上传、自动分块、Lab 建议、审核发布和停用操作。

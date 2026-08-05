@@ -1,5 +1,31 @@
 # os-lab 项目进度总览
 
+## 2026-08-05 - Task: AI 导师 RAG 知识库 Step 5 · SQLite 与 FTS5
+
+### What was done
+
+- 新增独立 `os-lab/learning/knowledge/knowledge.db`（Git 忽略），与账号/学习事件数据库隔离，可从版本化知识源独立重建。
+- 新增 `knowledge-schema.sql`，建立 Source、Source Version、Document、Chunk、Lab Binding、Ingestion Run、Audit Log 和 FTS5 表及索引。
+- 新增 `knowledge-store.mjs`：实现 Lab build manifest 原子导入、相同 hash 幂等复用、内容变化生成新版本、当前版本激活和旧版本回滚。
+- FTS5 使用 `trigram` tokenizer 支持中文子串；少于 3 个 Unicode 字符的查询使用同等权限约束的 `LIKE` 回退。
+- 检索强制执行当前发布版本、active/indexable、内容级别和目标 Lab/`global` 绑定过滤；不可索引答案不进入 FTS。
+- 提供教师页面所需只读数据函数：`knowledgeTree`、`listSources`、`listChunks`、`getChunk`、`listVersions`。
+- 新增 `knowledge-cli.mjs` 和 handbook npm scripts，支持 build、ingest、stats、search、versions、rollback。
+- 实际导入 Lab1-Lab8：1 个 Source、1 个 Version、8 个 Documents、145 个 active/indexed Chunks。
+- 更新知识库 README 和 Agent 技术文档，补充 ER 图、版本切换、中文检索和 Step 6 页面接口边界。
+
+### Testing
+
+- `node --test learning/knowledge/knowledge-store.test.mjs`：通过；覆盖 Lab 隔离、答案排除、中文检索、幂等导入、新版本替换和回滚。
+- `npm test`：47/47 通过，知识库测试已加入项目默认测试集。
+- Python 规范化/分块/八 Lab 构建：10/10 通过。
+- 实际数据库统计：8 个 Lab 的 chunk 数分别为 16、22、19、19、17、17、17、18，FTS 共 145 行。
+
+### Notes
+
+- Node 22 的 `node:sqlite` 当前会输出 ExperimentalWarning，但数据库、事务和 FTS5 功能均正常。
+- Step 5 只提供可信数据层与 CLI；教师身份校验 API、上传处理和 `/teacher/knowledge` 前端属于 Step 6。
+
 ## 2026-08-05 - Task: Lab3 任务三对齐 Lab1 版式
 
 ### What was done
