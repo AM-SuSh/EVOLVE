@@ -38,13 +38,69 @@ stored as Source records.
   teacher-upload defaults.
 - `validate-access-policy.mjs`: validates policy/source coverage and denies
   Tutor access to teacher-only content.
+- `document-schema.json` and `normalize.py`: normalize Markdown, HTML,
+  JSON/YAML, text, and PDF into traceable Document/Block JSON.
+- `chunk-schema.json` and `chunk.py`: build deterministic chunks without
+  crossing section boundaries, retaining policy and source locators.
+- `build_lab_chunks.py`: normalize, chunk, and validate all Lab1-Lab8 manuals,
+  then write an inspectable local build manifest.
+- `test_normalize.py`, `test_chunk.py`, and `test_build_lab_chunks.py`: parser,
+  chunking, and eight-Lab integration tests.
 
 Run the inventory validation from `os-lab`:
 
 ```powershell
 node learning/knowledge/validate-sources.mjs
 node learning/knowledge/validate-access-policy.mjs
+python -m unittest -v `
+  learning/knowledge/test_build_lab_chunks.py `
+  learning/knowledge/test_chunk.py `
+  learning/knowledge/test_normalize.py
 ```
+
+Build all Lab1-Lab8 manual chunks:
+
+```powershell
+python learning/knowledge/build_lab_chunks.py
+```
+
+The generated files are intentionally local build artifacts:
+
+```text
+learning/knowledge/build/lab-manuals/
+  manifest.json
+  documents/lab1.document.json ... lab8.document.json
+  chunks/lab1.chunks.json ... lab8.chunks.json
+```
+
+Inspect the summary or one Lab from PowerShell:
+
+```powershell
+Get-Content learning/knowledge/build/lab-manuals/manifest.json -Encoding utf8
+Get-Content learning/knowledge/build/lab-manuals/chunks/lab1.chunks.json -Encoding utf8
+```
+
+`manifest.json` records each Lab's source hash, block/chunk counts, risk counts,
+content classes, and scope. The `build/` directory is ignored by Git because it
+is reproducible; run the build command after source or chunking changes.
+
+Normalize and chunk one document when debugging a specific source:
+
+```powershell
+python learning/knowledge/normalize.py labs/lab2-trap-and-task.md `
+  --source-id platform-lab-manuals `
+  --output tmp/lab2.document.json
+
+python learning/knowledge/chunk.py tmp/lab2.document.json `
+  --policy learning/knowledge/access-policy.json `
+  --output tmp/lab2.chunks.json
+```
+
+Chunks never merge blocks across different `sectionPath` values. The default
+uses no implicit text overlap; stable source locators and the complete parent
+heading path provide context without duplicating citation ranges. Each chunk
+also carries `contentClass`, `labScope`, `conceptIds`, `answerRisk`, and an
+`indexable` decision for the later SQLite/FTS ingestion gate.
 
 ## Access Boundary
 
@@ -60,4 +116,3 @@ The policy separates four content classes:
 Teacher uploads default to `teacher-only` and `pending-review`. They become
 retrievable only after a teacher assigns scope, licensing status, and a content
 class, then publishes the source.
-
