@@ -21,10 +21,15 @@ os-lab/qemu*.txt.*
 _fetch*
 _handbook-build.log
 _tmp-*
+tmp/
 os-lab/_tmp-*
 os-lab/*.log
 artifacts/
 os-lab/handbook/.vitepress/.temp/
+
+# Python 工具缓存
+__pycache__/
+*.py[cod]
 
 # 论文与调研材料
 papers/
@@ -33,6 +38,7 @@ papers/
 # AI 导师学习事件数据与账号数据库
 os-lab/learning/sessions/
 os-lab/learning/uploads/
+os-lab/learning/knowledge/build/
 os-lab/learning/*.db
 os-lab/learning/*.db-journal
 os-lab/learning/factory-runs/
