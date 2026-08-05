@@ -153,3 +153,23 @@ The policy separates four content classes:
 Teacher uploads default to `teacher-only` and `pending-review`. They become
 retrievable only after a teacher assigns scope, licensing status, and a content
 class, then publishes the source.
+
+## Teacher workspace and Tutor RAG
+
+Run the Tutor Server and handbook, sign in as a teacher, then open
+`/teacher/knowledge`. The workspace exposes the complete Source -> Version ->
+Document -> Section -> Chunk trace and supports upload, review, publish,
+disable, chunk policy edits, and rollback.
+
+Teacher uploads support PDF, EPUB, Markdown, TXT, and DOCX. The server saves the
+original file under `learning/uploads/knowledge/`, runs the same normalizer and
+section-aware chunker used by built-in sources, and records rule-based Lab
+suggestions with confidence and evidence. Suggested scopes are never published
+automatically. Legacy `.doc` is rejected because it cannot be parsed reliably
+without a separate binary converter.
+
+Tutor retrieval runs only after the direct-answer guardrail. It requests the
+current Lab plus `global`, permits only `student-safe` and `guided-hint`, returns
+at most five chunks with at most two global-only chunks, and validates every
+`kb:` citation against the current turn's recall set. Runtime run/trace evidence
+continues to outrank retrieved teaching material.

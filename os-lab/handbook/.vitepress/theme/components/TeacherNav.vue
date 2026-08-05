@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { withBase } from 'vitepress'
-import { ClipboardCheck, ClipboardList, Factory } from 'lucide-vue-next'
+import { BookOpenCheck, ClipboardCheck, ClipboardList, Factory } from 'lucide-vue-next'
 import { loadAuth } from '../tutor-model'
 
 /** 教师登录后，站点导航栏多出的管理入口（学生看不到）。 */
@@ -17,6 +17,7 @@ onMounted(() => {
     <a :href="withBase('/guide/teacher-report')"><ClipboardList :size="15" aria-hidden="true" />评分复核</a>
     <a :href="withBase('/teacher-review')"><ClipboardCheck :size="15" aria-hidden="true" />实验验收</a>
     <a :href="withBase('/guide/lab-factory')"><Factory :size="15" aria-hidden="true" />Lab 工厂</a>
+    <a :href="withBase('/teacher/knowledge')"><BookOpenCheck :size="15" aria-hidden="true" />知识库</a>
   </nav>
 </template>
 

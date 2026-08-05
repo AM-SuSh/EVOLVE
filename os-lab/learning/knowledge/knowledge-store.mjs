@@ -30,6 +30,25 @@ function sha256(value) {
   return createHash('sha256').update(value).digest('hex')
 }
 
+function ftsQuery(value) {
+  const text = String(value || '').trim()
+  const terms = []
+  const push = (term) => {
+    const clean = String(term || '').trim()
+    if ([...clean].length >= 3 && !terms.includes(clean)) terms.push(clean)
+  }
+  for (const match of text.matchAll(/[A-Za-z_][A-Za-z0-9_.:-]{2,}/g)) push(match[0])
+  for (const match of text.matchAll(/[\u3400-\u9fff]{3,}/g)) {
+    const phrase = match[0]
+    if (phrase.length <= 8) push(phrase)
+    else {
+      for (let index = 0; index <= phrase.length - 3; index += 2) push(phrase.slice(index, index + 3))
+    }
+  }
+  if (!terms.length) push(text)
+  return terms.slice(0, 12).map((term) => `"${term.replaceAll('"', '""')}"`).join(' OR ')
+}
+
 function readJson(file) {
   return JSON.parse(readFileSync(file, 'utf8'))
 }
@@ -56,6 +75,17 @@ export function openKnowledgeStore(options = {}) {
   db.exec(readFileSync(path.join(knowledgeRoot, 'knowledge-schema.sql'), 'utf8'))
   db.prepare('INSERT OR IGNORE INTO knowledge_schema_migrations(version, applied_at) VALUES (?, ?)')
     .run('knowledge-v1', now())
+
+  const versionColumns = new Set(db.prepare('PRAGMA table_info(knowledge_source_versions)').all().map((row) => row.name))
+  for (const [name, definition] of [
+    ['scope_suggestions_json', "TEXT NOT NULL DEFAULT '[]'"],
+    ['teacher_scope_json', "TEXT NOT NULL DEFAULT '[]'"],
+    ['review_note', "TEXT NOT NULL DEFAULT ''"],
+  ]) {
+    if (!versionColumns.has(name)) db.exec(`ALTER TABLE knowledge_source_versions ADD COLUMN ${name} ${definition}`)
+  }
+  db.prepare('INSERT OR IGNORE INTO knowledge_schema_migrations(version, applied_at) VALUES (?, ?)')
+    .run('knowledge-v2', now())
 
   function transaction(callback) {
     db.exec('BEGIN IMMEDIATE')
@@ -85,6 +115,14 @@ export function openKnowledgeStore(options = {}) {
       ) VALUES (?, ?, 'local-files', 'builtin', 100, 'student-safe', 'pending-review', '', ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET title = excluded.title, updated_at = excluded.updated_at
     `).run(sourceId, title, actor, timestamp, timestamp)
+  }
+
+  function sourceVersion(sourceId, versionId) {
+    return db.prepare(`
+      SELECT v.*, s.title AS source_title, s.status AS source_status, s.current_version_id
+      FROM knowledge_source_versions v JOIN knowledge_sources s ON s.id = v.source_id
+      WHERE v.source_id = ? AND v.id = ?
+    `).get(sourceId, versionId)
   }
 
   function indexVersion(sourceId, versionId) {
@@ -120,6 +158,178 @@ export function openKnowledgeStore(options = {}) {
       .run(versionId, timestamp, sourceId)
     audit(actor, reason, 'source-version', versionId, { previousVersionId }, { sourceId, indexed })
     return { previousVersionId, indexed }
+  }
+
+  function ingestTeacherDocument(document, chunkSet, options = {}) {
+    const actor = String(options.actor || 'teacher')
+    const title = String(options.title || document?.title || '未命名知识源').trim().slice(0, 160)
+    const sourceId = String(options.sourceId || `teacher-${randomUUID().replaceAll('-', '').slice(0, 16)}`)
+    if (!/^[a-z0-9][a-z0-9._-]{2,79}$/i.test(sourceId)) throw new TypeError('invalid source id')
+    if (!document || !chunkSet || document.sourceId !== sourceId || chunkSet.sourceId !== sourceId || chunkSet.documentId !== document.documentId) {
+      throw new TypeError('teacher document/chunk source mismatch')
+    }
+    const chunks = Array.isArray(chunkSet.chunks) ? chunkSet.chunks : []
+    chunks.forEach(validateChunkShape)
+    const suggestions = Array.isArray(options.scopeSuggestions)
+      ? options.scopeSuggestions.filter((item) => LAB_ID_RE.test(String(item?.labId || '')))
+      : []
+    const contentHash = String(document.contentHash || sha256(JSON.stringify(document)))
+    const runId = randomUUID()
+    const timestamp = now()
+    const existingSource = db.prepare('SELECT * FROM knowledge_sources WHERE id = ?').get(sourceId)
+    const duplicate = db.prepare('SELECT id FROM knowledge_source_versions WHERE source_id = ? AND content_hash = ?').get(sourceId, contentHash)
+    if (duplicate) throw new Error('相同内容版本已存在')
+    if (!existingSource) {
+      db.prepare(`
+        INSERT INTO knowledge_sources(
+          id, title, source_type, origin_kind, authority_rank, default_class, status,
+          original_uri, created_by, created_at, updated_at
+        ) VALUES (?, ?, ?, 'teacher-upload', 40, 'teacher-only', 'pending-review', ?, ?, ?, ?)
+      `).run(sourceId, title, String(options.sourceType || document.format || 'upload'), String(options.originalUri || ''), actor, timestamp, timestamp)
+    } else if (existingSource.origin_kind !== 'teacher-upload') {
+      throw new Error('builtin source cannot be replaced through teacher upload')
+    } else {
+      db.prepare("UPDATE knowledge_sources SET title = ?, status = 'pending-review', updated_at = ? WHERE id = ?")
+        .run(title, timestamp, sourceId)
+    }
+    db.prepare(`
+      INSERT INTO knowledge_ingestion_runs(id, source_id, trigger_kind, requested_by, status, input_hash, started_at)
+      VALUES (?, ?, ?, ?, 'running', ?, ?)
+    `).run(runId, sourceId, existingSource ? 'rebuild' : 'teacher-upload', actor, contentHash, timestamp)
+
+    try {
+      const result = transaction(() => {
+        const maxVersion = db.prepare('SELECT COALESCE(MAX(version_number), 0) AS value FROM knowledge_source_versions WHERE source_id = ?').get(sourceId)
+        const versionNumber = Number(maxVersion.value) + 1
+        const versionId = `${sourceId}:v${versionNumber}:${contentHash.slice(0, 12)}`
+        db.prepare(`
+          INSERT INTO knowledge_source_versions(
+            id, source_id, version_number, content_hash, parser_version, chunker_version,
+            original_filename, stored_path, mime, status, license_status,
+            answer_risk_reviewed, created_by, created_at, scope_suggestions_json
+          ) VALUES (?, ?, ?, ?, 'knowledge-normalize-v1', 'section-aware-v1', ?, ?, ?,
+                    'pending-review', 'unreviewed', 0, ?, ?, ?)
+        `).run(
+          versionId, sourceId, versionNumber, contentHash, String(options.originalFilename || ''),
+          String(options.storedPath || ''), String(options.mime || ''), actor, timestamp, json(suggestions),
+        )
+        const documentId = `${versionId}:doc:${contentHash.slice(0, 16)}`
+        db.prepare(`
+          INSERT INTO knowledge_documents(
+            id, document_key, source_id, source_version_id, title, format, language,
+            content_hash, source_path, metadata_json, block_count, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          documentId, document.documentId, sourceId, versionId, document.title, document.format,
+          document.language, contentHash, String(document.metadata?.sourcePath || options.storedPath || ''),
+          json(document.metadata), Number(document.blocks?.length || 0), timestamp,
+        )
+        const insertChunk = db.prepare(`
+          INSERT INTO knowledge_chunks(
+            id, external_chunk_id, document_id, source_id, source_version_id, ordinal,
+            chunk_type, text, section_path_json, section_path_text, block_ordinals_json,
+            locator_start_json, locator_end_json, content_class, concept_ids_json,
+            concept_ids_text, answer_risk, indexable, active, char_count, token_estimate,
+            metadata_json, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'teacher-only', ?, ?, ?, 0, 0, ?, ?, ?, ?)
+        `)
+        for (const chunk of chunks) {
+          const chunkId = `${versionId}:chunk:${String(chunk.ordinal).padStart(6, '0')}`
+          const sectionPath = Array.isArray(chunk.sectionPath) ? chunk.sectionPath : []
+          const conceptIds = Array.isArray(chunk.conceptIds) ? chunk.conceptIds : []
+          insertChunk.run(
+            chunkId, chunk.id, documentId, sourceId, versionId, chunk.ordinal, chunk.chunkType,
+            chunk.text, json(sectionPath), sectionPath.join(' > '), json(chunk.blockOrdinals),
+            json(chunk.locatorStart), json(chunk.locatorEnd), json(conceptIds), conceptIds.join(' '),
+            chunk.answerRisk, Number(chunk.metadata?.charCount || chunk.text.length),
+            Number(chunk.metadata?.tokenEstimate || Math.ceil(chunk.text.length / 4)), json(chunk.metadata), timestamp,
+          )
+          for (const suggestion of suggestions) {
+            db.prepare(`
+              INSERT INTO knowledge_chunk_labs(chunk_id, lab_id, binding_kind, confidence, reason)
+              VALUES (?, ?, 'derived', ?, ?)
+            `).run(chunkId, validateLabId(suggestion.labId), Number(suggestion.confidence || 0), String(suggestion.reason || '自动范围建议'))
+          }
+        }
+        audit(actor, 'upload', 'source-version', versionId, {}, { sourceId, chunks: chunks.length, suggestions })
+        return { versionId, versionNumber, chunks: chunks.length }
+      })
+      db.prepare(`
+        UPDATE knowledge_ingestion_runs SET source_version_id = ?, status = 'succeeded', document_count = 1,
+          chunk_count = ?, finished_at = ? WHERE id = ?
+      `).run(result.versionId, result.chunks, now(), runId)
+      return { ok: true, runId, sourceId, status: 'pending-review', ...result }
+    } catch (error) {
+      db.prepare("UPDATE knowledge_ingestion_runs SET status = 'failed', error_text = ?, finished_at = ? WHERE id = ?")
+        .run(error instanceof Error ? error.message : String(error), now(), runId)
+      throw error
+    }
+  }
+
+  function reviewVersion(sourceId, versionId, review = {}, options = {}) {
+    const actor = String(options.actor || 'teacher')
+    const scopes = [...new Set((review.labScopes || []).map(validateLabId))]
+    if (!scopes.length) throw new TypeError('至少确认一个 Global 或 Lab 范围')
+    const contentClass = String(review.contentClass || 'student-safe')
+    if (!CONTENT_CLASSES.has(contentClass)) throw new TypeError('invalid content class')
+    const licenseStatus = String(review.licenseStatus || '')
+    if (!['platform-owned', 'authorized', 'public-license'].includes(licenseStatus)) throw new TypeError('必须确认材料许可证状态')
+    const version = sourceVersion(sourceId, versionId)
+    if (!version || !['pending-review', 'published'].includes(version.status)) throw new Error('knowledge version is not reviewable')
+    return transaction(() => {
+      const before = {
+        scopes: parseJson(version.teacher_scope_json, []), contentClass: version.default_class,
+        licenseStatus: version.license_status, answerRiskReviewed: Boolean(version.answer_risk_reviewed),
+      }
+      const chunkIds = db.prepare('SELECT id FROM knowledge_chunks WHERE source_version_id = ?').all(versionId)
+      for (const { id } of chunkIds) {
+        db.prepare('DELETE FROM knowledge_chunk_labs WHERE chunk_id = ?').run(id)
+        for (const labId of scopes) {
+          db.prepare(`INSERT INTO knowledge_chunk_labs(chunk_id, lab_id, binding_kind, confidence, reason) VALUES (?, ?, 'teacher', 1, ?)`)
+            .run(id, labId, String(review.note || '教师审核确认'))
+        }
+      }
+      db.prepare(`
+        UPDATE knowledge_chunks SET content_class = ?, indexable = CASE WHEN answer_risk = 'blocked' OR ? = 'system-metadata' THEN 0 ELSE 1 END
+        WHERE source_version_id = ?
+      `).run(contentClass, contentClass, versionId)
+      const nextStatus = version.status === 'published' ? 'published' : 'pending-review'
+      db.prepare(`
+        UPDATE knowledge_source_versions SET teacher_scope_json = ?, review_note = ?, license_status = ?,
+          answer_risk_reviewed = ?, status = ? WHERE id = ?
+      `).run(json(scopes), String(review.note || ''), licenseStatus, review.answerRiskReviewed === true ? 1 : 0, nextStatus, versionId)
+      db.prepare('UPDATE knowledge_sources SET default_class = ?, updated_at = ? WHERE id = ?').run(contentClass, now(), sourceId)
+      if (nextStatus === 'published') indexVersion(sourceId, versionId)
+      audit(actor, 'review', 'source-version', versionId, before, {
+        scopes, contentClass, licenseStatus, answerRiskReviewed: review.answerRiskReviewed === true,
+      })
+      return { ok: true, sourceId, versionId, scopes, contentClass, status: nextStatus }
+    })
+  }
+
+  function publishVersion(sourceId, versionId, options = {}) {
+    const actor = String(options.actor || 'teacher')
+    const version = sourceVersion(sourceId, versionId)
+    if (!version || version.status !== 'pending-review') throw new Error('仅待审核版本可以发布')
+    if (version.license_status === 'unreviewed') throw new Error('发布前必须确认许可证')
+    if (!version.answer_risk_reviewed) throw new Error('发布前必须完成人工答案风险复核')
+    if (!parseJson(version.teacher_scope_json, []).length) throw new Error('发布前必须确认 Lab 范围')
+    const result = transaction(() => activateVersion(sourceId, versionId, actor, 'publish'))
+    return { ok: true, sourceId, versionId, status: 'published', indexedChunks: result.indexed }
+  }
+
+  function disableSource(sourceId, options = {}) {
+    const actor = String(options.actor || 'teacher')
+    const source = db.prepare('SELECT * FROM knowledge_sources WHERE id = ?').get(sourceId)
+    if (!source) throw new Error('knowledge source not found')
+    return transaction(() => {
+      db.prepare('UPDATE knowledge_chunks SET active = 0 WHERE source_id = ?').run(sourceId)
+      db.prepare('DELETE FROM knowledge_chunks_fts WHERE source_id = ?').run(sourceId)
+      db.prepare("UPDATE knowledge_sources SET status = 'disabled', updated_at = ? WHERE id = ?").run(now(), sourceId)
+      if (source.current_version_id) db.prepare("UPDATE knowledge_source_versions SET status = 'disabled' WHERE id = ?").run(source.current_version_id)
+      audit(actor, 'disable', 'source', sourceId, { status: source.status }, { status: 'disabled', note: String(options.note || '') })
+      return { ok: true, sourceId, status: 'disabled' }
+    })
   }
 
   function ingestLabManualBuild(manifestFile, options = {}) {
@@ -262,9 +472,10 @@ export function openKnowledgeStore(options = {}) {
     const commonParams = [...allowedClasses, ...(labId ? [labId] : [])]
     let rows
     if ([...text].length >= 3) {
-      const phrase = `"${text.replaceAll('"', '""')}"`
+      const phrase = ftsQuery(text)
       rows = db.prepare(`
-        SELECT c.*, bm25(knowledge_chunks_fts) AS rank
+        SELECT c.*, bm25(knowledge_chunks_fts) AS rank,
+          (SELECT json_group_array(lab_id) FROM knowledge_chunk_labs scopes WHERE scopes.chunk_id = c.id) AS lab_scopes_json
         FROM knowledge_chunks_fts
         JOIN knowledge_chunks c ON c.id = knowledge_chunks_fts.chunk_id
         JOIN knowledge_sources s ON s.id = c.source_id AND s.current_version_id = c.source_version_id
@@ -279,7 +490,8 @@ export function openKnowledgeStore(options = {}) {
     } else {
       const like = `%${text}%`
       rows = db.prepare(`
-        SELECT c.*, 0.0 AS rank
+        SELECT c.*, 0.0 AS rank,
+          (SELECT json_group_array(lab_id) FROM knowledge_chunk_labs scopes WHERE scopes.chunk_id = c.id) AS lab_scopes_json
         FROM knowledge_chunks c
         JOIN knowledge_sources s ON s.id = c.source_id AND s.current_version_id = c.source_version_id
         JOIN knowledge_source_versions v ON v.id = c.source_version_id AND v.status = 'published'
@@ -305,6 +517,7 @@ export function openKnowledgeStore(options = {}) {
       contentClass: row.content_class,
       conceptIds: parseJson(row.concept_ids_json, []),
       answerRisk: row.answer_risk,
+      labScopes: parseJson(row.lab_scopes_json, []),
       rank: Number(row.rank),
     }))
   }
@@ -334,9 +547,19 @@ export function openKnowledgeStore(options = {}) {
   function listVersions(sourceId) {
     return db.prepare(`
       SELECT id, source_id AS sourceId, version_number AS versionNumber, content_hash AS contentHash,
-             status, created_by AS createdBy, created_at AS createdAt, published_at AS publishedAt
+             status, original_filename AS originalFilename, mime, license_status AS licenseStatus,
+             answer_risk_reviewed AS answerRiskReviewed, scope_suggestions_json AS scopeSuggestionsJson,
+             teacher_scope_json AS teacherScopeJson, review_note AS reviewNote,
+             created_by AS createdBy, created_at AS createdAt, published_at AS publishedAt
       FROM knowledge_source_versions WHERE source_id = ? ORDER BY version_number DESC
-    `).all(sourceId)
+    `).all(sourceId).map((row) => ({
+      ...row,
+      answerRiskReviewed: Boolean(row.answerRiskReviewed),
+      scopeSuggestions: parseJson(row.scopeSuggestionsJson, []),
+      teacherScopes: parseJson(row.teacherScopeJson, []),
+      scopeSuggestionsJson: undefined,
+      teacherScopeJson: undefined,
+    }))
   }
 
   function listSources() {
@@ -351,6 +574,18 @@ export function openKnowledgeStore(options = {}) {
       GROUP BY s.id
       ORDER BY s.authority_rank DESC, s.title
     `).all().map((row) => ({ ...row, versionNumber: Number(row.versionNumber || 0), activeChunks: Number(row.activeChunks) }))
+  }
+
+  function getSource(sourceId) {
+    const source = db.prepare(`
+      SELECT id, title, source_type AS sourceType, origin_kind AS originKind,
+             authority_rank AS authorityRank, default_class AS defaultClass, status,
+             original_uri AS originalUri, current_version_id AS currentVersionId,
+             created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt
+      FROM knowledge_sources WHERE id = ?
+    `).get(sourceId)
+    if (!source) return null
+    return { ...source, versions: listVersions(sourceId) }
   }
 
   function mapChunkRow(row) {
@@ -384,7 +619,10 @@ export function openKnowledgeStore(options = {}) {
     const sourceId = String(options.sourceId || '')
     const limit = Math.max(1, Math.min(Number(options.limit) || 50, 200))
     const offset = Math.max(0, Number(options.offset) || 0)
-    const clauses = ['c.active = 1', 's.current_version_id = c.source_version_id']
+    const includeInactive = options.includeInactive === true
+    const versionId = String(options.versionId || '')
+    const query = String(options.query || '').trim()
+    const clauses = includeInactive ? ['1 = 1'] : ['c.active = 1', 's.current_version_id = c.source_version_id']
     const params = []
     if (labId) {
       clauses.push("EXISTS (SELECT 1 FROM knowledge_chunk_labs filter_labs WHERE filter_labs.chunk_id = c.id AND filter_labs.lab_id = ?)")
@@ -393,6 +631,15 @@ export function openKnowledgeStore(options = {}) {
     if (sourceId) {
       clauses.push('c.source_id = ?')
       params.push(sourceId)
+    }
+    if (versionId) {
+      clauses.push('c.source_version_id = ?')
+      params.push(versionId)
+    }
+    if (query) {
+      clauses.push('(c.text LIKE ? OR c.section_path_text LIKE ? OR c.concept_ids_text LIKE ?)')
+      const like = `%${query}%`
+      params.push(like, like, like)
     }
     const rows = db.prepare(`
       SELECT c.*, s.title AS source_title,
@@ -417,6 +664,47 @@ export function openKnowledgeStore(options = {}) {
     return row ? mapChunkRow(row) : null
   }
 
+  function updateChunk(chunkId, patch = {}, options = {}) {
+    const actor = String(options.actor || 'teacher')
+    const current = getChunk(chunkId)
+    if (!current) throw new Error('knowledge chunk not found')
+    const contentClass = patch.contentClass == null ? current.contentClass : String(patch.contentClass)
+    if (!CONTENT_CLASSES.has(contentClass)) throw new TypeError('invalid content class')
+    const answerRisk = patch.answerRisk == null ? current.answerRisk : String(patch.answerRisk)
+    if (!['low', 'medium', 'high', 'blocked'].includes(answerRisk)) throw new TypeError('invalid answer risk')
+    const labScopes = patch.labScopes == null ? current.labScopes : [...new Set(patch.labScopes.map(validateLabId))]
+    if (!labScopes.length) throw new TypeError('chunk must retain at least one scope')
+    const indexable = patch.indexable == null ? current.indexable : patch.indexable === true
+    const active = patch.active == null ? current.active : patch.active === true
+    return transaction(() => {
+      db.prepare(`
+        UPDATE knowledge_chunks SET content_class = ?, answer_risk = ?, indexable = ?, active = ? WHERE id = ?
+      `).run(contentClass, answerRisk, indexable && answerRisk !== 'blocked' && contentClass !== 'system-metadata' ? 1 : 0, active ? 1 : 0, chunkId)
+      db.prepare('DELETE FROM knowledge_chunk_labs WHERE chunk_id = ?').run(chunkId)
+      for (const labId of labScopes) {
+        db.prepare(`INSERT INTO knowledge_chunk_labs(chunk_id, lab_id, binding_kind, confidence, reason) VALUES (?, ?, 'teacher', 1, ?)`)
+          .run(chunkId, labId, String(patch.note || '教师调整知识块'))
+      }
+      const source = db.prepare('SELECT current_version_id FROM knowledge_sources WHERE id = ?').get(current.sourceId)
+      if (source?.current_version_id === current.versionId) indexVersion(current.sourceId, current.versionId)
+      const updated = getChunk(chunkId)
+      audit(actor, 'update', 'chunk', chunkId, current, updated)
+      return { ok: true, chunk: updated }
+    })
+  }
+
+  function listAudit(options = {}) {
+    const entityId = String(options.entityId || '')
+    const limit = Math.max(1, Math.min(Number(options.limit) || 50, 200))
+    const rows = entityId
+      ? db.prepare('SELECT * FROM knowledge_audit_log WHERE entity_id = ? ORDER BY created_at DESC LIMIT ?').all(entityId, limit)
+      : db.prepare('SELECT * FROM knowledge_audit_log ORDER BY created_at DESC LIMIT ?').all(limit)
+    return rows.map((row) => ({
+      id: row.id, actor: row.actor, action: row.action, entityType: row.entity_type,
+      entityId: row.entity_id, before: parseJson(row.before_json, {}), after: parseJson(row.after_json, {}), createdAt: row.created_at,
+    }))
+  }
+
   function knowledgeTree() {
     const counts = new Map(stats().labs.map((item) => [item.labId, item.chunks]))
     return {
@@ -433,13 +721,20 @@ export function openKnowledgeStore(options = {}) {
   return {
     dbPath,
     ingestLabManualBuild,
+    ingestTeacherDocument,
+    reviewVersion,
+    publishVersion,
+    disableSource,
     rollbackSource,
     search,
     stats,
     listVersions,
     listSources,
+    getSource,
     listChunks,
     getChunk,
+    updateChunk,
+    listAudit,
     knowledgeTree,
     close,
   }

@@ -132,11 +132,11 @@ flowchart TB
 }
 ```
 
-Markdown/HTML 保留标题层级、章节路径、代码语言、HTML anchor；JSON/YAML 保留为 `structured` block，避免把字段关系破坏成无序文本；TXT 和 PDF 按空行/标题聚合段落。PDF 使用 `pdfplumber` 抽取、`pypdf` 读取元数据，并记录 page/line locator；重复页眉页脚会被过滤，文本密度低于阈值时设置 `requiresOcr` 和 warning，而不是静默生成空文本。
+Markdown/HTML 保留标题层级、章节路径、代码语言、HTML anchor；JSON/YAML 保留为 `structured` block，避免把字段关系破坏成无序文本；TXT 和 PDF 按空行/标题聚合段落。PDF 使用 `pdfplumber` 抽取、`pypdf` 读取元数据，并记录 page/line locator；重复页眉页脚会被过滤，文本密度低于阈值时设置 `requiresOcr` 和 warning，而不是静默生成空文本。Step 6 又补充了 EPUB 与 DOCX：EPUB 通过 container/package/spine 顺序解析 XHTML，DOCX 直接读取 `word/document.xml` 并保留 Heading 层级；旧二进制 `.doc` 明确拒绝，要求先转换为 DOCX，避免产生不可审计的低质量文本。
 
 ### Step 3 验证结果
 
-- `python -m unittest -v learning/knowledge/test_normalize.py`：3/3 通过。
+- `python -m unittest -v learning/knowledge/test_normalize.py`：4/4 通过，覆盖 Markdown、HTML、JSON/YAML、EPUB 和 DOCX。
 - Lab2 Markdown：145 blocks，章节路径和 Rust 代码块 locator 正常。
 - OSTEP PDF 预览：492 页总量、处理 3 页、19 blocks、`partial=true`、`requiresOcr=false`。
 - RISC-V Reader PDF 预览：164 页总量、处理 2 页、6 blocks、`partial=true`、`requiresOcr=false`。
@@ -223,7 +223,7 @@ erDiagram
 
 ### 中文检索与权限过滤
 
-SQLite 的 `unicode61` 会把连续中文视为一个长 token，因此本项目使用 FTS5 `trigram`，支持三个及以上 Unicode 字符的子串查询；一到两个字符使用带同等权限条件的 `LIKE` 回退。查询必须同时满足：Source 当前版本、Version 已发布、Chunk active/indexable、调用方允许的 `contentClass`，以及目标 Lab 或 `global` binding。FTS 排名只是 Step 5 的词面候选分，Step 7 再与向量相似度和权威等级融合。
+SQLite 的 `unicode61` 会把连续中文视为一个长 token，因此本项目使用 FTS5 `trigram`，支持三个及以上 Unicode 字符的子串查询；一到两个字符使用带同等权限条件的 `LIKE` 回退。自然语言问句先抽取代码标识符和中文概念片段，再用 OR 组合召回，避免把整句误当作必须原样出现的短语。查询必须同时满足：Source 当前版本、Version 已发布、Chunk active/indexable、调用方允许的 `contentClass`，以及目标 Lab 或 `global` binding。FTS 排名只是 Step 6 的词面候选分，Step 7 再与向量相似度和权威等级融合。
 
 ### Step 5 验证结果
 
@@ -234,11 +234,62 @@ SQLite 的 `unicode61` 会把连续中文视为一个长 token，因此本项目
 
 Store 已提供 `knowledgeTree()`、`listSources()`、`listChunks()`、`getChunk()` 和 `listVersions()`，供 Step 6 教师知识库页面使用；写操作仍必须经 Tutor Server 的教师身份校验。
 
-## 8. 教师新增知识的接口预留
+## 8. Tutor RAG 与教师知识工作台（Step 6）
 
-教师资料不应直接写入向量表。建议由服务端提供 `POST /teacher/knowledge-sources`：先保存原文件、SHA-256、上传者和 MIME，生成 `sourceId`，进入 `pending-review`；审核接口补充 `licenseStatus`、`contentClass`、`scope`、`answerRiskReviewed` 和 `teacherApproval` 后才允许发布。发布动作触发规范化、分块、索引任务，并保留 parser/version/content hash，便于回滚到上一版。
+### 对话接入顺序
 
-该接口与 `sources.json` 的静态平台清单并不冲突：平台内置来源走版本控制，教师来源走数据库生命周期；两者最终都必须产出相同的 Document/Block 元数据和同一套 access policy 决策。
+Tutor Server 在一轮对话中执行如下顺序，RAG 不拥有阶段推进或拒答权限：
+
+```mermaid
+sequenceDiagram
+  participant U as Student
+  participant S as Tutor Server
+  participant K as KnowledgeStore
+  participant M as LLM
+  U->>S: message + labId + evidenceRefs
+  S->>S: 身份/Lab/证据校验 + decideTutorTurn
+  alt 直接答案护栏命中
+    S-->>U: 规则式引导（不访问知识库）
+  else 普通教学问题
+    S->>K: FTS(query, current Lab + global)
+    K-->>S: ≤5 chunks；global ≤2
+    S->>M: policy + 不可信 knowledge chunks
+    M-->>S: candidate reply
+    S->>S: 答案泄漏 + run/trace/kb 引用白名单
+    S-->>U: 最终引导回复
+  end
+```
+
+只允许 `student-safe` 与 `guided-hint` 进入 Tutor 召回。前者可以用稳定的 `kb:<chunk-id>` 有限引用；后者只能转换为一个反问或观察目标。服务端把每轮实际召回的 citation 传给 `enforceTutorOutput()`，模型虚构或沿用上一轮 `kb:` 都会触发 `invalid-evidence-reference`。知识片段在 Prompt 中被显式标记为不可信数据，不能覆盖服务端阶段、证据门控或运行结论；直接索要完整答案时在检索前返回，避免答案型材料进入上下文。
+
+### 教师上传与发布事务
+
+`knowledge-v2` 为 Source Version 增加自动范围建议、教师确认范围和审核说明。教师上传经过以下状态链：
+
+```mermaid
+stateDiagram-v2
+  [*] --> pending_review: 保存原文件 + normalize + chunk
+  pending_review --> pending_review: 确认 Lab / class / license / risk
+  pending_review --> published: 原子激活 + 重建 Source FTS
+  published --> disabled: 停用并移除 FTS
+  published --> superseded: 发布新版本
+  superseded --> published: 教师回滚 + 重建 FTS
+```
+
+上传初始 Chunk 一律写成 `teacher-only`、`active=0`、`indexable=0`。规则式 Lab 建议会给出置信度与命中术语，但只写 `derived` binding；教师必须确认一个或多个 `global/lab1..lab8`、许可证状态和答案风险，发布条件才成立。发布、审核、Chunk 修改、停用与回滚均写 `knowledge_audit_log`。Markdown/TXT 正文修改和 PDF 替换都创建不可变的新 Source Version，不允许直接覆盖旧正文；单 Chunk 只开放范围、权限、风险、索引和启用状态调整。
+
+教师 API 均位于 `/teacher/` 的现有角色门控后：
+
+| API | 用途 |
+| --- | --- |
+| `GET /teacher/knowledge/{tree,sources,source,chunks,chunk,search,audit}` | 浏览知识树、版本、正文、检索结果与审计 |
+| `POST /teacher/knowledge/sources` | 二进制上传或指定 Source 的新版本；支持 PDF/EPUB/MD/TXT/DOCX |
+| `POST /teacher/knowledge/{review,publish,disable,rollback}` | 审核、发布、停用和版本恢复 |
+| `PATCH /teacher/knowledge/chunk` | 调整单块范围、权限、风险及索引状态 |
+
+### 前端工作台
+
+`/teacher/knowledge` 使用三栏结构：左栏显示 Global/Lab1-8 和来源状态；中栏显示版本、章节路径及 Chunk 摘要；右栏显示正文、自动归属依据、审核表单和版本/Chunk 操作。移动端把三栏降级为“知识树 / 内容 / 详情”三个稳定面板。现有 `/materials` 仍是学生主动阅读的材料架，与 Tutor RAG 发布索引保持独立，上传材料不会静默变成导师知识。
 
 ## 9. 当前状态与后续步骤
 
@@ -249,8 +300,8 @@ Store 已提供 `knowledgeTree()`、`listSources()`、`listChunks()`、`getChunk
 | 3. 多格式规范化 | 已完成 | `normalize.py`、Schema、单测和 PDF 预览 |
 | 4. 章节感知分块 | 已完成 | `chunk.py`、Chunk Schema、权限/范围/风险元数据和单测 |
 | 5. SQLite + FTS | 已完成 | 独立知识库、版本化导入、中文 FTS、Lab 过滤、审计与回滚 |
-| 6. Tutor 服务接入 | 待确认 | policy gate、检索 API、prompt adapter |
+| 6. Tutor 服务与教师前端 | 已完成 | 受限 RAG、教师 API、多格式上传、审核发布、版本/Chunk 管理、三栏工作台 |
 | 7. 向量检索与混合排序 | 待确认 | embedding、BM25/FTS + 向量融合、重排 |
 | 8. RAG Tutor Harness | 待确认 | RAG 泄漏、引用归属、权限越权和稳定性回归 |
 
-Step 6 将在 Tutor Server 增加教师知识库 API，并实现 `/teacher/knowledge` 三栏管理页：知识树、来源/章节列表、chunk 检查器，以及上传、自动分块、Lab 建议、审核发布和停用操作。
+Step 7 将在不改变 Step 6 权限与审核边界的前提下加入 embedding 与混合排序；SQLite Source/Version/Chunk 仍是权威元数据层，向量索引只是可重建的派生索引。

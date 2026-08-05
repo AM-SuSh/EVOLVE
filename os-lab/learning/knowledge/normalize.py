@@ -12,9 +12,11 @@ import hashlib
 import json
 import re
 import sys
+import zipfile
 from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable
+from xml.etree import ElementTree
 
 import pdfplumber
 import yaml
@@ -24,7 +26,7 @@ from pypdf import PdfReader
 
 
 SCHEMA_VERSION = 1
-SUPPORTED_FORMATS = {"markdown", "html", "json", "yaml", "text", "pdf"}
+SUPPORTED_FORMATS = {"markdown", "html", "json", "yaml", "text", "pdf", "epub", "docx"}
 HEADING_RE = re.compile(
     r"^(?:第\s*[0-9一二三四五六七八九十百]+\s*[章节部分]|附录\s*[A-Za-z0-9一二三四五六七八九十]+|"
     r"[0-9]+(?:\.[0-9]+){0,3}\s+\S+)"
@@ -345,6 +347,75 @@ def pdf_blocks(path: Path, source_path: str, max_pages: int | None = None) -> tu
         return title, blocks, metadata
 
 
+def epub_blocks(path: Path, source_path: str) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
+    """Read EPUB chapters in spine order without requiring an EPUB-specific dependency."""
+    with zipfile.ZipFile(path) as archive:
+        container = ElementTree.fromstring(archive.read("META-INF/container.xml"))
+        rootfile = next((node.attrib.get("full-path") for node in container.iter() if node.tag.endswith("rootfile")), None)
+        if not rootfile:
+            raise ValueError("EPUB container does not declare a package document")
+        package = ElementTree.fromstring(archive.read(rootfile))
+        base = Path(rootfile).parent
+        manifest = {
+            node.attrib.get("id"): node.attrib.get("href")
+            for node in package.iter()
+            if node.tag.endswith("item") and node.attrib.get("id") and node.attrib.get("href")
+        }
+        spine = [node.attrib.get("idref") for node in package.iter() if node.tag.endswith("itemref")]
+        title_node = next((node for node in package.iter() if node.tag.endswith("title") and (node.text or "").strip()), None)
+        title = normalize_whitespace(title_node.text or "") if title_node is not None else source_title(path)
+        blocks: list[dict[str, Any]] = []
+        for idref in spine:
+            href = manifest.get(idref)
+            if not href:
+                continue
+            member = (base / href.split("#", 1)[0]).as_posix()
+            try:
+                chapter = archive.read(member).decode("utf-8-sig", errors="replace")
+            except KeyError:
+                continue
+            _, chapter_blocks = html_blocks(chapter, f"{source_path}!/{member}")
+            for item in chapter_blocks:
+                item["id"] = f"block-{len(blocks):06d}"
+                item["ordinal"] = len(blocks)
+                blocks.append(item)
+        return title, blocks, {"chapterCount": len(spine), "processedChapters": len({item['locator']['path'] for item in blocks})}
+
+
+def docx_blocks(path: Path, source_path: str) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
+    """Extract paragraphs and heading styles from the main DOCX document XML."""
+    word_ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    ns = {"w": word_ns}
+    with zipfile.ZipFile(path) as archive:
+        root = ElementTree.fromstring(archive.read("word/document.xml"))
+        core_title = ""
+        try:
+            core = ElementTree.fromstring(archive.read("docProps/core.xml"))
+            title_node = next((node for node in core.iter() if node.tag.endswith("title") and (node.text or "").strip()), None)
+            core_title = normalize_whitespace(title_node.text or "") if title_node is not None else ""
+        except KeyError:
+            pass
+    sections: list[str] = []
+    blocks: list[dict[str, Any]] = []
+    for paragraph_index, paragraph in enumerate(root.findall(".//w:body/w:p", ns), start=1):
+        value = normalize_whitespace("".join(node.text or "" for node in paragraph.findall(".//w:t", ns)))
+        if not value:
+            continue
+        style_node = paragraph.find("./w:pPr/w:pStyle", ns)
+        style = style_node.attrib.get(f"{{{word_ns}}}val", "") if style_node is not None else ""
+        heading_match = re.search(r"(?:Heading|标题)\s*([1-6])", style, re.I)
+        level = int(heading_match.group(1)) if heading_match else None
+        if level:
+            sections = section_update(sections, value, level)
+        item = block(
+            len(blocks), "heading" if level else "paragraph", value, sections,
+            {"path": source_path, "paragraph": paragraph_index}, level=level,
+        )
+        if item:
+            blocks.append(item)
+    return core_title or source_title(path), blocks, {"paragraphCount": len(blocks)}
+
+
 def detect_format(path: Path) -> str:
     suffix = path.suffix.lower()
     return {
@@ -357,6 +428,8 @@ def detect_format(path: Path) -> str:
         ".yml": "yaml",
         ".txt": "text",
         ".pdf": "pdf",
+        ".epub": "epub",
+        ".docx": "docx",
     }.get(suffix, "")
 
 
@@ -375,7 +448,7 @@ def normalize_file(
     if format_name not in SUPPORTED_FORMATS:
         raise ValueError(f"unsupported format for {path}: {format_name or 'unknown'}")
 
-    pdf_metadata: dict[str, Any] = {}
+    format_metadata: dict[str, Any] = {}
     if format_name == "markdown":
         document_title, blocks = markdown_blocks(raw.decode("utf-8-sig"), path.as_posix())
     elif format_name == "html":
@@ -385,7 +458,11 @@ def normalize_file(
     elif format_name == "yaml":
         document_title, blocks = structured_blocks(yaml.safe_load(raw.decode("utf-8-sig")), path.as_posix())
     elif format_name == "pdf":
-        document_title, blocks, pdf_metadata = pdf_blocks(path, path.as_posix(), max_pages)
+        document_title, blocks, format_metadata = pdf_blocks(path, path.as_posix(), max_pages)
+    elif format_name == "epub":
+        document_title, blocks, format_metadata = epub_blocks(path, path.as_posix())
+    elif format_name == "docx":
+        document_title, blocks, format_metadata = docx_blocks(path, path.as_posix())
     else:
         document_title, blocks = text_blocks(raw.decode("utf-8-sig"), path.as_posix())
 
@@ -401,11 +478,11 @@ def normalize_file(
         "parserVersion": "knowledge-normalize-v1",
         "blockCount": len(blocks),
         "warnings": [],
-        **pdf_metadata,
+        **format_metadata,
     }
     if not blocks:
         metadata["warnings"].append("no-text-blocks")
-    if pdf_metadata.get("requiresOcr"):
+    if format_metadata.get("requiresOcr"):
         metadata["warnings"].append("pdf-text-density-low-requires-ocr")
     if source_url:
         metadata["sourceUrl"] = source_url
@@ -488,4 +565,3 @@ if __name__ == "__main__":
     except Exception as error:
         print(f"normalize failed: {error}", file=sys.stderr)
         raise SystemExit(1)
-

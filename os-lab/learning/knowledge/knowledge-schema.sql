@@ -36,6 +36,9 @@ CREATE TABLE IF NOT EXISTS knowledge_source_versions (
   created_by TEXT NOT NULL,
   created_at TEXT NOT NULL,
   published_at TEXT,
+  scope_suggestions_json TEXT NOT NULL DEFAULT '[]',
+  teacher_scope_json TEXT NOT NULL DEFAULT '[]',
+  review_note TEXT NOT NULL DEFAULT '',
   error_json TEXT NOT NULL DEFAULT '{}',
   UNIQUE(source_id, version_number),
   UNIQUE(source_id, content_hash)

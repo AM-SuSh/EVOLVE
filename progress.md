@@ -1,5 +1,33 @@
 # os-lab 项目进度总览
 
+## 2026-08-05 - Task: AI 导师 RAG 知识库 Step 6 · Tutor 接入与教师工作台
+
+### What was done
+
+- Tutor Server 接入受限 RAG：答案护栏先于检索；普通问题仅检索当前 Lab + Global、最多 5 个 Chunk、Global 最多 2 个，只允许 `student-safe/guided-hint`。
+- Prompt 将知识块标为不可信数据，运行/Trace 证据保持最高优先级；`guided-hint` 只能转化为反问，`student-safe` 才允许有限引用。
+- 扩展输出护栏，对 `kb:` 执行本轮召回白名单校验，阻止模型伪造或跨轮复用引用。
+- 新增 `knowledge-v2` 兼容迁移和教师知识生命周期：上传、自动分块、Lab 范围建议、审核、发布、停用、Chunk 设置修改和版本回滚；所有写操作记录审计。
+- 教师上传默认 `pending-review/teacher-only/inactive/non-indexable`，许可证、Lab 范围与答案风险未经人工确认时无法发布。
+- 规范化器新增 EPUB spine 顺序解析和 DOCX Heading 解析；旧 `.doc` 明确拒绝并提示转 DOCX。
+- 新增 `/teacher/knowledge` 三栏工作台和教师顶栏入口，可浏览 Global/Lab1-8、来源、版本、章节、Chunk 正文和溯源路径，并完成上传审核与版本操作；移动端使用三面板切换。
+- 保留 `/materials` 学生学习材料架，与 RAG 发布索引隔离，普通材料上传不会自动进入 Tutor。
+- 更新知识库 README 与 Agent 技术文档，补充 Tutor 时序、上传状态机、教师 API 和前端交互契约。
+
+### Testing
+
+- KnowledgeStore + Tutor 状态机：7/7 通过，覆盖待审核隔离、发布前置条件、Lab 越权、Chunk 调整、停用、审计与 `kb:` 引用白名单。
+- Python 规范化/分块/全 Lab：11/11 通过，新增 EPUB/DOCX fixture。
+- Tutor Server smoke：通过真实教师上传、自动 Lab2 建议、审核、发布、学生 RAG Prompt 注入和教师 API 权限检查。
+- VitePress production build：通过。
+
+### Notes
+
+- 自动 Lab 判断是可解释的初筛建议，不是发布决策；教师确认仍是硬门槛。
+- Step 7 尚未开始：后续加入 embedding、FTS/向量混合排序与权威度重排。
+
+---
+
 ## 2026-08-05 - Task: AI 导师 RAG 知识库 Step 5 · SQLite 与 FTS5
 
 ### What was done

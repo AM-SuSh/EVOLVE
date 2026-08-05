@@ -35,6 +35,9 @@ const { frontmatter } = useData()
   <div v-else-if="frontmatter.teacherReview" class="teacher-review-layout">
     <Content />
   </div>
+  <div v-else-if="frontmatter.knowledgeManager" class="knowledge-manager-layout">
+    <Content />
+  </div>
   <DefaultLayout v-else>
     <!-- 教师管理入口 + 当前用户（点击可退出）。 -->
     <template #nav-bar-content-after>
@@ -46,6 +49,12 @@ const { frontmatter } = useData()
 
 <style scoped>
 .teacher-review-layout {
+  height: 100dvh;
+  min-height: 620px;
+  overflow: hidden;
+}
+
+.knowledge-manager-layout {
   height: 100dvh;
   min-height: 620px;
   overflow: hidden;

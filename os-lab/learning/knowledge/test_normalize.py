@@ -2,6 +2,7 @@ import json
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -53,6 +54,27 @@ class NormalizeTest(unittest.TestCase):
         self.assertEqual(json_document["blocks"][0]["type"], "structured")
         self.assertEqual(yaml_document["blocks"][0]["type"], "structured")
         self.assertIn("stvec", yaml_document["blocks"][0]["text"])
+
+    def test_epub_uses_spine_order_and_docx_keeps_heading_structure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            epub_path = root / "lesson.epub"
+            with zipfile.ZipFile(epub_path, "w") as archive:
+                archive.writestr("META-INF/container.xml", '<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/package.opf"/></rootfiles></container>')
+                archive.writestr("OEBPS/package.opf", '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>OS EPUB</dc:title></metadata><manifest><item id="c1" href="c1.xhtml"/></manifest><spine><itemref idref="c1"/></spine></package>')
+                archive.writestr("OEBPS/c1.xhtml", '<html><body><main><h1>Trap</h1><p>stvec 指向入口。</p></main></body></html>')
+            epub = normalize_file(epub_path, "test-epub")
+            self.assertEqual(epub["format"], "epub")
+            self.assertEqual(epub["title"], "OS EPUB")
+            self.assertIn("stvec", epub["blocks"][-1]["text"])
+
+            docx_path = root / "lesson.docx"
+            with zipfile.ZipFile(docx_path, "w") as archive:
+                archive.writestr("word/document.xml", '<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>页表</w:t></w:r></w:p><w:p><w:r><w:t>Sv39 使用三级页表。</w:t></w:r></w:p></w:body></w:document>')
+            docx = normalize_file(docx_path, "test-docx")
+            self.assertEqual(docx["format"], "docx")
+            self.assertEqual(docx["blocks"][0]["type"], "heading")
+            self.assertEqual(docx["blocks"][1]["sectionPath"], ["页表"])
 
 
 if __name__ == "__main__":

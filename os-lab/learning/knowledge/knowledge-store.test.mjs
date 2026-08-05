@@ -111,3 +111,54 @@ test('ingestion is scoped, searchable, idempotent, and rollback-safe', () => {
     store.close()
   }
 })
+
+test('teacher upload stays private until reviewed and supports publish, chunk edits, and disable', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'os-lab-kb-teacher-'))
+  const store = openKnowledgeStore({ dbPath: path.join(root, 'knowledge.db') })
+  const sourceId = 'teacher-trap-notes'
+  const text = 'stvec 决定 trap 入口，sscratch 用于保存用户态与内核态切换所需的信息。'
+  const document = {
+    schemaVersion: 1, documentId: `${sourceId}:doc`, sourceId, title: 'Trap 补充讲义',
+    format: 'markdown', language: 'mixed', contentHash: 'a'.repeat(64),
+    metadata: { sourcePath: 'trap-notes.md' },
+    blocks: [{ id: 'block-000000', ordinal: 0, type: 'paragraph', text, sectionPath: ['Trap', '入口'], locator: { lineStart: 1 } }],
+  }
+  const chunkSet = {
+    schemaVersion: 1, documentId: document.documentId, sourceId,
+    chunks: [{
+      id: `${document.documentId}:chunk-0`, ordinal: 0, documentId: document.documentId, sourceId,
+      chunkType: 'text', text, sectionPath: ['Trap', '入口'], blockOrdinals: [0],
+      locatorStart: { lineStart: 1 }, locatorEnd: { lineEnd: 1 }, contentClass: 'student-safe',
+      labScope: ['lab2'], conceptIds: ['os.trap'], answerRisk: 'low', indexable: true,
+      metadata: { charCount: text.length, tokenEstimate: 20, blockTypes: ['paragraph'] },
+    }],
+  }
+  try {
+    const uploaded = store.ingestTeacherDocument(document, chunkSet, {
+      actor: 'teacher-a', sourceId, title: document.title,
+      scopeSuggestions: [{ labId: 'lab2', confidence: 0.85, reason: '匹配 trap、stvec' }],
+    })
+    assert.equal(uploaded.status, 'pending-review')
+    assert.equal(store.search('stvec', { labId: 'lab2' }).length, 0)
+    assert.equal(store.listChunks({ sourceId, includeInactive: true })[0].contentClass, 'teacher-only')
+    assert.throws(() => store.publishVersion(sourceId, uploaded.versionId), /许可证/)
+
+    store.reviewVersion(sourceId, uploaded.versionId, {
+      labScopes: ['lab2'], contentClass: 'guided-hint', licenseStatus: 'authorized',
+      answerRiskReviewed: true, note: '仅作为追问依据',
+    }, { actor: 'teacher-a' })
+    assert.equal(store.search('stvec', { labId: 'lab2' }).length, 0)
+    store.publishVersion(sourceId, uploaded.versionId, { actor: 'teacher-a' })
+    assert.equal(store.search('stvec', { labId: 'lab2' }).length, 1)
+    assert.equal(store.search('stvec', { labId: 'lab1' }).length, 0)
+
+    const chunk = store.listChunks({ sourceId })[0]
+    store.updateChunk(chunk.id, { labScopes: ['global'], contentClass: 'student-safe', active: true }, { actor: 'teacher-a' })
+    assert.equal(store.search('stvec', { labId: 'lab1' }).length, 1)
+    store.disableSource(sourceId, { actor: 'teacher-a', note: '课程结束' })
+    assert.equal(store.search('stvec', { labId: 'lab2' }).length, 0)
+    assert.deepEqual(store.listAudit().map((entry) => entry.action), ['disable', 'update', 'publish', 'review', 'upload'])
+  } finally {
+    store.close()
+  }
+})
