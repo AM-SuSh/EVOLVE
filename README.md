@@ -1,3 +1,13 @@
+# EVOLVE: Evolving Virtual OS Learning & Verification Environment
+
+分块产物生成
+
+```
+cd os-lab
+python learning/knowledge/build_lab_chunks.py
+```
+
+
 # 仓库总览
 
 本仓库汇总操作系统课程赛题交付材料。
