@@ -1,5 +1,90 @@
 # os-lab 项目进度总览
 
+## 2026-08-05 - Task: Lab3 任务三对齐 Lab1 版式
+
+### What was done
+- 按 `lab1-bare-metal.md` 任务三版式重写 Lab3 任务三：短说明 + 命令块 +「预期现象 / 通过标准 / 做完务必改回」条目；保留三项原有学习意图。
+
+### Testing
+- 文案对照 Lab1：结构一致；修改 2 仍为思考题（无强制改崩）。
+
+### Notes
+- `os-lab/labs/lab3-memory.md`：仅改任务三。
+- 回滚：还原该文件任务三段落即可。
+
+---
+
+## 2026-08-05 - Task: Lab3 任务三改为连贯叙述
+
+### What was done
+- 将任务三从「目的/怎么改/怎么跑」条目式，改写成与 Lab1 类似的连贯说明，目的融入操作与通过标准叙述中。
+
+### Testing
+- 文案核对：三项实验意图、改回要求、修改 2 为思考题均保留。
+
+### Notes
+- `os-lab/labs/lab3-memory.md`：仅改任务三。
+- 回滚：还原该文件任务三段落即可。
+
+---
+
+## 2026-08-05 - Task: 扩写 Lab3 任务三并补修改目的
+
+### What was done
+- 扩写 `lab3-memory.md` 任务三：为三项动手修改补充目的、操作指引、预期与通过标准；强调改回与对照背景知识（`U` 位隔离、页大小约定、真实翻译路径）。
+
+### Testing
+- 文案核对：三项仍对应原实验意图；修改 2 明确为思考题不必强行改崩；修改 1/3 仍要求改回后复跑任务一。
+
+### Notes
+- `os-lab/labs/lab3-memory.md`：仅改「任务三：动手修改」。
+- 回滚：还原该文件任务三段落即可。
+
+---
+
+## 2026-08-05 - Task: 按 2.1 风格扩写 Lab3 背景知识 2.2–2.6
+
+### What was done
+- 完善 `lab3-memory.md` 背景知识：修正章节引言笔误；按 2.1 的详细易读写法扩写 Sv39、PTE、帧分配器、MemorySet 与访存串联；保留 mermaid，并收口 12/9/10 三个易混数字。
+
+### Testing
+- 结构核对：仍为 2.1–2.6；与任务二五道阅读题仍一一可对照。
+
+### Notes
+- `os-lab/labs/lab3-memory.md`：第二节背景知识扩写。
+- 回滚：还原该文件第二节即可。
+
+---
+
+## 2026-08-05 - Task: 扩写 Lab3「2.1 分页与地址空间」
+
+### What was done
+- 重写 `lab3-memory.md` 的 2.1 节：补充虚拟/物理地址对照、为何按页管理、VPN+偏移翻译三步，以及页错误含义，便于衔接 2.2 Sv39。
+
+### Testing
+- 文案核对：2.1 仍不提前展开三级页表细节；与 2.2 分工清楚。
+
+### Notes
+- `os-lab/labs/lab3-memory.md`：仅改 2.1 节。
+- 回滚：还原该文件对应段落即可。
+
+---
+
+## 2026-08-05 - Task: 按 Lab1 格式重整 Lab3 手册
+
+### What was done
+- 将 `lab3-memory.md` 按 `lab1-bare-metal.md` 的版式重整：教材块「相关教材理论」、零开始之前的分步 PowerShell、问题场景对照表与实验目标、任务一/二/三写法，以及「四、验证命令」标题；保留「五、AI 提问模板」，原「六、」重复习题并入答案链接。
+
+### Testing
+- 文案结构核对：H2 为 零～五；任务二仍为 5 题；教材链接仍为 `/downloads/ostep-zh.pdf#page=`。
+- 建议在 handbook 执行 `npm run sync` 后打开 `/labs/lab3-memory` 目视版式。
+
+### Notes
+- `os-lab/labs/lab3-memory.md`：全文按 Lab1 格式重排。
+- 回滚：`git checkout -- os-lab/labs/lab3-memory.md`
+
+---
+
 ## 2026-08-04 - Task: 文件栏改回仅与编辑器同列
 
 ### What was done
