@@ -1,5 +1,55 @@
 # os-lab 项目进度总览
 
+## 2026-08-05 - Task: Step 4 补全 · 批量生成 Lab1-Lab8 分块
+
+### What was done
+
+- 修正此前只用 Lab2 作为真实样本、没有提供全 Lab 构建产物和查看入口的问题。
+- 新增 `os-lab/learning/knowledge/build_lab_chunks.py`，从 `sources.json` 发现并强制校验 Lab1-Lab8 手册齐全，逐个执行 normalize、Document Schema、chunk 和 Chunk Schema 校验。
+- 在 `learning/knowledge/build/lab-manuals/` 实际生成 8 份 Document JSON、8 份 Chunk JSON 和一个 `manifest.json` 汇总；构建目录可重复生成并由 Git 忽略。
+- 生成的 locator 和 `sourcePath` 统一为工作区相对路径，避免把 `D:` 盘符写入后续数据库。
+- 新增 `test_build_lab_chunks.py`，验证 8 个 Lab 全部存在、每个都有非空 block/chunk、scope 与 Lab ID 一致且产物文件齐全。
+- 更新知识库 README 和 Agent 技术文档，补充查看路径、构建/测试命令以及 Lab1-Lab8 的分块统计。
+
+### Testing
+
+- `python -m unittest -v learning/knowledge/test_build_lab_chunks.py learning/knowledge/test_chunk.py learning/knowledge/test_normalize.py`：10/10 通过。
+- 批量构建结果：8 个 Lab，840 blocks，145 chunks；全部通过 Document/Chunk Draft 2020-12 Schema 校验。
+- 各 Lab chunk 数：Lab1 16、Lab2 22、Lab3 19、Lab4 19、Lab5 17、Lab6 17、Lab7 17、Lab8 18。
+
+### Notes
+
+- 查看总览：`os-lab/learning/knowledge/build/lab-manuals/manifest.json`。
+- 查看具体分块：`os-lab/learning/knowledge/build/lab-manuals/chunks/lab1.chunks.json` 至 `lab8.chunks.json`。
+- 本次补全仍属于 Step 4；尚未进入 Step 5 SQLite/FTS。
+
+## 2026-08-05 - Task: AI 导师 RAG 知识库 Step 4 · 章节感知分块
+
+### What was done
+
+- 新增 `os-lab/learning/knowledge/chunk.py`，将统一 Document/Block JSON 转换为确定性的章节感知 Chunk Set。
+- 分块不跨 `sectionPath` 合并，保留完整父标题链、源 block ordinal、起止 locator、代码/结构化 block 类型和稳定 chunk ID。
+- 新增 `chunk-schema.json`，固定 `contentClass`、`labScope`、`conceptIds`、`answerRisk`、`indexable` 等后续 SQLite/FTS 和 Retriever 所需字段。
+- 接入 Step 2 权限策略：解析来源默认级别、路径覆盖和硬拒绝规则；`system-metadata` 与硬拒绝内容不进入后续全文索引。
+- Lab 作用域同时支持 `lab2/` 目录和 `lab2-trap-and-task.md` 文件名；公共教材标为 `global`。
+- 默认目标长度 1000 字符、硬上限 1400 字符，不做隐式文本 overlap；超长单 block 按句子/窗口切分并标记来源。
+- 经用户允许，使用 `winget` 为当前用户安装 Poppler 25.07.0-0；用 `pdftoppm` 抽样渲染 OSTEP 正文页和 RISC-V Reader 封面，确认页面清晰且无裁切、重叠或乱码。
+- 更新 `.gitignore` 忽略 `tmp/`、`__pycache__/` 和 `*.py[cod]`，避免视觉抽样与 Python 缓存进入提交。
+- 更新知识库 README 和 `os-lab/docs/agent-system-technical.md`，记录 Step 4 数据契约、风险设计、Mermaid 流程图和验证结果。
+
+### Testing
+
+- `python -m unittest -v learning/knowledge/test_chunk.py learning/knowledge/test_normalize.py`：9/9 通过。
+- Lab2 手册：145 blocks 生成 22 chunks，全部正确标记为 `lab2`，未跨章节合并。
+- OSTEP 三页预览：19 blocks 生成 3 chunks，全部正确标记为 `global`。
+- Lab2 与 OSTEP Chunk Set 均通过 `chunk-schema.json` Draft 2020-12 校验。
+- Poppler PNG 视觉抽样：OSTEP 第 2 页和 RISC-V Reader 第 1 页均可正常阅读。
+
+### Notes
+
+- Poppler 是本机文档质量检查工具，不属于仓库运行时依赖；新终端会从用户 PATH 获取命令。
+- 本步骤未创建 SQLite 数据库、未执行全量 PDF 入库、未接入 Tutor 服务端；以上属于 Step 5 之后的工作。
+
 ## 2026-08-05 - Task: AI 导师 RAG 知识库 Step 3 · 多格式文档规范化
 
 ### What was done
@@ -373,6 +423,48 @@
 - 未重跑真实 QEMU lab2 发布；如需 Day6 实机验收证据，需在本地按手册跑一次教师发布 → 学生领取。
 - 回滚：还原上述前端/文档/实验手册文件，并清除 `localStorage['os-lab-factory-publish-saved-v1']`。
 
+## 2026-08-02 · 添加到对话：可选范围 + 点击溯源
+
+### Summary
+
+终端对齐工作区「选区优先」；测试结果支持单条断言；待发/已发附件 chip 可点击跳回源面板。
+
+### Changes
+
+- **终端**：有 xterm 选区则只附选区，否则附本次全文；标题标明「选区/全文」。
+- **测试结果**：每条断言旁可单独「添加到对话」；全部入口仍保留。
+- **溯源**：附件带 `origin`；点 chip → 工作区行 / 终端 / Problems / 测试 / 手册章节 / Trace `#seq`。
+- **已发送气泡**：保留可点附件 chips，正文只展示学生原问题（完整拼装仍发给导师）。
+
+### Testing
+
+- 终端拖选几行再「添加到对话」→ chip 标题含「选区」；点 chip 回终端。
+- 测试结果点单条旁图标 → 只附一条；发送后点气泡 chip 回测试页签。
+- 工作区/手册/Problems/Trace 附件同样可点溯源。
+
+## 2026-08-02 · 工作台「添加到对话」+ 清理临时调度探针
+
+### Summary
+
+删除测 `run:` 点击用的临时调度文件；在手册 / 工作区 / 终端 / Problems / 测试结果 / Trace 增加「添加到对话」，内容以附件 chips 进入 AI 导师输入区，发送时一并提交。
+
+### Changes
+
+- **临时文件清理**：移除 `tmp_lab2_scheduler.rs`；`task.rs` 的 `find_next_task` 保持 `todo!("Lab2：…")`。
+- **附件模型**：新增 `chat-attachments.ts`（来源标签、截断、拼装格式）；`TutorPane` 展示可移除 chips；有附件即可发送。
+- **各面板入口**：`CodePanel` / `TerminalSession` / `ProblemsPanel` / 测试结果区 / `ManualPane` / `TraceViewer` 发出 `add-to-chat`；`LabWorkspace.addToChat` 累积附件、切到导师页签并 toast。
+- **文档**：`workbench-ui.md` 增补「添加到对话」说明。
+
+### Testing
+
+- 刷新手册后，各面板点「添加到对话」→ 右栏 AI 导师出现附件 chip；填写问题或仅附件发送 → 消息含 `【来源 · 标题】` 代码块。
+- 确认 stu 工作区无 `tmp_lab2_scheduler.rs`。
+
+### Notes
+
+- 主要文件：`chat-attachments.ts`、`TutorPane.vue`、`LabWorkspace.vue`、`CodePanel.vue`、`MonacoEditor.vue`、`TerminalPanel.vue`、`TerminalSession.vue`、`ProblemsPanel.vue`、`ManualPane.vue`、`TraceViewer.vue`、`docs/workbench-ui.md`、`progress.md`。
+- 未自动发送：需学生点发送，便于先改问题再附证据。
+
 ## 2026-08-02 - Task: 成员 B Day6 LabCreateWizard
 
 ### What was done
@@ -608,6 +700,72 @@
 
 ---
 
+## 2026-07-31 - Task: 工作台终端面板 VSCode 化改造（可开合 + 命令融入终端 + 指令库 + 快捷键）
+
+### What was done
+
+本轮对 `os-lab/handbook` 前端工作台的终端区做了一系列仿 VSCode 的交互改造，全部集中在 `LabWorkspace.vue`、`TerminalPanel.vue`、`XtermOutput.vue`、`CodePanel.vue`、`tutor-model.ts` 五个文件，未触碰后端 `tutor-server.mjs` 与内核代码。
+
+- **终端独立可开合（VSCode 风格）**：在 `LabWorkspace.vue` 新增独立状态 `terminalDockOpen`（不复用 `panelOpen.terminal`，后者语义是「学习支持」区，避免连锁影响 `showTerminalPane`/`togglePanel`/移动端逻辑）。`workspaceGridStyle` 在终端关闭时退化为 `gridTemplateRows: 1fr`，`CodePanel` 占满工作区；打开时恢复「代码 / 分割条 / 终端」三行 grid，拖拽比例沿用 `workspaceCodeSplit`。分割条与终端容器用 `v-show` 而非 `v-if`，保留 xterm 实例与 SSE 输出历史。
+- **命令输入融入终端**：去掉 `TerminalPanel.vue` 上方单独的命令输入行（textarea + 运行按钮），命令直接在 xterm 区域输入。`XtermOutput.vue` 新增 `interactive` prop（开启时 `disableStdin: false`、`cursorBlink: true`、`cursorStyle: 'bar'`），暴露 `onData`/`focus`。`TerminalPanel.vue` 新增 `inputBuffer` 与 `handleData`：xterm 显示 `$ ` prompt，用户在 prompt 后直接键入命令，回车提交运行，退格删字，Ctrl+C 清行（运行中则停止）。`run()` 重构为直接 `writeTerm()` 写 xterm 并累积到 `output` ref（供复制/插入报告），运行结束 `renderPrompt()` 重新显示输入行。右上角保留浮动控件（重置/停止/帮助）。
+- **ghost text 虚写推荐命令**：`ghostText` computed 在输入是推荐命令前缀时显示剩余部分，偏离即消失。`renderPrompt()` 用 `\r\x1b[2K` 清行重绘 `$ ` + 输入 + ghost，并把光标退回输入末尾（`\x1b[nD`）。三层颜色区分：`$ ` 青色（`\x1b[36m`）、用户输入默认前景色、ghost 斜体浅灰（`\x1b[3m\x1b[38;5;245m`）。
+- **字体美化**：`XtermOutput.vue` 字体配置从失效的 `var(--ws-font-mono)`（xterm canvas 不解析 CSS 变量）改为真实字体栈 `'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, 'Courier New', monospace`，字号 12→13，`lineHeight: 1.25`，`letterSpacing: 0.3`。
+- **终端背景统一**：`applyTheme` 同步把 host 元素 `style.background` 设为同一个解析后的 bg 值，消除 xterm 行数不足填满 host 时底部空隙色差；`.ws-terminal` 容器背景从 `--ws-surface` 改为 `--ws-surface-soft`，与 xterm 区一致。
+- **Tab 一键补全**：`handleData` 新增 Tab（`\t`）分支，把 ghost 剩余部分一次性追加到 `inputBuffer`。`XtermOutput` 交互模式下在 host 挂 `keydown` 监听拦截 Tab 默认行为（避免浏览器切走焦点），让 xterm 收到 `\t`。
+- **常用推荐指令库**：`tutor-model.ts` 给 `TutorLab` 接口新增 `commands: { label: string; command: string }[]` 字段，为 8 个 lab 各编排 6 条常用命令（基于项目 `Makefile` 真实目标确认：lab1-5 用 cargo 系，lab6-8 用 make 系）。`TerminalPanel.vue` 新增 `commandLibrary` computed、`histIdx` 指针与 `historyUp/Down`，`handleData` 拦截方向键转义序列 `\x1b[A`/`\x1b[B` 在指令库中循环切换（像 shell 历史），回车/lab 切换/重置时重置 `histIdx`。
+- **终端开关按钮位置演进**：从顶栏「终端」文字按钮 → 工作区标题栏图标 → 最终落到 `CodePanel` 代码工具栏「重新加载目录」按钮左侧，纯图标式（`SquareTerminal`），通过 `terminalOpen` prop + `toggle-terminal` emit 与 `LabWorkspace` 的 `terminalDockOpen` 双向通信。代码工具栏始终可见，终端关闭后也能随时点图标重新展开。
+- **快捷键帮助面板**：`TerminalPanel.vue` 终端右上角控件组加 `HelpCircle` 帮助按钮，点击弹出快捷键说明面板（`<dl>` + `<kbd>` 键帽样式），列出 ↑/↓ 循环命令、Tab 补全、Enter 运行、Ctrl+C 清行/停止、重置/终端开关图标说明；透明遮罩点击外部关闭。
+
+### Testing
+
+- 全程 `npm run dev` HMR 热更新验证，每轮改动后无 VitePress 编译错误（中途一次 `tutor-model.ts` 编辑中间态报 `Unexpected "}"`，补回 `resources: {` 后立即恢复，00:49:41 全组件批量 HMR 更新确认恢复）。
+- 每轮改动后 `ReadLints` 对涉及文件无 linter 错误。
+- 人工验证点：终端开合、拖拽比例保留、ghost 随输入收缩/消失、Tab 补全、上下方向键循环指令库、回车运行、Ctrl+C 清行、帮助面板开合、代码工具栏终端图标开合终端。
+
+### Notes
+
+- 改动文件：
+  - `os-lab/handbook/.vitepress/theme/components/LabWorkspace.vue`：`terminalDockOpen` 状态、`showTerminalDock`、`workspaceGridStyle` 适配、顶栏按钮移除、`CodePanel` 传 `terminal-open`/`@toggle-terminal`。
+  - `os-lab/handbook/.vitepress/theme/components/TerminalPanel.vue`：命令融入 xterm、ghost text、`handleData`、指令库循环、Tab 补全、帮助面板、`hide-requested` emit（后移除）。
+  - `os-lab/handbook/.vitepress/theme/components/XtermOutput.vue`：`interactive` prop、`onData`/`focus` 暴露、字体配置、host 背景同步、Tab 拦截。
+  - `os-lab/handbook/.vitepress/theme/components/CodePanel.vue`：`terminalOpen` prop + `toggle-terminal` emit、代码工具栏终端开关按钮、`ws-code-icon-btn--active` 样式。
+  - `os-lab/handbook/.vitepress/theme/tutor-model.ts`：`TutorLab.commands` 字段 + 8 个 lab 指令库数据。
+  - `progress.md`（本条）。
+- 设计边界：不引入多终端 Tab、不持久化 `terminalDockOpen`（每次进入默认打开）、不改 `panelOpen.terminal` 语义、不动 `tutor-server.mjs` 与内核。
+- 回滚方式：按上述文件逐个 `git checkout` 对应历史版本，或反向应用各改动点；指令库字段为新增可选数据，移除后 `commandLibrary` 会回退到 `[verificationCommand]` 单条。
+
+## 2026-07-31 - Task: 底部面板 VS Code 化收口与 Problems/Trace 运行闭环
+
+### What was done
+
+承接同日前一条「终端面板 VS Code 化」：把底部区做成真正的 VS Code 式多 Tab，并打通 Problems / Trace 从「跑命令 → 出诊断/事件 → 前端展示」的整条链路；测完后清理 stu 临时演示文件，产品功能保留。
+
+- **底部多 Tab（终端 | Problems | 测试结果）**：`LabWorkspace.vue` 新增 `bottomTab`；Problems 与测试结果从右侧学习支持迁到底部 dock。右侧只保留 **AI 导师 | 实验报告 | Trace**。代码工具栏终端图标语义改为开合整块底部面板。
+- **作用说明文案**：Problems / Trace / 测试结果面板补简介——Problems 是编译诊断列表（点跳源码），Trace 是运行时 trap/调度回放，测试结果是断言汇总；避免与「终端原文」混淆。
+- **有诊断自动切 Problems**：`TerminalPanel` 在 run 结束 SSE 带 `diagnostics` 时 emit `run-diagnostics`；`ProblemsPanel` 加载成功 emit `diagnostics-loaded`。父组件展开 dock、切到 Problems，并用角标显示条数；点击诊断仍 `openAtLine` 跳源码。
+- **底部面板全屏**：`maximized` 扩展 `'dock'`；dock 头加最大化/恢复按钮，Esc 恢复；Problems / 测试结果可滚动，xterm 保留 scrollback。
+- **编辑器与终端快捷键**：Monaco / CodePanel 补齐 **Ctrl+S** 保存；终端 **Ctrl+C**（有选区则复制，否则中断/清行）、**Ctrl+V** 粘贴（`XtermOutput` host paste 监听）。
+- **运行历史不清屏**：每次运行不再整屏清空，改为分隔线续写，保留上一轮输出便于对照。
+- **tutor-server 诊断/Trace 闭环**：
+  - 新增 `GET /runs/:id/trace`（按 run 读真实 trace 事件，无则可信空态）。
+  - cargo 命令自动补 `--message-format=json`，exit 帧携带 `diagnostics` / `diagnosticCount` / `traceCount`。
+  - Windows 下解析已知 `CARGO_HOME` / cargo、qemu 路径并 enrich `PATH`；spawn 失败写入运行输出，避免「静默 exit -1、Problems/Trace 全空」。
+- **`cargo-diagnostics.mjs`**：Windows / 非规范路径时尽量从 `file_name` / rendered 抽出可跳转诊断，避免有错误码却不出 Problems。
+- **Trace 播放跟随**：`TraceViewer` 播放头变化时对 Trap 列表、时间线、事件列表 `scrollIntoView`，避免播到后面看不见当前帧。
+- **测试残留清理**（测完还原）：删除 stu 临时 `_tmp_demo_problem.rs`、`_tmp_find_next_task.inc.rs`、`_TMP_DEMO_STEPS.md`、演示用 `trace.rs`、`qemu-check-trace.txt`；`task.rs` 改回 `todo!`；`Cargo.toml` 去掉临时 `trace-edu`。正式 UI / tutor 改动未回滚。
+
+### Testing
+
+- `npm run dev` HMR 验证底部 Tab 切换、有诊断自动切 Problems、dock 全屏/Esc、Ctrl+S/C/V、运行分隔线续写。
+- 配合 activate-os-env 后的 tutor：`cargo check` 能产出 Problems；带 `trace-edu` 的演示跑通后 Trace Viewer 能拉到真实事件（演示脚手架已拆除）。
+- 清理后确认仓库内无 `TEMP_DEMO` / `_tmp_*` / `_TMP_DEMO` 残留引用。
+
+### Notes
+
+- 主要文件：`LabWorkspace.vue`、`CodePanel.vue`、`MonacoEditor.vue`、`ProblemsPanel.vue`、`TerminalPanel.vue`、`XtermOutput.vue`、`TraceViewer.vue`、`TraceTrapView.vue`、`TraceTimelineView.vue`、`tutor-server.mjs`、`tutor/cargo-diagnostics.mjs`；`progress.md`（本条）。
+- 与前一条边界变化：本轮**已改** `tutor-server.mjs` 与诊断解析；底部从「仅终端」升级为多 Tab dock。
+- 本轮未提交/未推送（与既往惯例一致）；前一条终端 VSCode 化已有本地 commit `3688d22`。
+
 ## 2026-07-31 - Task: 成员 A 完成 7 日计划全部教学侧交付
 
 ### What was done
@@ -794,6 +952,25 @@
 - 主要文件：`os-lab/tutor/C0-BASELINE.md`、`baseline.mjs`、`schema/harness-case-v1.schema.json`、`trace-store.mjs`、`trace-store.test.mjs`、`os-lab/handbook/tutor-server.mjs` 及服务端冒烟脚本。
 - 对应本地提交：`3c40f0a`（C0）、`ee02f3c`（C1）；两阶段均由 `AM-SuSh <10224602456@stu.ecnu.edu.cn>` 提交，无 co-author。
 - C0/C1 属于后端契约与证据基础设施，前端只消费真实 Trace 查询结果；没有 artifact 或查询失败时保持可信空态，不伪造事件。
+
+## 2026-07-29 - Task: 修复 CodePanel 首次打开文件卡在「读取中」需切换才显示
+
+### What was done
+
+- **问题**：在文件树首次点开一个文件，编辑器停在「读取中…」，必须切换到另一个文件再切回才会显示 Monaco 编辑器。
+- **根因**：`CodePanel.vue` 的 `openFile` 把占位 tab `push` 进 `ref<OpenTab[]>` 后，后续 `tab.content = ...` / `tab.loading = false` 改的是原始普通对象，而非 Vue 在 reactive 数组里包出的代理，这些赋值不触发更新；直到 `activePath` 变化（切换文件）使 `activeTab` computed 重算，才通过代理读到新值。`saveEdit` 用的是 `activeTab.value`（代理）所以正常，只有 `openFile` 用了局部原始 `tab` 变量才有此 bug。
+- **修复**：push 占位 tab 后取回数组里的 reactive 代理 `view = openTabs.value[openTabs.value.length - 1]`，后续 `content/draft/truncated/error/loading` 全部通过 `view` 修改，fetch 一结束 loading 立即翻 false，编辑器即时渲染。
+
+### Testing
+
+- `ReadLints` 对 `CodePanel.vue` 无 linter 错误。
+- 前端 `npm run dev` HMR 生效后：首次点开未打开过的文件直接从「读取中…」过渡到 Monaco 编辑器，无需切换；再点开另一个新文件同样一次显示；切回已打开的 tab 立刻显示（走 `existing` 分支，本就正常）。
+
+### Notes
+
+- 改动文件：`os-lab/handbook/.vitepress/theme/components/CodePanel.vue`、`progress.md`（本条）。
+- 本轮提交作者固定为 `SIZN <a18990330371@outlook.com>`（用 `git commit --author` 指定，未改动仓库全局 config），无合作者。
+- 本轮未推送远端（与既往惯例一致）。
 
 ## 2026-07-29 - Task: 提交成员B 第4-5周 Trace Viewer
 
@@ -3405,131 +3582,3 @@
 - `docs/project_plan.md`：新增项目完成计划文档，明确实施路径、验收方式和三人分工。
 - `progress.md`：新增本轮正式文档交付记录。
 - 回滚方式：删除 `docs/project_plan.md` 和本文件中的本轮记录；若 `docs/` 目录仅包含本轮创建内容，可一并删除 `docs/` 目录。
-
-## 2026-07-29 - Task: 修复 CodePanel 首次打开文件卡在「读取中」需切换才显示
-
-### What was done
-
-- **问题**：在文件树首次点开一个文件，编辑器停在「读取中…」，必须切换到另一个文件再切回才会显示 Monaco 编辑器。
-- **根因**：`CodePanel.vue` 的 `openFile` 把占位 tab `push` 进 `ref<OpenTab[]>` 后，后续 `tab.content = ...` / `tab.loading = false` 改的是原始普通对象，而非 Vue 在 reactive 数组里包出的代理，这些赋值不触发更新；直到 `activePath` 变化（切换文件）使 `activeTab` computed 重算，才通过代理读到新值。`saveEdit` 用的是 `activeTab.value`（代理）所以正常，只有 `openFile` 用了局部原始 `tab` 变量才有此 bug。
-- **修复**：push 占位 tab 后取回数组里的 reactive 代理 `view = openTabs.value[openTabs.value.length - 1]`，后续 `content/draft/truncated/error/loading` 全部通过 `view` 修改，fetch 一结束 loading 立即翻 false，编辑器即时渲染。
-
-### Testing
-
-- `ReadLints` 对 `CodePanel.vue` 无 linter 错误。
-- 前端 `npm run dev` HMR 生效后：首次点开未打开过的文件直接从「读取中…」过渡到 Monaco 编辑器，无需切换；再点开另一个新文件同样一次显示；切回已打开的 tab 立刻显示（走 `existing` 分支，本就正常）。
-
-### Notes
-
-- 改动文件：`os-lab/handbook/.vitepress/theme/components/CodePanel.vue`、`progress.md`（本条）。
-- 本轮提交作者固定为 `SIZN <a18990330371@outlook.com>`（用 `git commit --author` 指定，未改动仓库全局 config），无合作者。
-- 本轮未推送远端（与既往惯例一致）。
-
-## 2026-07-31 - Task: 工作台终端面板 VSCode 化改造（可开合 + 命令融入终端 + 指令库 + 快捷键）
-
-### What was done
-
-本轮对 `os-lab/handbook` 前端工作台的终端区做了一系列仿 VSCode 的交互改造，全部集中在 `LabWorkspace.vue`、`TerminalPanel.vue`、`XtermOutput.vue`、`CodePanel.vue`、`tutor-model.ts` 五个文件，未触碰后端 `tutor-server.mjs` 与内核代码。
-
-- **终端独立可开合（VSCode 风格）**：在 `LabWorkspace.vue` 新增独立状态 `terminalDockOpen`（不复用 `panelOpen.terminal`，后者语义是「学习支持」区，避免连锁影响 `showTerminalPane`/`togglePanel`/移动端逻辑）。`workspaceGridStyle` 在终端关闭时退化为 `gridTemplateRows: 1fr`，`CodePanel` 占满工作区；打开时恢复「代码 / 分割条 / 终端」三行 grid，拖拽比例沿用 `workspaceCodeSplit`。分割条与终端容器用 `v-show` 而非 `v-if`，保留 xterm 实例与 SSE 输出历史。
-- **命令输入融入终端**：去掉 `TerminalPanel.vue` 上方单独的命令输入行（textarea + 运行按钮），命令直接在 xterm 区域输入。`XtermOutput.vue` 新增 `interactive` prop（开启时 `disableStdin: false`、`cursorBlink: true`、`cursorStyle: 'bar'`），暴露 `onData`/`focus`。`TerminalPanel.vue` 新增 `inputBuffer` 与 `handleData`：xterm 显示 `$ ` prompt，用户在 prompt 后直接键入命令，回车提交运行，退格删字，Ctrl+C 清行（运行中则停止）。`run()` 重构为直接 `writeTerm()` 写 xterm 并累积到 `output` ref（供复制/插入报告），运行结束 `renderPrompt()` 重新显示输入行。右上角保留浮动控件（重置/停止/帮助）。
-- **ghost text 虚写推荐命令**：`ghostText` computed 在输入是推荐命令前缀时显示剩余部分，偏离即消失。`renderPrompt()` 用 `\r\x1b[2K` 清行重绘 `$ ` + 输入 + ghost，并把光标退回输入末尾（`\x1b[nD`）。三层颜色区分：`$ ` 青色（`\x1b[36m`）、用户输入默认前景色、ghost 斜体浅灰（`\x1b[3m\x1b[38;5;245m`）。
-- **字体美化**：`XtermOutput.vue` 字体配置从失效的 `var(--ws-font-mono)`（xterm canvas 不解析 CSS 变量）改为真实字体栈 `'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, 'Courier New', monospace`，字号 12→13，`lineHeight: 1.25`，`letterSpacing: 0.3`。
-- **终端背景统一**：`applyTheme` 同步把 host 元素 `style.background` 设为同一个解析后的 bg 值，消除 xterm 行数不足填满 host 时底部空隙色差；`.ws-terminal` 容器背景从 `--ws-surface` 改为 `--ws-surface-soft`，与 xterm 区一致。
-- **Tab 一键补全**：`handleData` 新增 Tab（`\t`）分支，把 ghost 剩余部分一次性追加到 `inputBuffer`。`XtermOutput` 交互模式下在 host 挂 `keydown` 监听拦截 Tab 默认行为（避免浏览器切走焦点），让 xterm 收到 `\t`。
-- **常用推荐指令库**：`tutor-model.ts` 给 `TutorLab` 接口新增 `commands: { label: string; command: string }[]` 字段，为 8 个 lab 各编排 6 条常用命令（基于项目 `Makefile` 真实目标确认：lab1-5 用 cargo 系，lab6-8 用 make 系）。`TerminalPanel.vue` 新增 `commandLibrary` computed、`histIdx` 指针与 `historyUp/Down`，`handleData` 拦截方向键转义序列 `\x1b[A`/`\x1b[B` 在指令库中循环切换（像 shell 历史），回车/lab 切换/重置时重置 `histIdx`。
-- **终端开关按钮位置演进**：从顶栏「终端」文字按钮 → 工作区标题栏图标 → 最终落到 `CodePanel` 代码工具栏「重新加载目录」按钮左侧，纯图标式（`SquareTerminal`），通过 `terminalOpen` prop + `toggle-terminal` emit 与 `LabWorkspace` 的 `terminalDockOpen` 双向通信。代码工具栏始终可见，终端关闭后也能随时点图标重新展开。
-- **快捷键帮助面板**：`TerminalPanel.vue` 终端右上角控件组加 `HelpCircle` 帮助按钮，点击弹出快捷键说明面板（`<dl>` + `<kbd>` 键帽样式），列出 ↑/↓ 循环命令、Tab 补全、Enter 运行、Ctrl+C 清行/停止、重置/终端开关图标说明；透明遮罩点击外部关闭。
-
-### Testing
-
-- 全程 `npm run dev` HMR 热更新验证，每轮改动后无 VitePress 编译错误（中途一次 `tutor-model.ts` 编辑中间态报 `Unexpected "}"`，补回 `resources: {` 后立即恢复，00:49:41 全组件批量 HMR 更新确认恢复）。
-- 每轮改动后 `ReadLints` 对涉及文件无 linter 错误。
-- 人工验证点：终端开合、拖拽比例保留、ghost 随输入收缩/消失、Tab 补全、上下方向键循环指令库、回车运行、Ctrl+C 清行、帮助面板开合、代码工具栏终端图标开合终端。
-
-### Notes
-
-- 改动文件：
-  - `os-lab/handbook/.vitepress/theme/components/LabWorkspace.vue`：`terminalDockOpen` 状态、`showTerminalDock`、`workspaceGridStyle` 适配、顶栏按钮移除、`CodePanel` 传 `terminal-open`/`@toggle-terminal`。
-  - `os-lab/handbook/.vitepress/theme/components/TerminalPanel.vue`：命令融入 xterm、ghost text、`handleData`、指令库循环、Tab 补全、帮助面板、`hide-requested` emit（后移除）。
-  - `os-lab/handbook/.vitepress/theme/components/XtermOutput.vue`：`interactive` prop、`onData`/`focus` 暴露、字体配置、host 背景同步、Tab 拦截。
-  - `os-lab/handbook/.vitepress/theme/components/CodePanel.vue`：`terminalOpen` prop + `toggle-terminal` emit、代码工具栏终端开关按钮、`ws-code-icon-btn--active` 样式。
-  - `os-lab/handbook/.vitepress/theme/tutor-model.ts`：`TutorLab.commands` 字段 + 8 个 lab 指令库数据。
-  - `progress.md`（本条）。
-- 设计边界：不引入多终端 Tab、不持久化 `terminalDockOpen`（每次进入默认打开）、不改 `panelOpen.terminal` 语义、不动 `tutor-server.mjs` 与内核。
-- 回滚方式：按上述文件逐个 `git checkout` 对应历史版本，或反向应用各改动点；指令库字段为新增可选数据，移除后 `commandLibrary` 会回退到 `[verificationCommand]` 单条。
-
-## 2026-07-31 - Task: 底部面板 VS Code 化收口与 Problems/Trace 运行闭环
-
-### What was done
-
-承接同日前一条「终端面板 VS Code 化」：把底部区做成真正的 VS Code 式多 Tab，并打通 Problems / Trace 从「跑命令 → 出诊断/事件 → 前端展示」的整条链路；测完后清理 stu 临时演示文件，产品功能保留。
-
-- **底部多 Tab（终端 | Problems | 测试结果）**：`LabWorkspace.vue` 新增 `bottomTab`；Problems 与测试结果从右侧学习支持迁到底部 dock。右侧只保留 **AI 导师 | 实验报告 | Trace**。代码工具栏终端图标语义改为开合整块底部面板。
-- **作用说明文案**：Problems / Trace / 测试结果面板补简介——Problems 是编译诊断列表（点跳源码），Trace 是运行时 trap/调度回放，测试结果是断言汇总；避免与「终端原文」混淆。
-- **有诊断自动切 Problems**：`TerminalPanel` 在 run 结束 SSE 带 `diagnostics` 时 emit `run-diagnostics`；`ProblemsPanel` 加载成功 emit `diagnostics-loaded`。父组件展开 dock、切到 Problems，并用角标显示条数；点击诊断仍 `openAtLine` 跳源码。
-- **底部面板全屏**：`maximized` 扩展 `'dock'`；dock 头加最大化/恢复按钮，Esc 恢复；Problems / 测试结果可滚动，xterm 保留 scrollback。
-- **编辑器与终端快捷键**：Monaco / CodePanel 补齐 **Ctrl+S** 保存；终端 **Ctrl+C**（有选区则复制，否则中断/清行）、**Ctrl+V** 粘贴（`XtermOutput` host paste 监听）。
-- **运行历史不清屏**：每次运行不再整屏清空，改为分隔线续写，保留上一轮输出便于对照。
-- **tutor-server 诊断/Trace 闭环**：
-  - 新增 `GET /runs/:id/trace`（按 run 读真实 trace 事件，无则可信空态）。
-  - cargo 命令自动补 `--message-format=json`，exit 帧携带 `diagnostics` / `diagnosticCount` / `traceCount`。
-  - Windows 下解析已知 `CARGO_HOME` / cargo、qemu 路径并 enrich `PATH`；spawn 失败写入运行输出，避免「静默 exit -1、Problems/Trace 全空」。
-- **`cargo-diagnostics.mjs`**：Windows / 非规范路径时尽量从 `file_name` / rendered 抽出可跳转诊断，避免有错误码却不出 Problems。
-- **Trace 播放跟随**：`TraceViewer` 播放头变化时对 Trap 列表、时间线、事件列表 `scrollIntoView`，避免播到后面看不见当前帧。
-- **测试残留清理**（测完还原）：删除 stu 临时 `_tmp_demo_problem.rs`、`_tmp_find_next_task.inc.rs`、`_TMP_DEMO_STEPS.md`、演示用 `trace.rs`、`qemu-check-trace.txt`；`task.rs` 改回 `todo!`；`Cargo.toml` 去掉临时 `trace-edu`。正式 UI / tutor 改动未回滚。
-
-### Testing
-
-- `npm run dev` HMR 验证底部 Tab 切换、有诊断自动切 Problems、dock 全屏/Esc、Ctrl+S/C/V、运行分隔线续写。
-- 配合 activate-os-env 后的 tutor：`cargo check` 能产出 Problems；带 `trace-edu` 的演示跑通后 Trace Viewer 能拉到真实事件（演示脚手架已拆除）。
-- 清理后确认仓库内无 `TEMP_DEMO` / `_tmp_*` / `_TMP_DEMO` 残留引用。
-
-### Notes
-
-- 主要文件：`LabWorkspace.vue`、`CodePanel.vue`、`MonacoEditor.vue`、`ProblemsPanel.vue`、`TerminalPanel.vue`、`XtermOutput.vue`、`TraceViewer.vue`、`TraceTrapView.vue`、`TraceTimelineView.vue`、`tutor-server.mjs`、`tutor/cargo-diagnostics.mjs`；`progress.md`（本条）。
-- 与前一条边界变化：本轮**已改** `tutor-server.mjs` 与诊断解析；底部从「仅终端」升级为多 Tab dock。
-- 本轮未提交/未推送（与既往惯例一致）；前一条终端 VSCode 化已有本地 commit `3688d22`。
-
-## 2026-08-02 · 工作台「添加到对话」+ 清理临时调度探针
-
-### Summary
-
-删除测 `run:` 点击用的临时调度文件；在手册 / 工作区 / 终端 / Problems / 测试结果 / Trace 增加「添加到对话」，内容以附件 chips 进入 AI 导师输入区，发送时一并提交。
-
-### Changes
-
-- **临时文件清理**：移除 `tmp_lab2_scheduler.rs`；`task.rs` 的 `find_next_task` 保持 `todo!("Lab2：…")`。
-- **附件模型**：新增 `chat-attachments.ts`（来源标签、截断、拼装格式）；`TutorPane` 展示可移除 chips；有附件即可发送。
-- **各面板入口**：`CodePanel` / `TerminalSession` / `ProblemsPanel` / 测试结果区 / `ManualPane` / `TraceViewer` 发出 `add-to-chat`；`LabWorkspace.addToChat` 累积附件、切到导师页签并 toast。
-- **文档**：`workbench-ui.md` 增补「添加到对话」说明。
-
-### Testing
-
-- 刷新手册后，各面板点「添加到对话」→ 右栏 AI 导师出现附件 chip；填写问题或仅附件发送 → 消息含 `【来源 · 标题】` 代码块。
-- 确认 stu 工作区无 `tmp_lab2_scheduler.rs`。
-
-### Notes
-
-- 主要文件：`chat-attachments.ts`、`TutorPane.vue`、`LabWorkspace.vue`、`CodePanel.vue`、`MonacoEditor.vue`、`TerminalPanel.vue`、`TerminalSession.vue`、`ProblemsPanel.vue`、`ManualPane.vue`、`TraceViewer.vue`、`docs/workbench-ui.md`、`progress.md`。
-- 未自动发送：需学生点发送，便于先改问题再附证据。
-
-## 2026-08-02 · 添加到对话：可选范围 + 点击溯源
-
-### Summary
-
-终端对齐工作区「选区优先」；测试结果支持单条断言；待发/已发附件 chip 可点击跳回源面板。
-
-### Changes
-
-- **终端**：有 xterm 选区则只附选区，否则附本次全文；标题标明「选区/全文」。
-- **测试结果**：每条断言旁可单独「添加到对话」；全部入口仍保留。
-- **溯源**：附件带 `origin`；点 chip → 工作区行 / 终端 / Problems / 测试 / 手册章节 / Trace `#seq`。
-- **已发送气泡**：保留可点附件 chips，正文只展示学生原问题（完整拼装仍发给导师）。
-
-### Testing
-
-- 终端拖选几行再「添加到对话」→ chip 标题含「选区」；点 chip 回终端。
-- 测试结果点单条旁图标 → 只附一条；发送后点气泡 chip 回测试页签。
-- 工作区/手册/Problems/Trace 附件同样可点溯源。
-
