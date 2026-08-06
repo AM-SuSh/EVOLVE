@@ -446,6 +446,18 @@ try {
   assert.equal(chat.tutorState.evidenceRefs.includes(`run:${runFrame.runId}`), true)
   assert.equal(chat.tutorState.evidenceRefs.includes(`trace:${runFrame.runId}`), true)
   assert.equal(chat.retrieval.vectorCandidates > 0, true)
+  assert.equal(Array.isArray(chat.knowledge), true)
+  assert.equal(chat.knowledge.length > 0, true)
+  assert.equal(
+    chat.knowledge.every((item) =>
+      typeof item.sourceTitle === 'string' &&
+      Array.isArray(item.sectionPath) &&
+      Array.isArray(item.labScopes) &&
+      ['student-safe', 'guided-hint'].includes(item.contentClass),
+    ),
+    true,
+  )
+  assert.equal(chat.knowledge.some((item) => item.labScopes.includes('lab2') || item.labScopes.includes('global')), true)
   assert.equal(mockChatRequests.length, 1)
   assert.match(mockChatRequests[0].messages[0].content, /Lab2/)
   assert.match(mockChatRequests[0].messages[0].content, /knowledge-chunk/)

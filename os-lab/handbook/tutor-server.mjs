@@ -487,23 +487,55 @@ function knowledgePrompt(chunks) {
 }
 
 async function retrieveTutorKnowledge(message, labId) {
-  const hybrid = await hybridRetriever.search(message, {
-    labId,
-    allowedClasses: ['student-safe', 'guided-hint'],
-    limit: 12,
-  })
-  const candidates = hybrid.results
-  let globalCount = 0
-  const selected = []
-  for (const chunk of candidates) {
-    const scopes = chunk.labScopes || []
-    const globalOnly = scopes.includes('global') && !scopes.includes(labId)
-    if (globalOnly && globalCount >= 2) continue
-    if (globalOnly) globalCount += 1
-    selected.push(chunk)
-    if (selected.length >= 5) break
+  try {
+    const hybrid = await hybridRetriever.search(message, {
+      labId,
+      allowedClasses: ['student-safe', 'guided-hint'],
+      limit: 12,
+    })
+    const candidates = hybrid.results
+    let globalCount = 0
+    const selected = []
+    for (const chunk of candidates) {
+      const scopes = chunk.labScopes || []
+      const globalOnly = scopes.includes('global') && !scopes.includes(labId)
+      if (globalOnly && globalCount >= 2) continue
+      if (globalOnly) globalCount += 1
+      selected.push(chunk)
+      if (selected.length >= 5) break
+    }
+    return { chunks: selected, diagnostics: hybrid.diagnostics }
+  } catch (error) {
+    return {
+      chunks: [],
+      diagnostics: retrievalDiagnostics(`retrieval unavailable: ${error instanceof Error ? error.message : String(error)}`),
+    }
   }
-  return { chunks: selected, diagnostics: hybrid.diagnostics }
+}
+
+function retrievalDiagnostics(reason = '') {
+  return {
+    provider: hybridRetriever.provider.kind,
+    model: hybridRetriever.provider.model,
+    lexicalCandidates: 0,
+    vectorCandidates: 0,
+    eligibleChunks: 0,
+    fallbackReason: reason,
+  }
+}
+
+function tutorKnowledgeMeta(chunks) {
+  return chunks.map((chunk) => ({
+    citation: chunk.citation,
+    sourceId: chunk.sourceId,
+    sourceTitle: chunk.sourceTitle,
+    sectionPath: chunk.sectionPath,
+    contentClass: chunk.contentClass,
+    labScopes: chunk.labScopes || [],
+    locatorStart: chunk.locatorStart || null,
+    locatorEnd: chunk.locatorEnd || null,
+    retrieval: chunk.retrieval || null,
+  }))
 }
 
 async function saveReportAttachments(userId, labId, attachments) {
@@ -839,6 +871,8 @@ async function handleChat(body, request, response, origin, session) {
       framework: { ...framework, prompt: undefined },
       tutorState,
       guardrail: { triggered: true, rule: guardrail.id, event: guardrail.event },
+      knowledge: [],
+      retrieval: retrievalDiagnostics('guardrail-before-retrieval'),
     }, origin)
     return
   }
@@ -853,12 +887,7 @@ async function handleChat(body, request, response, origin, session) {
     tutorPolicyPrompt(tutorState),
     knowledgePrompt(retrievedKnowledge),
   )
-  const knowledgeMeta = retrievedKnowledge.map((chunk) => ({
-    citation: chunk.citation,
-    sourceId: chunk.sourceId,
-    sectionPath: chunk.sectionPath,
-    contentClass: chunk.contentClass,
-  }))
+  const knowledgeMeta = tutorKnowledgeMeta(retrievedKnowledge)
 
   const llm = await resolveLlm(body.llm)
   const wantsStream = String(request.headers.accept || '').includes('text/event-stream')
@@ -1005,8 +1034,23 @@ async function handleChat(body, request, response, origin, session) {
     if (!reply) sendFrame(response, { type: 'error', error: emptyCompletionReason(emptyPayload) })
     else {
       const guardedOutput = enforceTutorOutput(reply, tutorState, { allowedKnowledgeRefs })
-      if (guardedOutput.guarded) sendFrame(response, { type: 'meta', triggered: true, rule: guardedOutput.reason, tutorState })
-      sendFrame(response, { type: 'done', reply: guardedOutput.reply, tutorState })
+      if (guardedOutput.guarded) {
+        sendFrame(response, {
+          type: 'meta',
+          triggered: true,
+          rule: guardedOutput.reason,
+          tutorState,
+          knowledge: knowledgeMeta,
+          retrieval: retrieval.diagnostics,
+        })
+      }
+      sendFrame(response, {
+        type: 'done',
+        reply: guardedOutput.reply,
+        tutorState,
+        knowledge: knowledgeMeta,
+        retrieval: retrieval.diagnostics,
+      })
     }
     response.end()
   } catch (error) {

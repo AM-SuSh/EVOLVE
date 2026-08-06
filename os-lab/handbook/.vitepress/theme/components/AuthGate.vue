@@ -65,7 +65,8 @@ async function submit() {
 
 onMounted(async () => {
   if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('os-lab-guest')) return
-  if (auth && (await verifyExisting())) return
+  const existingAuth = loadAuth()
+  if (existingAuth && (await verifyExisting())) return
   locked.value = true
 })
 </script>

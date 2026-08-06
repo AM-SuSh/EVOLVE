@@ -52,6 +52,8 @@ import {
   type LlmConfig,
   type TutorLabId,
   type TutorMessage,
+  type TutorKnowledgeChunk,
+  type TutorRetrievalDiagnostics,
   type TutorPrompt,
   type TutorStageId,
   type TutorState,
@@ -1735,6 +1737,8 @@ interface ReplyOutcome {
   guardrail: boolean
   rule?: string
   tutorState?: TutorState
+  knowledge?: TutorKnowledgeChunk[]
+  retrieval?: TutorRetrievalDiagnostics
 }
 
 function chatPayload(message: string, evidenceRefs: string[] = []) {
@@ -1783,6 +1787,8 @@ async function requestReply(
       error?: string
       guardrail?: { triggered?: boolean; rule?: string }
       tutorState?: ReplyOutcome['tutorState']
+      knowledge?: TutorKnowledgeChunk[]
+      retrieval?: TutorRetrievalDiagnostics
     }
     if (!payload.reply) throw new Error(payload.error || '导师服务没有返回 reply')
     return {
@@ -1790,6 +1796,8 @@ async function requestReply(
       guardrail: Boolean(payload.guardrail?.triggered),
       rule: payload.guardrail?.rule,
       tutorState: payload.tutorState,
+      knowledge: payload.knowledge,
+      retrieval: payload.retrieval,
     }
   }
 
@@ -1800,6 +1808,8 @@ async function requestReply(
   let guardrail = false
   let rule: string | undefined
   let tutorState: ReplyOutcome['tutorState']
+  let knowledge: TutorKnowledgeChunk[] | undefined
+  let retrieval: TutorRetrievalDiagnostics | undefined
 
   for (;;) {
     const { value, done } = await reader.read()
@@ -1810,7 +1820,17 @@ async function requestReply(
     for (const chunk of chunks) {
       const line = chunk.split('\n').find((item) => item.startsWith('data:'))
       if (!line) continue
-      let frame: { type?: string; text?: string; reply?: string; error?: string; rule?: string; triggered?: boolean; tutorState?: ReplyOutcome['tutorState'] }
+      let frame: {
+        type?: string
+        text?: string
+        reply?: string
+        error?: string
+        rule?: string
+        triggered?: boolean
+        tutorState?: ReplyOutcome['tutorState']
+        knowledge?: TutorKnowledgeChunk[]
+        retrieval?: TutorRetrievalDiagnostics
+      }
       try {
         frame = JSON.parse(line.slice(5).trim())
       } catch {
@@ -1822,6 +1842,8 @@ async function requestReply(
         rule = frame.rule
       }
       if (frame.tutorState) tutorState = frame.tutorState
+      if (Array.isArray(frame.knowledge)) knowledge = frame.knowledge
+      if (frame.retrieval) retrieval = frame.retrieval
       if (frame.type === 'delta' && frame.text) {
         reply += frame.text
         onDelta(reply)
@@ -1831,7 +1853,7 @@ async function requestReply(
   }
 
   if (!reply.trim()) throw new Error('导师服务没有返回文本')
-  return { reply, guardrail, rule, tutorState }
+  return { reply, guardrail, rule, tutorState, knowledge, retrieval }
 }
 
 /** 工作台内容添加到 AI 导师对话（不立刻发送；与输入框内容一并提交）。 */
@@ -2101,6 +2123,8 @@ async function sendMessage(text: string, attached: ChatAttachment[] = []) {
       gate: tutorState?.gate,
       evidenceRefs: tutorState?.evidenceRefs,
       refused,
+      knowledge: outcome?.knowledge,
+      retrieval: outcome?.retrieval,
     }
 
     const existing = messages.value.find((item) => item.id === replyId)
@@ -2111,6 +2135,8 @@ async function sendMessage(text: string, attached: ChatAttachment[] = []) {
       existing.gate = messageMeta.gate
       existing.evidenceRefs = messageMeta.evidenceRefs
       existing.refused = messageMeta.refused
+      existing.knowledge = messageMeta.knowledge
+      existing.retrieval = messageMeta.retrieval
     } else {
       messages.value.push({
         id: replyId,

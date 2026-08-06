@@ -397,9 +397,9 @@ RISC-V Reader 的 PDF 文本层同时包含双栏正文、图注和目录，不�
 | 5. SQLite + FTS | 已完成 | 独立知识库、版本化导入、中文 FTS、Lab 过滤、审计与回滚 |
 | 6. Tutor 服务与教师前端 | 已完成 | 受限 RAG、教师 API、多格式上传、审核发布、版本/Chunk 管理、三栏工作台 |
 | 7. 向量检索与混合排序 | 已完成 | 可替换 Embedding Provider、SQLite 向量缓存、RRF/权威度重排、FTS 降级 |
-| 8. RAG Tutor Harness | 待确认 | RAG 泄漏、引用归属、权限越权和稳定性回归 |
+| 8. RAG Tutor Harness | 已完成 | RAG 泄漏、引用归属、权限越权、来源元数据和降级回归 |
 
-Step 8 将在混合召回诊断之上补充 RAG Tutor Harness，冻结向量召回、权限、引用和降级行为的回归阈值。
+Step 8 已在混合召回诊断之上冻结 RAG Tutor Harness 的向量召回、权限、引用、来源元数据和降级行为回归阈值；学生端接线详见第 14 节。
 
 ## 13. 质量门、派生归属与教师可审计视图
 
@@ -449,3 +449,93 @@ Tutor Server 将 `limit` 规范到 1-200，默认 100，将 `offset` 规范为�
 构建 `knowledge-sources:d09a1e6080a1173a` 包含 7 个外部来源、212 个文档和 1,239 个 Chunk。按来源计数为：platform concepts 19、OSTEP 387、RISC-V Reader 90、LearningOS 207、rCore Guide 208、CSAPP 328；外部 Chunk 的 `global` 绑定为 1,220 个，Lab 派生绑定覆盖 Lab1-Lab8。SQLite 导入后加上原有 8 个 Lab 手册，当前 active 为 1,384，向量缓存为 1,360 条（其中新构建 upsert 1,239 条）。
 
 本轮验证固定为：Python knowledge tests 32/32、Node tests 51/51、Tutor smoke 通过、VitePress production build 通过。Tutor smoke 还断言教师 Chunk 接口的 `total/limit/offset`，并验证短上传材料在待审核状态可见。
+
+## 14. RAG Tutor Harness 与学生端引用链路（Step 8）
+
+### 14.1 Harness 契约
+
+RAG Harness 不调用生产模型，也不替代原有 Tutor Harness 的阶段/动作评分。它接收一个最小、可版本化的 case：
+
+```json
+{
+  "version": 1,
+  "id": "rag-lab3-sv39",
+  "labId": "lab3",
+  "stage": "run",
+  "message": "sv39 的页表和地址转换，应该先看哪一层？",
+  "evidenceRefs": ["trace:lab3-run-01"],
+  "expected": {
+    "allowedStages": ["run", "reflect"],
+    "knowledge": {
+      "minCount": 2,
+      "maxCount": 5,
+      "maxGlobalCount": 2,
+      "requiredContentClasses": ["student-safe", "guided-hint"],
+      "requiredLabScopes": ["lab3", "global"]
+    },
+    "retrieval": {
+      "lexicalCandidatesMin": 1,
+      "eligibleChunksMin": 1
+    }
+  }
+}
+```
+
+adapter 必须返回 `stage`、`reply`、`knowledge[]`、`prompt` 和 `retrieval`。Harness 对每个知识块执行以下硬检查：
+
+- `citation/sourceId/sourceTitle/sectionPath/contentClass/labScopes` 元数据完整；
+- 只允许 `student-safe` 与 `guided-hint`，总数不超过 5，当前 Lab 之外的 global-only chunk 不超过 2；
+- 必须/禁止的来源、来源标题、Lab 绑定和内容级别满足期望；
+- 只要有知识块，Prompt 必须显式包含 `<knowledge-chunk>`；直接答案护栏场景必须保持空知识上下文；
+- `lexicalCandidates/vectorCandidates/eligibleChunks/fallbackReason` 与检索诊断阈值一致。
+
+实现文件为 [rag-harness.mjs](../tutor/rag-harness.mjs)、[rag-harness-cli.mjs](../tutor/rag-harness-cli.mjs)、[rag-harness-cases-v1.json](../tutor/fixtures/rag-harness-cases-v1.json) 和 [rag-harness.test.mjs](../tutor/rag-harness.test.mjs)。运行：
+
+```powershell
+cd os-lab/handbook
+npm run test:rag-harness
+npm run test:rag-harness:cli
+```
+
+CLI 保留 `--adapter=<path>` 接口，后续可以把 adapter 换成真实 Tutor Server 的 HTTP 回放或离线 KnowledgeStore 检索，而不改变 Harness 的期望和指标。
+
+### 14.2 服务端到学生端的实际链路
+
+```mermaid
+sequenceDiagram
+  participant U as 学生端 LabWorkspace
+  participant S as Tutor Server
+  participant K as Hybrid Retriever
+  participant M as LLM
+  participant V as TutorMessage
+  U->>S: POST /chat（Lab、阶段、问题、证据）
+  S->>S: decideTutorTurn + direct-answer guardrail
+  alt 直接索要完整答案
+    S-->>U: guardrail + 空 knowledge + guardrail-before-retrieval
+  else 普通教学问题
+    S->>K: 当前 Lab + global，student-safe/guided-hint
+    K-->>S: 最多 5 个 chunk + lexical/vector/fallback diagnostics
+    S->>M: system/stage/evidence + 不可信 knowledge-chunk
+    M-->>S: candidate reply
+    S->>S: enforceTutorOutput + 当前轮 kb citation allowlist
+    S-->>U: JSON 或 SSE meta/done（reply、knowledge、retrieval）
+    U->>V: 保存消息元数据并显示来源标题/章节
+  end
+```
+
+`Tutor Server` 通过 `tutorKnowledgeMeta()` 将内部 Chunk 映射为学生可见的安全元数据：包含 `citation`、`sourceId`、`sourceTitle`、`sectionPath`、`contentClass`、`labScopes`、`locatorStart/End` 和本轮排序字段，但不返回 Chunk 正文。服务端在 JSON 响应、SSE `meta` 帧和 `done` 帧使用同一结构，避免流式与非流式客户端出现契约分叉。
+
+`LabWorkspace.vue` 将这两个字段带入 `ReplyOutcome`，流式响应从 `meta/done` 帧合并；发送完成后写入 `TutorMessage`，所以刷新页面恢复历史对话时仍能看到本轮引用。`TutorMessage.vue` 只渲染来源/章节标签和安全的检索状态：embedding/向量失败时显示“已降级为关键词检索”，不会把内部 endpoint、异常堆栈或教师元数据暴露给学生。
+
+### 14.3 回归基线
+
+当前 Step 8 的回归门槛已经落在代码中：
+
+| 检查面 | 实现 | 当前结果 |
+| --- | --- | --- |
+| RAG case schema、权限、Lab/global 上限 | `rag-harness.mjs` | 4 个 fixture CLI 全通过 |
+| 学生来源元数据完整性 | Harness metadata gate + Tutor smoke | 通过 |
+| Tutor JSON/SSE 回包一致性 | `tutor-server.mjs` | 通过 |
+| 学生端类型与展示 | `tutor-model.ts`、`LabWorkspace.vue`、`TutorMessage.vue` | VitePress build 通过 |
+| 全量单测 | `npm test` | 54/54 |
+| 真实服务链路 | `npm run test:smoke` | 通过 |

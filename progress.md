@@ -1,5 +1,29 @@
 # os-lab 项目进度总览
 
+## 2026-08-06 - Task: RAG 检索 Harness 与学生端 AI 导师接线
+
+### What was done
+
+- 完成独立 RAG Tutor Harness：`os-lab/tutor/rag-harness.mjs` 提供 case schema、知识权限/范围/数量上限、来源元数据、Prompt 注入和向量降级断言；fixture 位于 `tutor/fixtures/rag-harness-cases-v1.json`。
+- Harness 现在强制每个学生可见知识块带有 `citation`、`sourceId`、`sourceTitle`、`sectionPath`、`contentClass` 和 `labScopes`，并拒绝 `teacher-only/system-metadata`、越过当前 Lab 的引用和超过 5 个 chunk / 2 个 global chunk 的结果。
+- 新增 `tutor/rag-harness-cli.mjs` 与 `npm run test:rag-harness:cli`，保留 adapter 接口，既可运行离线结构回归，也可替换为真实 Tutor Server/检索 adapter。
+- Tutor Server `/chat` 的 JSON、SSE `meta` 和 `done` 帧统一返回 `knowledge` 与 `retrieval`；知识元数据补充来源标题、Lab 范围、章节 locator 和本轮排序诊断。直接索要完整答案时显式返回 `guardrail-before-retrieval`，不检索知识。
+- 学生端 `LabWorkspace.vue -> POST /chat -> TutorMessage.vue` 已接收并持久化 RAG 元数据；导师消息显示“参考知识”来源/章节标签，并在 embedding/向量不可用时显示“已降级为关键词检索”，不向学生暴露知识块正文。
+- `Tutor Server smoke` 增加来源元数据与权限类别断言，避免后端回包退化成裸 citation。
+
+### Testing
+
+- RAG Harness 单测：3/3 通过。
+- RAG Harness CLI：4 个 fixture 全部通过。
+- Node 项目回归：54/54 通过。
+- Tutor smoke：通过。
+- VitePress production build：通过。
+
+### Notes
+
+- RAG Harness 与原有 Tutor/Assessment Harness 仍然分离；共享证据 schema，但不共享评分阈值。
+- 学生端只显示来源元数据，不提供教师知识库正文接口；`teacher-only` 和 `system-metadata` 仍在服务端检索层硬拒绝。
+
 ## 2026-08-06 - Task: RAG Chunk 质量、公共知识 Lab 归属与教师端统一导航
 
 ### What was done
