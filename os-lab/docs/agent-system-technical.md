@@ -400,3 +400,52 @@ RISC-V Reader 的 PDF 文本层同时包含双栏正文、图注和目录，不�
 | 8. RAG Tutor Harness | 待确认 | RAG 泄漏、引用归属、权限越权和稳定性回归 |
 
 Step 8 将在混合召回诊断之上补充 RAG Tutor Harness，冻结向量召回、权限、引用和降级行为的回归阈值。
+
+## 13. 质量门、派生归属与教师可审计视图
+
+### 13.1 短节不是按长度简单截断
+
+Chunk 质量门分为两个阶段：Block 阶段负责格式、编码和模板清理，Chunk 阶段负责语义信号、答案风险、去重和章节边界。外部发布资料的短 Chunk 只有在包含 OS 核心术语、完整陈述关系和句末标点时才保留；连续的编号标题串（例如 `2.1 ... 2.2 ...`）单独以 `outline-label-sequence` 拒绝，避免把目录误当作知识。
+
+短节合并只在同一 `documentId`、同一章节父路径、且两侧均为非代码块时触发。合并上限沿用 `targetChars/maxChars`，跨子章节时把两个子标题写入正文并把 `sectionPath` 收敛到共同父路径，同时重新计算 locator、字符/token 统计、Lab 归属和 `indexable`。`metadata.mergedShortChunks` 记录合并来源数量，manifest 的质量报告记录 `mergedChunks`，因此可以从产物反查规则影响。
+
+教师上传走同一格式清洗，但默认 `teacher-*` source 在 `pending-review` 阶段不执行发布资料的短块门槛。原因是材料必须先在教师工作台可见，才能由教师判断其是否是定义、提示或应删除的噪声；上传仍固定为 `teacher-only`、`active=0`、`indexable=0`，发布前不会进入 Tutor。
+
+### 13.2 公共知识的 Lab 派生绑定
+
+公共来源不复制正文，也不强行改变原始 `global` 范围。`lab-scope-rules.json` 是规则唯一来源，`lab_scope.py` 根据来源路径、章节编号、章节标题和正文术语产生零个或多个派生绑定：
+
+```mermaid
+flowchart LR
+  C[Public Chunk\nlabScope=[global]] --> R[lab-scope-rules.json]
+  R --> E[lab_scope.py\n规则匹配]
+  E --> B[derived binding\nlabId + confidence + reason]
+  B --> T[Teacher confirmation]
+  T --> I[Retriever\nLab ∪ global]
+```
+
+例如 OSTEP 的进程章节、rCore Guide 的 `chapter4`、LearningOS 的对应讲次会产生 `lab4` 派生绑定；每个绑定保存 `confidence` 和人可读 `reason`。派生绑定不是教师批准记录，教师修改 Chunk 范围后会写入 `binding_kind=teacher` 并覆盖该 Chunk 的范围，保证自动判断可追溯且不越过人工发布门槛。
+
+推断顺序是确定性的。路径中显式出现 `/lab1` 到 `/lab8` 时直接返回该 Lab，置信度为 1；公共资料则先按 `sourceId + glob pattern` 命中来源章节规则，每个命中 Lab 加 8 分，再叠加章节术语（每项 3 分、最高 9）、来源路径术语（每项 2 分、最高 4）和正文术语（每项 1 分、最高 6）。候选必须至少 3 分且达到最高分的 60%，最多保留 3 个；置信度取来源规则置信度与 `0.5 + score * 0.04` 的较高值，并封顶 0.95。命中依据去重后截断到 240 字，因此同一输入和同一规则文件始终得到相同结果。
+
+`chunk.py` 在 Chunk 成形时调用上述推断，把范围写入 `labScope`，把 `labId/confidence/reason` 写入 `metadata.labScopeEvidence`；Schema 同步约束 Lab 编号、置信度区间和字段完整性。导入 SQLite 时，每个范围写入 `knowledge_chunk_labs`：自动结果使用 `binding_kind=derived` 并保留证据，缺少显式证据的 `global` 绑定使用置信度 1 和来源路径作为理由。教师修改范围时事务会删除该 Chunk 的旧绑定，写入 `binding_kind=teacher/confidence=1` 的新绑定，以审核说明作为理由，并在当前版本上重建索引，所以人工结论完整覆盖自动建议但不会修改不可变的原始版本内容。
+
+### 13.3 可见总数与自然排序
+
+`GET /teacher/knowledge/chunks` 先按 `sourceTitle -> sourcePath -> sectionPath -> locator` 使用 `Intl.Collator('zh-CN', { numeric: true })` 排序，再执行 `offset/limit`。响应显式返回：
+
+```json
+{ "ok": true, "chunks": [], "total": 1239, "limit": 100, "offset": 0 }
+```
+
+`total` 由同一筛选条件重新计数，不是分页数组长度；知识树的 `totalChunks` 只统计当前可检索 Chunk，并避免一个公共 Chunk 同时绑定多个 Lab 时重复累计。前端使用该总数计算 `1-100 / N` 的页码范围，详情页同时显示来源、章节、定位和 Lab 归属依据。
+
+服务端把筛选统一收敛到 `chunkFilter()`，`listChunks()` 与 `countChunks()` 共用 `labId/sourceId/versionId/q/includeInactive/retrievableOnly` 条件。默认只显示 active 且属于 Source 当前版本的 Chunk；`includeInactive=true` 用于指定版本和审计视图；`retrievableOnly=true` 继续要求 `indexable=1`、风险为 `low/medium` 且内容类型不是 `system-metadata`。列表查询同时联接 Document，返回 `sourcePath`，并把 `knowledge_chunk_labs` 聚合为 `labScopes` 和包含 `bindingKind/confidence/reason` 的 `labBindings`。
+
+Tutor Server 将 `limit` 规范到 1-200，默认 100，将 `offset` 规范为非负数；计数不带分页条件，返回的 `total/limit/offset` 与本次请求的有效边界一致。前端每页请求 100 条，切换 Lab、来源、版本、检索词或元数据模式时把 offset 归零。教师软删除仍将 `active/indexable` 同时置 0、删除 embedding、重建当前版本 FTS 并写审计，因此默认列表、知识树和 Tutor 召回会立即排除该 Chunk；只有显式开启非活动版本视图时还能查看其历史记录。Tutor 按 Lab 检索时仍使用“目标 Lab 或 `global`”并集，同时保留当前发布版本、权限类别、风险和 active/indexable 门控，派生绑定不会绕过发布与权限规则。
+
+### 13.4 当前构建与验证基线
+
+构建 `knowledge-sources:d09a1e6080a1173a` 包含 7 个外部来源、212 个文档和 1,239 个 Chunk。按来源计数为：platform concepts 19、OSTEP 387、RISC-V Reader 90、LearningOS 207、rCore Guide 208、CSAPP 328；外部 Chunk 的 `global` 绑定为 1,220 个，Lab 派生绑定覆盖 Lab1-Lab8。SQLite 导入后加上原有 8 个 Lab 手册，当前 active 为 1,384，向量缓存为 1,360 条（其中新构建 upsert 1,239 条）。
+
+本轮验证固定为：Python knowledge tests 32/32、Node tests 51/51、Tutor smoke 通过、VitePress production build 通过。Tutor smoke 还断言教师 Chunk 接口的 `total/limit/offset`，并验证短上传材料在待审核状态可见。

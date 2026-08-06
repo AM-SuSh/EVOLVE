@@ -69,6 +69,7 @@ function sourceFixture(root) {
   const sourceId = 'textbook-fixture'
   const documentId = `${sourceId}:document`
   const text = '虚拟内存通过页表建立地址空间映射。'
+  const otherText = '线程通过同步原语协调对共享状态的访问。'
   writeJson(path.join(root, sourceId, 'documents/doc.json'), {
     schemaVersion: 1, documentId, sourceId, title: '测试教材', format: 'markdown', language: 'zh-CN',
     contentHash: 'd'.repeat(64), metadata: { sourcePath: 'snapshot/chapter.md' },
@@ -77,12 +78,20 @@ function sourceFixture(root) {
   writeJson(path.join(root, sourceId, 'chunks/doc.json'), {
     schemaVersion: 1, chunkSetId: `${documentId}:chunks`, documentId, sourceId,
     chunking: { algorithm: 'section-aware-v1', targetChars: 1000, maxChars: 1400, overlapChars: 0, chunkCount: 1 },
-    chunks: [{
-      id: `${documentId}:chunk-0`, ordinal: 0, documentId, sourceId, chunkType: 'text', text,
-      sectionPath: ['虚拟内存'], blockOrdinals: [0], locatorStart: { lineStart: 1 }, locatorEnd: { lineEnd: 1 },
-      contentClass: 'student-safe', labScope: ['global'], conceptIds: ['os.vm'], answerRisk: 'low', indexable: true,
-      metadata: { charCount: text.length, tokenEstimate: 8, blockTypes: ['paragraph'], sourcePath: 'snapshot/chapter.md' },
-    }],
+    chunks: [
+      {
+        id: `${documentId}:chunk-0`, ordinal: 0, documentId, sourceId, chunkType: 'text', text: otherText,
+        sectionPath: ['10. 线程'], blockOrdinals: [0], locatorStart: { lineStart: 10 }, locatorEnd: { lineEnd: 10 },
+        contentClass: 'student-safe', labScope: ['global'], conceptIds: ['os.thread'], answerRisk: 'low', indexable: true,
+        metadata: { charCount: otherText.length, tokenEstimate: 10, blockTypes: ['paragraph'], sourcePath: 'snapshot/chapter.md' },
+      },
+      {
+        id: `${documentId}:chunk-1`, ordinal: 1, documentId, sourceId, chunkType: 'text', text,
+        sectionPath: ['2. 虚拟内存'], blockOrdinals: [0], locatorStart: { lineStart: 2 }, locatorEnd: { lineEnd: 2 },
+        contentClass: 'student-safe', labScope: ['global', 'lab3'], conceptIds: ['os.vm'], answerRisk: 'low', indexable: true,
+        metadata: { charCount: text.length, tokenEstimate: 8, blockTypes: ['paragraph'], sourcePath: 'snapshot/chapter.md', labScopeEvidence: [{ labId: 'lab3', confidence: 0.9, reason: '虚拟内存章节' }] },
+      },
+    ],
   })
   const manifest = {
     schemaVersion: 1, buildId: 'multi-source-fixture', sources: [
@@ -106,6 +115,9 @@ test('generic build imports multiple source identities and keeps pending invento
     assert.equal(result.sources.length, 2)
     assert.equal(store.stats().sources, 2)
     assert.equal(store.stats().documents, 1)
+    assert.equal(store.countChunks({ sourceId: 'textbook-fixture' }), 2)
+    assert.deepEqual(store.listChunks({ sourceId: 'textbook-fixture' }).map((item) => item.sectionPath[0]), ['2. 虚拟内存', '10. 线程'])
+    assert.equal(store.listChunks({ sourceId: 'textbook-fixture', labId: 'lab3' })[0].labBindings.find((item) => item.labId === 'lab3').reason, '虚拟内存章节')
     assert.equal(store.search('页表', { labId: 'lab3' }).length, 1)
     assert.equal(store.getSource('pending-fixture').status, 'pending-review')
     assert.equal(store.listSources().find((item) => item.id === 'pending-fixture').activeChunks, 0)
@@ -135,7 +147,8 @@ test('ingestion is scoped, searchable, idempotent, and rollback-safe', () => {
     assert.equal(store.search('任务调度', { labId: 'lab1' }).length, 0)
     assert.equal(store.search('中断', { labId: 'lab2' }).length, 1)
     assert.equal(store.search('参考答案', { labId: 'lab2', allowedClasses: ['teacher-only'] }).length, 0)
-    assert.equal(store.knowledgeTree().labs.find((item) => item.labId === 'lab1').chunks, 2)
+    assert.equal(store.knowledgeTree().labs.find((item) => item.labId === 'lab1').chunks, 1)
+    assert.equal(store.knowledgeTree().totalChunks, 2)
     assert.equal(store.listSources()[0].activeChunks, 4)
     const browsed = store.listChunks({ labId: 'lab2', limit: 10 })
     assert.equal(browsed.length, 2)

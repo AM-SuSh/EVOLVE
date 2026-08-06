@@ -113,6 +113,20 @@ class ChunkTest(unittest.TestCase):
         chunk = chunk_document(self.document, policy=self.policy)["chunks"][0]
         self.assertEqual(chunk["conceptIds"], ["os.mm.sv39-walk"])
 
+    def test_public_reference_keeps_global_scope_and_adds_auditable_lab_binding(self):
+        self.document["sourceId"] = "rcore-tutorial-guide-web"
+        self.document["metadata"]["sourcePath"] = "snapshots/rcore/source/chapter4/3sv39-implementation.rst"
+        self.document["blocks"] = [{
+            "id": "b0", "ordinal": 0, "type": "paragraph",
+            "text": "Sv39 页表将虚拟地址转换为物理地址，并通过 satp 切换地址空间。",
+            "sectionPath": ["第四章 地址空间"], "locator": {"lineStart": 1},
+        }]
+        chunk = chunk_document(self.document, policy=self.policy)["chunks"][0]
+        self.assertEqual(chunk["labScope"], ["global", "lab3"])
+        binding = chunk["metadata"]["labScopeEvidence"][0]
+        self.assertEqual(binding["labId"], "lab3")
+        self.assertGreaterEqual(binding["confidence"], 0.9)
+
 
 if __name__ == "__main__":
     unittest.main()

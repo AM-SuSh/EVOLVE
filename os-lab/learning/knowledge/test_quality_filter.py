@@ -65,6 +65,53 @@ class QualityFilterTest(unittest.TestCase):
         self.assertEqual(report["reasons"]["duplicate-chunk"], 1)
         self.assertEqual(report["reasons"]["answer-risk"], 1)
 
+    def test_short_outline_labels_do_not_become_knowledge_chunks(self):
+        chunks = {
+            "chunks": [
+                {"id": "c0", "ordinal": 0, "documentId": "doc", "text": "调度算法", "chunkType": "text", "answerRisk": "low", "metadata": {}},
+                {"id": "c1", "ordinal": 1, "documentId": "doc", "text": "线程的设计实现", "chunkType": "text", "answerRisk": "low", "metadata": {}},
+                {"id": "c2", "ordinal": 2, "documentId": "doc", "text": "调度器通过选择下一个可运行任务来决定 CPU 的分配顺序。", "chunkType": "text", "answerRisk": "low", "metadata": {}},
+            ],
+        }
+        filtered, report = filter_chunk_set(chunks, "learningos-os-lectures-source")
+        self.assertEqual([item["text"] for item in filtered["chunks"]], ["调度器通过选择下一个可运行任务来决定 CPU 的分配顺序。"])
+        self.assertEqual(report["reasons"]["low-signal-short-chunk"], 2)
+
+    def test_numbered_outline_sequences_do_not_become_knowledge_chunks(self):
+        chunk_set = {
+            "chunks": [{
+                "id": "c0", "ordinal": 0, "documentId": "doc",
+                "text": "2.1 读者-写者问题描述 2.2 读者-写者问题的信号量实现",
+                "chunkType": "text", "answerRisk": "low", "metadata": {},
+            }],
+        }
+        filtered, report = filter_chunk_set(chunk_set, "learningos-os-lectures-source")
+        self.assertEqual(filtered["chunks"], [])
+        self.assertEqual(report["reasons"]["outline-label-sequence"], 1)
+
+    def test_adjacent_short_sections_merge_with_visible_section_labels(self):
+        base = {
+            "documentId": "doc", "sourceId": "learningos-os-lectures-source", "chunkType": "text",
+            "blockOrdinals": [0], "locatorStart": {"lineStart": 1}, "locatorEnd": {"lineEnd": 1},
+            "contentClass": "student-safe", "labScope": ["global"], "conceptIds": [],
+            "answerRisk": "low", "indexable": True,
+            "metadata": {"charCount": 30, "tokenEstimate": 8, "blockTypes": ["paragraph"], "sourcePath": "lec7/p2.md"},
+        }
+        chunks = {
+            "chunking": {"targetChars": 1000, "maxChars": 1400},
+            "chunks": [
+                {**base, "id": "c0", "ordinal": 0, "text": "调度器通过就绪队列选择下一个可以运行的进程。", "sectionPath": ["进程调度", "就绪队列"]},
+                {**base, "id": "c1", "ordinal": 1, "text": "时间片用于限制单个进程连续占用 CPU 的时长。", "sectionPath": ["进程调度", "时间片"]},
+            ],
+        }
+        filtered, report = filter_chunk_set(chunks, "learningos-os-lectures-source")
+        self.assertEqual(len(filtered["chunks"]), 1)
+        self.assertEqual(filtered["chunks"][0]["sectionPath"], ["进程调度"])
+        self.assertIn("就绪队列", filtered["chunks"][0]["text"])
+        self.assertIn("时间片", filtered["chunks"][0]["text"])
+        self.assertEqual(filtered["chunks"][0]["metadata"]["mergedShortChunks"], 1)
+        self.assertEqual(report["mergedChunks"], 1)
+
     def test_damaged_pdf_code_and_character_mapping_are_rejected(self):
         document = {
             "sourceId": "ostep-zh-local-complete", "metadata": {"sourcePath": "05.pdf"},

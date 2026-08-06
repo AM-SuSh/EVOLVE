@@ -3518,7 +3518,9 @@ onBeforeUnmount(() => {
      （grid blowout）。显式 minmax(0, 1fr) 把下限压到 0。 */
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--ws-topbar-height) minmax(0, 1fr);
-  height: 100dvh;
+  position: relative;
+  top: var(--vp-nav-height);
+  height: calc(100dvh - var(--vp-nav-height));
   min-height: 520px;
   color: var(--ws-ink);
   background: var(--ws-surface-alt);
@@ -4999,9 +5001,16 @@ onBeforeUnmount(() => {
   }
 }
 
+@media (max-width: 959px) {
+  .ws-workspace {
+    top: 0;
+  }
+}
+
 @media (max-width: 900px) {
   .ws-workspace {
     grid-template-rows: var(--ws-topbar-height) auto minmax(0, 1fr);
+    top: 0;
   }
 
   .ws-brand-text small {

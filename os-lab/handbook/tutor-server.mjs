@@ -410,16 +410,9 @@ function runProcess(command, args, options = {}) {
   })
 }
 
-const LAB_SCOPE_RULES = {
-  lab1: ['裸机', 'sbi', 'entry', 'linker', '链接脚本', '启动', 'boot'],
-  lab2: ['trap', 'syscall', '中断', '调度', 'scheduler', 'context switch', '任务切换'],
-  lab3: ['页表', 'sv39', '虚拟地址', '物理地址', 'memoryset', '内存管理'],
-  lab4: ['进程', 'fork', 'exec', 'waitpid', '进程控制块'],
-  lab5: ['文件描述符', 'pipe', '并发', '同步', 'file descriptor'],
-  lab6: ['磁盘', 'block', 'virtio', 'inode', '缓存', '硬链接'],
-  lab7: ['ipc', 'signal', '信号', '消息队列', 'dup'],
-  lab8: ['线程', 'mutex', 'semaphore', 'deadlock', '互斥锁', '信号量'],
-}
+const LAB_SCOPE_RULES = Object.fromEntries(Object.entries(
+  JSON.parse(readFileSync(path.join(KNOWLEDGE_ROOT, 'lab-scope-rules.json'), 'utf8')).labs || {},
+).map(([labId, rule]) => [labId, Array.isArray(rule?.terms) ? rule.terms : []]))
 
 function suggestLabScopes(document) {
   const haystack = `${document.title || ''}\n${(document.blocks || []).map((item) => item.text).join('\n')}`.toLowerCase()
@@ -1979,7 +1972,7 @@ const server = http.createServer(async (request, response) => {
       }
 
       if (request.method === 'GET' && pathname === '/teacher/knowledge/chunks') {
-        const chunks = knowledgeStore.listChunks({
+        const options = {
           labId: requestUrl.searchParams.get('labId') || undefined,
           sourceId: requestUrl.searchParams.get('sourceId') || undefined,
           versionId: requestUrl.searchParams.get('versionId') || undefined,
@@ -1988,8 +1981,14 @@ const server = http.createServer(async (request, response) => {
           retrievableOnly: requestUrl.searchParams.get('retrievableOnly') === 'true',
           limit: requestUrl.searchParams.get('limit') || 100,
           offset: requestUrl.searchParams.get('offset') || 0,
-        })
-        json(response, 200, { ok: true, chunks }, origin)
+        }
+        const chunks = knowledgeStore.listChunks(options)
+        const total = knowledgeStore.countChunks(options)
+        json(response, 200, {
+          ok: true, chunks, total,
+          limit: Math.max(1, Math.min(Number(options.limit) || 100, 200)),
+          offset: Math.max(0, Number(options.offset) || 0),
+        }, origin)
         return
       }
 

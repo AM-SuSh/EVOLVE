@@ -66,6 +66,21 @@ function validateChunkShape(chunk) {
   chunk.labScope.forEach(validateLabId)
 }
 
+const chunkNaturalCollator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
+
+function compareChunkRows(left, right) {
+  const source = chunkNaturalCollator.compare(left.sourceTitle || left.sourceId, right.sourceTitle || right.sourceId)
+  if (source) return source
+  const path = chunkNaturalCollator.compare(left.sourcePath || '', right.sourcePath || '')
+  if (path) return path
+  const section = chunkNaturalCollator.compare((left.sectionPath || []).join(' / '), (right.sectionPath || []).join(' / '))
+  if (section) return section
+  const leftPage = Number(left.locatorStart?.page ?? left.locatorStart?.lineStart ?? 0)
+  const rightPage = Number(right.locatorStart?.page ?? right.locatorStart?.lineStart ?? 0)
+  if (leftPage !== rightPage) return leftPage - rightPage
+  return Number(left.ordinal || 0) - Number(right.ordinal || 0)
+}
+
 export function openKnowledgeStore(options = {}) {
   const dbPath = path.resolve(options.dbPath || process.env.OS_LAB_KNOWLEDGE_DB_PATH || defaultKnowledgeDbPath)
   mkdirSync(path.dirname(dbPath), { recursive: true })
@@ -549,9 +564,11 @@ export function openKnowledgeStore(options = {}) {
                 chunk.chunkType, chunk.text, json(sectionPath), sectionPath.join(' > '), json(chunk.blockOrdinals),
                 json(chunk.locatorStart), json(chunk.locatorEnd), chunk.contentClass, json(conceptIds), conceptIds.join(' '),
                 chunk.answerRisk, chunk.indexable ? 1 : 0, chunk.metadata.charCount, chunk.metadata.tokenEstimate, json(chunk.metadata), timestamp)
+              const evidence = Array.isArray(chunk.metadata?.labScopeEvidence) ? chunk.metadata.labScopeEvidence : []
               for (const scope of chunk.labScope || ['global']) {
-                db.prepare(`INSERT INTO knowledge_chunk_labs(chunk_id, lab_id, binding_kind, confidence, reason) VALUES (?, ?, 'derived', 1, ?)`)
-                  .run(chunkId, validateLabId(scope), `derived from ${sourcePath}`)
+                const item = evidence.find((entry) => entry?.labId === scope)
+                db.prepare(`INSERT INTO knowledge_chunk_labs(chunk_id, lab_id, binding_kind, confidence, reason) VALUES (?, ?, 'derived', ?, ?)`)
+                  .run(chunkId, validateLabId(scope), Number(item?.confidence ?? 1), String(item?.reason || `derived from ${sourcePath}`))
               }
               chunkCount += 1
             }
@@ -844,6 +861,7 @@ export function openKnowledgeStore(options = {}) {
       sourceId: row.source_id,
       sourceTitle: row.source_title,
       sourceAuthority: Number(row.source_authority || 0),
+      sourcePath: row.document_source_path || '',
       versionId: row.source_version_id,
       documentId: row.document_id,
       ordinal: Number(row.ordinal),
@@ -861,14 +879,13 @@ export function openKnowledgeStore(options = {}) {
       charCount: Number(row.char_count),
       tokenEstimate: Number(row.token_estimate),
       labScopes: parseJson(row.lab_scopes_json, []),
+      labBindings: parseJson(row.lab_bindings_json, []),
     }
   }
 
-  function listChunks(options = {}) {
+  function chunkFilter(options = {}) {
     const labId = options.labId ? validateLabId(options.labId) : ''
     const sourceId = String(options.sourceId || '')
-    const limit = Math.max(1, Math.min(Number(options.limit) || 50, 200))
-    const offset = Math.max(0, Number(options.offset) || 0)
     const includeInactive = options.includeInactive === true
     const retrievableOnly = options.retrievableOnly === true
     const versionId = String(options.versionId || '')
@@ -895,24 +912,47 @@ export function openKnowledgeStore(options = {}) {
       const like = `%${query}%`
       params.push(like, like, like)
     }
+    return { clauses, params }
+  }
+
+  function listChunks(options = {}) {
+    const limit = Math.max(1, Math.min(Number(options.limit) || 50, 200))
+    const offset = Math.max(0, Number(options.offset) || 0)
+    const { clauses, params } = chunkFilter(options)
     const rows = db.prepare(`
       SELECT c.*, s.title AS source_title, s.authority_rank AS source_authority,
-             (SELECT json_group_array(lab_id) FROM knowledge_chunk_labs scopes WHERE scopes.chunk_id = c.id) AS lab_scopes_json
+             d.source_path AS document_source_path,
+             (SELECT json_group_array(lab_id) FROM knowledge_chunk_labs scopes WHERE scopes.chunk_id = c.id) AS lab_scopes_json,
+             (SELECT json_group_array(json_object('labId', lab_id, 'bindingKind', binding_kind, 'confidence', confidence, 'reason', reason))
+                FROM knowledge_chunk_labs bindings WHERE bindings.chunk_id = c.id) AS lab_bindings_json
+      FROM knowledge_chunks c
+      JOIN knowledge_sources s ON s.id = c.source_id
+      JOIN knowledge_documents d ON d.id = c.document_id
+      WHERE ${clauses.join(' AND ')}
+    `).all(...params)
+    return rows.map(mapChunkRow).sort(compareChunkRows).slice(offset, offset + limit)
+  }
+
+  function countChunks(options = {}) {
+    const { clauses, params } = chunkFilter(options)
+    return Number(db.prepare(`
+      SELECT COUNT(*) AS value
       FROM knowledge_chunks c
       JOIN knowledge_sources s ON s.id = c.source_id
       WHERE ${clauses.join(' AND ')}
-      ORDER BY c.source_id, c.document_id, c.ordinal
-      LIMIT ? OFFSET ?
-    `).all(...params, limit, offset)
-    return rows.map(mapChunkRow)
+    `).get(...params).value)
   }
 
   function getChunk(chunkId) {
     const row = db.prepare(`
       SELECT c.*, s.title AS source_title, s.authority_rank AS source_authority,
+             d.source_path AS document_source_path,
              (SELECT json_group_array(lab_id) FROM knowledge_chunk_labs scopes WHERE scopes.chunk_id = c.id) AS lab_scopes_json
+             ,(SELECT json_group_array(json_object('labId', lab_id, 'bindingKind', binding_kind, 'confidence', confidence, 'reason', reason))
+                FROM knowledge_chunk_labs bindings WHERE bindings.chunk_id = c.id) AS lab_bindings_json
       FROM knowledge_chunks c
       JOIN knowledge_sources s ON s.id = c.source_id
+      JOIN knowledge_documents d ON d.id = c.document_id
       WHERE c.id = ?
     `).get(chunkId)
     return row ? mapChunkRow(row) : null
@@ -978,10 +1018,10 @@ export function openKnowledgeStore(options = {}) {
   }
 
   function knowledgeTree() {
-    const counts = new Map(stats().labs.map((item) => [item.labId, item.chunks]))
     return {
       labs: ['global', ...Array.from({ length: 8 }, (_, index) => `lab${index + 1}`)]
-        .map((labId) => ({ labId, chunks: counts.get(labId) || 0 })),
+        .map((labId) => ({ labId, chunks: countChunks({ labId, retrievableOnly: true }) })),
+      totalChunks: countChunks({ retrievableOnly: true }),
       sources: listSources(),
     }
   }
@@ -1011,6 +1051,7 @@ export function openKnowledgeStore(options = {}) {
     listSources,
     getSource,
     listChunks,
+    countChunks,
     getChunk,
     updateChunk,
     removeChunk,

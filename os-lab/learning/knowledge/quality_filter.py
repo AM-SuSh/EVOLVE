@@ -18,6 +18,8 @@ from typing import Any
 
 import yaml
 
+from lab_scope import infer_lab_scopes
+
 
 CORE_TERMS = re.compile(
     r"(操作系统|内核|进程|线程|调度|中断|异常|系统调用|地址空间|虚拟内存|页表|TLB|内存|文件系统|"
@@ -38,9 +40,14 @@ MOJIBAKE_RE = re.compile(r"(?:锛|銆|鈥|鈫|绔|妫|鐭|瀹|璇|鎿|�)")
 CODE_SIGNAL_RE = re.compile(r"(?:#include|\b(?:int|void|char|struct|enum|fn|let|pub|impl|return|if|while|for)\b|[{};]|::|->)")
 LECTURE_ADMIN_SECTION_RE = re.compile(r"(?:^|\s>\s)(?:问题|预备知识|作业与实验|基础实验|课程设计|课程安排)(?:\s>|$)")
 SHORT_ASSERTION_RE = re.compile(
-    r"(是|指|称为|定义|通过|用于|负责|决定|必须|需要|依赖|保证|提供|支持|保存|恢复|切换|映射|分配|调度|保护|"
+    r"(是|指|称为|定义为|通过|用于|负责|决定|必须|需要|依赖|保证|提供|支持|保存|恢复|切换|映射|"
     r"实现|建立|维护|包含|组成|允许|导致|因此|由于|从而|使得|加入|提高|=| means? | is | are | provides? | requires? | maps? )",
     re.I,
+)
+SENTENCE_END_RE = re.compile(r"[。！？；;.!?]")
+OUTLINE_LABEL_RE = re.compile(
+    r"^\s*(?:\d{1,3}(?:\.\d+)*\s+[^。！？；:：]{2,48})"
+    r"(?:\s+\d{1,3}(?:\.\d+)*\s+[^。！？；:：]{2,48})+\s*$"
 )
 PDF_CODE_LINE_RE = re.compile(r"^\s*\d+\s+(?:#|//|/\*|[A-Za-z_].*[;{}()%]|[{}])")
 OSTEP_CORRUPTION_RE = re.compile(r"(?:我我|我同|我能|我谁|谁我|谁是|谁的|谁谁|我我我|实实上|尽尽|我同样)")
@@ -63,6 +70,7 @@ RISC_V_ASSEMBLY_RE = re.compile(
 )
 TOC_DOTS_RE = re.compile(r"\.{5,}\s*\d+(?:\s|$)")
 RISC_V_CONTENT_START_PAGE = 15
+SHORT_CHUNK_MERGE_CHARS = 240
 
 
 def _collapse_doubled_text(value: str) -> str:
@@ -256,10 +264,13 @@ def filter_document(document: dict[str, Any]) -> tuple[dict[str, Any], dict[str,
 
 
 def filter_chunk_set(chunk_set: dict[str, Any], source_id: str, seen_hashes: set[str] | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
-    kept: list[dict[str, Any]] = []
+    candidates: list[dict[str, Any]] = []
     reasons: Counter[str] = Counter()
     seen = seen_hashes if seen_hashes is not None else set()
-    strict = source_id not in {"platform-lab-manuals", "platform-lab-packages"}
+    # Teacher uploads remain pending review, so preserve concise material for
+    # the teacher to inspect instead of applying the published-corpus outline
+    # gate before it is visible in the review UI.
+    strict = source_id not in {"platform-lab-manuals", "platform-lab-packages"} and not source_id.startswith("teacher-")
     for original in chunk_set.get("chunks", []):
         item = deepcopy(original)
         text = str(item.get("text", "")).strip()
@@ -274,22 +285,116 @@ def filter_chunk_set(chunk_set: dict[str, Any], source_id: str, seen_hashes: set
             reason = "instruction-encoding-table"
         elif strict and item.get("answerRisk") in {"high", "blocked"}:
             reason = "answer-risk"
-        elif strict and len(text) < 100 and (not CORE_TERMS.search(text) or not SHORT_ASSERTION_RE.search(text)):
-            reason = "low-signal-short-chunk"
+        elif strict and len(text) < 100:
+            # Slide headings and outline labels are often extracted as ordinary
+            # paragraphs. Keep only concise but complete technical assertions.
+            outline_content = re.sub(r"\d+(?:\.\d+)*", "", text)
+            if OUTLINE_LABEL_RE.fullmatch(text) and not SENTENCE_END_RE.search(outline_content):
+                reason = "outline-label-sequence"
+            else:
+                very_short_assertion = (
+                    len(text) >= 14
+                    and SENTENCE_END_RE.search(text)
+                    and CORE_TERMS.search(text)
+                    and SHORT_ASSERTION_RE.search(text)
+                )
+                if (
+                    (len(text) < 24 and not very_short_assertion)
+                    or not CORE_TERMS.search(text)
+                    or not SHORT_ASSERTION_RE.search(text)
+                ):
+                    reason = "low-signal-short-chunk"
         elif strict and item.get("chunkType") == "code" and len(text) > 500:
             reason = "external-code-only"
         if reason:
             reasons[reason] += 1
             continue
         seen.add(digest)
-        item["ordinal"] = len(kept)
-        item["id"] = f"{item['documentId']}:chunk-{len(kept):06d}-{hashlib.sha256(text.encode('utf-8')).hexdigest()[:16]}"
-        kept.append(item)
+        candidates.append(item)
+
+    merged_count = 0
+    kept: list[dict[str, Any]] = []
+    if strict:
+        target_chars = int(chunk_set.get("chunking", {}).get("targetChars") or 1000)
+        max_chars = int(chunk_set.get("chunking", {}).get("maxChars") or 1400)
+        for item in candidates:
+            if not kept:
+                kept.append(item)
+                continue
+            previous = kept[-1]
+            previous_path = list(previous.get("sectionPath") or [])
+            current_path = list(item.get("sectionPath") or [])
+            common_path: list[str] = []
+            for left, right in zip(previous_path, current_path):
+                if left != right:
+                    break
+                common_path.append(left)
+            same_section = previous_path == current_path
+            can_merge = (
+                previous.get("documentId") == item.get("documentId")
+                and previous.get("chunkType") != "code"
+                and item.get("chunkType") != "code"
+                and (same_section or bool(common_path))
+                and (len(str(previous.get("text", ""))) < SHORT_CHUNK_MERGE_CHARS or len(str(item.get("text", ""))) < SHORT_CHUNK_MERGE_CHARS)
+            )
+            if not can_merge:
+                kept.append(item)
+                continue
+            previous_text = str(previous.get("text", "")).strip()
+            current_text = str(item.get("text", "")).strip()
+            if same_section:
+                combined_text = f"{previous_text}\n\n{current_text}"
+                combined_section = previous_path
+                limit = max_chars
+            else:
+                previous_label = previous_path[-1] if previous_path else ""
+                current_label = current_path[-1] if current_path else ""
+                combined_text = f"{previous_label}\n{previous_text}\n\n{current_label}\n{current_text}".strip()
+                combined_section = common_path
+                limit = target_chars
+            if len(combined_text) > limit:
+                kept.append(item)
+                continue
+
+            metadata = {**(previous.get("metadata") or {})}
+            source_path = str(metadata.get("sourcePath") or (item.get("metadata") or {}).get("sourcePath") or "")
+            lab_scopes, scope_evidence = infer_lab_scopes(source_id, source_path, combined_section, combined_text)
+            metadata.update({
+                "charCount": len(combined_text),
+                "tokenEstimate": max(1, (len(combined_text) + 3) // 4),
+                "blockTypes": sorted(set(metadata.get("blockTypes") or []) | set((item.get("metadata") or {}).get("blockTypes") or [])),
+                "splitFromLongBlock": bool(metadata.get("splitFromLongBlock") or (item.get("metadata") or {}).get("splitFromLongBlock")),
+                "labScopeEvidence": scope_evidence,
+                "mergedShortChunks": int(metadata.get("mergedShortChunks") or 0) + int((item.get("metadata") or {}).get("mergedShortChunks") or 0) + 1,
+            })
+            risk_order = {"low": 0, "medium": 1, "high": 2, "blocked": 3}
+            merged_risk = max((previous.get("answerRisk", "low"), item.get("answerRisk", "low")), key=lambda value: risk_order.get(str(value), 0))
+            kept[-1] = {
+                **previous,
+                "text": combined_text,
+                "sectionPath": combined_section,
+                "blockOrdinals": list(dict.fromkeys([*(previous.get("blockOrdinals") or []), *(item.get("blockOrdinals") or [])])),
+                "locatorEnd": item.get("locatorEnd") or previous.get("locatorEnd") or {},
+                "chunkType": previous.get("chunkType") if previous.get("chunkType") == item.get("chunkType") else "mixed",
+                "labScope": lab_scopes,
+                "conceptIds": list(dict.fromkeys([*(previous.get("conceptIds") or []), *(item.get("conceptIds") or [])])),
+                "answerRisk": merged_risk,
+                "indexable": bool(previous.get("indexable") and item.get("indexable")),
+                "metadata": metadata,
+            }
+            merged_count += 1
+    else:
+        kept = candidates
+
+    for ordinal, item in enumerate(kept):
+        text = str(item.get("text", "")).strip()
+        item["ordinal"] = ordinal
+        item["id"] = f"{item['documentId']}:chunk-{ordinal:06d}-{hashlib.sha256(text.encode('utf-8')).hexdigest()[:16]}"
     result = deepcopy(chunk_set)
     result["chunks"] = kept
     result["chunking"] = {**result.get("chunking", {}), "qualityFilter": "knowledge-quality-v1", "chunkCount": len(kept)}
     return result, {
-        "inputChunks": len(chunk_set.get("chunks", [])), "keptChunks": len(kept),
+        "inputChunks": len(chunk_set.get("chunks", [])), "keptChunks": len(kept), "mergedChunks": merged_count,
         "droppedChunks": sum(reasons.values()), "reasons": dict(sorted(reasons.items())),
     }
 

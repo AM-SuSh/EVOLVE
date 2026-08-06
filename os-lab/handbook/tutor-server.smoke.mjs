@@ -190,8 +190,13 @@ try {
   assert.equal(uploadedKnowledge.source.defaultClass, 'teacher-only')
   const uploadedVersion = uploadedKnowledge.source.versions[0]
   assert.equal(uploadedVersion.scopeSuggestions.some((item) => item.labId === 'lab2'), true)
-  const uploadedChunks = (await fetch(`${endpoint}/teacher/knowledge/chunks?sourceId=${uploadedKnowledge.upload.sourceId}&includeInactive=true`, { headers: teacherHeaders })
-    .then((response) => response.json())).chunks
+  const uploadedChunksResponse = await fetch(`${endpoint}/teacher/knowledge/chunks?sourceId=${uploadedKnowledge.upload.sourceId}&includeInactive=true`, { headers: teacherHeaders })
+  const uploadedChunksPayload = await uploadedChunksResponse.json()
+  assert.equal(uploadedChunksPayload.ok, true)
+  assert.equal(uploadedChunksPayload.total, uploadedChunksPayload.chunks.length)
+  assert.equal(uploadedChunksPayload.limit, 100)
+  assert.equal(uploadedChunksPayload.offset, 0)
+  const uploadedChunks = uploadedChunksPayload.chunks
   const uploadedChunk = uploadedChunks[0]
   assert.equal(uploadedChunk.active, false)
   const reviewedKnowledge = await postJson('/teacher/knowledge/review', teacherHeaders, {

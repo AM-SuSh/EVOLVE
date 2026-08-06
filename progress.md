@@ -1,5 +1,32 @@
 # os-lab 项目进度总览
 
+## 2026-08-06 - Task: RAG Chunk 质量、公共知识 Lab 归属与教师端统一导航
+
+### What was done
+
+- 完成最新质量规则回归并全量重建 7 个外部知识来源：212 个文档、1,239 个发布候选 Chunk；短块过滤后没有少于 24 字的 Chunk，少于 100 字的仅 20 个，剩余均为完整概念卡片、定义或必要的短段落。
+- 在 `quality_filter.py` 中增加相邻短节合并和连续编号目录串过滤：同文档、同章节父路径的短节合并时保留子章节标签；类似 `2.1 ... 2.2 ...` 的目录串以 `outline-label-sequence` 丢弃；教师 `teacher-*` 上传保留短材料到待审核区，仍经过文档级噪声清洗。
+- 使用 `lab-scope-rules.json` 为公共资料生成可审计的派生 Lab 绑定，保留 `global` 原始范围；本次构建的派生绑定覆盖 Lab1-Lab8，绑定记录包含置信度与规则依据，教师可在详情页确认或修改。
+- SQLite 已导入构建 `knowledge-sources:d09a1e6080a1173a` 并完成本地向量预热：新版本 1,239 个 Chunk 全部写入，`local-feature-hash-v1-384` 向量成功 upsert 1,239 条；数据库当前可检索 Chunk 为 1,384（含 8 个 Lab 实验手册知识）。
+- 教师 Chunk API 现在返回真实 `total/limit/offset`，服务端先按来源、路径、章节和定位做中文数字自然排序，再分页；前端显示真实总数和页码，避免“200”被误解为总量。
+- Tutor smoke 增加分页元数据断言；教师上传的短材料仍可进入 `pending-review`，发布前保持 `teacher-only/active=0/indexable=0`。
+- 教师端所有普通文档页和自定义工作区统一复用 VitePress 官方 `VPNav`：第一段固定保留首页、入门指南、引导式学习、学习材料，第二段固定展示评分复核、实验验收、Lab 工厂、知识库和当前账号；进入引导式学习、实验验收或知识库后仍可直接返回其他教师页面。
+- 移除右下角常驻的“引导式学习”悬浮跳转按钮，教师入口全部收敛到固定顶部导航栏，避免同一操作出现两套入口。
+- 修正自定义教师页面的视口高度：外层布局与工作区按 `100dvh - --vp-nav-height` 计算，取消 620/640px 强制最小高度，并以非折叠的相对偏移承接桌面导航；同时适配 VitePress 在 960px 以下的导航定位变化。实验验收、知识库和 Lab 工作区不再出现底部大片空白、页面假滚动或外层滚动条无法继续下滑的问题，内容区仍保持独立滚动。
+
+### Testing
+
+- Python knowledge tests：32/32 通过。
+- Node 项目回归：51/51 通过。
+- Tutor smoke：通过（runs=4、events=6、teacherReviews=1、issuedLabs=3）。
+- VitePress production build：通过。
+- 浏览器运行时检查：桌面与响应式宽度下官方双段导航完整显示；教师自定义页面填满导航下方视口，外层 `scrollY=0`，内部列表/详情区可正常滚动。
+
+### Notes
+
+- 当前构建产物与 SQLite 是可重建状态，后续资料更新仍使用 `build_knowledge_sources.py -> build-sources -> embed`；不直接编辑数据库。
+- 当前仍有 20 个小于 100 字的 Chunk，已逐项审计为有效短知识，不做按长度的粗暴删除。
+
 ## 2026-08-05 - Task: RISC-V Reader 二次质量治理与教师 Chunk 移除
 
 ### What was done

@@ -4,7 +4,7 @@ import { withBase } from 'vitepress'
 import { BookOpenCheck, ClipboardCheck, ClipboardList, Factory } from 'lucide-vue-next'
 import { loadAuth } from '../tutor-model'
 
-/** 教师登录后，站点导航栏多出的管理入口（学生看不到）。 */
+/** 教师登录后，挂入 VitePress 官方顶栏的管理入口。 */
 const isTeacher = ref(false)
 
 onMounted(() => {
@@ -48,11 +48,5 @@ onMounted(() => {
 .tn a:hover {
   color: var(--vp-c-brand-1);
   background: var(--vp-c-brand-soft);
-}
-
-@media (max-width: 768px) {
-  .tn {
-    display: none;
-  }
 }
 </style>

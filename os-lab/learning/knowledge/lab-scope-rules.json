@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "labs": {
+    "lab1": {
+      "title": "裸机启动与最小内核",
+      "terms": ["裸机", "bare metal", "启动", "boot", "SBI", "sbi", "链接脚本", "linker", "entry", "no_std", "固件", "启动地址"]
+    },
+    "lab2": {
+      "title": "中断处理与多任务",
+      "terms": ["trap", "异常", "中断", "系统调用", "syscall", "调度", "scheduler", "context switch", "上下文切换", "特权级", "ecall", "sret", "任务切换", "受限直接执行"]
+    },
+    "lab3": {
+      "title": "内存管理与虚存",
+      "terms": ["页表", "分页", "虚拟内存", "虚拟地址", "物理地址", "地址转换", "Sv39", "satp", "TLB", "内存管理", "地址空间", "页面置换", "页框"]
+    },
+    "lab4": {
+      "title": "进程管理",
+      "terms": ["进程", "process", "fork", "exec", "waitpid", "PCB", "进程树", "进程 API", "进程控制"]
+    },
+    "lab5": {
+      "title": "文件系统与并发",
+      "terms": ["文件描述符", "file descriptor", "文件系统", "文件和目录", "管道", "pipe", "同步", "互斥", "自旋锁", "spinlock", "fd", "open", "read", "write"]
+    },
+    "lab6": {
+      "title": "磁盘文件系统",
+      "terms": ["磁盘", "硬盘", "块设备", "VirtIO", "virtio", "inode", "easy-fs", "持久性", "I/O 设备", "disk", "文件系统实现"]
+    },
+    "lab7": {
+      "title": "IPC 与信号",
+      "terms": ["IPC", "进程间通信", "信号", "signal", "kill", "sigaction", "sigprocmask", "sigreturn", "dup", "消息队列", "异步事件"]
+    },
+    "lab8": {
+      "title": "线程与同步",
+      "terms": ["线程", "thread", "协程", "mutex", "semaphore", "信号量", "条件变量", "condition variable", "deadlock", "死锁", "并发控制"]
+    }
+  },
+  "sourceRules": [
+    { "sourceId": "ostep-zh-local-complete", "pattern": "**/04.pdf", "labs": ["lab4"], "confidence": 0.92, "reason": "OSTEP 第 4 章：进程" },
+    { "sourceId": "ostep-zh-local-complete", "pattern": "**/05.pdf", "labs": ["lab4"], "confidence": 0.92, "reason": "OSTEP 第 5 章：进程 API" },
+    { "sourceId": "ostep-zh-local-complete", "pattern": "**/0[6-9].pdf", "labs": ["lab2"], "confidence": 0.9, "reason": "OSTEP 第 6-9 章：受限执行与调度" },
+    { "sourceId": "ostep-zh-local-complete", "pattern": "**/10.pdf", "labs": ["lab2"], "confidence": 0.86, "reason": "OSTEP 第 10 章：多处理器调度" },
+    { "sourceId": "ostep-zh-local-complete", "pattern": "**/1[3-9].pdf", "labs": ["lab3"], "confidence": 0.9, "reason": "OSTEP 第 13-19 章：地址空间、分页与地址转换" },
+    { "sourceId": "ostep-zh-local-complete", "pattern": "**/2[0-2].pdf", "labs": ["lab3"], "confidence": 0.84, "reason": "OSTEP 第 20-22 章：虚拟内存延伸" },
+    { "sourceId": "ostep-zh-local-complete", "pattern": "**/2[6-9].pdf", "labs": ["lab5", "lab8"], "confidence": 0.86, "reason": "OSTEP 第 26-29 章：并发、线程与锁" },
+    { "sourceId": "ostep-zh-local-complete", "pattern": "**/3[0-2].pdf", "labs": ["lab8"], "confidence": 0.9, "reason": "OSTEP 第 30-32 章：条件变量、信号量与并发" },
+    { "sourceId": "ostep-zh-local-complete", "pattern": "**/3[6-8].pdf", "labs": ["lab6"], "confidence": 0.9, "reason": "OSTEP 第 36-38 章：I/O、磁盘与持久性" },
+    { "sourceId": "ostep-zh-local-complete", "pattern": "**/39.pdf", "labs": ["lab5", "lab6"], "confidence": 0.86, "reason": "OSTEP 第 39 章：文件与目录" },
+    { "sourceId": "ostep-zh-local-complete", "pattern": "**/4[0-2].pdf", "labs": ["lab6"], "confidence": 0.9, "reason": "OSTEP 第 40-42 章：文件系统实现与持久性" },
+    { "sourceId": "rcore-tutorial-guide-web", "pattern": "**/chapter1/**", "labs": ["lab1"], "confidence": 0.94, "reason": "rCore Guide 第 1 章：裸机与运行时" },
+    { "sourceId": "rcore-tutorial-guide-web", "pattern": "**/chapter[2-3]/**", "labs": ["lab2"], "confidence": 0.92, "reason": "rCore Guide 第 2-3 章：批处理、Trap 与多任务" },
+    { "sourceId": "rcore-tutorial-guide-web", "pattern": "**/chapter4/**", "labs": ["lab3"], "confidence": 0.94, "reason": "rCore Guide 第 4 章：Sv39 与地址空间" },
+    { "sourceId": "rcore-tutorial-guide-web", "pattern": "**/chapter5/**", "labs": ["lab4"], "confidence": 0.94, "reason": "rCore Guide 第 5 章：进程" },
+    { "sourceId": "rcore-tutorial-guide-web", "pattern": "**/chapter6/**", "labs": ["lab5", "lab6"], "confidence": 0.9, "reason": "rCore Guide 第 6 章：文件描述符与文件系统" },
+    { "sourceId": "rcore-tutorial-guide-web", "pattern": "**/chapter7/**", "labs": ["lab7"], "confidence": 0.92, "reason": "rCore Guide 第 7 章：管道与进程通信" },
+    { "sourceId": "rcore-tutorial-guide-web", "pattern": "**/chapter8/**", "labs": ["lab8"], "confidence": 0.94, "reason": "rCore Guide 第 8 章：线程与同步" },
+    { "sourceId": "learningos-os-lectures-source", "pattern": "**/lec2/**", "labs": ["lab1"], "confidence": 0.9, "reason": "LearningOS 第 2 讲：实验环境与启动" },
+    { "sourceId": "learningos-os-lectures-source", "pattern": "**/lec[3-4]/**", "labs": ["lab2"], "confidence": 0.82, "reason": "LearningOS 第 3-4 讲：OS 视角、批处理与多道程序" },
+    { "sourceId": "learningos-os-lectures-source", "pattern": "**/lec[5-6]/**", "labs": ["lab3"], "confidence": 0.9, "reason": "LearningOS 第 5-6 讲：内存与虚拟内存" },
+    { "sourceId": "learningos-os-lectures-source", "pattern": "**/lec[7-8]/**", "labs": ["lab2"], "confidence": 0.9, "reason": "LearningOS 第 7-8 讲：进程与调度" },
+    { "sourceId": "learningos-os-lectures-source", "pattern": "**/lec9/**", "labs": ["lab5", "lab6"], "confidence": 0.9, "reason": "LearningOS 第 9 讲：文件系统" },
+    { "sourceId": "learningos-os-lectures-source", "pattern": "**/lec10/**", "labs": ["lab7"], "confidence": 0.88, "reason": "LearningOS 第 10 讲：IPC" },
+    { "sourceId": "learningos-os-lectures-source", "pattern": "**/lec11/**", "labs": ["lab8"], "confidence": 0.9, "reason": "LearningOS 第 11 讲：线程与协程" },
+    { "sourceId": "learningos-os-lectures-source", "pattern": "**/lec12/**", "labs": ["lab5", "lab8"], "confidence": 0.9, "reason": "LearningOS 第 12 讲：同步、互斥与死锁" },
+    { "sourceId": "learningos-os-lectures-source", "pattern": "**/lec13/**", "labs": ["lab6"], "confidence": 0.9, "reason": "LearningOS 第 13 讲：设备与磁盘" },
+    { "sourceId": "csapp-gitbook-zh", "pattern": "**/ch07-*/**", "labs": ["lab1"], "confidence": 0.76, "reason": "CSAPP 第 7 章：链接与加载" },
+    { "sourceId": "csapp-gitbook-zh", "pattern": "**/ch08-*/**", "labs": ["lab2", "lab4", "lab7"], "confidence": 0.82, "reason": "CSAPP 第 8 章：异常控制流、进程与信号" },
+    { "sourceId": "csapp-gitbook-zh", "pattern": "**/ch09-*/**", "labs": ["lab3"], "confidence": 0.9, "reason": "CSAPP 第 9 章：虚拟内存" },
+    { "sourceId": "csapp-gitbook-zh", "pattern": "**/ch10-*/**", "labs": ["lab5", "lab6"], "confidence": 0.86, "reason": "CSAPP 第 10 章：系统级 I/O" },
+    { "sourceId": "csapp-gitbook-zh", "pattern": "**/ch12-*/**", "labs": ["lab5", "lab8"], "confidence": 0.86, "reason": "CSAPP 第 12 章：并发编程" }
+  ]
+}

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import {
-  ArchiveRestore, BookOpen, Check, ChevronRight, Database, FileText, Loader2,
+  ArchiveRestore, BookOpen, Check, ChevronLeft, ChevronRight, Database, FileText, Loader2,
   RefreshCw, Save, Search, ShieldCheck, Trash2, Upload, XCircle,
 } from 'lucide-vue-next'
 import { authHeaders, loadAuth } from '../tutor-model'
@@ -38,6 +38,7 @@ interface ChunkItem {
   id: string
   sourceId: string
   sourceTitle: string
+  sourcePath: string
   versionId: string
   ordinal: number
   text: string
@@ -49,13 +50,18 @@ interface ChunkItem {
   charCount: number
   tokenEstimate: number
   labScopes: string[]
+  labBindings: Array<{ labId: string; bindingKind: string; confidence: number; reason: string }>
 }
 
 const sources = ref<SourceItem[]>([])
 const labCounts = ref<Record<string, number>>({})
+const totalChunks = ref(0)
 const vectorCount = ref(0)
 const vectorModels = ref<Array<{ model: string; dimensions: number; chunks: number }>>([])
 const chunks = ref<ChunkItem[]>([])
+const chunkTotal = ref(0)
+const chunkOffset = ref(0)
+const chunkLimit = 100
 const selectedLab = ref('')
 const selectedSourceId = ref('')
 const selectedSource = ref<SourceItem | null>(null)
@@ -86,6 +92,8 @@ const chunkIndexable = ref(true)
 const chunkActive = ref(true)
 
 const currentVersion = computed(() => selectedSource.value?.versions?.find((item) => item.id === selectedVersionId.value) || null)
+const pageStart = computed(() => chunkTotal.value ? chunkOffset.value + 1 : 0)
+const pageEnd = computed(() => Math.min(chunkOffset.value + chunks.value.length, chunkTotal.value))
 const pendingCount = computed(() => sources.value.filter((source) => source.status === 'pending-review').length)
 
 async function api(pathname: string, init: RequestInit = {}) {
@@ -112,6 +120,7 @@ async function loadTree() {
   const payload = await api('/teacher/knowledge/tree')
   sources.value = payload.tree?.sources || []
   labCounts.value = Object.fromEntries((payload.tree?.labs || []).map((item: { labId: string; chunks: number }) => [item.labId, item.chunks]))
+  totalChunks.value = Number(payload.tree?.totalChunks || 0)
   vectorCount.value = Number(payload.stats?.embeddings || 0)
   vectorModels.value = payload.stats?.embeddingModels || []
 }
@@ -120,7 +129,8 @@ async function loadChunks() {
   const params = new URLSearchParams({
     includeInactive: selectedVersionId.value ? 'true' : 'false',
     retrievableOnly: showMetadata.value ? 'false' : 'true',
-    limit: '200',
+    limit: String(chunkLimit),
+    offset: String(chunkOffset.value),
   })
   if (selectedLab.value) params.set('labId', selectedLab.value)
   if (selectedSourceId.value) params.set('sourceId', selectedSourceId.value)
@@ -128,6 +138,7 @@ async function loadChunks() {
   if (query.value.trim()) params.set('q', query.value.trim())
   const payload = await api(`/teacher/knowledge/chunks?${params}`)
   chunks.value = payload.chunks || []
+  chunkTotal.value = Number(payload.total || 0)
   if (!chunks.value.some((item) => item.id === selectedChunk.value?.id)) {
     const first = chunks.value[0] || null
     selectedChunk.value = first
@@ -136,6 +147,7 @@ async function loadChunks() {
 }
 
 async function loadSource(sourceId: string) {
+  chunkOffset.value = 0
   selectedSourceId.value = sourceId
   const payload = await api(`/teacher/knowledge/source?id=${encodeURIComponent(sourceId)}`)
   selectedSource.value = payload.source
@@ -146,11 +158,19 @@ async function loadSource(sourceId: string) {
 }
 
 function clearSource() {
+  chunkOffset.value = 0
   selectedSourceId.value = ''
   selectedSource.value = null
   selectedVersionId.value = ''
   selectedChunk.value = null
   mobilePanel.value = 'list'
+  void loadChunksVisible()
+}
+
+function changeChunkPage(direction: -1 | 1) {
+  const next = Math.max(0, Math.min(chunkOffset.value + direction * chunkLimit, Math.max(0, chunkTotal.value - 1)))
+  chunkOffset.value = Math.floor(next / chunkLimit) * chunkLimit
+  selectedChunk.value = null
   void loadChunksVisible()
 }
 
@@ -325,6 +345,7 @@ async function removeChunk() {
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 watch([query, selectedLab, selectedVersionId, showMetadata], () => {
+  chunkOffset.value = 0
   clearTimeout(searchTimer)
   searchTimer = setTimeout(() => { void loadChunksVisible() }, 220)
 })
@@ -368,7 +389,7 @@ onMounted(() => {
         <section>
           <h2>知识范围</h2>
           <button :class="{ selected: !selectedLab }" @click="selectedLab = ''; mobilePanel = 'list'">
-            <BookOpen :size="15" /><span>全部范围</span><small>{{ Object.values(labCounts).reduce((a, b) => a + b, 0) }}</small>
+            <BookOpen :size="15" /><span>全部范围</span><small>{{ totalChunks }}</small>
           </button>
           <button v-for="lab in labs" :key="lab" :class="{ selected: selectedLab === lab }" @click="selectedLab = lab; mobilePanel = 'list'">
             <ChevronRight :size="14" /><span>{{ labelLab(lab) }}</span><small>{{ labCounts[lab] || 0 }}</small>
@@ -386,15 +407,20 @@ onMounted(() => {
       </aside>
 
       <section class="km-list" :class="{ 'mobile-hidden': mobilePanel !== 'list' }">
-        <header><div><h2>知识内容</h2><p>{{ selectedLab ? labelLab(selectedLab) : '全部范围' }} · {{ chunks.length }} 个 Chunk</p></div></header>
+        <header><div><h2>知识内容</h2><p>{{ selectedLab ? labelLab(selectedLab) : '全部范围' }} · 共 {{ chunkTotal }} 个 · 当前 {{ pageStart }}–{{ pageEnd }}</p></div></header>
         <div v-if="selectedSource?.versions?.length" class="version-strip">
           <label>版本<select v-model="selectedVersionId"><option v-for="version in selectedSource.versions" :key="version.id" :value="version.id">v{{ version.versionNumber }} · {{ statusLabel(version.status) }}</option></select></label>
         </div>
-        <button v-for="chunk in chunks" :key="chunk.id" class="chunk-row" :class="{ selected: selectedChunk?.id === chunk.id, muted: !chunk.active }" @click="selectChunk(chunk)">
-          <span class="chunk-index">{{ String(chunk.ordinal + 1).padStart(3, '0') }}</span>
-          <span class="chunk-summary"><strong>{{ chunk.sectionPath.join(' / ') || '未标章节' }}</strong><span>{{ chunk.text.slice(0, 110) }}</span><small>{{ chunk.labScopes.map(labelLab).join('、') }} · {{ chunk.contentClass }} · {{ chunk.tokenEstimate }} tokens</small></span>
+        <button v-for="(chunk, index) in chunks" :key="chunk.id" class="chunk-row" :class="{ selected: selectedChunk?.id === chunk.id, muted: !chunk.active }" @click="selectChunk(chunk)">
+          <span class="chunk-index">{{ String(chunkOffset + index + 1).padStart(3, '0') }}</span>
+          <span class="chunk-summary"><strong>{{ chunk.sectionPath.join(' / ') || '未标章节' }}</strong><span>{{ chunk.text.slice(0, 110) }}</span><small>{{ selectedSourceId ? '' : `${chunk.sourceTitle} · ` }}{{ chunk.labScopes.map(labelLab).join('、') }} · {{ chunk.contentClass }} · {{ chunk.tokenEstimate }} tokens</small></span>
         </button>
         <div v-if="!chunks.length" class="empty">当前筛选没有知识块。上传材料或更换范围后再查看。</div>
+        <nav v-if="chunkTotal > chunkLimit" class="chunk-pagination" aria-label="知识块分页">
+          <button type="button" title="上一页" :disabled="chunkOffset === 0" @click="changeChunkPage(-1)"><ChevronLeft :size="16" /></button>
+          <span>{{ Math.floor(chunkOffset / chunkLimit) + 1 }} / {{ Math.ceil(chunkTotal / chunkLimit) }}</span>
+          <button type="button" title="下一页" :disabled="pageEnd >= chunkTotal" @click="changeChunkPage(1)"><ChevronRight :size="16" /></button>
+        </nav>
       </section>
 
       <aside class="km-detail" :class="{ 'mobile-hidden': mobilePanel !== 'detail' }">
@@ -423,6 +449,12 @@ onMounted(() => {
         <section v-if="selectedChunk" class="chunk-detail">
           <header><div><h2>Chunk {{ selectedChunk.ordinal + 1 }}</h2><p>{{ selectedChunk.sectionPath.join(' → ') || '未标章节' }}</p></div><code>{{ selectedChunk.id.slice(-20) }}</code></header>
           <div class="chunk-text">{{ selectedChunk.text }}</div>
+          <div v-if="selectedChunk.labBindings?.some(item => item.labId !== 'global')" class="suggestions">
+            <strong>Lab 归属依据</strong>
+            <p v-for="item in selectedChunk.labBindings.filter(item => item.labId !== 'global')" :key="item.labId">
+              {{ labelLab(item.labId) }} · {{ Math.round(item.confidence * 100) }}%<small>{{ item.bindingKind === 'teacher' ? '教师确认' : item.reason }}</small>
+            </p>
+          </div>
           <fieldset><legend>Chunk 范围</legend><label v-for="lab in labs" :key="lab"><input v-model="chunkScopes" type="checkbox" :value="lab" />{{ labelLab(lab) }}</label></fieldset>
           <div class="form-grid">
             <label>内容权限<select v-model="chunkClass"><option value="student-safe">student-safe</option><option value="guided-hint">guided-hint</option><option value="teacher-only">teacher-only</option><option value="system-metadata">system-metadata</option></select></label>
@@ -453,7 +485,7 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.km { height: 100dvh; min-height: 640px; display: flex; flex-direction: column; overflow: hidden; color: var(--vp-c-text-1); background: var(--vp-c-bg); }
+.km { height: calc(100dvh - var(--vp-nav-height)); min-height: 0; display: flex; flex-direction: column; overflow: hidden; color: var(--vp-c-text-1); background: var(--vp-c-bg); }
 .km-topbar { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 9px 16px; border-bottom: 1px solid var(--vp-c-divider); background: var(--vp-c-bg); }
 .km-title,.km-actions,.km-search,.button-row,.check-pair { display: flex; align-items: center; gap: 9px; }
 .metadata-toggle { display: flex; align-items: center; gap: 5px; white-space: nowrap; color: var(--vp-c-text-2); font-size: 12px; }
@@ -472,6 +504,7 @@ button, input, select, textarea { font: inherit; } button { cursor: pointer; }.i
 .km-tree button:hover,.km-tree button.selected { background: var(--vp-c-bg); color: var(--vp-c-brand-1); }.km-tree button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.km-tree button b { display: block; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }.km-tree button em { display: block; color: var(--vp-c-text-3); font-size: 10px; font-style: normal; }.km-tree button small { color: var(--vp-c-text-3); font-variant-numeric: tabular-nums; }
 .km-list > header { position: sticky; z-index: 2; top: 0; padding: 13px 14px; border-bottom: 1px solid var(--vp-c-divider); background: var(--vp-c-bg); }.km-list header p,.km-detail header p { margin: 3px 0 0; color: var(--vp-c-text-3); font-size: 11px; }.version-strip { padding: 8px 12px; border-bottom: 1px solid var(--vp-c-divider); background: var(--vp-c-bg-soft); }.version-strip label { display: flex; align-items: center; gap: 8px; color: var(--vp-c-text-3); font-size: 11px; }.version-strip select { flex: 1; }
 .chunk-row { width: 100%; display: grid; grid-template-columns: 36px minmax(0,1fr); gap: 8px; padding: 11px 12px; border: 0; border-bottom: 1px solid var(--vp-c-divider); background: var(--vp-c-bg); color: var(--vp-c-text-1); text-align: left; }.chunk-row:hover,.chunk-row.selected { background: var(--vp-c-brand-soft); }.chunk-row.muted { opacity: .55; }.chunk-index { color: var(--vp-c-text-3); font: 11px/1.4 ui-monospace, monospace; }.chunk-summary { min-width: 0; }.chunk-summary strong,.chunk-summary span,.chunk-summary small { display: block; }.chunk-summary strong { overflow: hidden; color: var(--vp-c-text-1); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }.chunk-summary span { display: -webkit-box; margin-top: 4px; overflow: hidden; color: var(--vp-c-text-2); font-size: 11px; line-height: 1.45; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }.chunk-summary small { margin-top: 5px; color: var(--vp-c-text-3); font-size: 10px; }
+.chunk-pagination { position: sticky; bottom: 0; display: grid; grid-template-columns: 34px 1fr 34px; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--vp-c-divider); background: var(--vp-c-bg); color: var(--vp-c-text-3); font-size: 11px; text-align: center; }.chunk-pagination button { width: 34px; height: 30px; display: grid; place-items: center; border: 1px solid var(--vp-c-divider); border-radius: 5px; background: var(--vp-c-bg-soft); color: var(--vp-c-text-2); }
 .km-detail { padding: 14px 16px 40px; }.km-detail section + section { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--vp-c-divider); }.km-detail header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }.km-detail header > span { padding: 3px 7px; border-radius: 4px; background: var(--vp-c-bg-soft); color: var(--vp-c-text-2); font-size: 10px; }.km-detail header > span[data-status="pending-review"] { background: #fff0bd; color: #71530b; }.km-detail code { color: var(--vp-c-text-3); font-size: 10px; }
 .suggestions { margin-top: 12px; padding: 9px 10px; border-left: 3px solid #d6a84b; background: var(--vp-c-bg-soft); }.suggestions strong { font-size: 11px; }.suggestions p { margin: 5px 0 0; font-size: 11px; }.suggestions small { display: block; color: var(--vp-c-text-3); }
 fieldset { display: flex; flex-wrap: wrap; gap: 5px 10px; margin: 12px 0; padding: 8px 10px 10px; border: 1px solid var(--vp-c-divider); border-radius: 5px; } legend { padding: 0 4px; color: var(--vp-c-text-3); font-size: 10px; } fieldset label,.check-line,.check-pair label { display: flex; align-items: center; gap: 4px; font-size: 11px; }

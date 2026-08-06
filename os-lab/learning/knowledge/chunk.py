@@ -10,6 +10,8 @@ import re
 from pathlib import Path
 from typing import Any, Iterable
 
+from lab_scope import infer_lab_scopes
+
 
 SCHEMA_VERSION = 1
 CONTENT_CLASSES = {"student-safe", "guided-hint", "teacher-only", "system-metadata"}
@@ -45,14 +47,8 @@ def _load_policy(policy: dict[str, Any] | None, source_id: str, source_path: str
     return content_class, indexable, "blocked" if blocked else ""
 
 
-def _scope(source_id: str, source_path: str) -> list[str]:
-    match = LAB_RE.search(_path_key(source_path))
-    if match:
-        return [f"lab{match.group(1)}"]
-    # Every binding must be a valid retrieval scope.  Platform-level metadata
-    # has no Lab-specific path, so keep it in the global namespace; its
-    # system-metadata class still prevents Tutor retrieval.
-    return ["global"]
+def _scope(source_id: str, source_path: str, section_path: list[str], text: str) -> tuple[list[str], list[dict[str, Any]]]:
+    return infer_lab_scopes(source_id, source_path, section_path, text)
 
 
 def _concept_ids(blocks: Iterable[dict[str, Any]]) -> list[str]:
@@ -169,6 +165,7 @@ def _make_chunk(document: dict[str, Any], blocks: list[dict[str, Any]], text: st
     block_ordinals = [int(item["ordinal"]) for item in blocks]
     digest = hashlib.sha256(f"{document['documentId']}:{ordinal}:{text}".encode("utf-8")).hexdigest()[:16]
     char_count = len(text)
+    lab_scopes, lab_scope_evidence = _scope(str(document["sourceId"]), source_path, section_path, text)
     return {
         "id": f"{document['documentId']}:chunk-{ordinal:06d}-{digest}",
         "ordinal": ordinal,
@@ -181,7 +178,7 @@ def _make_chunk(document: dict[str, Any], blocks: list[dict[str, Any]], text: st
         "locatorStart": _locator(blocks[0]),
         "locatorEnd": _locator(blocks[-1]),
         "contentClass": content_class,
-        "labScope": _scope(str(document["sourceId"]), source_path),
+        "labScope": lab_scopes,
         "conceptIds": _concept_ids(blocks),
         "answerRisk": _risk(blocks, content_class, blocked_reason),
         "indexable": indexable,
@@ -191,6 +188,7 @@ def _make_chunk(document: dict[str, Any], blocks: list[dict[str, Any]], text: st
             "blockTypes": sorted({str(item.get("type")) for item in blocks}),
             "sourcePath": source_path,
             "splitFromLongBlock": split_from_long,
+            "labScopeEvidence": lab_scope_evidence,
         },
     }
 
