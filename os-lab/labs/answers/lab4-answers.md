@@ -1,7 +1,7 @@
 # Lab4 参考答案与代码解读
 
 > 配套实验指导：[lab4-process.md](/labs/lab4-process)  
-> 对应内容：【任务二：阅读理解（必做）】参考答案 + 代码解读  
+> 对应内容：【任务二：阅读理解】参考答案 + 代码解读
 > **使用建议**：先独立完成实验文档【任务二】，再来对答案。
 
 ## 一、完整代码逐行解读
@@ -32,11 +32,12 @@ fn kernel_stack_top(slot: usize) -> usize { ... }
 ```mermaid
 graph LR
     Ready -->|调度| Running
-    Running -->|时间片到/阻塞| Ready
-    Running -->|fork| Ready
+    Running -->|yield / 阻塞等待| Ready
     Running -->|exit| Zombie
-    Zombie -->|父进程wait| Gone["彻底销毁"]
+    Zombie -->|父进程 wait4| Gone["彻底销毁"]
 ```
+
+fork 不改变父进程的状态：父进程仍保持 Running，新子进程以 Ready 进入就绪队列。
 
 注意从 lab3 的 `Exited` 变成了 `Zombie`——这是 lab4 引入的：子进程 exit 后不立刻消失，要等父进程 wait 才回收。
 
@@ -93,7 +94,7 @@ pub fn sys_execve(cx: &mut TrapContext, path: *const u8, path_len: usize, _envp:
     let elf = get_app_elf_by_name(name)?;              // 找到对应的 ELF
 
     let space_id = ...current.space_id;
-    mm::replace_user_space(space_id, elf);             // ① 销毁旧地址空间，建新的
+    mm::replace_user_space(space_id, elf);             // ① 替换旧用户映射，建新的
     let entry = elf_entry_point(elf);                  // ② 新程序入口
     let user_sp = APP_BASE_ADDRESS + APP_REGION_SIZE - 16;
     *cx = trap_cx_init(entry, user_sp, kstack_top);    // ③ 整个覆盖 TrapContext！
@@ -116,14 +117,15 @@ pub fn sys_wait4(cx: &mut TrapContext, want_pid: isize, status_ptr: *mut i32) ->
         // ② 没有 Zombie 子进程：检查还有没有活着的子进程
         if want_pid >= 0 && !has_child { return -1; }  // 子进程都没了，错误返回
         // ③ 有子进程但还没退出：阻塞——保存上下文、让出 CPU
+        cx.sepc = cx.sepc.wrapping_sub(4); // sepc 回退到 ecall，唤醒后重新执行 syscall
         sync_current_trap_cx(cx);
         mark_current_ready();
-        run_next_process();    // 让出 CPU，下次调度回来再 loop 检查
+        run_next_process();    // 让出 CPU；run_next_process 不会返回
     }
 }
 ```
 
-`loop { 找僵尸; 没有就让出 }` 这就是阻塞等待的实现：条件不满足就 sleep，被唤醒后再试。`reap_zombie_child` 负责真正释放僵尸的地址空间和 PCB。
+`loop { 找僵尸; 没有就让出 }` 这就是阻塞等待的实现：条件不满足就 sleep，被唤醒后再试。`run_next_process()` 不会返回；父进程被再次调度时，会从回退后的 `sepc` 重新执行 `ecall`，再次进入 `sys_wait4`，等效于 loop 重新检查。`reap_zombie_child` 负责真正释放僵尸的地址空间和 PCB。
 
 ### 1.6 sys_exit：变僵尸
 
@@ -174,7 +176,7 @@ child_pid as isize                     // 父进程返回子 PID
 
 `sys_execve` 做两件事：
 
-1. **换地址空间**：`mm::replace_user_space(space_id, elf)` 销毁旧用户空间，为新 ELF 建映射（代码/数据/栈）。
+1. **换地址空间**：`mm::replace_user_space(space_id, elf)` 替换旧用户映射，为新 ELF 建映射（代码/数据/栈）。
 2. **换 TrapContext**：`*cx = trap_cx_init(entry, user_sp, kstack_top)` **整体覆盖** TrapContext——`sepc` 指向新程序入口，`sp` 指向新栈顶，原寄存器全丢。
 
 PID、父子关系不变（没创建新进程），但 CPU 从新 entry 开始跑。原 `exec()` 之后的指令地址已不在 TrapContext 里，不可能作为返回目标——这就是「换身不换魂」。
@@ -201,14 +203,15 @@ loop {
         return pid as isize;          // 找到僵尸，回收并返回
     }
     if want_pid >= 0 && !has_child { return -1; }  // 没有符合条件的子进程
+    cx.sepc = cx.sepc.wrapping_sub(4);  // 回退到 ecall，唤醒后重新进入 syscall
     sync_current_trap_cx(cx);
     mark_current_ready();
-    run_next_process();               // 让出 CPU，下次调度回来再 loop
+    run_next_process();               // 让出 CPU；run_next_process 不会返回
 }
 ```
 
 - 子进程还没 exit → 没有 Zombie → `reap_zombie_child` 找不到 → 父进程不空转，保存上下文、标记 Ready、`run_next_process()` 让出 CPU。
-- 子进程后来 exit 变 Zombie → 父进程再次被调度 → loop 重新检查 → 找到并回收。
+- 子进程后来 exit 变 Zombie → 父进程再次被调度时从 `ecall` 重新陷入，重新进入 `sys_wait4` 检查 → 找到并回收。
 
 这种 **`loop { 检查条件; 不满足就让出 }`** 的模式叫**阻塞（block/sleep）**：条件不满足时不占 CPU，被唤醒后再试。是信号量、条件变量等同步机制的基础形态。
 

@@ -1,7 +1,7 @@
 # Lab2 参考答案与代码解读
 
 > 配套实验指导：[lab2-trap-and-task.md](/labs/lab2-trap-and-task)  
-> 对应内容：【任务二：阅读理解（必做）】参考答案 + 代码解读  
+> 对应内容：【任务二：阅读理解】参考答案 + 代码解读
 > **使用建议**：先独立完成实验文档【任务二】，再来对答案。
 
 ## 一、完整代码逐行解读
@@ -125,11 +125,11 @@ pub fn trap_handler(cx: &mut TrapContext) {
                     cx.set_return_value(ret);   // 返回值写进 a0
                 }
                 SYS_EXIT => sys_exit(cx.syscall_arg(0) as i32),
-                SYS_YIELD => { mark_current_suspended(); run_next_task(); }  // 函数名带 suspended，实际把任务标为 Ready
-                id => { cx.set_return_value(-1); }   // 未知 syscall
+                SYS_YIELD => { sync_current_trap_cx(cx); mark_current_suspended(); run_next_task(); }  // 先存回现场，再把任务标为 Ready
+                id => { println!("Unsupported syscall {}."); cx.set_return_value(-1); }   // 未知 syscall
             }
         }
-        SCAUSE_SUPERVISOR_TIMER => { /* 时钟中断：设下次定时器，切下一个任务 */ }
+        SCAUSE_SUPERVISOR_TIMER => { /* 预留时钟中断分支：lab2 未启用定时器，实际不会触发；启用后会设下次定时器并切换任务 */ }
         _ => { shutdown(); }   // 其他异常：直接关机
     }
 }
