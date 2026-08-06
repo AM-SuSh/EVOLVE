@@ -12,9 +12,12 @@ import hashlib
 import json
 import re
 import sys
+import textwrap
+import zipfile
 from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable
+from xml.etree import ElementTree
 
 import pdfplumber
 import yaml
@@ -24,11 +27,9 @@ from pypdf import PdfReader
 
 
 SCHEMA_VERSION = 1
-SUPPORTED_FORMATS = {"markdown", "html", "json", "yaml", "text", "pdf"}
-HEADING_RE = re.compile(
-    r"^(?:第\s*[0-9一二三四五六七八九十百]+\s*[章节部分]|附录\s*[A-Za-z0-9一二三四五六七八九十]+|"
-    r"[0-9]+(?:\.[0-9]+){0,3}\s+\S+)"
-)
+SUPPORTED_FORMATS = {"markdown", "html", "json", "yaml", "text", "rst", "pdf", "epub", "docx"}
+CHAPTER_HEADING_RE = re.compile(r"^(?:第\s*[0-9一二三四五六七八九十百]+\s*[章节部分篇]|附录\s*[A-Za-z0-9一二三四五六七八九十]*)")
+NUMBERED_HEADING_RE = re.compile(r"^(\d+(?:\.\d+){0,3})\s+(.+)$")
 CHINESE_RE = re.compile(r"[\u3400-\u9fff]")
 
 
@@ -81,6 +82,31 @@ def section_update(sections: list[str], title: str, level: int) -> list[str]:
     return next_sections
 
 
+def looks_like_heading(value: str) -> bool:
+    text = normalize_whitespace(value)
+    chapter = CHAPTER_HEADING_RE.match(text)
+    if chapter:
+        suffix = text[chapter.end():].strip()
+        # A chapter title may legitimately be phrased as a question, while
+        # sentence punctuation inside the title is a strong paragraph signal.
+        title_body = suffix.rstrip("！？")
+        return len(text) <= 80 and not re.search(r"[，。；！？]", title_body)
+    match = NUMBERED_HEADING_RE.match(text)
+    if not match:
+        return False
+    number, title = match.groups()
+    if re.match(r"^(?:#|//|/\*|\*|\}|\{|include\b|int\b|void\b|char\b|return\b)", title, re.I):
+        return False
+    if len(title) > 80 or re.search(r"[，。；！？]|[\U0001D400-\U0001D7FF]", title):
+        return False
+    signal = sum(character.isalnum() or bool(CHINESE_RE.match(character)) for character in title)
+    if len(title) < 3 or signal < 3:
+        return False
+    # A single leading integer is commonly a page number, source-code line
+    # number, or instruction bit position in extracted PDFs.
+    return "." in number
+
+
 def block(
     ordinal: int,
     block_type: str,
@@ -108,6 +134,12 @@ def block(
 
 
 def markdown_blocks(text: str, source_path: str) -> tuple[str, list[dict[str, Any]]]:
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    if text.startswith("---\n"):
+        boundary = re.search(r"\n---\s*(?:\n|$)", text[4:])
+        if boundary:
+            text = text[4 + boundary.end():]
+    text = re.sub(r"<!--[\s\S]*?-->", "", text)
     parser = MarkdownIt("commonmark").enable("table")
     tokens = parser.parse(text)
     sections: list[str] = []
@@ -233,10 +265,15 @@ def html_blocks(text: str, source_path: str, source_url: str | None = None) -> t
 
 
 def structured_blocks(value: Any, source_path: str) -> tuple[str, list[dict[str, Any]]]:
-    rendered = yaml.safe_dump(value, allow_unicode=True, sort_keys=False, default_flow_style=False).strip()
     title = source_title(Path(source_path))
-    item = block(0, "structured", rendered, [title], {"path": source_path})
-    return title, [item] if item else []
+    values = value if isinstance(value, list) else [value]
+    blocks: list[dict[str, Any]] = []
+    for ordinal, item_value in enumerate(values):
+        rendered = yaml.safe_dump(item_value, allow_unicode=True, sort_keys=False, default_flow_style=False).strip()
+        item = block(ordinal, "structured", rendered, [title], {"path": source_path, "document": ordinal + 1})
+        if item:
+            blocks.append(item)
+    return title, blocks
 
 
 def text_blocks(text: str, source_path: str) -> tuple[str, list[dict[str, Any]]]:
@@ -261,7 +298,7 @@ def text_blocks(text: str, source_path: str) -> tuple[str, list[dict[str, Any]]]
             if current:
                 flush(line_number - 1)
             continue
-        if HEADING_RE.match(value) and len(value) <= 120:
+        if looks_like_heading(value) and len(value) <= 120:
             if current:
                 flush(line_number - 1)
             sections = section_update(sections, value, 1)
@@ -276,6 +313,76 @@ def text_blocks(text: str, source_path: str) -> tuple[str, list[dict[str, Any]]]
     if current:
         flush(len(text.splitlines()))
     return source_title(Path(source_path)), blocks
+
+
+def rst_blocks(text: str, source_path: str) -> tuple[str, list[dict[str, Any]]]:
+    """Parse headings and directives used by the rCore Sphinx sources."""
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").splitlines()
+    sections: list[str] = []
+    blocks: list[dict[str, Any]] = []
+    heading_levels: dict[str, int] = {}
+    index = 0
+
+    def append(kind: str, value: str, start: int, end: int, *, language: str | None = None, level: int | None = None) -> None:
+        item = block(
+            len(blocks), kind, value, sections,
+            {"path": source_path, "lineStart": start + 1, "lineEnd": end + 1},
+            language=language, level=level,
+        )
+        if item:
+            blocks.append(item)
+
+    while index < len(lines):
+        raw = lines[index]
+        value = raw.strip()
+        if not value:
+            index += 1
+            continue
+        if index + 1 < len(lines):
+            underline = lines[index + 1].strip()
+            if len(underline) >= 3 and len(set(underline)) == 1 and underline[0] in "=-~^\"`'":
+                marker = underline[0]
+                level = min(heading_levels.setdefault(marker, len(heading_levels) + 1), 6)
+                sections = section_update(sections, value, level)
+                append("heading", value, index, index + 1, level=level)
+                index += 2
+                continue
+        directive = re.match(r"\.\.\s+([\w-]+)::\s*(.*)$", value)
+        if directive:
+            name, argument = directive.groups()
+            cursor = index + 1
+            payload: list[str] = []
+            while cursor < len(lines) and (not lines[cursor].strip() or lines[cursor].startswith((" ", "\t"))):
+                if lines[cursor].strip() and not lines[cursor].lstrip().startswith(":"):
+                    payload.append(lines[cursor])
+                cursor += 1
+            if name in {"code-block", "sourcecode"} and payload:
+                append("code", textwrap.dedent("\n".join(payload)).strip(), index, cursor - 1, language=argument.strip() or None)
+            elif name in {"note", "attention", "tip", "warning", "important"}:
+                message = " ".join(part for part in [argument.strip(), join_wrapped_lines(payload)] if part)
+                if message:
+                    append("paragraph", message, index, cursor - 1)
+            index = max(cursor, index + 1)
+            continue
+        if value.startswith(".. ") or re.match(r"^:[\w-]+:", value):
+            index += 1
+            continue
+        start = index
+        paragraph = [raw]
+        index += 1
+        while index < len(lines) and lines[index].strip():
+            if lines[index].lstrip().startswith(".. "):
+                break
+            if index + 1 < len(lines):
+                underline = lines[index + 1].strip()
+                if len(underline) >= 3 and len(set(underline)) == 1 and underline[0] in "=-~^\"`'":
+                    break
+            paragraph.append(lines[index])
+            index += 1
+        append("paragraph", join_wrapped_lines(paragraph), start, index - 1)
+
+    title = next((item["text"] for item in blocks if item["type"] == "heading"), source_title(Path(source_path)))
+    return title, blocks
 
 
 def pdf_blocks(path: Path, source_path: str, max_pages: int | None = None) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
@@ -311,7 +418,7 @@ def pdf_blocks(path: Path, source_path: str, max_pages: int | None = None) -> tu
                     if current:
                         flush(line_number - 1)
                     continue
-                if HEADING_RE.match(value) and len(value) <= 120:
+                if looks_like_heading(value) and len(value) <= 120:
                     if current:
                         flush(line_number - 1)
                     sections = section_update(sections, value, 1)
@@ -345,6 +452,75 @@ def pdf_blocks(path: Path, source_path: str, max_pages: int | None = None) -> tu
         return title, blocks, metadata
 
 
+def epub_blocks(path: Path, source_path: str) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
+    """Read EPUB chapters in spine order without requiring an EPUB-specific dependency."""
+    with zipfile.ZipFile(path) as archive:
+        container = ElementTree.fromstring(archive.read("META-INF/container.xml"))
+        rootfile = next((node.attrib.get("full-path") for node in container.iter() if node.tag.endswith("rootfile")), None)
+        if not rootfile:
+            raise ValueError("EPUB container does not declare a package document")
+        package = ElementTree.fromstring(archive.read(rootfile))
+        base = Path(rootfile).parent
+        manifest = {
+            node.attrib.get("id"): node.attrib.get("href")
+            for node in package.iter()
+            if node.tag.endswith("item") and node.attrib.get("id") and node.attrib.get("href")
+        }
+        spine = [node.attrib.get("idref") for node in package.iter() if node.tag.endswith("itemref")]
+        title_node = next((node for node in package.iter() if node.tag.endswith("title") and (node.text or "").strip()), None)
+        title = normalize_whitespace(title_node.text or "") if title_node is not None else source_title(path)
+        blocks: list[dict[str, Any]] = []
+        for idref in spine:
+            href = manifest.get(idref)
+            if not href:
+                continue
+            member = (base / href.split("#", 1)[0]).as_posix()
+            try:
+                chapter = archive.read(member).decode("utf-8-sig", errors="replace")
+            except KeyError:
+                continue
+            _, chapter_blocks = html_blocks(chapter, f"{source_path}!/{member}")
+            for item in chapter_blocks:
+                item["id"] = f"block-{len(blocks):06d}"
+                item["ordinal"] = len(blocks)
+                blocks.append(item)
+        return title, blocks, {"chapterCount": len(spine), "processedChapters": len({item['locator']['path'] for item in blocks})}
+
+
+def docx_blocks(path: Path, source_path: str) -> tuple[str, list[dict[str, Any]], dict[str, Any]]:
+    """Extract paragraphs and heading styles from the main DOCX document XML."""
+    word_ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    ns = {"w": word_ns}
+    with zipfile.ZipFile(path) as archive:
+        root = ElementTree.fromstring(archive.read("word/document.xml"))
+        core_title = ""
+        try:
+            core = ElementTree.fromstring(archive.read("docProps/core.xml"))
+            title_node = next((node for node in core.iter() if node.tag.endswith("title") and (node.text or "").strip()), None)
+            core_title = normalize_whitespace(title_node.text or "") if title_node is not None else ""
+        except KeyError:
+            pass
+    sections: list[str] = []
+    blocks: list[dict[str, Any]] = []
+    for paragraph_index, paragraph in enumerate(root.findall(".//w:body/w:p", ns), start=1):
+        value = normalize_whitespace("".join(node.text or "" for node in paragraph.findall(".//w:t", ns)))
+        if not value:
+            continue
+        style_node = paragraph.find("./w:pPr/w:pStyle", ns)
+        style = style_node.attrib.get(f"{{{word_ns}}}val", "") if style_node is not None else ""
+        heading_match = re.search(r"(?:Heading|标题)\s*([1-6])", style, re.I)
+        level = int(heading_match.group(1)) if heading_match else None
+        if level:
+            sections = section_update(sections, value, level)
+        item = block(
+            len(blocks), "heading" if level else "paragraph", value, sections,
+            {"path": source_path, "paragraph": paragraph_index}, level=level,
+        )
+        if item:
+            blocks.append(item)
+    return core_title or source_title(path), blocks, {"paragraphCount": len(blocks)}
+
+
 def detect_format(path: Path) -> str:
     suffix = path.suffix.lower()
     return {
@@ -356,7 +532,10 @@ def detect_format(path: Path) -> str:
         ".yaml": "yaml",
         ".yml": "yaml",
         ".txt": "text",
+        ".rst": "rst",
         ".pdf": "pdf",
+        ".epub": "epub",
+        ".docx": "docx",
     }.get(suffix, "")
 
 
@@ -375,7 +554,7 @@ def normalize_file(
     if format_name not in SUPPORTED_FORMATS:
         raise ValueError(f"unsupported format for {path}: {format_name or 'unknown'}")
 
-    pdf_metadata: dict[str, Any] = {}
+    format_metadata: dict[str, Any] = {}
     if format_name == "markdown":
         document_title, blocks = markdown_blocks(raw.decode("utf-8-sig"), path.as_posix())
     elif format_name == "html":
@@ -383,9 +562,15 @@ def normalize_file(
     elif format_name == "json":
         document_title, blocks = structured_blocks(json.loads(raw.decode("utf-8-sig")), path.as_posix())
     elif format_name == "yaml":
-        document_title, blocks = structured_blocks(yaml.safe_load(raw.decode("utf-8-sig")), path.as_posix())
+        document_title, blocks = structured_blocks(list(yaml.safe_load_all(raw.decode("utf-8-sig"))), path.as_posix())
     elif format_name == "pdf":
-        document_title, blocks, pdf_metadata = pdf_blocks(path, path.as_posix(), max_pages)
+        document_title, blocks, format_metadata = pdf_blocks(path, path.as_posix(), max_pages)
+    elif format_name == "epub":
+        document_title, blocks, format_metadata = epub_blocks(path, path.as_posix())
+    elif format_name == "docx":
+        document_title, blocks, format_metadata = docx_blocks(path, path.as_posix())
+    elif format_name == "rst":
+        document_title, blocks = rst_blocks(raw.decode("utf-8-sig"), path.as_posix())
     else:
         document_title, blocks = text_blocks(raw.decode("utf-8-sig"), path.as_posix())
 
@@ -401,11 +586,11 @@ def normalize_file(
         "parserVersion": "knowledge-normalize-v1",
         "blockCount": len(blocks),
         "warnings": [],
-        **pdf_metadata,
+        **format_metadata,
     }
     if not blocks:
         metadata["warnings"].append("no-text-blocks")
-    if pdf_metadata.get("requiresOcr"):
+    if format_metadata.get("requiresOcr"):
         metadata["warnings"].append("pdf-text-density-low-requires-ocr")
     if source_url:
         metadata["sourceUrl"] = source_url
@@ -488,4 +673,3 @@ if __name__ == "__main__":
     except Exception as error:
         print(f"normalize failed: {error}", file=sys.stderr)
         raise SystemExit(1)
-

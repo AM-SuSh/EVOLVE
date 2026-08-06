@@ -36,10 +36,7 @@
       "initialWave": 1,
       "path": "os-lab/lab-packages",
       "includePatterns": [
-        "lab[2-8]/lab.yaml",
-        "lab[2-8]/checkpoints.yaml",
-        "lab[2-8]/concepts/*.yaml",
-        "lab[2-8]/knowledge-table.md"
+        "lab[2-8]/concepts/*.yaml"
       ],
       "excludePatterns": [
         "**/variants/**",
@@ -64,18 +61,24 @@
     },
     {
       "id": "ostep-zh-local-complete",
-      "title": "操作系统导论 OSTEP 中文完整版",
+      "title": "操作系统导论 OSTEP 中文核心章节",
       "status": "selected",
-      "sourceType": "local-files",
-      "format": "pdf",
+      "sourceType": "website",
+      "format": "pdf-collection",
       "authority": "textbook",
       "priority": 80,
       "initialWave": 1,
-      "paths": [
-        "操作系统导论-OSTEP (王海鹏 译) .pdf"
+      "url": "https://pages.cs.wisc.edu/~remzi/OSTEP/Chinese/",
+      "urlTemplate": "https://pages.cs.wisc.edu/~remzi/OSTEP/Chinese/{file}",
+      "downloadFiles": [
+        "04.pdf", "05.pdf", "06.pdf", "07.pdf", "08.pdf", "09.pdf", "10.pdf",
+        "13.pdf", "14.pdf", "15.pdf", "16.pdf", "17.pdf", "18.pdf", "19.pdf", "20.pdf", "21.pdf", "22.pdf",
+        "26.pdf", "27.pdf", "28.pdf", "29.pdf", "30.pdf", "31.pdf", "32.pdf",
+        "36.pdf", "37.pdf", "38.pdf", "39.pdf", "40.pdf", "41.pdf", "42.pdf"
       ],
+      "includePatterns": ["*.pdf"],
       "licenseReview": "required-before-distribution",
-      "notes": "Canonical OSTEP copy for local ingestion because it is complete, stable, and already present."
+      "notes": "Uses official chapter PDFs for the process, memory, concurrency, I/O, and file-system units; the damaged merged local PDF text layer is excluded."
     },
     {
       "id": "riscv-reader-zh-local",
@@ -102,6 +105,18 @@
       "priority": 85,
       "initialWave": 2,
       "url": "https://github.com/LearningOS/os-lectures",
+      "pinnedCommit": "57326114564f2cdbe4a8ac7bbb7082e7c16b3d2d",
+      "includePatterns": [
+        "os-lectures-master/lec*/p*.md",
+        "os-lectures-master/lec*/ch*.md",
+        "os-lectures-master/lec*/slides.md",
+        "os-lectures-master/lec*-recap.md",
+        "os-lectures-master/os-knowledge-point.md"
+      ],
+      "excludePatterns": [
+        "**/figs/**",
+        "**/*labs*.md"
+      ],
       "versionPolicy": "pin-commit-before-ingestion",
       "licenseReview": "required-before-snapshot",
       "notes": "Chosen over rendered lecture pages because source Markdown is easier to pin, parse, and update reproducibly."
@@ -116,6 +131,15 @@
       "priority": 75,
       "initialWave": 2,
       "url": "https://learningos.github.io/rCore-Tutorial-Guide/",
+      "snapshotRepository": "https://github.com/LearningOS/rCore-Tutorial-Guide",
+      "pinnedCommit": "bdd2be67a7634a0a30980854934b1771928f777b",
+      "includePatterns": [
+        "rCore-Tutorial-Guide-main/source/chapter[1-8]/*.rst"
+      ],
+      "excludePatterns": [
+        "**/*exercise.rst",
+        "**/index.rst"
+      ],
       "versionPolicy": "snapshot-with-content-hash",
       "licenseReview": "required-before-snapshot",
       "notes": "Student-facing rCore experiment reference. Complete implementations and test repositories are not part of this source."
@@ -130,10 +154,21 @@
       "priority": 55,
       "initialWave": 3,
       "url": "https://hansimov.gitbook.io/csapp/",
+      "snapshotRepository": "https://github.com/hansimov/csapp",
+      "pinnedCommit": "49ec5b8fb885d1e273c84d22cad6196e9731239f",
+      "includePatterns": [
+        "csapp-master/ch01-*/[0-9]*.md",
+        "csapp-master/part*/ch*.md",
+        "csapp-master/part*/ch*/*.md"
+      ],
+      "excludePatterns": [
+        "**/README.md",
+        "**/homework.md",
+        "**/jia-ting-zuo-ye.md"
+      ],
       "versionPolicy": "snapshot-with-content-hash",
       "licenseReview": "required-before-snapshot",
       "notes": "Supplemental source for processes, memory, linking, and concurrency; lower priority than OS-specific sources."
     }
   ]
 }
-

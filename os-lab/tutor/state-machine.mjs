@@ -5,7 +5,7 @@ const JUDGMENT_RE = /(我认为|我觉得|我猜|我的判断|我观察|可能|�
 const SOURCE_RE = /(\.rs|\.asm|\.s|\.toml|函数|字段|状态|不变量|调用链|源码)/i
 const HINT_RE = /(提示|卡住|不知道下一步|给点方向|帮我定位)/
 const ANSWER_RE = /(完整代码|直接.*答案|直接.*实现|可提交.*patch|替我写完|最终代码)/i
-const OUTPUT_EVIDENCE_REF_RE = /(?:run|trace|diag|diagnostic|event):[A-Za-z0-9._-]{1,160}/g
+const OUTPUT_EVIDENCE_REF_RE = /(?:run|trace|diag|diagnostic|event|kb):[A-Za-z0-9._:-]{1,220}/g
 
 function safeStage(value) {
   return STAGES.has(value) ? value : 'orient'
@@ -135,9 +135,9 @@ export function tutorPolicyPrompt(decision) {
   ].join('\n')
 }
 
-export function enforceTutorOutput(reply, decision) {
+export function enforceTutorOutput(reply, decision, options = {}) {
   const text = String(reply || '').trim()
-  const allowedRefs = new Set(decision.evidenceRefs || [])
+  const allowedRefs = new Set([...(decision.evidenceRefs || []), ...(options.allowedKnowledgeRefs || [])])
   const invalidRefs = [...new Set(text.match(OUTPUT_EVIDENCE_REF_RE) || [])]
     .filter((ref) => !allowedRefs.has(ref))
   if (invalidRefs.length) {

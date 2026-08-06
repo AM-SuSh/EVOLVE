@@ -10,6 +10,8 @@ import re
 from pathlib import Path
 from typing import Any, Iterable
 
+from lab_scope import infer_lab_scopes
+
 
 SCHEMA_VERSION = 1
 CONTENT_CLASSES = {"student-safe", "guided-hint", "teacher-only", "system-metadata"}
@@ -45,18 +47,17 @@ def _load_policy(policy: dict[str, Any] | None, source_id: str, source_path: str
     return content_class, indexable, "blocked" if blocked else ""
 
 
-def _scope(source_id: str, source_path: str) -> list[str]:
-    match = LAB_RE.search(_path_key(source_path))
-    if match:
-        return [f"lab{match.group(1)}"]
-    if source_id.startswith("platform-lab"):
-        return ["platform"]
-    return ["global"]
+def _scope(source_id: str, source_path: str, section_path: list[str], text: str) -> tuple[list[str], list[dict[str, Any]]]:
+    return infer_lab_scopes(source_id, source_path, section_path, text)
 
 
 def _concept_ids(blocks: Iterable[dict[str, Any]]) -> list[str]:
     found: list[str] = []
     for item in blocks:
+        locator = item.get("locator") if isinstance(item.get("locator"), dict) else {}
+        concept_id = str(locator.get("conceptId") or "").strip()
+        if concept_id and concept_id not in found:
+            found.append(concept_id)
         text = str(item.get("text", ""))
         for match in re.finditer(r"(?:^|\n)\s*(?:id|conceptId|concept_id)\s*:\s*['\"]?([A-Za-z0-9_.:-]+)", text, re.I):
             value = match.group(1)
@@ -105,6 +106,33 @@ def _split_long_text(text: str, max_chars: int) -> list[str]:
     return result
 
 
+def _split_long_code(text: str, max_chars: int) -> list[str]:
+    """Split code without flattening indentation or line boundaries."""
+    if len(text) <= max_chars:
+        return [text]
+    result: list[str] = []
+    current: list[str] = []
+    current_length = 0
+    for line in text.splitlines(keepends=True):
+        if len(line) > max_chars:
+            if current:
+                result.append("".join(current).rstrip("\n"))
+                current = []
+                current_length = 0
+            content = line.rstrip("\r\n")
+            result.extend(content[start : start + max_chars] for start in range(0, len(content), max_chars))
+            continue
+        if current and current_length + len(line) > max_chars:
+            result.append("".join(current).rstrip("\n"))
+            current = []
+            current_length = 0
+        current.append(line)
+        current_length += len(line)
+    if current:
+        result.append("".join(current).rstrip("\n"))
+    return [piece for piece in result if piece]
+
+
 def _chunk_type(blocks: list[dict[str, Any]]) -> str:
     kinds = {str(item.get("type")) for item in blocks}
     if kinds == {"code"}:
@@ -137,6 +165,7 @@ def _make_chunk(document: dict[str, Any], blocks: list[dict[str, Any]], text: st
     block_ordinals = [int(item["ordinal"]) for item in blocks]
     digest = hashlib.sha256(f"{document['documentId']}:{ordinal}:{text}".encode("utf-8")).hexdigest()[:16]
     char_count = len(text)
+    lab_scopes, lab_scope_evidence = _scope(str(document["sourceId"]), source_path, section_path, text)
     return {
         "id": f"{document['documentId']}:chunk-{ordinal:06d}-{digest}",
         "ordinal": ordinal,
@@ -149,7 +178,7 @@ def _make_chunk(document: dict[str, Any], blocks: list[dict[str, Any]], text: st
         "locatorStart": _locator(blocks[0]),
         "locatorEnd": _locator(blocks[-1]),
         "contentClass": content_class,
-        "labScope": _scope(str(document["sourceId"]), source_path),
+        "labScope": lab_scopes,
         "conceptIds": _concept_ids(blocks),
         "answerRisk": _risk(blocks, content_class, blocked_reason),
         "indexable": indexable,
@@ -159,6 +188,7 @@ def _make_chunk(document: dict[str, Any], blocks: list[dict[str, Any]], text: st
             "blockTypes": sorted({str(item.get("type")) for item in blocks}),
             "sourcePath": source_path,
             "splitFromLongBlock": split_from_long,
+            "labScopeEvidence": lab_scope_evidence,
         },
     }
 
@@ -217,7 +247,7 @@ def chunk_document(document: dict[str, Any], *, policy: dict[str, Any] | None = 
             if item.get("type") == "code":
                 language = str(item.get("language") or "").strip()
                 payload_limit = max(1, max_chars - len(language) - 8)
-                payloads = _split_long_text(str(item.get("text", "")).strip(), payload_limit)
+                payloads = _split_long_code(str(item.get("text", "")).strip(), payload_limit)
                 pieces = [f"```{language}\n{piece}\n```" if language else f"```\n{piece}\n```" for piece in payloads]
             else:
                 pieces = _split_long_text(rendered, max_chars)

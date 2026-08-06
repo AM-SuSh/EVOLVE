@@ -12,6 +12,7 @@ import TeacherReport from './components/TeacherReport.vue'
 import TeacherReview from './components/TeacherReview.vue'
 import TutorEntry from './components/TutorEntry.vue'
 import HomeLanding from './components/HomeLanding.vue'
+import KnowledgeManager from './components/KnowledgeManager.vue'
 
 export default {
   extends: DefaultTheme,
@@ -24,5 +25,6 @@ export default {
     app.component('TeacherReview', TeacherReview)
     app.component('TutorEntry', TutorEntry)
     app.component('HomeLanding', HomeLanding)
+    app.component('KnowledgeManager', KnowledgeManager)
   },
 } satisfies Theme

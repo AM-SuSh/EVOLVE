@@ -27,6 +27,12 @@ jobs:
           cache: npm
           cache-dependency-path: os-lab/handbook/package-lock.json
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: os-lab/learning/knowledge/requirements.txt
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: riscv64gc-unknown-none-elf
@@ -44,6 +50,11 @@ jobs:
 
       - name: Install handbook dependencies
         run: npm ci
+
+      - name: Install knowledge parser dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r ../learning/knowledge/requirements.txt
 
       - name: Verify trusted teaching chain
         run: npm run test:day7
