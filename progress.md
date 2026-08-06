@@ -1,5 +1,192 @@
 # os-lab 项目进度总览
 
+## 2026-08-06 - Task: 扩写 Lab6 背景知识
+
+### What was done
+- 按 Lab5/Lab3 学习者风格扩写「二、背景知识」：开篇接问题场景三点；2.1–2.5 补充直觉、步骤、对照表与抓手；保留 mermaid 与代码入口，末尾串整条链。
+
+### Testing
+- 通读 §2：与问题场景、实验任务文件表衔接正常；技术点与改前一致（VirtIO/easy-fs/标志/硬链接锁/spawn）。
+
+### Notes
+- os-lab/labs/lab6-disk-fs.md：重写「二、背景知识」全文。
+- 回滚：还原该节即可。
+
+---
+
+## 2026-08-06 - Task: Lab6 问题场景改为持久存储三点要求
+
+### What was done
+- 将问题场景三条由「Lab5 缺什么」改为「真实持久存储需满足」：内容来自介质、运行时可改写、关机后仍存在；并调整前后衔接句。
+
+### Testing
+- 通读该段：与后文「需要完成」表方向一致。
+
+### Notes
+- os-lab/labs/lab6-disk-fs.md：仅改「一、问题场景」开篇三条及衔接。
+- 回滚：还原该段即可。
+
+---
+
+## 2026-08-06 - Task: 顺滑 Lab6 问题场景开篇叙述
+
+### What was done
+- 理顺问题场景开头：先区分管道与文件内容，再提出「存在哪里」的追问，三条局限压缩表述，并与「需要完成」表自然衔接。
+
+### Testing
+- 通读该段：无嵌套引号长句，与下表衔接通顺。
+
+### Notes
+- os-lab/labs/lab6-disk-fs.md：仅改「一、问题场景」开篇。
+- 回滚：还原该段即可。
+
+---
+
+## 2026-08-06 - Task: 再细化 Lab6 问题场景开篇
+
+### What was done
+- 将 Lab5 能力拆成「读 testfile」与「管道传 hi」两条；明确追问对象是文件内容而非管道缓冲；三条局限改为带小标题的说明；追问句改为「这些文件内容」。
+
+### Testing
+- 文案通读：与后续「需要完成」表及 Lab5/Lab6 对照表衔接正常。
+
+### Notes
+- os-lab/labs/lab6-disk-fs.md：仅改「一、问题场景」开篇至表格前。
+- 回滚：还原该段即可。
+
+---
+
+## 2026-08-06 - Task: 扩写 Lab6 问题场景开篇
+
+### What was done
+- 将问题场景开头改得更细：先肯定 Lab5 能力，再分点说明「假文件」局限，引出持久性缺口与三句追问，再接到需要完成表。
+
+### Testing
+- 文案核对：仍接后续对照表与实验目标。
+
+### Notes
+- os-lab/labs/lab6-disk-fs.md：仅改「一、问题场景」开篇。
+- 回滚：还原该段即可。
+
+---
+
+## 2026-08-06 - Task: 理顺 Lab6「零、开始之前」激活与预构建顺序
+
+### What was done
+- 重写零节步骤：明确「根目录激活 → cd os-lab → 自检 → 预构建 → 读书」；把原「进目录 / 激活」合并为第 2 步，预构建强调须在已激活且位于 os-lab 下执行。
+
+### Testing
+- 文案核对：顺序小结与 make test-lab6 提醒保留。
+
+### Notes
+- os-lab/labs/lab6-disk-fs.md：仅改零节。
+- 回滚：还原该文件零节即可。
+
+---
+
+## 2026-08-06 - Task: Lab6 预构建并入「零、开始之前」
+
+### What was done
+- 去掉独立「环境准备（Lab6 特有）」小节，将 fs.img / VirtIO 预构建步骤并入「零、开始之前」第 5 步，原「建议先读书」顺延为第 6 步。
+
+### Testing
+- 文案核对：零节仍为连续编号清单；产出表与 make test-lab6 提醒保留。
+
+### Notes
+- os-lab/labs/lab6-disk-fs.md：仅改零节结构。
+- 回滚：还原该文件零节即可。
+
+---
+
+## 2026-08-06 - Task: 按 Lab1 格式重整 Lab6 手册
+
+### What was done
+- 将 lab6-disk-fs.md 按 Lab1/Lab5 版式重整：教材块、零开始之前（含 Lab6 特有 fs.img 预构建）、问题场景对照表与实验目标、背景知识保留 VirtIO/easy-fs/链接/spawn 主线并去掉易出问题的 mermaid class、任务一/二/三对齐 Lab1 写法、验证命令写入 os-fs 11 项单测。
+
+### Testing
+- 文案结构核对：H2 为零～五；任务二仍为 5 题；答案链为 /answers/lab6-answers；强调 make test-lab6 而非裸 cargo run。
+
+### Notes
+- os-lab/labs/lab6-disk-fs.md：全文按 Lab1 格式重排。
+- 回滚：git checkout -- os-lab/labs/lab6-disk-fs.md
+
+---
+
+## 2026-08-06 - Task: 核对并修正 Lab4 参考答案与代码解读
+
+### What was done
+- 核对 `os-lab/labs/answers/lab4-answers.md` 与 `kernel/src/process.rs` 等实现，修正三处不一致：
+  - 进程状态机：去掉不存在的时间片与错误的 fork 边，改为 `yield / 阻塞等待`，并说明 fork 后父进程仍 Running。
+  - `sys_wait4` 伪代码补上 `cx.sepc.wrapping_sub(4)`，说明被唤醒后重新执行 `ecall`。
+  - exec 的“销毁旧用户空间”改为“替换旧用户映射”，与 `replace_user_space` 实际行为一致。
+- 同步调整答案文件头部「（必做）」标记，与 lab4 正文一致。
+
+### Testing
+- `cargo run -p kernel --features lab4 --release`：`fork_test` 实际跑通。
+- `npm run build` 通过。
+- `git diff --check` 通过。
+
+### Notes
+- 涉及 `os-lab/labs/answers/lab4-answers.md` 与 `os-lab/labs/lab4-process.md`（末尾空行清理）。
+- 回滚：还原上述两个文件即可。
+
+---
+
+## 2026-08-06 - Task: Lab4 手册按 Lab1–Lab3 版式重整并补齐术语
+
+### What was done
+- 按 `lab1-bare-metal.md` / `lab2-trap-and-task.md` / `lab3-memory.md` 的版式重整 `lab4-process.md`：教材理论链接、零开始之前、问题场景核心问题与实验目标、背景知识、任务一/二/三、四验证命令。
+- 删除「提交清单（自查）」「五、AI 提问模板」「六、思考题与参考答案」，统一说法与语气。
+- 调整背景知识顺序：PCB 前移为 2.4，wait 与僵尸进程后置为 2.5；去掉“远端复核版/本地版”内部表述。
+- 补齐专有名词解释：`PID`、`initproc`、`ELF`、`spawn`、`wait4`、阻塞、Zombie。
+
+### Testing
+- `npm run build` 通过。
+- `cargo run -p kernel --features lab4 --release`：QEMU 实际跑通，文档预期输出已同步为真实输出。
+
+### Notes
+- 只修改 `os-lab/labs/lab4-process.md`；handbook 内同步副本由 `npm run sync` / `npm run build` 重新生成。
+- 回滚：还原该文件即可。
+
+---
+
+## 2026-08-05 - Task: Lab5 手册按 Lab1–Lab3 版式重整并补齐术语
+
+### What was done
+- 按 `lab1-bare-metal.md` / `lab2-trap-and-task.md` / `lab3-memory.md` 的版式重整 `lab5-fs-and-sync.md`：教材理论链接、零开始之前、问题场景核心问题与实验目标、背景知识、任务一/二/三、四验证命令。
+- 删除「提交清单（自查）」与「五、AI 提问模板」，统一说法与语气。
+- 调整任务一增加环境自检与 release 验证，任务三改为命令 + 通过标准。
+- 补齐专有名词解释：`FdType` 前向引用、`AtomicBool`、`Acquire`/`Release` 与内存序、`RAII`/`Drop`、`EOF`。
+
+### Testing
+- `npm run build` 通过。
+- `cargo test -p os-fs --target x86_64-pc-windows-msvc`：11 项通过。
+- `cargo run -p kernel --features lab5 --release`：QEMU 输出与文档预期一致。
+
+### Notes
+- 只修改 `os-lab/labs/lab5-fs-and-sync.md`；handbook 内同步副本由 `npm run sync` / `npm run build` 重新生成。
+- 回滚：还原该文件即可。
+
+---
+
+## 2026-08-05 - Task: Lab2 手册按 Lab1/Lab3 版式重整并补齐术语
+
+### What was done
+- 按 `lab1-bare-metal.md` / `lab3-memory.md` 的版式重整 `lab2-trap-and-task.md`：教材理论链接、零开始之前、问题场景核心问题、背景知识、任务一/二/三、四验证命令。
+- 删除「任务四：教师发放的变体」及 fill/debug 变体引用，与其他 Lab 保持一致。
+- 调整背景知识顺序：先讲 `sscratch` 双栈，再讲 TrapContext 保存/恢复；将 `sys_exit` / `sys_yield` 从 TCB 记录列表拆出。
+- 统一说法与语气：修正 OSTEP 引用、去掉旧版内部口吻，并补齐 `sret`、CSR、`csrrw`/`csrr`、RISC-V 寄存器与 `sd`、Ready/Running/Exited 与轮转调度的解释。
+
+### Testing
+- 已核对 lab2 全部站内链接与 PDF 页码；`npm run build` 通过。
+- 专有名词对照 OSTEP 第 6/7 章 PDF 与 lab1，确认前序材料未覆盖的术语已在 lab2 内解释。
+
+### Notes
+- 只修改 `os-lab/labs/lab2-trap-and-task.md`；handbook 内同步副本由 `npm run sync` / `npm run build` 重新生成。
+- 回滚：还原该文件即可。
+
+---
+
 ## 2026-08-06 - Task: RAG 检索 Harness 与学生端 AI 导师接线
 
 ### What was done
