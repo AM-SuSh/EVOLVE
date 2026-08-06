@@ -184,8 +184,9 @@ try {
     },
     body: '# 调度观察\n\ntask_switch 调度器会记录 from、to 和 reason，学生应先根据 trace 提出因果解释。\n',
   })
-  assert.equal(knowledgeUpload.status, 201)
-  const uploadedKnowledge = await knowledgeUpload.json()
+  const knowledgeUploadRaw = await knowledgeUpload.text()
+  assert.equal(knowledgeUpload.status, 201, knowledgeUploadRaw)
+  const uploadedKnowledge = JSON.parse(knowledgeUploadRaw)
   assert.equal(uploadedKnowledge.upload.status, 'pending-review')
   assert.equal(uploadedKnowledge.source.defaultClass, 'teacher-only')
   const uploadedVersion = uploadedKnowledge.source.versions[0]
