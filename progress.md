@@ -75,6 +75,382 @@
 
 ---
 
+## 2026-08-06 - Task: RAG 检索 Harness 与学生端 AI 导师接线
+
+### What was done
+
+- 完成独立 RAG Tutor Harness：`os-lab/tutor/rag-harness.mjs` 提供 case schema、知识权限/范围/数量上限、来源元数据、Prompt 注入和向量降级断言；fixture 位于 `tutor/fixtures/rag-harness-cases-v1.json`。
+- Harness 现在强制每个学生可见知识块带有 `citation`、`sourceId`、`sourceTitle`、`sectionPath`、`contentClass` 和 `labScopes`，并拒绝 `teacher-only/system-metadata`、越过当前 Lab 的引用和超过 5 个 chunk / 2 个 global chunk 的结果。
+- 新增 `tutor/rag-harness-cli.mjs` 与 `npm run test:rag-harness:cli`，保留 adapter 接口，既可运行离线结构回归，也可替换为真实 Tutor Server/检索 adapter。
+- Tutor Server `/chat` 的 JSON、SSE `meta` 和 `done` 帧统一返回 `knowledge` 与 `retrieval`；知识元数据补充来源标题、Lab 范围、章节 locator 和本轮排序诊断。直接索要完整答案时显式返回 `guardrail-before-retrieval`，不检索知识。
+- 学生端 `LabWorkspace.vue -> POST /chat -> TutorMessage.vue` 已接收并持久化 RAG 元数据；导师消息显示“参考知识”来源/章节标签，并在 embedding/向量不可用时显示“已降级为关键词检索”，不向学生暴露知识块正文。
+- `Tutor Server smoke` 增加来源元数据与权限类别断言，避免后端回包退化成裸 citation。
+
+### Testing
+
+- RAG Harness 单测：3/3 通过。
+- RAG Harness CLI：4 个 fixture 全部通过。
+- Node 项目回归：54/54 通过。
+- Tutor smoke：通过。
+- VitePress production build：通过。
+
+### Notes
+
+- RAG Harness 与原有 Tutor/Assessment Harness 仍然分离；共享证据 schema，但不共享评分阈值。
+- 学生端只显示来源元数据，不提供教师知识库正文接口；`teacher-only` 和 `system-metadata` 仍在服务端检索层硬拒绝。
+
+## 2026-08-06 - Task: RAG Chunk 质量、公共知识 Lab 归属与教师端统一导航
+
+### What was done
+
+- 完成最新质量规则回归并全量重建 7 个外部知识来源：212 个文档、1,239 个发布候选 Chunk；短块过滤后没有少于 24 字的 Chunk，少于 100 字的仅 20 个，剩余均为完整概念卡片、定义或必要的短段落。
+- 在 `quality_filter.py` 中增加相邻短节合并和连续编号目录串过滤：同文档、同章节父路径的短节合并时保留子章节标签；类似 `2.1 ... 2.2 ...` 的目录串以 `outline-label-sequence` 丢弃；教师 `teacher-*` 上传保留短材料到待审核区，仍经过文档级噪声清洗。
+- 使用 `lab-scope-rules.json` 为公共资料生成可审计的派生 Lab 绑定，保留 `global` 原始范围；本次构建的派生绑定覆盖 Lab1-Lab8，绑定记录包含置信度与规则依据，教师可在详情页确认或修改。
+- SQLite 已导入构建 `knowledge-sources:d09a1e6080a1173a` 并完成本地向量预热：新版本 1,239 个 Chunk 全部写入，`local-feature-hash-v1-384` 向量成功 upsert 1,239 条；数据库当前可检索 Chunk 为 1,384（含 8 个 Lab 实验手册知识）。
+- 教师 Chunk API 现在返回真实 `total/limit/offset`，服务端先按来源、路径、章节和定位做中文数字自然排序，再分页；前端显示真实总数和页码，避免“200”被误解为总量。
+- Tutor smoke 增加分页元数据断言；教师上传的短材料仍可进入 `pending-review`，发布前保持 `teacher-only/active=0/indexable=0`。
+- 教师端所有普通文档页和自定义工作区统一复用 VitePress 官方 `VPNav`：第一段固定保留首页、入门指南、引导式学习、学习材料，第二段固定展示评分复核、实验验收、Lab 工厂、知识库和当前账号；进入引导式学习、实验验收或知识库后仍可直接返回其他教师页面。
+- 移除右下角常驻的“引导式学习”悬浮跳转按钮，教师入口全部收敛到固定顶部导航栏，避免同一操作出现两套入口。
+- 修正自定义教师页面的视口高度：外层布局与工作区按 `100dvh - --vp-nav-height` 计算，取消 620/640px 强制最小高度，并以非折叠的相对偏移承接桌面导航；同时适配 VitePress 在 960px 以下的导航定位变化。实验验收、知识库和 Lab 工作区不再出现底部大片空白、页面假滚动或外层滚动条无法继续下滑的问题，内容区仍保持独立滚动。
+
+### Testing
+
+- Python knowledge tests：32/32 通过。
+- Node 项目回归：51/51 通过。
+- Tutor smoke：通过（runs=4、events=6、teacherReviews=1、issuedLabs=3）。
+- VitePress production build：通过。
+- 浏览器运行时检查：桌面与响应式宽度下官方双段导航完整显示；教师自定义页面填满导航下方视口，外层 `scrollY=0`，内部列表/详情区可正常滚动。
+
+### Notes
+
+- 当前构建产物与 SQLite 是可重建状态，后续资料更新仍使用 `build_knowledge_sources.py -> build-sources -> embed`；不直接编辑数据库。
+- 当前仍有 20 个小于 100 字的 Chunk，已逐项审计为有效短知识，不做按长度的粗暴删除。
+
+## 2026-08-05 - Task: RISC-V Reader 二次质量治理与教师 Chunk 移除
+
+### What was done
+
+- RISC-V Reader 增加前置页门控：PDF 第 15 页（第一章）之前的封面、目录、赞语、作者介绍统一标记为 `front-matter`，不进入检索知识库；目录点线节点同时从 `sectionPath` 清除，避免目录标题污染后续正文。
+- 修正“第一章 为什么要有 RISC-V？”这类问句章标题的识别；继续过滤位域刻度、指令编码表、浮点寄存器对照表、汇编密集块、PDF 扁平上标（如 `2^9 -> 29`）和图注列表。
+- 全量重建并导入 RISC-V Reader v6：95 个 Chunk，最小来源页为 15；纯数字、目录污染路径、数字占比超过 30%、扁平上标模式均为 0。最高数字密度 16.3% 的内容是 RV64/RV32、ARM、x86 的有效架构比较，不属于乱码。
+- 教师知识库工作台新增“移除知识块”：采用可审计软删除，设置 `active=0/indexable=0`、删除向量缓存、重建来源 FTS，并写入 `remove` 审计；默认列表和 Tutor 检索隐藏，开启元数据仍可追溯原始版本。
+- 新增 `DELETE /teacher/knowledge/chunk?id=...`，保留教师身份门控和确认提示；删除后刷新知识树与 Chunk 列表。
+
+### Testing
+
+- Python 规范化/质量门/分块/Lab 构建：28/28 通过。
+- KnowledgeStore、Tutor API smoke：通过，覆盖删除后不可检索、默认列表隐藏和审计追溯。
+- Node 项目回归：51/51 通过；VitePress production build 通过。
+- SQLite 当前状态：8 Sources、29 Versions、918 Documents、14,860 历史 Chunks、1,964 active Chunks、1,940 FTS/向量可检索 Chunks。
+
+---
+
+## 2026-08-05 - Task: RAG 知识分块质量治理与全量重建
+
+### What was done
+
+- 用三个只读审计子智能体分别抽查 PDF、远程讲义和平台 YAML，确认旧语料中的主要问题不是单纯 Chunk 长度，而是来源过宽、格式误解析、结构化配置直接入库和风险门缺失。
+- 新增 `quality_filter.py` 两级质量门：Block 级清除 Excalidraw/JSON、URL、RST/GitBook 模板、纯数字、乱码、错位 PDF 代码、课程管理页和低语义短块；Chunk 级执行专业陈述检查、来源内去重和答案风险拒绝，并输出逐原因统计。
+- 平台 concepts 不再把 YAML 整份硬切；当前将 19 个 concept 投影为“一概念一知识块”，正文只保留核心原理、体系结构机制、不变量和迁移知识，ID/来源锚点保留在 metadata。
+- OSTEP 放弃文本层损坏的本地合并 PDF，改用官方中文站 31 个核心章节 PDF；快照记录每章 URL、字节数和 SHA-256。LearningOS、rCore 和 CSAPP 收紧到课程正文，排除绘图、配置、作业和讲师材料。
+- 修复编号代码行误判标题、Markdown CRLF front matter、RST directive、长代码换行/缩进丢失、Sv39 位域被误删及 PDF 页码污染章节路径。
+- 高风险/blocked Chunk 现在不能进入 FTS、向量候选或 Tutor 召回；过滤算法和 Chunk 内容 hash 纳入 Source Version 指纹，规则变化一定生成新版本；向量预热会清理旧版本缓存。
+- 教师上传材料改为 `normalize -> block quality -> chunk -> chunk quality -> pending-review`，与内置语料使用同一质量门；知识库页面默认只显示可检索专业知识，显式开启“显示元数据”才查看配置、旧内容和高风险块。
+
+### Quality result
+
+- 外部 7 个补充来源：212 Documents；19,467 个解析 Block 丢弃 9,194 个，并输出 10,276 个保留/投影 Block（concept 投影将 16 个结构块展开为 19 个语义块）；初始 2,531 Chunks 保留 2,167、丢弃 364。
+- 连同 Lab 手册，SQLite 当前 8 Sources、2,312 active Chunks；其中 2,288 同时进入 FTS5 和 `local-feature-hash-v1-384`，24 个受限块只供教师审查。
+- 噪声回归为 0：纯数字 Chunk、raw URL、Excalidraw/JSON、GitBook/RST directive、Unicode replacement character 均未在最终 Chunk 中命中。
+- `进程状态转换`、`Sv39 页表遍历`、`trap 上下文`、`文件系统 inode`、`信号量` 五组真实查询 Top-5 均返回实验手册、概念 YAML、OSTEP、LearningOS 或 rCore 的专业内容，没有模板/网址/乱码块。
+
+### Testing
+
+- Python 规范化/质量门/分块/Lab 构建：22/22 通过。
+- KnowledgeStore/Hybrid Retriever：4/4 通过，新增 high-risk 不可召回、代码缩进保留、concept locator 和质量过滤覆盖。
+- 项目 Node 回归：51/51 通过；Tutor Server smoke 通过；VitePress production build 通过。
+- `validate-sources.mjs` 与 `validate-access-policy.mjs` 通过：8 个来源、3 个 pinned Git 快照、1 个逐文件哈希集合、8 个权限绑定均有效。
+- 数据库全量重建、FTS 重建和向量重建通过；清理 7,374 条首轮历史向量，并在最终版本切换时继续按 current-version 自动裁剪。
+
+---
+
+## 2026-08-05 - Task: 补全 AI 导师 8 个知识来源并全量入库
+
+### What was done
+
+- 新增 `fetch_source_snapshots.py`：从 `sources.json` 读取固定 commit，下载 LearningOS 讲义、rCore Tutorial Guide 和 CSAPP 中文仓库，只保留 Markdown/HTML/RST 教学正文；快照进入 Git 忽略的构建目录，不提交上游大文件。
+- 新增 `build_knowledge_sources.py`：统一处理本地 YAML/JSON/Markdown、两本完整 PDF 和远程源码快照，输出按 Source 隔离的 Document/Chunk JSON 与总 manifest；7 个补充来源共 395 Documents、7,371 Chunks，解析错误为 0。
+- 规范化器支持 YAML multi-document stream；Document Schema 补全 EPUB/DOCX；分块 scope 统一限制为 `global/lab1..lab8`，平台元数据不再产生非法 `platform` scope。
+- KnowledgeStore 新增通用多来源导入，保留来源身份、权威等级、版本、正文定位、权限、Lab binding 和审计；数据库内部键加入来源路径 hash，解决不同文件内容相同时的 Document/Chunk 键碰撞。
+- 实际知识库现有 8 Sources、12 Versions、431 Documents、9,070 历史 Chunks；当前激活 7,516 Chunks，7,495 Chunks 同时进入 FTS5 与 `local-feature-hash-v1-384` 向量缓存。
+- 教师知识库工作台现在从 SQLite 读取并显示全部 8 个实际来源；选择来源后可浏览对应 Chunk 正文，系统元数据仍可查看但不进入 Tutor 检索。
+- 新增 `knowledge:fetch`、`knowledge:build:sources`、`knowledge:ingest:sources`、`knowledge:build:all`、`knowledge:ingest:all`，支持老师后续更新固定快照并重建版本。
+
+### Testing
+
+- Python 规范化/分块/Lab 构建：12/12 通过，新增 YAML 多文档覆盖。
+- KnowledgeStore：4/4 通过，新增多 Source 导入、待审核来源可见性和 Global 跨 Lab 检索覆盖。
+- 项目 Node 测试：51/51 通过；Tutor Server smoke 通过；VitePress production build 通过。
+- `validate-sources.mjs`：8/8 来源有效；实际 `knowledge:stats` 为 8 Sources、7,516 active、7,495 indexed/embedded。
+
+### Notes
+
+- `knowledge.db` 与下载快照均为可重建的 Git 忽略产物；权威清单、固定 commit、构建和导入代码纳入版本控制。
+- 当前 21 个 active 但未索引的 Chunk 来自 `system-metadata` 或受限策略，这是权限设计结果，不是漏建索引。
+
+---
+
+## 2026-08-05 - Task: AI 导师 RAG 知识库 Step 7 · 向量检索与混合排序
+
+### What was done
+
+- 新增 `knowledge_chunk_embeddings` 派生表：按 Chunk、模型和内容 hash 缓存 Float32 向量，主知识表仍是唯一权威来源。
+- 新增可替换 Embedding Provider：默认离线 `local-feature-hash-v1-384`，可通过 `OS_LAB_EMBEDDING_BASE_URL/MODEL/API_KEY` 接入 OpenAI-compatible `/embeddings`。
+- 新增 `hybrid-retriever.mjs`：FTS 词面候选 + cosine 向量候选，使用 RRF 融合，并加入小幅来源权威度和精确 Lab 加权。
+- Tutor Server、教师搜索、CLI `knowledge:embed/search` 均接入混合检索；发布和回滚尝试增量向量索引，启动时后台预热当前发布 Chunk。
+- 向量 Provider 故障、超时或维度不一致时自动 FTS-only 降级，不阻断 Tutor 或教师发布；新增检索诊断和 query hash 审计，不保存问题原文。
+- 前端知识库工作台显示已缓存向量数量和模型摘要。
+- 修复知识库页面只显示 Global/Lab 目录的问题：实因为旧 Tutor Server 进程返回知识库接口 404；前端增加服务版本错误提示、显式内容刷新和首个 Chunk 同步。
+- Step 6 修复已提交到本地 `c3efc1b`，Step 7 当前等待验证后再提交。
+
+### Testing
+
+- KnowledgeStore/Hybrid Retriever：通过向量缓存、OS 中英文概念别名召回、FTS 降级、Lab 过滤和检索审计测试。
+- Tutor Server smoke：通过教师上传、发布后向量搜索和学生对话向量候选验证。
+- Step 6 原有 Node/Python/VitePress 验证继续保持通过。
+
+### Notes
+
+- 默认本地向量是可复现的离线 lexical-semantic 特征，不等同于大模型 embedding；生产部署建议配置经评估的中文模型，并保留 FTS 作为硬降级路径。
+- Step 8 尚未开始：RAG Tutor Harness 将冻结混合召回和 Provider 降级的行为阈值。
+
+---
+
+## 2026-08-05 - Task: AI 导师 RAG 知识库 Step 6 · Tutor 接入与教师工作台
+
+### What was done
+
+- Tutor Server 接入受限 RAG：答案护栏先于检索；普通问题仅检索当前 Lab + Global、最多 5 个 Chunk、Global 最多 2 个，只允许 `student-safe/guided-hint`。
+- Prompt 将知识块标为不可信数据，运行/Trace 证据保持最高优先级；`guided-hint` 只能转化为反问，`student-safe` 才允许有限引用。
+- 扩展输出护栏，对 `kb:` 执行本轮召回白名单校验，阻止模型伪造或跨轮复用引用。
+- 新增 `knowledge-v2` 兼容迁移和教师知识生命周期：上传、自动分块、Lab 范围建议、审核、发布、停用、Chunk 设置修改和版本回滚；所有写操作记录审计。
+- 教师上传默认 `pending-review/teacher-only/inactive/non-indexable`，许可证、Lab 范围与答案风险未经人工确认时无法发布。
+- 规范化器新增 EPUB spine 顺序解析和 DOCX Heading 解析；旧 `.doc` 明确拒绝并提示转 DOCX。
+- 新增 `/teacher/knowledge` 三栏工作台和教师顶栏入口，可浏览 Global/Lab1-8、来源、版本、章节、Chunk 正文和溯源路径，并完成上传审核与版本操作；移动端使用三面板切换。
+- 保留 `/materials` 学生学习材料架，与 RAG 发布索引隔离，普通材料上传不会自动进入 Tutor。
+- 更新知识库 README 与 Agent 技术文档，补充 Tutor 时序、上传状态机、教师 API 和前端交互契约。
+
+### Testing
+
+- KnowledgeStore + Tutor 状态机：7/7 通过，覆盖待审核隔离、发布前置条件、Lab 越权、Chunk 调整、停用、审计与 `kb:` 引用白名单。
+- Python 规范化/分块/全 Lab：11/11 通过，新增 EPUB/DOCX fixture。
+- Tutor Server smoke：通过真实教师上传、自动 Lab2 建议、审核、发布、学生 RAG Prompt 注入和教师 API 权限检查。
+- VitePress production build：通过。
+
+### Notes
+
+- 自动 Lab 判断是可解释的初筛建议，不是发布决策；教师确认仍是硬门槛。
+- Step 7 已完成：向量缓存、混合排序和 FTS 降级已接入；当前记录保留作为 Step 6 历史说明。
+
+---
+
+## 2026-08-05 - Task: AI 导师 RAG 知识库 Step 5 · SQLite 与 FTS5
+
+### What was done
+
+- 新增独立 `os-lab/learning/knowledge/knowledge.db`（Git 忽略），与账号/学习事件数据库隔离，可从版本化知识源独立重建。
+- 新增 `knowledge-schema.sql`，建立 Source、Source Version、Document、Chunk、Lab Binding、Ingestion Run、Audit Log 和 FTS5 表及索引。
+- 新增 `knowledge-store.mjs`：实现 Lab build manifest 原子导入、相同 hash 幂等复用、内容变化生成新版本、当前版本激活和旧版本回滚。
+- FTS5 使用 `trigram` tokenizer 支持中文子串；少于 3 个 Unicode 字符的查询使用同等权限约束的 `LIKE` 回退。
+- 检索强制执行当前发布版本、active/indexable、内容级别和目标 Lab/`global` 绑定过滤；不可索引答案不进入 FTS。
+- 提供教师页面所需只读数据函数：`knowledgeTree`、`listSources`、`listChunks`、`getChunk`、`listVersions`。
+- 新增 `knowledge-cli.mjs` 和 handbook npm scripts，支持 build、ingest、stats、search、versions、rollback。
+- 实际导入 Lab1-Lab8：1 个 Source、1 个 Version、8 个 Documents、145 个 active/indexed Chunks。
+- 更新知识库 README 和 Agent 技术文档，补充 ER 图、版本切换、中文检索和 Step 6 页面接口边界。
+
+### Testing
+
+- `node --test learning/knowledge/knowledge-store.test.mjs`：通过；覆盖 Lab 隔离、答案排除、中文检索、幂等导入、新版本替换和回滚。
+- `npm test`：47/47 通过，知识库测试已加入项目默认测试集。
+- Python 规范化/分块/八 Lab 构建：10/10 通过。
+- 实际数据库统计：8 个 Lab 的 chunk 数分别为 16、22、19、19、17、17、17、18，FTS 共 145 行。
+
+### Notes
+
+- Node 22 的 `node:sqlite` 当前会输出 ExperimentalWarning，但数据库、事务和 FTS5 功能均正常。
+- Step 5 只提供可信数据层与 CLI；教师身份校验 API、上传处理和 `/teacher/knowledge` 前端属于 Step 6。
+---
+## 2026-08-06 - Task: 汇总提交 Lab5 手册本轮改写
+
+### What was done
+- 按 Lab1 版式重整 lab5-fs-and-sync.md：教材块、零开始之前、问题场景、任务一/二/三、验证命令与 AI 模板。
+- 扩写问题场景与背景知识 2.1–2.5（fd / 内嵌文件 / 管道与引用计数 / 数据竞争与临界区 / 自旋锁）；修复 mermaid 中 slots[3] 与 class 预览异常。
+- 实测并写入组件单测：cargo test -p os-fs --target x86_64-pc-windows-msvc，通过标准为 11 项通过。
+
+### Testing
+- 文案结构核对：H2 为零～五；任务二仍为 5 题。
+- cargo test -p os-fs --target x86_64-pc-windows-msvc：11 passed; 0 failed。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：Lab5 手册本轮全文改写与修补。
+- progress.md：追加本轮各步与本条汇总记录。
+- 回滚：git checkout -- os-lab/labs/lab5-fs-and-sync.md progress.md（若仅回退本提交则 git reset --hard HEAD~1，需确认无其它未推送提交）。
+
+---
+
+## 2026-08-06 - Task: 补全 Lab5 验证命令中的 os-fs 单测
+
+### What was done
+- 实测 cargo test -p os-fs --target x86_64-pc-windows-msvc 为 11 passed；写入「四、验证命令」表的具体命令与通过标准。
+
+### Testing
+- 在 os-lab/ 执行上述命令：11 passed; 0 failed。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：仅改第四节验证表。
+- 回滚：还原该表即可。
+
+---
+
+## 2026-08-06 - Task: 扩写 Lab5 §2.4 数据竞争与临界区
+
+### What was done
+- 扩写 2.4：衔接管道共享缓冲、区分用户隔离与内核共享、用时间线示例说明更新丢失、列出管道上的具体后果，并分步说明临界区，过渡到自旋锁。
+
+### Testing
+- 文案核对：仍位于 2.3 与 2.5 之间；概念与任务二相关题一致。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：仅改 2.4 节。
+- 回滚：还原该节即可。
+
+---
+
+## 2026-08-06 - Task: 扩写 Lab5 管道引用计数说明
+
+### What was done
+- 将管道引用计数段改写成「谁能拆水管」问题 + 加减计数规则 + 父子都持有写端的具体例子 + EOF/踩空对照，降低阅读门槛。
+
+### Testing
+- 文案核对：仍接在 fork 流水线之后、2.4 同步之前。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：仅改 2.3 引用计数相关段落。
+- 回滚：还原该段即可。
+
+---
+
+## 2026-08-06 - Task: 扩写 Lab5 背景知识 2.2–2.5
+
+### What was done
+- 按 2.1 风格扩写内嵌文件、管道、数据竞争与自旋锁四节：加强与上文/问题场景的衔接，补充步骤说明与节末过渡，保留原有 mermaid。
+
+### Testing
+- 结构核对：仍为 2.2–2.5；与任务二五道阅读题仍可对照。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：改第二节 2.2–2.5。
+- 回滚：还原该段即可。
+
+---
+
+## 2026-08-06 - Task: 扩写 Lab5「一切皆文件」小结
+
+### What was done
+- 将 2.1 末尾引用块扩写为更易读的分层说明：统一系统调用入口、FdType 内部分发、以及与后续磁盘/设备的衔接。
+
+### Testing
+- 文案核对：仍落在 2.1 与 2.2 之间；加粗标记完整。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：仅改该引用块。
+- 回滚：还原该段即可。
+
+---
+
+## 2026-08-06 - Task: 加强 Lab5 §2.1 FdType 与上文衔接
+
+### What was done
+- 在 fd 流程图之后补写「门牌号 vs 槽位内容」过渡，说明为何要用 FdType 分发；表格第三列改为「查表之后还要记住什么」，并收紧「一切皆文件」小结。
+
+### Testing
+- 文案核对：仍接 2.2 内嵌文件；三种变体与 offset/管道指针对比保留。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：仅改 2.1 中 FdType 段。
+- 回滚：还原该段即可。
+
+---
+
+## 2026-08-06 - Task: 修复 Lab5 mermaid 图 slots/class 预览异常
+
+### What was done
+- 修正 fd 查询流程图：去掉易被解析成节点语法的 slots[3]，改为「fd 表下标 3」；去掉易在预览残留的 classDef/class；同步简化文中其余 mermaid。
+
+### Testing
+- 文案核对：四张图均无 [] 标签与 class 语句；语义仍对应 fd 查表、open/read、管道、自旋锁。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：仅改 mermaid 图。
+- 回滚：还原对应 mermaid 块即可。
+
+---
+
+## 2026-08-06 - Task: Lab5 问题场景表改为「需要完成 / 如果没有会怎样」
+
+### What was done
+- 按引导句逻辑，将问题场景三列表改写为两列：需要完成、如果没有会怎样。
+
+### Testing
+- 文案核对：三行仍对应 fd 接口、管道、互斥保护。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：仅改问题场景表格。
+- 回滚：还原该表即可。
+
+---
+
+## 2026-08-05 - Task: 扩写 Lab5「一、问题场景」
+
+### What was done
+- 重写问题场景：拆开「读文件 / 传字节」两句用户诉求，用「缺什么 / 不补会怎样」表展开三个缺口，理清持久性与并发两条主线及 fd/管道/自旋锁三条抓手；顺带修正原稿加粗标记错误。
+
+### Testing
+- 文案核对：仍保留 Lab4/Lab5 对照表、四个核心问题与实验目标；与第二节背景知识衔接自然。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：仅改「一、问题场景」。
+- 回滚：还原该文件对应段落即可。
+
+---
+
+## 2026-08-05 - Task: 修复 Lab5 手册预览在「建议先读书」处像被截断
+
+### What was done
+- 修正「零、开始之前」列表内 PowerShell 代码块缩进，避免有序列表被拆碎；去掉表格中易打断解析的竖线示例；补充向下滚动提示。
+
+### Testing
+- markdown-it 渲染：零节内有序列表保持连续；全文仍含一至五各 H2。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：零节列表与表格小修。
+- 回滚：还原该文件对应段落。
+
+---
+## 2026-08-05 - Task: 按 Lab1 格式重整 Lab5 手册
+
+### What was done
+- 将 lab5-fs-and-sync.md 按 Lab1/Lab3 版式重整：教材块、零开始之前分步 PowerShell、问题场景对照表与实验目标、任务一/二/三、四验证命令表与五 AI 模板；保留 fd/管道/自旋锁背景与 mermaid。
+
+### Testing
+- 文案结构核对：H2 为零～五；任务二仍为 5 题；教材链接为 /downloads/ostep-zh.pdf#page=；答案链为 /answers/lab5-answers。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：全文按 Lab1 格式重排。
+- 回滚：git checkout -- os-lab/labs/lab5-fs-and-sync.md
+
+---
+
 ## 2026-08-05 - Task: Lab3 任务三对齐 Lab1 版式
 
 ### What was done

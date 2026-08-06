@@ -19,7 +19,8 @@
         "targetChars": { "type": "integer", "minimum": 1 },
         "maxChars": { "type": "integer", "minimum": 1 },
         "overlapChars": { "const": 0 },
-        "chunkCount": { "type": "integer", "minimum": 0 }
+        "chunkCount": { "type": "integer", "minimum": 0 },
+        "qualityFilter": { "type": "string", "minLength": 1 }
       }
     },
     "chunks": {
@@ -57,7 +58,21 @@
               "tokenEstimate": { "type": "integer", "minimum": 1 },
               "blockTypes": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
               "sourcePath": { "type": "string", "minLength": 1 },
-              "splitFromLongBlock": { "type": "boolean" }
+              "splitFromLongBlock": { "type": "boolean" },
+              "mergedShortChunks": { "type": "integer", "minimum": 1 },
+              "labScopeEvidence": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["labId", "confidence", "reason"],
+                  "properties": {
+                    "labId": { "type": "string", "pattern": "^lab[1-8]$" },
+                    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "reason": { "type": "string" }
+                  }
+                }
+              }
             }
           }
         }

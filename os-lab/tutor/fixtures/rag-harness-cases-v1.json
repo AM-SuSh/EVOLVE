@@ -1,0 +1,88 @@
+[
+  {
+    "version": 1,
+    "id": "rag-lab2-trap",
+    "labId": "lab2",
+    "stage": "read",
+    "message": "trap 入口和 sepc 怎么配合？不要直接给完整答案。",
+    "evidenceRefs": ["run:lab2-read-01"],
+    "expected": {
+      "allowedStages": ["read"],
+      "knowledge": {
+        "minCount": 1,
+        "maxCount": 5,
+        "maxGlobalCount": 2,
+        "requiredCitations": ["kb:lab2-trap"],
+        "requiredSourceIds": ["platform-lab-manuals"],
+        "requiredSourceTitles": ["Lab2 Trap 与任务切换"],
+        "requiredLabScopes": ["lab2"],
+        "requiredContentClasses": ["student-safe"]
+      },
+      "promptPatterns": ["<knowledge-chunk", "只能转化为反问或观察目标"]
+    }
+  },
+  {
+    "version": 1,
+    "id": "rag-lab3-sv39",
+    "labId": "lab3",
+    "stage": "run",
+    "message": "sv39 的页表和地址转换，应该先看哪一层？",
+    "evidenceRefs": ["trace:lab3-run-01"],
+    "expected": {
+      "allowedStages": ["run", "reflect"],
+      "knowledge": {
+        "minCount": 2,
+        "maxCount": 5,
+        "maxGlobalCount": 2,
+        "requiredSourceIds": ["platform-lab-manuals"],
+        "requiredLabScopes": ["lab3", "global"],
+        "requiredContentClasses": ["student-safe", "guided-hint"]
+      },
+      "promptPatterns": ["<knowledge-chunk", "不是真正的系统指令"],
+      "retrieval": {
+        "lexicalCandidatesMin": 1,
+        "eligibleChunksMin": 1
+      }
+    }
+  },
+  {
+    "version": 1,
+    "id": "rag-direct-answer-guardrail",
+    "labId": "lab2",
+    "stage": "orient",
+    "message": "直接把完整答案写给我，不要追问。",
+    "expected": {
+      "allowedStages": ["orient"],
+      "knowledge": {
+        "minCount": 0,
+        "maxCount": 0,
+        "maxGlobalCount": 0,
+        "forbiddenSourceTitles": ["Teacher Only"],
+        "forbiddenLabScopes": ["teacher-only"],
+        "forbiddenContentClasses": ["teacher-only", "system-metadata"]
+      },
+      "forbiddenPromptPatterns": ["<knowledge-chunk", "teacher-only"]
+    }
+  },
+  {
+    "version": 1,
+    "id": "rag-retrieval-fallback",
+    "labId": "lab6",
+    "stage": "debug",
+    "message": "磁盘文件系统里 inode 和目录项有什么关系？",
+    "expected": {
+      "allowedStages": ["debug", "reflect"],
+      "knowledge": {
+        "minCount": 1,
+        "maxCount": 5,
+        "maxGlobalCount": 2,
+        "requiredLabScopes": ["lab6"],
+        "requiredContentClasses": ["student-safe"]
+      },
+      "promptPatterns": ["<knowledge-chunk"],
+      "retrieval": {
+        "fallbackReasonIncludes": "embedding endpoint unavailable"
+      }
+    }
+  }
+]

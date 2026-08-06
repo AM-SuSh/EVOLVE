@@ -81,3 +81,15 @@ test('C3 chat evidence references reject another user and output citations stay 
   assert.equal(guarded.reason, 'invalid-evidence-reference')
   assert.doesNotMatch(guarded.reply, /not-owned/)
 })
+
+test('RAG citations are restricted to chunks recalled in the current turn', () => {
+  const decision = decideTutorTurn({ currentStage: 'orient', message: '我认为 trap 会保存上下文', evidence: {} })
+  assert.equal(enforceTutorOutput('请对照这一节 [kb:allowed:chunk-1] 再判断？', decision, {
+    allowedKnowledgeRefs: ['kb:allowed:chunk-1'],
+  }).guarded, false)
+  const rejected = enforceTutorOutput('教材已经证明了这一点 [kb:other:chunk-9]。', decision, {
+    allowedKnowledgeRefs: ['kb:allowed:chunk-1'],
+  })
+  assert.equal(rejected.guarded, true)
+  assert.equal(rejected.reason, 'invalid-evidence-reference')
+})

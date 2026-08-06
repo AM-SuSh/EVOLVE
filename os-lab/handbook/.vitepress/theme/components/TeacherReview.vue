@@ -528,7 +528,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 .tr {
   display: grid;
   grid-template-rows: 58px minmax(0, 1fr);
-  height: 100dvh;
+  height: calc(100dvh - var(--vp-nav-height));
   min-width: 0;
   color: var(--ws-ink);
   background: var(--ws-surface-alt);

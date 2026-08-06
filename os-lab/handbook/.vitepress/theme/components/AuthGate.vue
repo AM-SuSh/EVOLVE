@@ -63,29 +63,15 @@ async function submit() {
   }
 }
 
-const isTeacher = ref(false)
-const onTeacherPage = ref(false)
-
 onMounted(async () => {
-  onTeacherPage.value =
-    location.pathname.includes('/guide/ai-tutor') ||
-    location.pathname.includes('/learn/') ||
-    location.pathname.includes('/teacher-review')
-  const auth = loadAuth()
-  isTeacher.value = auth?.role === 'teacher'
   if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('os-lab-guest')) return
-  if (auth && (await verifyExisting())) return
+  const existingAuth = loadAuth()
+  if (existingAuth && (await verifyExisting())) return
   locked.value = true
-  isTeacher.value = false
 })
 </script>
 
 <template>
-  <!-- 教师常驻入口：回到与学生同名的引导式学习入口。 -->
-  <a v-if="!locked && isTeacher && !onTeacherPage" class="ag-teacher-fab" :href="withBase('/guide/ai-tutor')">
-    引导式学习
-  </a>
-
   <div v-if="locked" class="ag-overlay">
     <div class="ag-card">
       <p class="ag-brand"><span>OS</span> os-lab 操作系统学习平台</p>
@@ -125,21 +111,6 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.ag-teacher-fab {
-  position: fixed;
-  right: 22px;
-  bottom: 22px;
-  z-index: 90;
-  padding: 9px 16px;
-  color: #fff;
-  border-radius: 999px;
-  background: var(--vp-c-brand-1);
-  box-shadow: 0 6px 18px rgb(0 0 0 / 0.2);
-  font-size: 14px;
-  font-weight: 600;
-  text-decoration: none;
-}
-
 .ag-overlay {
   position: fixed;
   inset: 0;

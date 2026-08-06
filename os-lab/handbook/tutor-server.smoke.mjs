@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url'
 
 const smokeRoot = mkdtempSync(path.join(tmpdir(), 'os-lab-tutor-smoke-'))
 const dbPath = path.join(smokeRoot, 'learning.db')
+const knowledgeDbPath = path.join(smokeRoot, 'knowledge.db')
+const knowledgeUploadRoot = path.join(smokeRoot, 'knowledge-uploads')
 const dataDir = path.join(smokeRoot, 'sessions')
 const studentsRoot = path.join(smokeRoot, 'student-labs')
 const teacherFile = path.join(smokeRoot, 'teacher.json')
@@ -57,6 +59,8 @@ const server = spawn(process.execPath, ['tutor-server.mjs'], {
   env: {
     ...process.env,
     OS_LAB_DB_PATH: dbPath,
+    OS_LAB_KNOWLEDGE_DB_PATH: knowledgeDbPath,
+    OS_LAB_KNOWLEDGE_UPLOAD_ROOT: knowledgeUploadRoot,
     OS_LAB_TUTOR_DATA_DIR: dataDir,
     OS_LAB_TUTOR_PORT: String(port),
     OS_LAB_STUDENTS_ROOT: studentsRoot,
@@ -168,6 +172,54 @@ try {
   assert.equal(teacher.ok, true)
   const teacherHeaders = { Authorization: `Bearer ${teacher.token}` }
   assert.equal((await fetch(`${endpoint}/teacher/lab-factory?labId=lab3`, { headers: studentHeaders })).status, 401)
+  assert.equal((await fetch(`${endpoint}/teacher/knowledge/tree`, { headers: studentHeaders })).status, 401)
+
+  const knowledgeUpload = await fetch(`${endpoint}/teacher/knowledge/sources`, {
+    method: 'POST',
+    headers: {
+      ...teacherHeaders,
+      'Content-Type': 'text/markdown',
+      'X-Knowledge-Filename': encodeURIComponent('scheduler-notes.md'),
+      'X-Knowledge-Title': encodeURIComponent('调度观察补充讲义'),
+    },
+    body: '# 调度观察\n\ntask_switch 调度器会记录 from、to 和 reason，学生应先根据 trace 提出因果解释。\n',
+  })
+  assert.equal(knowledgeUpload.status, 201)
+  const uploadedKnowledge = await knowledgeUpload.json()
+  assert.equal(uploadedKnowledge.upload.status, 'pending-review')
+  assert.equal(uploadedKnowledge.source.defaultClass, 'teacher-only')
+  const uploadedVersion = uploadedKnowledge.source.versions[0]
+  assert.equal(uploadedVersion.scopeSuggestions.some((item) => item.labId === 'lab2'), true)
+  const uploadedChunksResponse = await fetch(`${endpoint}/teacher/knowledge/chunks?sourceId=${uploadedKnowledge.upload.sourceId}&includeInactive=true`, { headers: teacherHeaders })
+  const uploadedChunksPayload = await uploadedChunksResponse.json()
+  assert.equal(uploadedChunksPayload.ok, true)
+  assert.equal(uploadedChunksPayload.total, uploadedChunksPayload.chunks.length)
+  assert.equal(uploadedChunksPayload.limit, 100)
+  assert.equal(uploadedChunksPayload.offset, 0)
+  const uploadedChunks = uploadedChunksPayload.chunks
+  const uploadedChunk = uploadedChunks[0]
+  assert.equal(uploadedChunk.active, false)
+  const reviewedKnowledge = await postJson('/teacher/knowledge/review', teacherHeaders, {
+    sourceId: uploadedKnowledge.upload.sourceId,
+    versionId: uploadedVersion.id,
+    labScopes: ['lab2'],
+    contentClass: 'guided-hint',
+    licenseStatus: 'platform-owned',
+    answerRiskReviewed: true,
+    note: '只用于引导学生解释 trace。',
+  })
+  assert.equal(reviewedKnowledge.status, 200)
+  const publishedKnowledge = await postJson('/teacher/knowledge/publish', teacherHeaders, {
+    sourceId: uploadedKnowledge.upload.sourceId,
+    versionId: uploadedVersion.id,
+  })
+  assert.equal(publishedKnowledge.status, 200)
+  const teacherHybridSearch = await fetch(`${endpoint}/teacher/knowledge/search?q=scheduler&labId=lab2`, {
+    headers: teacherHeaders,
+  }).then((response) => response.json())
+  assert.equal(teacherHybridSearch.ok, true)
+  assert.equal(teacherHybridSearch.chunks.length > 0, true)
+  assert.equal(teacherHybridSearch.retrieval.vectorCandidates > 0, true)
   const factoryValidation = await postJson('/teacher/lab-factory/validate', teacherHeaders, {
     labId: 'lab3',
     variant: 'debug',
@@ -393,8 +445,33 @@ try {
   assert.equal(chat.tutorState.requestedStage, 'reflect')
   assert.equal(chat.tutorState.evidenceRefs.includes(`run:${runFrame.runId}`), true)
   assert.equal(chat.tutorState.evidenceRefs.includes(`trace:${runFrame.runId}`), true)
+  assert.equal(chat.retrieval.vectorCandidates > 0, true)
+  assert.equal(Array.isArray(chat.knowledge), true)
+  assert.equal(chat.knowledge.length > 0, true)
+  assert.equal(
+    chat.knowledge.every((item) =>
+      typeof item.sourceTitle === 'string' &&
+      Array.isArray(item.sectionPath) &&
+      Array.isArray(item.labScopes) &&
+      ['student-safe', 'guided-hint'].includes(item.contentClass),
+    ),
+    true,
+  )
+  assert.equal(chat.knowledge.some((item) => item.labScopes.includes('lab2') || item.labScopes.includes('global')), true)
   assert.equal(mockChatRequests.length, 1)
   assert.match(mockChatRequests[0].messages[0].content, /Lab2/)
+  assert.match(mockChatRequests[0].messages[0].content, /knowledge-chunk/)
+  assert.match(mockChatRequests[0].messages[0].content, /只能转化为反问或观察目标/)
+
+  const removedKnowledge = await fetch(`${endpoint}/teacher/knowledge/chunk?id=${encodeURIComponent(uploadedChunk.id)}`, {
+    method: 'DELETE', headers: teacherHeaders,
+  })
+  assert.equal(removedKnowledge.status, 200)
+  assert.equal((await removedKnowledge.json()).chunk.active, false)
+  const visibleAfterRemoval = await fetch(`${endpoint}/teacher/knowledge/chunks?sourceId=${uploadedKnowledge.upload.sourceId}&retrievableOnly=true`, {
+    headers: teacherHeaders,
+  }).then((response) => response.json())
+  assert.equal(visibleAfterRemoval.chunks.length, 0)
 
   const runId = runFrame.runId
   const traceResponse = await fetch(`${endpoint}/runs/${encodeURIComponent(runId)}/trace?offset=0&limit=2`, {

@@ -92,6 +92,37 @@ export interface TutorMessage {
       scope?: 'selection' | 'full' | 'context' | 'single' | 'all'
     }
   }>
+  knowledge?: TutorKnowledgeChunk[]
+  retrieval?: TutorRetrievalDiagnostics
+}
+
+export interface TutorKnowledgeChunk {
+  citation: string
+  sourceId: string
+  sourceTitle?: string
+  sectionPath?: string[]
+  contentClass?: 'student-safe' | 'guided-hint' | 'teacher-only' | 'system-metadata' | string
+  labScopes?: string[]
+  locatorStart?: Record<string, unknown> | null
+  locatorEnd?: Record<string, unknown> | null
+  retrieval?: {
+    score?: number
+    rrf?: number
+    lexicalRank?: number | null
+    vectorRank?: number | null
+    vectorSimilarity?: number | null
+    provider?: string
+    model?: string
+  } | null
+}
+
+export interface TutorRetrievalDiagnostics {
+  provider?: string
+  model?: string
+  lexicalCandidates?: number
+  vectorCandidates?: number
+  eligibleChunks?: number
+  fallbackReason?: string
 }
 
 /** 服务端 decideTutorTurn 回传字段（成员 C · Day2 契约）。 */

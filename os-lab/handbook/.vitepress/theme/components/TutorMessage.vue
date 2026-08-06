@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ShieldAlert } from 'lucide-vue-next'
+import { BookOpen, Info, ShieldAlert } from 'lucide-vue-next'
 import { chatSourceLabels, studentQuestionFromChat, type ChatAttachment } from '../chat-attachments'
 import {
   categoryLabels,
@@ -8,6 +8,8 @@ import {
   navigableEvidenceRefs,
   shortRef,
   tutorHintDetail,
+  type TutorKnowledgeChunk,
+  type TutorRetrievalDiagnostics,
   type TutorMessage,
 } from '../tutor-model'
 import { renderTutorMarkdown } from '../markdown'
@@ -37,6 +39,36 @@ const chips = computed(() =>
     label: shortRef(ref),
   })),
 )
+const knowledge = computed<TutorKnowledgeChunk[]>(() => props.message.knowledge || [])
+const retrieval = computed<TutorRetrievalDiagnostics | undefined>(() => props.message.retrieval)
+const knowledgeSummary = computed(() => {
+  if (!knowledge.value.length) return ''
+  return `本轮参考 ${knowledge.value.length} 条已发布知识`
+})
+const retrievalSummary = computed(() => {
+  const diagnostics = retrieval.value
+  if (!diagnostics) return ''
+  if (diagnostics.fallbackReason) {
+    const reason = diagnostics.fallbackReason.toLowerCase()
+    if (reason.includes('embedding') || reason.includes('vector') || reason.includes('dimension')) {
+      return '语义向量暂不可用，本轮已降级为关键词检索'
+    }
+    if (reason.includes('guardrail')) return ''
+    return '知识检索部分降级，本轮使用可用候选继续引导'
+  }
+  if (!knowledge.value.length) return ''
+  const lexical = Number(diagnostics.lexicalCandidates || 0)
+  const vector = Number(diagnostics.vectorCandidates || 0)
+  return `词面候选 ${lexical} · 向量候选 ${vector}`
+})
+
+function knowledgeSection(chunk: TutorKnowledgeChunk) {
+  return (chunk.sectionPath || []).filter(Boolean).join(' / ')
+}
+
+function knowledgeClassLabel(chunk: TutorKnowledgeChunk) {
+  return chunk.contentClass === 'guided-hint' ? '引导提示' : '可引用'
+}
 
 // 代码块复制 + 证据引用：事件委托，避免往 v-html 里塞 Vue 监听器。
 async function onBodyClick(event: MouseEvent) {
@@ -84,6 +116,29 @@ async function onBodyClick(event: MouseEvent) {
         </span>
       </div>
       <div class="ws-message-content" :class="{ streaming }" @click="onBodyClick" v-html="html" />
+      <div v-if="isAssistant && knowledge.length" class="ws-message-knowledge" aria-label="导师参考知识">
+        <div class="ws-message-knowledge-head">
+          <BookOpen :size="13" aria-hidden="true" />
+          <strong>{{ knowledgeSummary }}</strong>
+        </div>
+        <div class="ws-message-knowledge-list">
+          <span
+            v-for="chunk in knowledge"
+            :key="chunk.citation"
+            class="ws-message-knowledge-chip"
+            :data-kind="chunk.contentClass"
+            :title="`${chunk.citation} · ${chunk.sourceId}`"
+          >
+            <strong>{{ chunk.sourceTitle || chunk.sourceId }}</strong>
+            <span v-if="knowledgeSection(chunk)"> · {{ knowledgeSection(chunk) }}</span>
+            <small>{{ knowledgeClassLabel(chunk) }}</small>
+          </span>
+        </div>
+      </div>
+      <p v-if="isAssistant && retrievalSummary" class="ws-message-retrieval">
+        <Info :size="13" aria-hidden="true" />
+        {{ retrievalSummary }}
+      </p>
       <div v-if="attached.length" class="ws-message-attachments" aria-label="已附带的工作台内容">
         <button
           v-for="item in attached"
@@ -245,6 +300,66 @@ async function onBodyClick(event: MouseEvent) {
   flex-wrap: wrap;
   gap: var(--ws-space-2);
   margin-top: var(--ws-space-2);
+}
+
+.ws-message-knowledge {
+  margin-top: var(--ws-space-3);
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+}
+
+.ws-message-knowledge-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ws-space-1);
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-message-knowledge-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: var(--ws-space-2);
+}
+
+.ws-message-knowledge-chip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px;
+  max-width: 100%;
+  padding: 2px 6px;
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: 4px;
+  background: var(--ws-surface);
+  font-size: 11px;
+}
+
+.ws-message-knowledge-chip strong {
+  color: var(--ws-ink);
+  font-weight: 600;
+}
+
+.ws-message-knowledge-chip small {
+  color: var(--ws-accent);
+  font-size: 10px;
+}
+
+.ws-message-knowledge-chip[data-kind='guided-hint'] {
+  border-style: dashed;
+}
+
+.ws-message-retrieval {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: var(--ws-space-2) 0 0;
+  color: var(--ws-ink-faint);
+  font-size: 11px;
 }
 
 .ws-message-ref {
