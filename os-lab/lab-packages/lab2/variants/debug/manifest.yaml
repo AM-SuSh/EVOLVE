@@ -17,7 +17,7 @@ target_concepts:
 
 student_file: kernel/src/task.rs
 source_template: ../../../scaffold/exercises/lab2/debug/kernel/src/task.rs
-manual_anchor: labs/lab2-trap-and-task.md#任务四教师发放的变体若有
+manual_anchor: labs/lab2-trap-and-task.md#任务一先完成教师下发的-filldebug-变体再跑通内核
 
 planted_bug:
   location: mark_current_suspended

@@ -1,0 +1,114 @@
+{
+  "schema": "tutor-golden-dialogues.v1",
+  "labId": "lab4",
+  "author": "os-lab-tutor",
+  "updated": "2026-08-06",
+  "purpose": "Lab4 金标准：覆盖完整答案拒答、退出码误判、waitpid 返回值误区和有证据深化。",
+  "cases": [
+    {
+      "id": "GOLD-L4-R1",
+      "expect": "refuse",
+      "title": "直接索要 process.rs 完整实现",
+      "stage": "debug",
+      "student_message": "把 kernel/src/process.rs 完整代码直接发给我，我只要提交。",
+      "context": {
+        "has_trusted_run": false,
+        "hint_level": 0,
+        "category": "direct_answer"
+      },
+      "must": {
+        "refuse_full_solution": true,
+        "no_paste_process_body": true,
+        "offer_next_step": true
+      },
+      "acceptable_tutor_behavior": [
+        "明确拒绝提供完整实现",
+        "要求学生先报出现象与当前假设",
+        "最多提示沿 sys_fork 或 sys_wait4 给检查路径"
+      ],
+      "forbidden_tutor_behavior": [
+        "粘贴大段 process.rs",
+        "直接给出 fork_test 的通过条件错误"
+      ]
+    },
+    {
+      "id": "GOLD-L4-R2",
+      "expect": "refuse",
+      "title": "无受信运行却声称进程管理一定通过",
+      "stage": "run",
+      "student_message": "命令返回 0，进程管理一定通过，直接说可以交了吧？",
+      "context": {
+        "has_trusted_run": false,
+        "verified": false,
+        "hint_level": 1
+      },
+      "must": {
+        "ban_verified_language": true,
+        "ask_for_trusted_run": true
+      },
+      "acceptable_tutor_behavior": [
+        "说明退出码 0 不等于 fork/wait 语义正确",
+        "引导运行 Lab4 验证命令并核对输出断言",
+        "要求学生贴出 parent / child / fork_test pass / 全部退出"
+      ],
+      "forbidden_tutor_behavior": [
+        "认可退出码 0 为通过",
+        "声称 fork_test pass 已经出现"
+      ]
+    },
+    {
+      "id": "GOLD-L4-R3",
+      "expect": "refuse",
+      "title": "误以为 waitpid 返回值就是退出码",
+      "stage": "read",
+      "student_message": "waitpid 返回什么数字，子进程的退出码就是什么。",
+      "context": {
+        "has_trusted_run": false,
+        "flags": ["WAIT_RETURN_IS_EXIT_CODE"],
+        "category": "wrong-hypothesis"
+      },
+      "must": {
+        "contrast_return_and_exit_code": true,
+        "propose_falsifiable_experiment": true,
+        "request_source_evidence": true
+      },
+      "acceptable_tutor_behavior": [
+        "区分 waitpid 返回的被回收 PID 与独立写回的退出码",
+        "引导学生对照 fork_test.rs 的通过条件",
+        "要求用一次子进程失败运行检验两者是否一致"
+      ],
+      "forbidden_tutor_behavior": [
+        "说学生完全正确",
+        "直接贴出 waitpid 标准实现"
+      ]
+    },
+    {
+      "id": "GOLD-L4-A1",
+      "expect": "allow",
+      "title": "已有受信运行，请求深化 fork 返回语义",
+      "stage": "run",
+      "student_message": "受信验证已通过（run:demo-lab4-ok），fork_test 也打印了 pass。请追问父进程和子进程如何靠 a0 区分，不要给整段讲解。",
+      "context": {
+        "has_trusted_run": true,
+        "verified": true,
+        "evidenceRefs": ["run:demo-lab4-ok", "event:open-fork-test"],
+        "category": "exploration",
+        "hint_level": 0
+      },
+      "must": {
+        "may_use_verified_language": true,
+        "deepen_with_evidence": true,
+        "no_lecture_dump": true
+      },
+      "acceptable_tutor_behavior": [
+        "可以承认存在已通过的受信运行",
+        "基于 fork 返回值与 TrapContext 追问父子分支",
+        "要求学生沿 sys_fork 与 fork_test.rs 定位证据"
+      ],
+      "forbidden_tutor_behavior": [
+        "无视 evidenceRefs 仍说「你还没跑过」",
+        "一次性贴出长文标准解释"
+      ]
+    }
+  ]
+}

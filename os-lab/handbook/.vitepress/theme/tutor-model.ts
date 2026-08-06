@@ -613,7 +613,7 @@ export const tutorLabs: TutorLab[] = [
       orient: { paths: ['labs/lab2-trap-and-task.md', 'kernel/src/trap.rs'], docs: [{ title: 'Lab2 实验指导', description: '看清本实验目标：用户态、trap 与多任务', href: '/labs/lab2-trap-and-task' }, { title: '实验知识地图', description: 'Lab2 在八个 Lab 中的位置', href: '/labs/overview' }] },
       read: { paths: ['os-context/src/trap.asm', 'kernel/src/trap.rs', 'os-context/src/lib.rs'], docs: [{ title: '沿着控制流读', description: 'ecall → TrapContext → sret；对照正文知识层次表', href: '/labs/lab2-trap-and-task' }, { title: '系统架构', description: 'kernel 与 os-context 的职责边界', href: '/project/architecture' }] },
       run: { paths: ['kernel/src/main.rs', 'user/src/bin/yield.rs'], docs: [{ title: '受信验证', description: '必须同时看到 Hello、幂结果、Yield×5、全部退出', href: '/guide/ai-tutor' }, { title: '阅读理解（任务二）', description: '先独立作答再对照答案', href: '/labs/lab2-trap-and-task' }] },
-      debug: { paths: ['kernel/src/trap.rs', 'kernel/src/task.rs', 'kernel/src/console.rs'], docs: [{ title: '最小实验排错', description: '区分双栈 / 调度状态 / ABI；变体见任务四', href: '/labs/lab2-trap-and-task' }, { title: '验证断言', description: '不要只用退出码 0 判断通过', href: '/guide/ai-tutor' }] },
+      debug: { paths: ['kernel/src/trap.rs', 'kernel/src/task.rs', 'kernel/src/console.rs'], docs: [{ title: '最小实验排错', description: '区分双栈 / 调度状态 / ABI；变体见文件头与验证命令', href: '/labs/lab2-trap-and-task' }, { title: '验证断言', description: '不要只用退出码 0 判断通过', href: '/guide/ai-tutor' }] },
       reflect: { paths: ['project/ai-collaboration.md', 'answers/lab2-answers.md'], docs: [{ title: '复盘证据链', description: '写清假设、AI 帮助点与验证输出', href: '/project/ai-collaboration' }, { title: 'Lab2 参考答案', description: '完成后再核对', href: '/answers/lab2-answers' }] },
     },
   },

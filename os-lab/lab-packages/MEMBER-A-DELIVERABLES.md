@@ -10,7 +10,7 @@
 | --- | --- |
 | 1 缺口表 | `MEMBER-A-7DAY/day1-gap-table.md` |
 | 2 检查点 YAML | `lab2/checkpoints.yaml` |
-| 3 金标准对话 | `../learning/tutor-golden-dialogues-lab2.json` |
+| 3 金标准对话 | `../learning/tutor-golden-dialogues-lab1.json`、`../learning/tutor-golden-dialogues-lab2.json`、`../learning/tutor-golden-dialogues-lab3.json`、`../learning/tutor-golden-dialogues-lab4.json` |
 | 4 量规冻结 | `../learning/rubric-v2-frozen.md` |
 | 5 OPRE/补救装箱 | `visualization/opre-copy-final.md`、`lab2/variants/remedial/PACKAGE.md` |
 | 6 变式验收 | `lab2/variants/remedial/TEACHER_ACCEPTANCE.md` |
@@ -38,6 +38,6 @@
 
 ## 使用方式
 
-- **C**：先读 `checkpoints.yaml`、`tutor-golden-dialogues-lab2.json`、`rubric-v2-frozen.md`  
+- **C**：先读 `checkpoints.yaml`、`tutor-golden-dialogues-lab1.json` 至 `tutor-golden-dialogues-lab4.json`、`rubric-v2-frozen.md`  
 - **B**：先读 `opre-copy-final.md`
 - **教师发布补救变式**：`variants/remedial/TEACHER_ACCEPTANCE.md` + `PACKAGE.md`

@@ -84,5 +84,45 @@
         "fallbackReasonIncludes": "embedding endpoint unavailable"
       }
     }
+  },
+  {
+    "version": 1,
+    "id": "rag-lab1-startup",
+    "labId": "lab1",
+    "stage": "read",
+    "message": "0x80200000 和 _start 入口有什么关系？不要给完整答案。",
+    "evidenceRefs": ["run:lab1-read-01"],
+    "expected": {
+      "allowedStages": ["read"],
+      "knowledge": {
+        "minCount": 1,
+        "maxCount": 5,
+        "maxGlobalCount": 2,
+        "requiredSourceIds": ["platform-lab-manuals"],
+        "requiredLabScopes": ["lab1"],
+        "requiredContentClasses": ["student-safe"]
+      },
+      "promptPatterns": ["<knowledge-chunk"]
+    }
+  },
+  {
+    "version": 1,
+    "id": "rag-lab4-fork-wait",
+    "labId": "lab4",
+    "stage": "debug",
+    "message": "fork 后父进程 a0 和子进程 a0 分别是什么？先给观察路径。",
+    "evidenceRefs": ["run:lab4-debug-01"],
+    "expected": {
+      "allowedStages": ["debug", "reflect"],
+      "knowledge": {
+        "minCount": 1,
+        "maxCount": 5,
+        "maxGlobalCount": 2,
+        "requiredSourceIds": ["platform-lab-manuals"],
+        "requiredLabScopes": ["lab4"],
+        "requiredContentClasses": ["student-safe", "guided-hint"]
+      },
+      "promptPatterns": ["<knowledge-chunk"]
+    }
   }
 ]

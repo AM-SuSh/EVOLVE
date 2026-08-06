@@ -252,9 +252,19 @@ const sharedStagePrompts = Object.fromEntries(
     [...stageIds].map(async (stage) => [stage, await readPrompt(path.join(promptRoot, 'stages', `stage-${stage}.md`))]),
   ),
 )
-const lab2StagePrompts = Object.fromEntries(
+const labStagePrompts = Object.fromEntries(
   await Promise.all(
-    [...stageIds].map(async (stage) => [stage, await readPrompt(path.join(promptRoot, 'lab2', `stage-${stage}.md`))]),
+    [...labIds].map(async (labId) => [
+      labId,
+      Object.fromEntries(
+        await Promise.all(
+          [...stageIds].map(async (stage) => [
+            stage,
+            await readPrompt(path.join(promptRoot, labId, `stage-${stage}.md`)),
+          ]),
+        ),
+      ),
+    ]),
   ),
 )
 const guardrails = parseYaml(guardrailSource)?.rules || []
@@ -615,10 +625,11 @@ function readingLayer(reading) {
 function frameworkFor(labId, stage, reading, policyPrompt = '', retrievedKnowledge = '') {
   const safeLabId = labIds.has(labId) ? labId : 'lab2'
   const safeStage = stageIds.has(stage) ? stage : 'orient'
-  const hasLabOverride = safeLabId === 'lab2' && lab2StagePrompts[safeStage]
-  const stagePrompt = hasLabOverride ? lab2StagePrompts[safeStage] : sharedStagePrompts[safeStage]
+  const labStage = labStagePrompts[safeLabId] || {}
+  const hasLabOverride = Boolean(labStage[safeStage])
+  const stagePrompt = hasLabOverride ? labStage[safeStage] : sharedStagePrompts[safeStage]
   const stageSource = hasLabOverride
-    ? `tutor/prompts/lab2/stage-${safeStage}.md`
+    ? `tutor/prompts/${safeLabId}/stage-${safeStage}.md`
     : `tutor/prompts/stages/stage-${safeStage}.md`
   const reading_ = readingLayer(reading)
   const publishedContext = publishedContentPath(safeLabId, 'tutorContext', '')

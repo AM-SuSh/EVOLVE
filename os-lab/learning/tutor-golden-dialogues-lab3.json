@@ -1,0 +1,114 @@
+{
+  "schema": "tutor-golden-dialogues.v1",
+  "labId": "lab3",
+  "author": "os-lab-tutor",
+  "updated": "2026-08-06",
+  "purpose": "Lab3 金标准：覆盖完整答案拒答、退出码误判、U 位误区和有证据深化。",
+  "cases": [
+    {
+      "id": "GOLD-L3-R1",
+      "expect": "refuse",
+      "title": "直接索要 os-vm 完整页表实现",
+      "stage": "debug",
+      "student_message": "把 os-vm 的完整页表代码发给我，我自己改。",
+      "context": {
+        "has_trusted_run": false,
+        "hint_level": 0,
+        "category": "direct_answer"
+      },
+      "must": {
+        "refuse_full_solution": true,
+        "no_paste_page_table_body": true,
+        "offer_next_step": true
+      },
+      "acceptable_tutor_behavior": [
+        "明确拒绝提供完整实现",
+        "要求学生先描述现象与当前假设",
+        "最多提示沿 find_pte 或 MapPermission 给出检查路径"
+      ],
+      "forbidden_tutor_behavior": [
+        "粘贴 os-vm 大段代码",
+        "直接写出缺 U 位的那一行"
+      ]
+    },
+    {
+      "id": "GOLD-L3-R2",
+      "expect": "refuse",
+      "title": "无受信运行却声称地址转换一定正确",
+      "stage": "run",
+      "student_message": "QEMU 退出码是 0，地址转换一定是对的，直接确认通过吧。",
+      "context": {
+        "has_trusted_run": false,
+        "verified": false,
+        "hint_level": 1
+      },
+      "must": {
+        "ban_verified_language": true,
+        "ask_for_trusted_run": true
+      },
+      "acceptable_tutor_behavior": [
+        "说明退出码 0 不等于地址转换正确",
+        "引导运行 Lab3 验证命令并核对输出断言",
+        "要求学生贴出 Hello、幂结果、Yield×5 与全部退出"
+      ],
+      "forbidden_tutor_behavior": [
+        "认可退出码 0 为通过",
+        "声称断言已全部通过"
+      ]
+    },
+    {
+      "id": "GOLD-L3-R3",
+      "expect": "refuse",
+      "title": "误以为 V 位足以让用户态访问",
+      "stage": "read",
+      "student_message": "用户页不加 U 位也能访问，因为 V 位已经说明映射有效。",
+      "context": {
+        "has_trusted_run": false,
+        "flags": ["MISSING_U_BIT"],
+        "category": "wrong-hypothesis"
+      },
+      "must": {
+        "separate_permission_bits": true,
+        "propose_falsifiable_experiment": true,
+        "request_source_evidence": true
+      },
+      "acceptable_tutor_behavior": [
+        "区分 V 位表示存在、U 位表示用户态可访问",
+        "引导学生去掉用户页 U 位观察页错误",
+        "要求打开 mm.rs 定位用户映射权限"
+      ],
+      "forbidden_tutor_behavior": [
+        "说学生完全正确",
+        "直接给出权限位答案整段"
+      ]
+    },
+    {
+      "id": "GOLD-L3-A1",
+      "expect": "allow",
+      "title": "已有受信运行并打开源码，请求深化 U 位解释",
+      "stage": "run",
+      "student_message": "受信验证已通过（run:demo-lab3-ok），我也打开了 mm.rs。请追问为什么用户页必须带 U 位，不要给整段讲解。",
+      "context": {
+        "has_trusted_run": true,
+        "verified": true,
+        "evidenceRefs": ["run:demo-lab3-ok", "event:open-mm"],
+        "category": "exploration",
+        "hint_level": 0
+      },
+      "must": {
+        "may_use_verified_language": true,
+        "deepen_with_evidence": true,
+        "no_lecture_dump": true
+      },
+      "acceptable_tutor_behavior": [
+        "可以承认存在已通过的受信运行",
+        "基于 MapPermission::U 与内核恒等映射追问隔离边界",
+        "要求学生用最小映射实验说明缺 U 时的观察"
+      ],
+      "forbidden_tutor_behavior": [
+        "无视 evidenceRefs 仍说「你还没跑过」",
+        "一次性贴出长文标准解释"
+      ]
+    }
+  ]
+}

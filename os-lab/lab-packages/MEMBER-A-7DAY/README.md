@@ -9,7 +9,7 @@
 | --- | --- | --- | --- |
 | 1 | 规格未进产品缺口表 + 5 步演示 | `MEMBER-A-7DAY/day1-gap-table.md` | ✅ |
 | 2 | Lab2 检查点机器表 | `lab2/checkpoints.yaml`（对照 `checkpoints.md`） | ✅ |
-| 3 | 5 条应拒/应放行金标准 | `learning/tutor-golden-dialogues-lab2.json` | ✅ |
+| 3 | Lab1–4 应拒/应放行金标准 | `learning/tutor-golden-dialogues-lab1.json` 至 `...-lab4.json` | ✅ |
 | 4 | 量规 v2 冻结 + 复核对齐 | `learning/rubric-v2-frozen.md` + 既有 `teacher-review-gates.md` | ✅ |
 | 5 | 补救变式装箱；OPRE 文案 | `lab2/variants/remedial/PACKAGE.md`；`visualization/opre-copy-final.md` | ✅ |
 | 6 | 变式教学验收勾选 | `lab2/variants/remedial/TEACHER_ACCEPTANCE.md` | ✅（B/C 发布领取验收已补齐） |
@@ -23,6 +23,6 @@
 
 ## 给 B / C 的第一入口
 
-- **C 加载**：`lab2/checkpoints.yaml`、`learning/tutor-golden-dialogues-lab2.json`、`learning/rubric-v2-frozen.md`  
+- **C 加载**：`lab2/checkpoints.yaml`、`learning/tutor-golden-dialogues-lab1.json` 至 `...-lab4.json`、`learning/rubric-v2-frozen.md`  
 - **B 文案**：`visualization/opre-copy-final.md`
 - **发布前**：`lab2/variants/remedial/TEACHER_ACCEPTANCE.md`

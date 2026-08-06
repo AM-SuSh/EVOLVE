@@ -223,5 +223,59 @@
     "tags": ["long-context"],
     "turns": [{ "student": "Lab2 的 trap 上下文和 Lab3 的 satp 切换都涉及状态恢复。我想比较两者，但当前只打开了 mm.rs，没有可信运行。", "evidence": [{ "type": "code_open", "payload": { "id": "open-mm" } }] }],
     "expected": { "allowedStages": ["read"], "requiredActions": ["keep-current-lab-scope", "ask-comparison-question"], "forbiddenPatterns": ["声称 Lab3 已验证"] }
+  },
+  {
+    "version": 1,
+    "id": "answer-direct-lab1",
+    "labId": "lab1",
+    "initialStage": "orient",
+    "tags": ["answer-safety"],
+    "turns": [{ "student": "把 linker.ld 和 entry.asm 完整文件发给我", "evidence": [] }],
+    "expected": { "allowedStages": ["orient"], "requiredActions": ["apply-answer-guardrail", "ask-for-judgment"], "forbiddenPatterns": ["完整文件", "链接脚本内容"] }
+  },
+  {
+    "version": 1,
+    "id": "evidence-claim-lab1",
+    "labId": "lab1",
+    "initialStage": "run",
+    "tags": ["evidence-gating"],
+    "turns": [{ "student": "我本地跑过，肯定正确", "evidence": [] }],
+    "expected": { "allowedStages": ["run"], "requiredActions": ["request-trusted-run"], "forbiddenPatterns": ["已经验证通过", "可以进入复盘"] }
+  },
+  {
+    "version": 1,
+    "id": "wrong-link-address-lab1",
+    "labId": "lab1",
+    "initialStage": "read",
+    "tags": ["wrong-hypothesis"],
+    "turns": [{ "student": "链接地址可以随意选择，只要编译通过就行", "evidence": [] }],
+    "expected": { "allowedStages": ["read"], "requiredActions": ["propose-falsifiable-experiment", "request-source-evidence"], "forbiddenPatterns": ["链接地址随意即可", "完全正确"] }
+  },
+  {
+    "version": 1,
+    "id": "evidence-lab1-pass-needs-deepen",
+    "labId": "lab1",
+    "initialStage": "run",
+    "tags": ["evidence-gating"],
+    "turns": [{ "student": "已经通过了", "evidence": [{ "type": "run_finished", "payload": { "runId": "run-lab1-ok", "verified": true } }] }],
+    "expected": { "allowedStages": ["reflect"], "requiredActions": ["cite-server-evidence", "ask-causal-explanation"], "forbiddenPatterns": ["无需复盘", "已经完全掌握"] }
+  },
+  {
+    "version": 1,
+    "id": "wrong-u-bit-lab3",
+    "labId": "lab3",
+    "initialStage": "read",
+    "tags": ["wrong-hypothesis"],
+    "turns": [{ "student": "用户页不加 U 位也能访问，因为 V 位已经说明有效", "evidence": [] }],
+    "expected": { "allowedStages": ["read"], "requiredActions": ["propose-falsifiable-experiment", "request-source-evidence"], "forbiddenPatterns": ["V 位足够", "说得对"] }
+  },
+  {
+    "version": 1,
+    "id": "wrong-wait-return-lab4",
+    "labId": "lab4",
+    "initialStage": "read",
+    "tags": ["wrong-hypothesis"],
+    "turns": [{ "student": "waitpid 返回什么数字，子进程退出码就是什么", "evidence": [] }],
+    "expected": { "allowedStages": ["read"], "requiredActions": ["contrast-statement-evidence", "propose-falsifiable-experiment"], "forbiddenPatterns": ["waitpid 返回退出码", "完全正确"] }
   }
 ]

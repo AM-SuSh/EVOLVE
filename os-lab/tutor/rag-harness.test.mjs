@@ -96,6 +96,52 @@ const adapterById = {
     },
     prompt: '<knowledge-chunk id="kb:lab6-fs" class="student-safe">',
   },
+  'rag-lab1-startup': {
+    stage: 'read',
+    reply: '先别急着给结论，把链接地址、入口符号和 QEMU 启动约定连成一条证据链。',
+    knowledge: [
+      {
+        citation: 'kb:lab1-startup',
+        sourceId: 'platform-lab-manuals',
+        sourceTitle: 'Lab1 裸机启动与最小内核',
+        sectionPath: ['启动', '入口'],
+        contentClass: 'student-safe',
+        labScopes: ['lab1'],
+      },
+    ],
+    retrieval: {
+      provider: 'local-feature-hash',
+      model: 'local-feature-hash-v1-384',
+      lexicalCandidates: 3,
+      vectorCandidates: 2,
+      eligibleChunks: 5,
+      fallbackReason: '',
+    },
+    prompt: '<knowledge-chunk id="kb:lab1-startup" class="student-safe">',
+  },
+  'rag-lab4-fork-wait': {
+    stage: 'debug',
+    reply: '先从 fork 返回值分支出发，再回到 wait 的回收语义。',
+    knowledge: [
+      {
+        citation: 'kb:lab4-fork-wait',
+        sourceId: 'platform-lab-manuals',
+        sourceTitle: 'Lab4 进程管理',
+        sectionPath: ['进程', 'fork'],
+        contentClass: 'guided-hint',
+        labScopes: ['lab4'],
+      },
+    ],
+    retrieval: {
+      provider: 'openai-compatible',
+      model: 'mock',
+      lexicalCandidates: 3,
+      vectorCandidates: 2,
+      eligibleChunks: 6,
+      fallbackReason: '',
+    },
+    prompt: '<knowledge-chunk id="kb:lab4-fork-wait" class="guided-hint">',
+  },
 }
 
 function adapter(testCase) {
