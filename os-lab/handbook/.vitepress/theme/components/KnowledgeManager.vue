@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import {
   ArchiveRestore, BookOpen, Check, ChevronRight, Database, FileText, Loader2,
-  RefreshCw, Save, Search, ShieldCheck, Upload, XCircle,
+  RefreshCw, Save, Search, ShieldCheck, Trash2, Upload, XCircle,
 } from 'lucide-vue-next'
 import { authHeaders, loadAuth } from '../tutor-model'
 
@@ -53,6 +53,8 @@ interface ChunkItem {
 
 const sources = ref<SourceItem[]>([])
 const labCounts = ref<Record<string, number>>({})
+const vectorCount = ref(0)
+const vectorModels = ref<Array<{ model: string; dimensions: number; chunks: number }>>([])
 const chunks = ref<ChunkItem[]>([])
 const selectedLab = ref('')
 const selectedSourceId = ref('')
@@ -60,6 +62,7 @@ const selectedSource = ref<SourceItem | null>(null)
 const selectedVersionId = ref('')
 const selectedChunk = ref<ChunkItem | null>(null)
 const query = ref('')
+const showMetadata = ref(false)
 const loading = ref(true)
 const busy = ref(false)
 const notice = ref('')
@@ -109,10 +112,16 @@ async function loadTree() {
   const payload = await api('/teacher/knowledge/tree')
   sources.value = payload.tree?.sources || []
   labCounts.value = Object.fromEntries((payload.tree?.labs || []).map((item: { labId: string; chunks: number }) => [item.labId, item.chunks]))
+  vectorCount.value = Number(payload.stats?.embeddings || 0)
+  vectorModels.value = payload.stats?.embeddingModels || []
 }
 
 async function loadChunks() {
-  const params = new URLSearchParams({ includeInactive: 'true', limit: '200' })
+  const params = new URLSearchParams({
+    includeInactive: selectedVersionId.value ? 'true' : 'false',
+    retrievableOnly: showMetadata.value ? 'false' : 'true',
+    limit: '200',
+  })
   if (selectedLab.value) params.set('labId', selectedLab.value)
   if (selectedSourceId.value) params.set('sourceId', selectedSourceId.value)
   if (selectedVersionId.value) params.set('versionId', selectedVersionId.value)
@@ -300,8 +309,22 @@ async function saveChunk() {
   finally { busy.value = false }
 }
 
+async function removeChunk() {
+  const chunk = selectedChunk.value
+  if (!chunk || busy.value || !window.confirm('移除后该知识块会立即退出导师检索。审计记录和原始版本仍会保留，确定继续？')) return
+  busy.value = true
+  try {
+    await api(`/teacher/knowledge/chunk?id=${encodeURIComponent(chunk.id)}`, { method: 'DELETE' })
+    selectedChunk.value = null
+    await loadTree()
+    await loadChunks()
+    notice.value = showMetadata.value ? '知识块已移除；当前开启了元数据显示，因此仍可看到灰色审计记录。' : '知识块已移除并退出导师检索。'
+  } catch (error) { notice.value = error instanceof Error ? error.message : '移除知识块失败' }
+  finally { busy.value = false }
+}
+
 let searchTimer: ReturnType<typeof setTimeout> | undefined
-watch([query, selectedLab, selectedVersionId], () => {
+watch([query, selectedLab, selectedVersionId, showMetadata], () => {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(() => { void loadChunksVisible() }, 220)
 })
@@ -316,9 +339,10 @@ onMounted(() => {
 <template>
   <main class="km">
     <header class="km-topbar">
-      <div class="km-title"><Database :size="20" aria-hidden="true" /><strong>知识库工作台</strong><span>{{ sources.length }} 个来源 · {{ pendingCount }} 个待审核</span></div>
+      <div class="km-title"><Database :size="20" aria-hidden="true" /><strong>知识库工作台</strong><span>{{ sources.length }} 个来源 · {{ pendingCount }} 个待审核 · {{ vectorCount }} 个向量</span></div>
       <div class="km-actions">
         <label class="km-search"><Search :size="15" aria-hidden="true" /><input v-model="query" type="search" placeholder="检索章节、概念或正文" /></label>
+        <label class="metadata-toggle" title="显示未进入导师检索的配置、旧版本和高风险内容"><input v-model="showMetadata" type="checkbox" />显示元数据</label>
         <button class="icon-button" type="button" title="刷新知识库" :disabled="loading" @click="refresh()"><RefreshCw :size="16" /></button>
         <button class="primary-button" type="button" @click="uploadOpen = true"><Upload :size="16" />上传知识</button>
       </div>
@@ -393,6 +417,7 @@ onMounted(() => {
             <button v-if="currentVersion.status === 'superseded' || currentVersion.status === 'disabled'" type="button" :disabled="busy" @click="versionAction('rollback')"><ArchiveRestore :size="15" />回滚到此版本</button>
             <button class="danger-button" type="button" :disabled="busy || selectedSource.status === 'disabled'" @click="disableSource"><XCircle :size="15" />停用来源</button>
           </div>
+          <p v-if="vectorModels.length" class="replace-note">向量索引：{{ vectorModels.map((item) => `${item.model} · ${item.chunks} chunks`).join('；') }}</p>
         </section>
 
         <section v-if="selectedChunk" class="chunk-detail">
@@ -404,7 +429,10 @@ onMounted(() => {
             <label>答案风险<select v-model="chunkRisk"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option><option value="blocked">blocked</option></select></label>
           </div>
           <div class="check-pair"><label><input v-model="chunkIndexable" type="checkbox" />允许索引</label><label><input v-model="chunkActive" type="checkbox" />当前启用</label></div>
-          <button class="save-button" type="button" :disabled="busy" @click="saveChunk"><Save :size="15" />保存 Chunk 设置</button>
+          <div class="button-row">
+            <button class="save-button" type="button" :disabled="busy" @click="saveChunk"><Save :size="15" />保存 Chunk 设置</button>
+            <button class="danger-button" type="button" :disabled="busy || !selectedChunk.active" @click="removeChunk"><Trash2 :size="15" />移除知识块</button>
+          </div>
           <p class="replace-note">正文修改通过上传新版本完成，以保留原始材料、分块结果和审计链。</p>
         </section>
         <div v-else class="empty">从中栏选择一个知识块查看正文与权限。</div>
@@ -428,6 +456,7 @@ onMounted(() => {
 .km { height: 100dvh; min-height: 640px; display: flex; flex-direction: column; overflow: hidden; color: var(--vp-c-text-1); background: var(--vp-c-bg); }
 .km-topbar { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 9px 16px; border-bottom: 1px solid var(--vp-c-divider); background: var(--vp-c-bg); }
 .km-title,.km-actions,.km-search,.button-row,.check-pair { display: flex; align-items: center; gap: 9px; }
+.metadata-toggle { display: flex; align-items: center; gap: 5px; white-space: nowrap; color: var(--vp-c-text-2); font-size: 12px; }
 .km-title { min-width: 0; color: var(--vp-c-brand-1); }.km-title strong { color: var(--vp-c-text-1); font-size: 15px; }.km-title span { color: var(--vp-c-text-3); font-size: 12px; }
 .km-actions { margin-left: auto; }.km-search { width: min(32vw, 360px); padding: 7px 10px; border: 1px solid var(--vp-c-divider); border-radius: 6px; background: var(--vp-c-bg-soft); color: var(--vp-c-text-3); }
 .km-search input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--vp-c-text-1); font-size: 13px; }

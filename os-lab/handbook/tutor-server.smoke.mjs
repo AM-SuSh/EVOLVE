@@ -190,8 +190,10 @@ try {
   assert.equal(uploadedKnowledge.source.defaultClass, 'teacher-only')
   const uploadedVersion = uploadedKnowledge.source.versions[0]
   assert.equal(uploadedVersion.scopeSuggestions.some((item) => item.labId === 'lab2'), true)
-  assert.equal((await fetch(`${endpoint}/teacher/knowledge/chunks?sourceId=${uploadedKnowledge.upload.sourceId}&includeInactive=true`, { headers: teacherHeaders })
-    .then((response) => response.json())).chunks[0].active, false)
+  const uploadedChunks = (await fetch(`${endpoint}/teacher/knowledge/chunks?sourceId=${uploadedKnowledge.upload.sourceId}&includeInactive=true`, { headers: teacherHeaders })
+    .then((response) => response.json())).chunks
+  const uploadedChunk = uploadedChunks[0]
+  assert.equal(uploadedChunk.active, false)
   const reviewedKnowledge = await postJson('/teacher/knowledge/review', teacherHeaders, {
     sourceId: uploadedKnowledge.upload.sourceId,
     versionId: uploadedVersion.id,
@@ -207,6 +209,12 @@ try {
     versionId: uploadedVersion.id,
   })
   assert.equal(publishedKnowledge.status, 200)
+  const teacherHybridSearch = await fetch(`${endpoint}/teacher/knowledge/search?q=scheduler&labId=lab2`, {
+    headers: teacherHeaders,
+  }).then((response) => response.json())
+  assert.equal(teacherHybridSearch.ok, true)
+  assert.equal(teacherHybridSearch.chunks.length > 0, true)
+  assert.equal(teacherHybridSearch.retrieval.vectorCandidates > 0, true)
   const factoryValidation = await postJson('/teacher/lab-factory/validate', teacherHeaders, {
     labId: 'lab3',
     variant: 'debug',
@@ -432,10 +440,21 @@ try {
   assert.equal(chat.tutorState.requestedStage, 'reflect')
   assert.equal(chat.tutorState.evidenceRefs.includes(`run:${runFrame.runId}`), true)
   assert.equal(chat.tutorState.evidenceRefs.includes(`trace:${runFrame.runId}`), true)
+  assert.equal(chat.retrieval.vectorCandidates > 0, true)
   assert.equal(mockChatRequests.length, 1)
   assert.match(mockChatRequests[0].messages[0].content, /Lab2/)
   assert.match(mockChatRequests[0].messages[0].content, /knowledge-chunk/)
   assert.match(mockChatRequests[0].messages[0].content, /只能转化为反问或观察目标/)
+
+  const removedKnowledge = await fetch(`${endpoint}/teacher/knowledge/chunk?id=${encodeURIComponent(uploadedChunk.id)}`, {
+    method: 'DELETE', headers: teacherHeaders,
+  })
+  assert.equal(removedKnowledge.status, 200)
+  assert.equal((await removedKnowledge.json()).chunk.active, false)
+  const visibleAfterRemoval = await fetch(`${endpoint}/teacher/knowledge/chunks?sourceId=${uploadedKnowledge.upload.sourceId}&retrievableOnly=true`, {
+    headers: teacherHeaders,
+  }).then((response) => response.json())
+  assert.equal(visibleAfterRemoval.chunks.length, 0)
 
   const runId = runFrame.runId
   const traceResponse = await fetch(`${endpoint}/runs/${encodeURIComponent(runId)}/trace?offset=0&limit=2`, {

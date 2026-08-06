@@ -1,5 +1,105 @@
 # os-lab 项目进度总览
 
+## 2026-08-05 - Task: RISC-V Reader 二次质量治理与教师 Chunk 移除
+
+### What was done
+
+- RISC-V Reader 增加前置页门控：PDF 第 15 页（第一章）之前的封面、目录、赞语、作者介绍统一标记为 `front-matter`，不进入检索知识库；目录点线节点同时从 `sectionPath` 清除，避免目录标题污染后续正文。
+- 修正“第一章 为什么要有 RISC-V？”这类问句章标题的识别；继续过滤位域刻度、指令编码表、浮点寄存器对照表、汇编密集块、PDF 扁平上标（如 `2^9 -> 29`）和图注列表。
+- 全量重建并导入 RISC-V Reader v6：95 个 Chunk，最小来源页为 15；纯数字、目录污染路径、数字占比超过 30%、扁平上标模式均为 0。最高数字密度 16.3% 的内容是 RV64/RV32、ARM、x86 的有效架构比较，不属于乱码。
+- 教师知识库工作台新增“移除知识块”：采用可审计软删除，设置 `active=0/indexable=0`、删除向量缓存、重建来源 FTS，并写入 `remove` 审计；默认列表和 Tutor 检索隐藏，开启元数据仍可追溯原始版本。
+- 新增 `DELETE /teacher/knowledge/chunk?id=...`，保留教师身份门控和确认提示；删除后刷新知识树与 Chunk 列表。
+
+### Testing
+
+- Python 规范化/质量门/分块/Lab 构建：28/28 通过。
+- KnowledgeStore、Tutor API smoke：通过，覆盖删除后不可检索、默认列表隐藏和审计追溯。
+- Node 项目回归：51/51 通过；VitePress production build 通过。
+- SQLite 当前状态：8 Sources、29 Versions、918 Documents、14,860 历史 Chunks、1,964 active Chunks、1,940 FTS/向量可检索 Chunks。
+
+---
+
+## 2026-08-05 - Task: RAG 知识分块质量治理与全量重建
+
+### What was done
+
+- 用三个只读审计子智能体分别抽查 PDF、远程讲义和平台 YAML，确认旧语料中的主要问题不是单纯 Chunk 长度，而是来源过宽、格式误解析、结构化配置直接入库和风险门缺失。
+- 新增 `quality_filter.py` 两级质量门：Block 级清除 Excalidraw/JSON、URL、RST/GitBook 模板、纯数字、乱码、错位 PDF 代码、课程管理页和低语义短块；Chunk 级执行专业陈述检查、来源内去重和答案风险拒绝，并输出逐原因统计。
+- 平台 concepts 不再把 YAML 整份硬切；当前将 19 个 concept 投影为“一概念一知识块”，正文只保留核心原理、体系结构机制、不变量和迁移知识，ID/来源锚点保留在 metadata。
+- OSTEP 放弃文本层损坏的本地合并 PDF，改用官方中文站 31 个核心章节 PDF；快照记录每章 URL、字节数和 SHA-256。LearningOS、rCore 和 CSAPP 收紧到课程正文，排除绘图、配置、作业和讲师材料。
+- 修复编号代码行误判标题、Markdown CRLF front matter、RST directive、长代码换行/缩进丢失、Sv39 位域被误删及 PDF 页码污染章节路径。
+- 高风险/blocked Chunk 现在不能进入 FTS、向量候选或 Tutor 召回；过滤算法和 Chunk 内容 hash 纳入 Source Version 指纹，规则变化一定生成新版本；向量预热会清理旧版本缓存。
+- 教师上传材料改为 `normalize -> block quality -> chunk -> chunk quality -> pending-review`，与内置语料使用同一质量门；知识库页面默认只显示可检索专业知识，显式开启“显示元数据”才查看配置、旧内容和高风险块。
+
+### Quality result
+
+- 外部 7 个补充来源：212 Documents；19,467 个解析 Block 丢弃 9,194 个，并输出 10,276 个保留/投影 Block（concept 投影将 16 个结构块展开为 19 个语义块）；初始 2,531 Chunks 保留 2,167、丢弃 364。
+- 连同 Lab 手册，SQLite 当前 8 Sources、2,312 active Chunks；其中 2,288 同时进入 FTS5 和 `local-feature-hash-v1-384`，24 个受限块只供教师审查。
+- 噪声回归为 0：纯数字 Chunk、raw URL、Excalidraw/JSON、GitBook/RST directive、Unicode replacement character 均未在最终 Chunk 中命中。
+- `进程状态转换`、`Sv39 页表遍历`、`trap 上下文`、`文件系统 inode`、`信号量` 五组真实查询 Top-5 均返回实验手册、概念 YAML、OSTEP、LearningOS 或 rCore 的专业内容，没有模板/网址/乱码块。
+
+### Testing
+
+- Python 规范化/质量门/分块/Lab 构建：22/22 通过。
+- KnowledgeStore/Hybrid Retriever：4/4 通过，新增 high-risk 不可召回、代码缩进保留、concept locator 和质量过滤覆盖。
+- 项目 Node 回归：51/51 通过；Tutor Server smoke 通过；VitePress production build 通过。
+- `validate-sources.mjs` 与 `validate-access-policy.mjs` 通过：8 个来源、3 个 pinned Git 快照、1 个逐文件哈希集合、8 个权限绑定均有效。
+- 数据库全量重建、FTS 重建和向量重建通过；清理 7,374 条首轮历史向量，并在最终版本切换时继续按 current-version 自动裁剪。
+
+---
+
+## 2026-08-05 - Task: 补全 AI 导师 8 个知识来源并全量入库
+
+### What was done
+
+- 新增 `fetch_source_snapshots.py`：从 `sources.json` 读取固定 commit，下载 LearningOS 讲义、rCore Tutorial Guide 和 CSAPP 中文仓库，只保留 Markdown/HTML/RST 教学正文；快照进入 Git 忽略的构建目录，不提交上游大文件。
+- 新增 `build_knowledge_sources.py`：统一处理本地 YAML/JSON/Markdown、两本完整 PDF 和远程源码快照，输出按 Source 隔离的 Document/Chunk JSON 与总 manifest；7 个补充来源共 395 Documents、7,371 Chunks，解析错误为 0。
+- 规范化器支持 YAML multi-document stream；Document Schema 补全 EPUB/DOCX；分块 scope 统一限制为 `global/lab1..lab8`，平台元数据不再产生非法 `platform` scope。
+- KnowledgeStore 新增通用多来源导入，保留来源身份、权威等级、版本、正文定位、权限、Lab binding 和审计；数据库内部键加入来源路径 hash，解决不同文件内容相同时的 Document/Chunk 键碰撞。
+- 实际知识库现有 8 Sources、12 Versions、431 Documents、9,070 历史 Chunks；当前激活 7,516 Chunks，7,495 Chunks 同时进入 FTS5 与 `local-feature-hash-v1-384` 向量缓存。
+- 教师知识库工作台现在从 SQLite 读取并显示全部 8 个实际来源；选择来源后可浏览对应 Chunk 正文，系统元数据仍可查看但不进入 Tutor 检索。
+- 新增 `knowledge:fetch`、`knowledge:build:sources`、`knowledge:ingest:sources`、`knowledge:build:all`、`knowledge:ingest:all`，支持老师后续更新固定快照并重建版本。
+
+### Testing
+
+- Python 规范化/分块/Lab 构建：12/12 通过，新增 YAML 多文档覆盖。
+- KnowledgeStore：4/4 通过，新增多 Source 导入、待审核来源可见性和 Global 跨 Lab 检索覆盖。
+- 项目 Node 测试：51/51 通过；Tutor Server smoke 通过；VitePress production build 通过。
+- `validate-sources.mjs`：8/8 来源有效；实际 `knowledge:stats` 为 8 Sources、7,516 active、7,495 indexed/embedded。
+
+### Notes
+
+- `knowledge.db` 与下载快照均为可重建的 Git 忽略产物；权威清单、固定 commit、构建和导入代码纳入版本控制。
+- 当前 21 个 active 但未索引的 Chunk 来自 `system-metadata` 或受限策略，这是权限设计结果，不是漏建索引。
+
+---
+
+## 2026-08-05 - Task: AI 导师 RAG 知识库 Step 7 · 向量检索与混合排序
+
+### What was done
+
+- 新增 `knowledge_chunk_embeddings` 派生表：按 Chunk、模型和内容 hash 缓存 Float32 向量，主知识表仍是唯一权威来源。
+- 新增可替换 Embedding Provider：默认离线 `local-feature-hash-v1-384`，可通过 `OS_LAB_EMBEDDING_BASE_URL/MODEL/API_KEY` 接入 OpenAI-compatible `/embeddings`。
+- 新增 `hybrid-retriever.mjs`：FTS 词面候选 + cosine 向量候选，使用 RRF 融合，并加入小幅来源权威度和精确 Lab 加权。
+- Tutor Server、教师搜索、CLI `knowledge:embed/search` 均接入混合检索；发布和回滚尝试增量向量索引，启动时后台预热当前发布 Chunk。
+- 向量 Provider 故障、超时或维度不一致时自动 FTS-only 降级，不阻断 Tutor 或教师发布；新增检索诊断和 query hash 审计，不保存问题原文。
+- 前端知识库工作台显示已缓存向量数量和模型摘要。
+- 修复知识库页面只显示 Global/Lab 目录的问题：实因为旧 Tutor Server 进程返回知识库接口 404；前端增加服务版本错误提示、显式内容刷新和首个 Chunk 同步。
+- Step 6 修复已提交到本地 `c3efc1b`，Step 7 当前等待验证后再提交。
+
+### Testing
+
+- KnowledgeStore/Hybrid Retriever：通过向量缓存、OS 中英文概念别名召回、FTS 降级、Lab 过滤和检索审计测试。
+- Tutor Server smoke：通过教师上传、发布后向量搜索和学生对话向量候选验证。
+- Step 6 原有 Node/Python/VitePress 验证继续保持通过。
+
+### Notes
+
+- 默认本地向量是可复现的离线 lexical-semantic 特征，不等同于大模型 embedding；生产部署建议配置经评估的中文模型，并保留 FTS 作为硬降级路径。
+- Step 8 尚未开始：RAG Tutor Harness 将冻结混合召回和 Provider 降级的行为阈值。
+
+---
+
 ## 2026-08-05 - Task: AI 导师 RAG 知识库 Step 6 · Tutor 接入与教师工作台
 
 ### What was done
@@ -24,7 +124,7 @@
 ### Notes
 
 - 自动 Lab 判断是可解释的初筛建议，不是发布决策；教师确认仍是硬门槛。
-- Step 7 尚未开始：后续加入 embedding、FTS/向量混合排序与权威度重排。
+- Step 7 已完成：向量缓存、混合排序和 FTS 降级已接入；当前记录保留作为 Step 6 历史说明。
 
 ---
 

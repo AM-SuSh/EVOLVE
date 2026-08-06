@@ -124,6 +124,28 @@ CREATE TABLE IF NOT EXISTS knowledge_audit_log (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS knowledge_chunk_embeddings (
+  chunk_id TEXT NOT NULL REFERENCES knowledge_chunks(id) ON DELETE CASCADE,
+  model TEXT NOT NULL,
+  dimensions INTEGER NOT NULL,
+  vector_blob BLOB NOT NULL,
+  content_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(chunk_id, model)
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_retrieval_log (
+  id TEXT PRIMARY KEY,
+  query_hash TEXT NOT NULL,
+  lab_id TEXT NOT NULL DEFAULT '',
+  provider TEXT NOT NULL,
+  lexical_count INTEGER NOT NULL,
+  vector_count INTEGER NOT NULL,
+  selected_ids_json TEXT NOT NULL,
+  fallback_reason TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS knowledge_versions_source_idx ON knowledge_source_versions(source_id, version_number DESC);
 CREATE INDEX IF NOT EXISTS knowledge_documents_version_idx ON knowledge_documents(source_version_id);
 CREATE INDEX IF NOT EXISTS knowledge_chunks_source_active_idx ON knowledge_chunks(source_id, active, indexable);
@@ -132,6 +154,8 @@ CREATE INDEX IF NOT EXISTS knowledge_chunks_class_idx ON knowledge_chunks(conten
 CREATE INDEX IF NOT EXISTS knowledge_chunk_labs_lab_idx ON knowledge_chunk_labs(lab_id, chunk_id);
 CREATE INDEX IF NOT EXISTS knowledge_ingestion_source_idx ON knowledge_ingestion_runs(source_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS knowledge_audit_entity_idx ON knowledge_audit_log(entity_type, entity_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS knowledge_embeddings_model_idx ON knowledge_chunk_embeddings(model, chunk_id);
+CREATE INDEX IF NOT EXISTS knowledge_retrieval_created_idx ON knowledge_retrieval_log(created_at DESC);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunks_fts USING fts5(
   chunk_id UNINDEXED,

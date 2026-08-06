@@ -92,6 +92,27 @@ class ChunkTest(unittest.TestCase):
         self.assertTrue(all(item["text"].startswith("```rust\n") and item["text"].endswith("\n```") for item in chunks))
         self.assertTrue(all(item["metadata"]["charCount"] <= 40 for item in chunks))
 
+    def test_long_code_keeps_indentation_and_line_breaks(self):
+        self.document["blocks"] = [{
+            "id": "b0", "ordinal": 0, "type": "code", "language": "rust",
+            "text": "fn trap() {\n    if ready {\n        schedule();\n    }\n}\n" * 3,
+            "sectionPath": ["Lab 2", "运行"], "locator": {"lineStart": 1},
+        }]
+        chunks = chunk_document(self.document, policy=self.policy, target_chars=60, max_chars=80)["chunks"]
+        payload = "\n".join(item["text"] for item in chunks)
+        self.assertIn("    if ready {", payload)
+        self.assertIn("        schedule();", payload)
+        self.assertNotIn("fn trap() {     if ready", payload)
+
+    def test_concept_id_can_come_from_projection_locator(self):
+        self.document["blocks"] = [{
+            "id": "b0", "ordinal": 0, "type": "paragraph", "text": "Sv39 三级页表遍历核心机制。",
+            "sectionPath": ["Sv39 三级页表遍历"],
+            "locator": {"path": "sv39.yaml", "conceptId": "os.mm.sv39-walk"},
+        }]
+        chunk = chunk_document(self.document, policy=self.policy)["chunks"][0]
+        self.assertEqual(chunk["conceptIds"], ["os.mm.sv39-walk"])
+
 
 if __name__ == "__main__":
     unittest.main()

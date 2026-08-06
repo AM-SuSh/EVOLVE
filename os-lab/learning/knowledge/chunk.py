@@ -49,14 +49,19 @@ def _scope(source_id: str, source_path: str) -> list[str]:
     match = LAB_RE.search(_path_key(source_path))
     if match:
         return [f"lab{match.group(1)}"]
-    if source_id.startswith("platform-lab"):
-        return ["platform"]
+    # Every binding must be a valid retrieval scope.  Platform-level metadata
+    # has no Lab-specific path, so keep it in the global namespace; its
+    # system-metadata class still prevents Tutor retrieval.
     return ["global"]
 
 
 def _concept_ids(blocks: Iterable[dict[str, Any]]) -> list[str]:
     found: list[str] = []
     for item in blocks:
+        locator = item.get("locator") if isinstance(item.get("locator"), dict) else {}
+        concept_id = str(locator.get("conceptId") or "").strip()
+        if concept_id and concept_id not in found:
+            found.append(concept_id)
         text = str(item.get("text", ""))
         for match in re.finditer(r"(?:^|\n)\s*(?:id|conceptId|concept_id)\s*:\s*['\"]?([A-Za-z0-9_.:-]+)", text, re.I):
             value = match.group(1)
@@ -103,6 +108,33 @@ def _split_long_text(text: str, max_chars: int) -> list[str]:
     if current:
         result.append(current)
     return result
+
+
+def _split_long_code(text: str, max_chars: int) -> list[str]:
+    """Split code without flattening indentation or line boundaries."""
+    if len(text) <= max_chars:
+        return [text]
+    result: list[str] = []
+    current: list[str] = []
+    current_length = 0
+    for line in text.splitlines(keepends=True):
+        if len(line) > max_chars:
+            if current:
+                result.append("".join(current).rstrip("\n"))
+                current = []
+                current_length = 0
+            content = line.rstrip("\r\n")
+            result.extend(content[start : start + max_chars] for start in range(0, len(content), max_chars))
+            continue
+        if current and current_length + len(line) > max_chars:
+            result.append("".join(current).rstrip("\n"))
+            current = []
+            current_length = 0
+        current.append(line)
+        current_length += len(line)
+    if current:
+        result.append("".join(current).rstrip("\n"))
+    return [piece for piece in result if piece]
 
 
 def _chunk_type(blocks: list[dict[str, Any]]) -> str:
@@ -217,7 +249,7 @@ def chunk_document(document: dict[str, Any], *, policy: dict[str, Any] | None = 
             if item.get("type") == "code":
                 language = str(item.get("language") or "").strip()
                 payload_limit = max(1, max_chars - len(language) - 8)
-                payloads = _split_long_text(str(item.get("text", "")).strip(), payload_limit)
+                payloads = _split_long_code(str(item.get("text", "")).strip(), payload_limit)
                 pieces = [f"```{language}\n{piece}\n```" if language else f"```\n{piece}\n```" for piece in payloads]
             else:
                 pieces = _split_long_text(rendered, max_chars)

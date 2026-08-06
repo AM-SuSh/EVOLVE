@@ -19,7 +19,8 @@
         "targetChars": { "type": "integer", "minimum": 1 },
         "maxChars": { "type": "integer", "minimum": 1 },
         "overlapChars": { "const": 0 },
-        "chunkCount": { "type": "integer", "minimum": 0 }
+        "chunkCount": { "type": "integer", "minimum": 0 },
+        "qualityFilter": { "type": "string", "minLength": 1 }
       }
     },
     "chunks": {

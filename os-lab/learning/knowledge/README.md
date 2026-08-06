@@ -9,7 +9,8 @@ stored as Source records.
 
 1. Platform-owned Lab manuals and Lab package metadata are authoritative for
    the current exercise behavior.
-2. Prefer local, stable files over equivalent remote mirrors.
+2. Prefer stable, hashable files whose text layer passes quality audit; a
+   damaged local PDF must not win over a clean official chapter snapshot.
 3. Prefer source repositories or structured course pages over duplicated
    navigation pages.
 4. Student Tutor sources must not include answer keys, reference patches, or
@@ -20,8 +21,9 @@ stored as Source records.
 
 ## Canonical Source Choices
 
-- OSTEP: use the complete local PDF at the workspace root. Do not ingest the
-  split chapter PDFs under `操作系统/` or either online Chinese mirror.
+- OSTEP: use 31 official Chinese chapter PDFs covering process, memory,
+  concurrency, I/O, and file systems. The merged local PDF is excluded because
+  its text layer corrupts code lines and Chinese character mappings.
 - RISC-V Reader: use the local PDF at the workspace root instead of downloading
   the supplied remote copy.
 - OS lectures: use the Markdown source repository as the canonical form. The
@@ -42,14 +44,18 @@ stored as Source records.
   JSON/YAML, text, and PDF into traceable Document/Block JSON.
 - `chunk-schema.json` and `chunk.py`: build deterministic chunks without
   crossing section boundaries, retaining policy and source locators.
+- `quality_filter.py`: apply auditable Block/Chunk quality gates, concept
+  semantic projection, deduplication, and answer-risk rejection.
 - `build_lab_chunks.py`: normalize, chunk, and validate all Lab1-Lab8 manuals,
   then write an inspectable local build manifest.
+- `fetch_source_snapshots.py` and `build_knowledge_sources.py`: fetch pinned,
+  text-only remote snapshots and build the other seven canonical sources.
 - `knowledge-schema.sql` and `knowledge-store.mjs`: versioned SQLite/FTS5
   persistence, scoped search, ingestion audit, and rollback.
 - `knowledge-cli.mjs`: initialize, ingest, inspect, search, and roll back the
   local knowledge database.
-- `test_normalize.py`, `test_chunk.py`, and `test_build_lab_chunks.py`: parser,
-  chunking, and eight-Lab integration tests.
+- `test_normalize.py`, `test_chunk.py`, `test_quality_filter.py`, and
+  `test_build_lab_chunks.py`: parser, quality, chunking, and eight-Lab tests.
 
 Run the inventory validation from `os-lab`:
 
@@ -59,6 +65,7 @@ node learning/knowledge/validate-access-policy.mjs
 python -m unittest -v `
   learning/knowledge/test_build_lab_chunks.py `
   learning/knowledge/test_chunk.py `
+  learning/knowledge/test_quality_filter.py `
   learning/knowledge/test_normalize.py
 ```
 
@@ -67,6 +74,23 @@ Build all Lab1-Lab8 manual chunks:
 ```powershell
 python learning/knowledge/build_lab_chunks.py
 ```
+
+Build and ingest all eight canonical sources from `os-lab/handbook`:
+
+```powershell
+npm run knowledge:fetch
+npm run knowledge:build:all
+npm run knowledge:ingest:all
+npm run knowledge:embed
+npm run knowledge:stats
+```
+
+Git snapshots are pinned by commit; OSTEP chapter snapshots record per-file
+URL, byte count, and SHA-256. All snapshots live in the ignored
+`build/snapshots/` directory. The current full build contains 8 sources, 220
+current documents, 2,312 active chunks, and 2,288 FTS/vector-indexed chunks.
+The remaining 24 answer-risk or policy-restricted chunks stay available for
+explicit teacher review but are not Tutor-retrievable.
 
 The generated files are intentionally local build artifacts:
 
@@ -173,3 +197,24 @@ current Lab plus `global`, permits only `student-safe` and `guided-hint`, return
 at most five chunks with at most two global-only chunks, and validates every
 `kb:` citation against the current turn's recall set. Runtime run/trace evidence
 continues to outrank retrieved teaching material.
+
+## Hybrid retrieval and embeddings
+
+`knowledge_chunk_embeddings` is a rebuildable derivative of the relational
+Chunk table. `hybrid-retriever.mjs` fuses FTS candidates and cosine-similarity
+candidates with Reciprocal Rank Fusion, then applies small authority and exact
+Lab boosts. Permission, current-version, active/indexable, and Tutor chunk
+limits remain hard filters after fusion.
+
+The default `local-feature-hash-v1-384` provider is deterministic and offline;
+it combines Chinese trigrams, code identifiers, and a small OS concept-alias
+map. For a real semantic model, set `OS_LAB_EMBEDDING_BASE_URL`,
+`OS_LAB_EMBEDDING_MODEL`, and optionally `OS_LAB_EMBEDDING_API_KEY` for an
+OpenAI-compatible `/embeddings` endpoint. A provider failure falls back to FTS
+and is recorded as a retrieval diagnostic rather than failing the Tutor.
+
+```powershell
+# From os-lab/handbook
+npm run knowledge:embed
+node ../learning/knowledge/knowledge-cli.mjs search --lab lab2 --query "scheduler"
+```

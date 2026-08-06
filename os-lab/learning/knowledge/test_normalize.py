@@ -28,6 +28,71 @@ class NormalizeTest(unittest.TestCase):
         self.assertEqual(document["blocks"][-1]["locator"]["lineStart"], 7)
         self.assertEqual(document["blocks"][-1]["sectionPath"], ["Trap", "入口"])
 
+    def test_markdown_crlf_front_matter_is_not_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "slides.md"
+            path.write_bytes(b"---\r\nmarp: true\r\ntheme: default\r\n---\r\n# Process\r\n\r\nA process owns an address space.\r\n")
+            document = normalize_file(path, "test-markdown")
+        content = "\n".join(item["text"] for item in document["blocks"])
+        self.assertNotIn("marp", content)
+        self.assertNotIn("theme:", content)
+        self.assertIn("address space", content)
+
+    def test_rst_parses_heading_note_and_code_without_directives(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "trap.rst"
+            path.write_text(
+                "Trap 入口\n=========\n\n.. note::\n\n   stvec 保存入口地址。\n\n.. code-block:: rust\n\n   fn trap() {\n       save_context();\n   }\n",
+                encoding="utf-8",
+            )
+            document = normalize_file(path, "test-rst")
+        content = "\n".join(item["text"] for item in document["blocks"])
+        self.assertEqual(document["format"], "rst")
+        self.assertEqual([item["type"] for item in document["blocks"]], ["heading", "paragraph", "code"])
+        self.assertNotIn("code-block", content)
+        self.assertIn("    save_context();", document["blocks"][-1]["text"])
+
+    def test_numbered_code_line_is_not_a_heading(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "extract.txt"
+            path.write_text("5 #include <stdio.h>\n6 int main(void) {\n7 return 0;\n8 }\n", encoding="utf-8")
+            document = normalize_file(path, "test-text")
+        self.assertFalse(any(item["type"] == "heading" for item in document["blocks"]))
+        self.assertIn("#include", document["blocks"][0]["text"])
+
+    def test_pdf_style_bit_positions_are_not_headings_but_decimal_sections_are(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "extract.txt"
+            path.write_text("31 25 24 20 19 15 14 12 11 7 6 0\n\n2.1 特权级切换\n\n系统调用会触发特权级切换。\n", encoding="utf-8")
+            document = normalize_file(path, "test-text")
+        headings = [item["text"] for item in document["blocks"] if item["type"] == "heading"]
+        self.assertEqual(headings, ["2.1 特权级切换"])
+        self.assertEqual(document["blocks"][0]["type"], "paragraph")
+
+    def test_equations_and_wrapped_chapter_sentences_are_not_headings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "extract.txt"
+            path.write_text(
+                "29.51 𝐵 𝑖𝑛𝑠𝑡𝑟𝑢𝑐𝑡𝑖𝑜𝑛𝑠 0.72 𝑐𝑙𝑜𝑐𝑘\n\n"
+                "第八章介绍了向量扩展 RV32V，当与其他指令相比时会发现差异。\n\n"
+                "8.2 向量寄存器\n\n向量寄存器保存多个数据元素。\n",
+                encoding="utf-8",
+            )
+            document = normalize_file(path, "test-text")
+        headings = [item["text"] for item in document["blocks"] if item["type"] == "heading"]
+        self.assertEqual(headings, ["8.2 向量寄存器"])
+
+    def test_chapter_question_is_recognized_as_a_heading(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "extract.txt"
+            path.write_text(
+                "第一章 为什么要有 RISC-V？\n\nRISC-V 的目标是成为一个通用的指令集架构。\n",
+                encoding="utf-8",
+            )
+            document = normalize_file(path, "test-text")
+        self.assertEqual(document["blocks"][0]["type"], "heading")
+        self.assertEqual(document["blocks"][1]["sectionPath"], ["第一章 为什么要有 RISC-V？"])
+
     def test_html_removes_navigation_and_keeps_anchor(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "guide.html"
@@ -54,6 +119,16 @@ class NormalizeTest(unittest.TestCase):
         self.assertEqual(json_document["blocks"][0]["type"], "structured")
         self.assertEqual(yaml_document["blocks"][0]["type"], "structured")
         self.assertIn("stvec", yaml_document["blocks"][0]["text"])
+
+    def test_multi_document_yaml_keeps_each_concept(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "concepts.yaml"
+            path.write_text("id: os.trap\nname: Trap\n---\nid: os.scheduler\nname: Scheduler\n", encoding="utf-8")
+            document = normalize_file(path, "test-yaml-stream")
+        self.assertEqual(len(document["blocks"]), 2)
+        self.assertIn("os.trap", document["blocks"][0]["text"])
+        self.assertIn("os.scheduler", document["blocks"][1]["text"])
+        self.assertEqual(document["blocks"][1]["locator"]["document"], 2)
 
     def test_epub_uses_spine_order_and_docx_keeps_heading_structure(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -25,6 +25,8 @@ assert(Array.isArray(inventory.sources) && inventory.sources.length > 0, 'source
 
 const ids = new Set()
 let checkedLocalPaths = 0
+let checkedPinnedSources = 0
+let checkedFileCollections = 0
 
 for (const source of inventory.sources) {
   assert(typeof source.id === 'string' && source.id.length > 0, 'every source requires an id')
@@ -43,6 +45,23 @@ for (const source of inventory.sources) {
     checkedLocalPaths += 1
   }
 
+  if (['git', 'website'].includes(source.sourceType)) {
+    assert(/^https:\/\//.test(String(source.url || '')), `remote source requires HTTPS URL: ${source.id}`)
+    if (Array.isArray(source.downloadFiles)) {
+      assert(String(source.urlTemplate || '').startsWith('https://') && String(source.urlTemplate).includes('{file}'), `file collection requires an HTTPS {file} template: ${source.id}`)
+      assert(source.downloadFiles.length > 0 && new Set(source.downloadFiles).size === source.downloadFiles.length, `file collection requires unique files: ${source.id}`)
+      for (const file of source.downloadFiles) {
+        assert(typeof file === 'string' && !path.posix.isAbsolute(file) && !file.split('/').includes('..'), `unsafe collection file in ${source.id}: ${file}`)
+      }
+      checkedFileCollections += 1
+    } else {
+      assert(/^[a-f0-9]{40}$/.test(String(source.pinnedCommit || '')), `remote source requires a pinned commit: ${source.id}`)
+      const repository = String(source.snapshotRepository || source.url || '')
+      assert(repository.startsWith('https://github.com/'), `remote snapshot must use a GitHub repository: ${source.id}`)
+      checkedPinnedSources += 1
+    }
+  }
+
 }
 
 assert(inventory.sources.length >= 5, 'inventory must select at least five sources')
@@ -52,4 +71,6 @@ console.log(JSON.stringify({
   inventoryVersion: inventory.inventoryVersion,
   totalSources: inventory.sources.length,
   checkedLocalPaths,
+  checkedPinnedSources,
+  checkedFileCollections,
 }, null, 2))

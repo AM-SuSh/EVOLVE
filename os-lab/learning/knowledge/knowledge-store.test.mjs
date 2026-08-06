@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { openKnowledgeStore } from './knowledge-store.mjs'
+import { createHybridRetriever } from './hybrid-retriever.mjs'
+import { createLocalEmbeddingProvider } from './embedding-provider.mjs'
 
 function writeJson(file, value) {
   mkdirSync(path.dirname(file), { recursive: true })
@@ -63,6 +65,58 @@ function fixture(root, revision = 1) {
   return manifestFile
 }
 
+function sourceFixture(root) {
+  const sourceId = 'textbook-fixture'
+  const documentId = `${sourceId}:document`
+  const text = '虚拟内存通过页表建立地址空间映射。'
+  writeJson(path.join(root, sourceId, 'documents/doc.json'), {
+    schemaVersion: 1, documentId, sourceId, title: '测试教材', format: 'markdown', language: 'zh-CN',
+    contentHash: 'd'.repeat(64), metadata: { sourcePath: 'snapshot/chapter.md' },
+    blocks: [{ id: 'b0', ordinal: 0, type: 'paragraph', text, sectionPath: ['虚拟内存'], locator: { lineStart: 1 } }],
+  })
+  writeJson(path.join(root, sourceId, 'chunks/doc.json'), {
+    schemaVersion: 1, chunkSetId: `${documentId}:chunks`, documentId, sourceId,
+    chunking: { algorithm: 'section-aware-v1', targetChars: 1000, maxChars: 1400, overlapChars: 0, chunkCount: 1 },
+    chunks: [{
+      id: `${documentId}:chunk-0`, ordinal: 0, documentId, sourceId, chunkType: 'text', text,
+      sectionPath: ['虚拟内存'], blockOrdinals: [0], locatorStart: { lineStart: 1 }, locatorEnd: { lineEnd: 1 },
+      contentClass: 'student-safe', labScope: ['global'], conceptIds: ['os.vm'], answerRisk: 'low', indexable: true,
+      metadata: { charCount: text.length, tokenEstimate: 8, blockTypes: ['paragraph'], sourcePath: 'snapshot/chapter.md' },
+    }],
+  })
+  const manifest = {
+    schemaVersion: 1, buildId: 'multi-source-fixture', sources: [
+      {
+        id: sourceId, title: '测试教材', sourceType: 'snapshot', authorityRank: 70, defaultClass: 'student-safe',
+        status: 'published', documents: [{ documentFile: 'documents/doc.json', chunkFile: 'chunks/doc.json', contentHash: 'd'.repeat(64) }],
+      },
+      { id: 'pending-fixture', title: '待快照来源', sourceType: 'website', authorityRank: 10, defaultClass: 'student-safe', status: 'pending-review', documents: [] },
+    ],
+  }
+  const manifestFile = path.join(root, 'manifest.json')
+  writeJson(manifestFile, manifest)
+  return manifestFile
+}
+
+test('generic build imports multiple source identities and keeps pending inventory visible', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'os-lab-kb-sources-'))
+  const store = openKnowledgeStore({ dbPath: path.join(root, 'knowledge.db') })
+  try {
+    const result = store.ingestKnowledgeBuild(sourceFixture(path.join(root, 'build')), { actor: 'system' })
+    assert.equal(result.sources.length, 2)
+    assert.equal(store.stats().sources, 2)
+    assert.equal(store.stats().documents, 1)
+    assert.equal(store.search('页表', { labId: 'lab3' }).length, 1)
+    assert.equal(store.getSource('pending-fixture').status, 'pending-review')
+    assert.equal(store.listSources().find((item) => item.id === 'pending-fixture').activeChunks, 0)
+    const reused = store.ingestKnowledgeBuild(sourceFixture(path.join(root, 'build')), { actor: 'system' })
+    assert.equal(reused.sources.every((item) => item.reused), true)
+    assert.equal(store.stats().versions, 2)
+  } finally {
+    store.close()
+  }
+})
+
 test('ingestion is scoped, searchable, idempotent, and rollback-safe', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'os-lab-kb-'))
   const store = openKnowledgeStore({ dbPath: path.join(root, 'knowledge.db') })
@@ -74,6 +128,7 @@ test('ingestion is scoped, searchable, idempotent, and rollback-safe', () => {
     assert.deepEqual(store.stats(), {
       dbPath: path.join(root, 'knowledge.db'), sources: 1, versions: 1, documents: 2,
       chunks: 4, activeChunks: 4, indexedChunks: 2, ingestionRuns: 1, auditEntries: 1,
+      embeddings: 0, embeddingModels: [], retrievalRuns: 0,
       labs: [{ labId: 'lab1', chunks: 2 }, { labId: 'lab2', chunks: 2 }],
     })
     assert.equal(store.search('任务调度', { labId: 'lab2' }).length, 1)
@@ -107,6 +162,38 @@ test('ingestion is scoped, searchable, idempotent, and rollback-safe', () => {
     assert.equal(store.search('链接脚本', { labId: 'lab1' }).length, 0)
     assert.equal(store.stats().indexedChunks, 2)
     assert.equal(store.listVersions('platform-lab-manuals').filter((item) => item.status === 'published').length, 1)
+  } finally {
+    store.close()
+  }
+})
+
+test('hybrid retrieval caches vectors, bridges OS aliases, and falls back to FTS', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'os-lab-kb-hybrid-'))
+  const store = openKnowledgeStore({ dbPath: path.join(root, 'knowledge.db') })
+  try {
+    store.ingestLabManualBuild(fixture(path.join(root, 'build'), 1), { actor: 'teacher-a' })
+    const retriever = createHybridRetriever(store, { provider: createLocalEmbeddingProvider({ dimensions: 128 }) })
+    const built = await retriever.index()
+    assert.equal(built.upserted, 2)
+    const semantic = await retriever.search('scheduler', { labId: 'lab2', limit: 3 })
+    assert.equal(semantic.results[0].text.includes('任务调度'), true)
+    assert.equal(semantic.results[0].retrieval.vectorRank, 1)
+    assert.equal(semantic.diagnostics.model, 'local-feature-hash-v1-128')
+    assert.equal(store.stats().embeddings, 2)
+
+    const cached = await retriever.index()
+    assert.equal(cached.upserted, 0)
+    assert.equal(store.stats().retrievalRuns, 1)
+
+    const unavailable = createHybridRetriever(store, {
+      provider: {
+        kind: 'unavailable-test-provider', model: 'test:offline', dimensions: 128,
+        async embed() { throw new Error('embedding endpoint unavailable') },
+      },
+    })
+    const lexicalFallback = await unavailable.search('任务调度', { labId: 'lab2', limit: 3 })
+    assert.equal(lexicalFallback.results.length, 1)
+    assert.match(lexicalFallback.diagnostics.fallbackReason, /unavailable/)
   } finally {
     store.close()
   }
@@ -153,11 +240,23 @@ test('teacher upload stays private until reviewed and supports publish, chunk ed
     assert.equal(store.search('stvec', { labId: 'lab1' }).length, 0)
 
     const chunk = store.listChunks({ sourceId })[0]
-    store.updateChunk(chunk.id, { labScopes: ['global'], contentClass: 'student-safe', active: true }, { actor: 'teacher-a' })
+    const highRisk = store.updateChunk(chunk.id, { answerRisk: 'high', indexable: true }, { actor: 'teacher-a' }).chunk
+    assert.equal(highRisk.indexable, false)
+    assert.equal(store.search('stvec', { labId: 'lab2', allowedClasses: ['guided-hint'] }).length, 0)
+    assert.equal(store.listRetrievalCandidates({ sourceId }).length, 0)
+    store.updateChunk(chunk.id, {
+      labScopes: ['global'], contentClass: 'student-safe', answerRisk: 'low', indexable: true, active: true,
+    }, { actor: 'teacher-a' })
     assert.equal(store.search('stvec', { labId: 'lab1' }).length, 1)
+    const removed = store.removeChunk(chunk.id, { actor: 'teacher-a', note: '内容解析异常' }).chunk
+    assert.equal(removed.active, false)
+    assert.equal(removed.indexable, false)
+    assert.equal(store.search('stvec', { labId: 'lab1' }).length, 0)
+    assert.equal(store.listChunks({ sourceId }).length, 0)
+    assert.equal(store.listChunks({ sourceId, includeInactive: true }).length, 1)
     store.disableSource(sourceId, { actor: 'teacher-a', note: '课程结束' })
     assert.equal(store.search('stvec', { labId: 'lab2' }).length, 0)
-    assert.deepEqual(store.listAudit().map((entry) => entry.action), ['disable', 'update', 'publish', 'review', 'upload'])
+    assert.deepEqual(store.listAudit().map((entry) => entry.action), ['disable', 'remove', 'update', 'update', 'publish', 'review', 'upload'])
   } finally {
     store.close()
   }

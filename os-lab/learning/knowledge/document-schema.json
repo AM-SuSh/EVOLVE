@@ -10,7 +10,7 @@
     "documentId": { "type": "string", "minLength": 1 },
     "sourceId": { "type": "string", "minLength": 1 },
     "title": { "type": "string", "minLength": 1 },
-    "format": { "enum": ["markdown", "html", "json", "yaml", "text", "pdf"] },
+    "format": { "enum": ["markdown", "html", "json", "yaml", "text", "rst", "pdf", "epub", "docx"] },
     "language": { "enum": ["zh-CN", "en", "mixed", "unknown"] },
     "contentHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "metadata": { "type": "object" },
@@ -34,4 +34,3 @@
     }
   }
 }
-

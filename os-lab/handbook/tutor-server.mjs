@@ -34,6 +34,7 @@ import { parseTraceQuery, readTracePage, TraceIntegrityError } from '../tutor/tr
 import { decideTutorTurn, enforceTutorOutput, tutorPolicyPrompt } from '../tutor/state-machine.mjs'
 import { validateChatEvidenceRefs } from '../tutor/evidence-refs.mjs'
 import { openKnowledgeStore } from '../learning/knowledge/knowledge-store.mjs'
+import { createHybridRetriever } from '../learning/knowledge/hybrid-retriever.mjs'
 import {
   LAB_ORDER,
   addUserBin,
@@ -82,6 +83,12 @@ const handbookRoot = path.dirname(fileURLToPath(import.meta.url))
 const promptRoot = path.resolve(handbookRoot, '..', 'tutor', 'prompts')
 const osLabRoot = path.resolve(handbookRoot, '..')
 const knowledgeStore = openKnowledgeStore()
+const hybridRetriever = createHybridRetriever(knowledgeStore)
+// 向量索引是可重建派生数据；启动时后台预热，失败时保留 FTS-only 能力。
+const knowledgeWarmup = hybridRetriever.index().catch((error) => {
+  console.warn(`knowledge embedding warmup skipped: ${error instanceof Error ? error.message : String(error)}`)
+  return { ok: false }
+})
 const KNOWLEDGE_ROOT = path.resolve(osLabRoot, 'learning', 'knowledge')
 const KNOWLEDGE_UPLOAD_ROOT = path.resolve(
   process.env.OS_LAB_KNOWLEDGE_UPLOAD_ROOT || path.join(osLabRoot, 'learning', 'uploads', 'knowledge'),
@@ -446,8 +453,16 @@ async function prepareKnowledgeUpload(buffer, metadata) {
       '--title', metadata.title, '--output', documentFile,
     ])
     await runProcess('python', [
+      path.join(KNOWLEDGE_ROOT, 'quality_filter.py'), documentFile,
+      '--kind', 'document', '--output', documentFile,
+    ])
+    await runProcess('python', [
       path.join(KNOWLEDGE_ROOT, 'chunk.py'), documentFile,
       '--target-chars', '1000', '--max-chars', '1400', '--output', chunkFile,
+    ])
+    await runProcess('python', [
+      path.join(KNOWLEDGE_ROOT, 'quality_filter.py'), chunkFile,
+      '--kind', 'chunks', '--source-id', sourceId, '--output', chunkFile,
     ])
     const document = JSON.parse(await readFile(documentFile, 'utf8'))
     const chunkSet = JSON.parse(await readFile(chunkFile, 'utf8'))
@@ -478,8 +493,13 @@ function knowledgePrompt(chunks) {
   ].join('\n\n')
 }
 
-function retrieveTutorKnowledge(message, labId) {
-  const candidates = knowledgeStore.search(message, { labId, allowedClasses: ['student-safe', 'guided-hint'], limit: 12 })
+async function retrieveTutorKnowledge(message, labId) {
+  const hybrid = await hybridRetriever.search(message, {
+    labId,
+    allowedClasses: ['student-safe', 'guided-hint'],
+    limit: 12,
+  })
+  const candidates = hybrid.results
   let globalCount = 0
   const selected = []
   for (const chunk of candidates) {
@@ -490,7 +510,7 @@ function retrieveTutorKnowledge(message, labId) {
     selected.push(chunk)
     if (selected.length >= 5) break
   }
-  return selected
+  return { chunks: selected, diagnostics: hybrid.diagnostics }
 }
 
 async function saveReportAttachments(userId, labId, attachments) {
@@ -830,7 +850,8 @@ async function handleChat(body, request, response, origin, session) {
     return
   }
 
-  const retrievedKnowledge = retrieveTutorKnowledge(message, labId)
+  const retrieval = await retrieveTutorKnowledge(message, labId)
+  const retrievedKnowledge = retrieval.chunks
   const allowedKnowledgeRefs = retrievedKnowledge.map((chunk) => chunk.citation)
   framework = frameworkFor(
     labId,
@@ -957,12 +978,16 @@ async function handleChat(body, request, response, origin, session) {
         tutorState,
         guardrail: { triggered: guardedOutput.guarded, rule: guardedOutput.reason },
         knowledge: knowledgeMeta,
+        retrieval: retrieval.diagnostics,
       }, origin)
       return
     }
 
     openEventStream(response, origin)
-    sendFrame(response, { type: 'meta', model: llm.model, triggered: false, framework: framework.version, tutorState, knowledge: knowledgeMeta })
+    sendFrame(response, {
+      type: 'meta', model: llm.model, triggered: false, framework: framework.version,
+      tutorState, knowledge: knowledgeMeta, retrieval: retrieval.diagnostics,
+    })
     const streamed = await pipeUpstreamStream(upstreamResponse, response, false)
     let reply = streamed.reply.trim()
     let emptyPayload = streamed.lastPayload
@@ -1960,6 +1985,7 @@ const server = http.createServer(async (request, response) => {
           versionId: requestUrl.searchParams.get('versionId') || undefined,
           query: requestUrl.searchParams.get('q') || undefined,
           includeInactive: requestUrl.searchParams.get('includeInactive') === 'true',
+          retrievableOnly: requestUrl.searchParams.get('retrievableOnly') === 'true',
           limit: requestUrl.searchParams.get('limit') || 100,
           offset: requestUrl.searchParams.get('offset') || 0,
         })
@@ -1973,15 +1999,25 @@ const server = http.createServer(async (request, response) => {
         return
       }
 
+      if (request.method === 'DELETE' && pathname === '/teacher/knowledge/chunk') {
+        const chunkId = String(requestUrl.searchParams.get('id') || '')
+        const result = knowledgeStore.removeChunk(chunkId, {
+          actor: session.username,
+          note: '教师在知识库工作台人工核查后移除',
+        })
+        json(response, 200, result, origin)
+        return
+      }
+
       if (request.method === 'GET' && pathname === '/teacher/knowledge/search') {
         const query = String(requestUrl.searchParams.get('q') || '')
         const labId = String(requestUrl.searchParams.get('labId') || '')
-        const chunks = knowledgeStore.search(query, {
+        const hybrid = await hybridRetriever.search(query, {
           labId: labId || undefined,
           allowedClasses: ['student-safe', 'guided-hint', 'teacher-only'],
           limit: requestUrl.searchParams.get('limit') || 20,
         })
-        json(response, 200, { ok: true, chunks }, origin)
+        json(response, 200, { ok: true, chunks: hybrid.results, retrieval: hybrid.diagnostics }, origin)
         return
       }
 
@@ -2049,7 +2085,13 @@ const server = http.createServer(async (request, response) => {
       if (request.method === 'POST' && pathname === '/teacher/knowledge/publish') {
         const body = await readBody(request)
         const result = knowledgeStore.publishVersion(String(body.sourceId || ''), String(body.versionId || ''), { actor: session.username })
-        json(response, 200, result, origin)
+        let embedding = null
+        try {
+          embedding = await hybridRetriever.index({ sourceId: result.sourceId })
+        } catch (error) {
+          embedding = { ok: false, fallbackReason: error instanceof Error ? error.message : String(error) }
+        }
+        json(response, 200, { ...result, embedding }, origin)
         return
       }
 
@@ -2063,7 +2105,13 @@ const server = http.createServer(async (request, response) => {
       if (request.method === 'POST' && pathname === '/teacher/knowledge/rollback') {
         const body = await readBody(request)
         const result = knowledgeStore.rollbackSource(String(body.sourceId || ''), String(body.versionId || ''), { actor: session.username })
-        json(response, 200, result, origin)
+        let embedding = null
+        try {
+          embedding = await hybridRetriever.index({ sourceId: result.sourceId })
+        } catch (error) {
+          embedding = { ok: false, fallbackReason: error instanceof Error ? error.message : String(error) }
+        }
+        json(response, 200, { ...result, embedding }, origin)
         return
       }
 

@@ -1,6 +1,6 @@
 # Agent 系统技术设计与实现记录
 
-本文记录 OS Lab 中 AI 导师、AI 学习评价和 Harness 工程的可执行技术契约。它描述当前已经落地的边界与接口，不把尚未实现的向量检索或自动评分能力写成既成事实。
+本文记录 OS Lab 中 AI 导师、AI 学习评价和 Harness 工程的可执行技术契约。它描述当前已经落地的边界与接口，对尚未落地的能力明确标为后续步骤，不把设计设想写成既成事实。
 
 ## 1. 总体目标与边界
 
@@ -92,7 +92,7 @@ flowchart TB
 机器可读清单位于 [learning/knowledge/sources.json](../learning/knowledge/sources.json)，只登记去重后实际入库的 8 个 canonical source：
 
 - 平台 Lab 手册、Lab package 概念/检查点、发布目录（平台行为的最高权威）。
-- 根目录 OSTEP 中文完整版和 RISC-V Reader 本地 PDF（稳定、可复现的本地副本）。
+- OSTEP 官方中文核心章节 PDF 快照和 RISC-V Reader 本地 PDF（逐文件 hash，可复现）。
 - LearningOS 讲义 Markdown 源仓库（固定 commit 后快照）。
 - rCore Tutorial Guide 和 CSAPP 中文 GitBook（快照后作为补充资料）。
 
@@ -132,11 +132,11 @@ flowchart TB
 }
 ```
 
-Markdown/HTML 保留标题层级、章节路径、代码语言、HTML anchor；JSON/YAML 保留为 `structured` block，避免把字段关系破坏成无序文本；TXT 和 PDF 按空行/标题聚合段落。PDF 使用 `pdfplumber` 抽取、`pypdf` 读取元数据，并记录 page/line locator；重复页眉页脚会被过滤，文本密度低于阈值时设置 `requiresOcr` 和 warning，而不是静默生成空文本。Step 6 又补充了 EPUB 与 DOCX：EPUB 通过 container/package/spine 顺序解析 XHTML，DOCX 直接读取 `word/document.xml` 并保留 Heading 层级；旧二进制 `.doc` 明确拒绝，要求先转换为 DOCX，避免产生不可审计的低质量文本。
+Markdown/HTML 保留标题层级、章节路径、代码语言、HTML anchor；JSON/YAML 保留为 `structured` block，避免把字段关系破坏成无序文本；TXT 和 PDF 按空行/标题聚合段落。RST 识别 underline heading、admonition 和 code-block，directive 本身不进入正文。PDF 使用 `pdfplumber` 抽取、`pypdf` 读取元数据，并记录 page/line locator；重复页眉页脚会被过滤，文本密度低于阈值时设置 `requiresOcr` 和 warning，而不是静默生成空文本。Step 6 又补充了 EPUB 与 DOCX：EPUB 通过 container/package/spine 顺序解析 XHTML，DOCX 直接读取 `word/document.xml` 并保留 Heading 层级；旧二进制 `.doc` 明确拒绝，要求先转换为 DOCX，避免产生不可审计的低质量文本。
 
 ### Step 3 验证结果
 
-- `python -m unittest -v learning/knowledge/test_normalize.py`：4/4 通过，覆盖 Markdown、HTML、JSON/YAML、EPUB 和 DOCX。
+- `python -m unittest -v learning/knowledge/test_normalize.py`：8/8 通过，覆盖 Markdown/CRLF front matter、HTML、JSON/YAML stream、RST、TXT 编号代码、EPUB 和 DOCX。
 - Lab2 Markdown：145 blocks，章节路径和 Rust 代码块 locator 正常。
 - OSTEP PDF 预览：492 页总量、处理 3 页、19 blocks、`partial=true`、`requiresOcr=false`。
 - RISC-V Reader PDF 预览：164 页总量、处理 2 页、6 blocks、`partial=true`、`requiresOcr=false`。
@@ -268,7 +268,7 @@ sequenceDiagram
 
 ```mermaid
 stateDiagram-v2
-  [*] --> pending_review: 保存原文件 + normalize + chunk
+  [*] --> pending_review: 保存原文件 + normalize + quality gate + chunk
   pending_review --> pending_review: 确认 Lab / class / license / risk
   pending_review --> published: 原子激活 + 重建 Source FTS
   published --> disabled: 停用并移除 FTS
@@ -286,12 +286,107 @@ stateDiagram-v2
 | `POST /teacher/knowledge/sources` | 二进制上传或指定 Source 的新版本；支持 PDF/EPUB/MD/TXT/DOCX |
 | `POST /teacher/knowledge/{review,publish,disable,rollback}` | 审核、发布、停用和版本恢复 |
 | `PATCH /teacher/knowledge/chunk` | 调整单块范围、权限、风险及索引状态 |
+| `DELETE /teacher/knowledge/chunk?id=...` | 教师人工移除 Chunk；软删除、清理向量并写入审计 |
 
 ### 前端工作台
 
 `/teacher/knowledge` 使用三栏结构：左栏显示 Global/Lab1-8 和来源状态；中栏显示版本、章节路径及 Chunk 摘要；右栏显示正文、自动归属依据、审核表单和版本/Chunk 操作。移动端把三栏降级为“知识树 / 内容 / 详情”三个稳定面板。现有 `/materials` 仍是学生主动阅读的材料架，与 Tutor RAG 发布索引保持独立，上传材料不会静默变成导师知识。
 
-## 9. 当前状态与后续步骤
+## 9. 向量检索与混合排序（Step 7）
+
+向量是可重建的派生索引，不改变 Source/Version/Document/Chunk 的权威关系。`knowledge_chunk_embeddings` 以 `(chunk_id, model)` 为主键保存 Float32 BLOB、维度、Chunk 内容 hash 和生成时间；内容 hash 变化或模型变化时只重建受影响的行。`knowledge_retrieval_log` 不保存问题原文，只保存 query hash、Lab、Provider、候选数量、最终 Chunk ID 和降级原因。
+
+```mermaid
+flowchart LR
+  Q[问题] --> F[FTS5 候选\ntrigram / LIKE]
+  Q --> E[Embedding Provider]
+  E --> V[Cosine 候选\nSQLite BLOB cache]
+  F --> R[RRF + 权威度 + 精确 Lab 加权]
+  V --> R
+  R --> P[权限 / current version / active\n最终过滤]
+  P --> T[Tutor 或教师搜索]
+```
+
+`hybrid-retriever.mjs` 先取 FTS 词面候选，再对当前权限范围内的全部可检索 Chunk 计算向量相似度，使用 `1/(60+rank)` 的 Reciprocal Rank Fusion 合并；同一 Lab 精确绑定和来源 `authority_rank` 只作小幅 tie-break，不能越过权限或 Global 上限。Tutor 最终仍执行“最多 5 块、Global 最多 2 块”的硬截断。
+
+Embedding Provider 采用可替换接口：配置 `OS_LAB_EMBEDDING_BASE_URL` + `OS_LAB_EMBEDDING_MODEL` 时调用 OpenAI-compatible `/embeddings`；无配置时使用 `local-feature-hash-v1-384`，通过中文三元组、代码标识符和 OS 概念别名生成确定性向量，保证离线开发可复现。远程 Provider 超时或维度不一致时，当前请求降级为 FTS-only 并记录原因，不阻断 Tutor 回复或教师发布。
+
+向量可通过 `npm run knowledge:embed` 主动预热；Tutor Server 启动时也会后台预热当前发布 Chunk，教师发布和版本回滚会尝试只索引对应 Source。`knowledge:search` 已返回混合排序诊断，包括词面排名、向量排名、相似度、Provider、模型和降级原因，便于 Harness 对召回质量做回归。
+
+## 10. 多来源快照与全量知识入库
+
+此前 `sources.json` 的 8 条记录只是 canonical inventory，实际 SQLite 只有 `platform-lab-manuals`。现在构建链路分为三层：
+
+```mermaid
+flowchart LR
+  I[sources.json\nURL / path / pinned commit] --> S[fetch_source_snapshots.py\n仅抽取教学正文]
+  I --> B[build_knowledge_sources.py]
+  S --> B
+  B --> M[Source manifest\nDocument JSON + Chunk JSON]
+  M --> K[ingestKnowledgeBuild\n来源级事务与不可变版本]
+  K --> F[FTS5 current-safe index]
+  K --> V[Embedding cache]
+  F --> U[Teacher UI / Tutor RAG]
+  V --> U
+```
+
+远程来源不直接抓取易变网页：LearningOS 讲义、rCore Guide 和 CSAPP 均在 `sources.json` 固定 commit；下载器只抽取 `.md/.rst/.html`，排除图片、构建脚本、示例二进制和仓库配置。OSTEP 使用官方中文站 31 个与进程、内存、并发、I/O、文件系统相关的章节 PDF，每个快照记录 URL、字节数和 SHA-256，不再使用字符映射损坏的本地合并 PDF。快照与中间 JSON 位于 `learning/knowledge/build/`，由 Git 忽略；数据库版本指纹同时包含原文 hash、Chunk 内容 hash 和质量算法版本，因此正文或过滤规则变化都会创建新版本。
+
+多格式最终都规约为同一模型：PDF 保留 page/line locator，Markdown/HTML 保留 section/anchor，RST 保留标题、admonition 和代码语义，JSON/YAML 保留结构化字段。平台 concept YAML 在质量层投影为“一 concept 一 Block”，只将 `title`、`summary/course_concept`、`arch_mechanism`、`invariants` 和 `transfer` 写入检索正文；concept ID 和原路径保留在 locator。数据库内部 `document_key` 和 `external_chunk_id` 同时包含路径 hash，避免不同 Lab 中内容相同的文件因纯内容寻址发生唯一键碰撞；内容 hash 仍单独保留用于版本审计。
+
+通用导入按 Source 开事务，一个来源失败不会产生半个版本，也不会破坏其他已完成来源。只有 `published` 版本会激活 Chunk 并重建该来源 FTS；`system-metadata` 可在教师端查看，但 `indexable=0`。当前实际规模如下：
+
+| Source | Documents | Active Chunks | 用途 |
+| --- | ---: | ---: | --- |
+| 本地 Lab 手册 | 8 | 145 | Lab1-Lab8 任务与平台行为；121 块可检索 |
+| 结构化概念 | 9 | 19 | Lab2-Lab8 的 19 个语义 concept |
+| 发布目录 | 1 | 0 | 系统版本元数据，不参与自由文本 RAG |
+| OSTEP 中文核心章节 | 31 | 414 | 进程、内存、并发、I/O 与文件系统 |
+| RISC-V Reader 中文版 | 1 | 95 | ISA 与特权架构背景 |
+| LearningOS 课程讲义 | 49 | 673 | 课程公共知识正文 |
+| rCore Tutorial Guide | 37 | 234 | 跨 Lab 实验参考 |
+| CSAPP 中文电子书 | 84 | 384 | 内存、进程、链接与并发补充 |
+
+总计 8 Sources、1,964 active Chunks；其中 1,940 条同时进入 FTS 和本地向量缓存，剩余 24 条由答案风险或内容权限策略排除。教师端左栏的来源数量和每来源 Chunk 数均来自 SQLite，不再把 inventory 元数据误当作已入库内容。
+
+可重建命令顺序为：`npm run knowledge:fetch`、`npm run knowledge:build:all`、`npm run knowledge:ingest:all`、`npm run knowledge:embed`。老师更新远程材料时应先修改 `sources.json` 中的 `pinnedCommit`，再执行上述流程；旧 Source Version 保留用于回滚和审计。
+
+## 11. 语料质量门与可审计过滤
+
+分块不再直接消费解析器的全部输出。内置来源和教师上传都执行同一条确定性流水线：
+
+```mermaid
+flowchart LR
+  S[Source allowlist] --> N[Format-aware normalize]
+  N --> B[Block quality gate]
+  B --> Y[Concept semantic projection]
+  Y --> C[Section-aware chunk]
+  C --> Q[Chunk quality + dedupe]
+  Q --> R[Answer-risk / class gate]
+  R --> I[FTS + embedding]
+  B --> A[Reason counters]
+  Q --> A
+  R --> A
+  A --> U[Teacher audit UI]
+```
+
+`quality_filter.py` 的规则是可复现的拒绝规则，不调用在线模型：模板与绘图源码、raw URL、纯数字/符号、乱码特征、课程管理页、错位 PDF 代码和低语义短块在 Block 阶段退出；短 Chunk 必须同时含 OS 核心术语和定义、因果、机制或约束型陈述；来源内按规范化文本 hash 去重；`high/blocked` 在安全门退出。每个文档 manifest 记录 `input/kept/dropped` 以及 `reason -> count`，教师可追溯清洗结果，原文件和不可变旧版本仍保留。
+
+PDF 不能只靠统一正则修复。OSTEP 合并本地 PDF 的文本层出现代码行号误判标题和字符映射损坏，因此来源层直接替换为官方章节 PDF；RISC-V Reader 则保留原 PDF，但过滤独立页码、位域刻度和低语义块。Markdown 先去 CRLF front matter、HTML comment 与 GitBook tag；RST 由专用 parser 消费 directive；长代码按完整行分割，保留换行和相对缩进。
+
+三个只读子智能体用于 PDF、远程仓库、结构化 YAML 的抽样审计和规则发现，不参与生产构建决策。生产质量门保持确定性，避免相同材料因模型采样产生不同索引；后续可以把子智能体用于待审核灰区的离线抽样，但其意见必须落为教师审核或可版本化规则后才能影响发布索引。
+
+本轮外部语料共解析 19,467 个 Block，丢弃 9,194 个，并输出 10,276 个保留/投影 Block；其中 concept 投影会把 16 个结构块展开为 19 个语义块，所以输出数比简单减法多 3。最终发布版本按当前质量规则重建，RISC-V Reader 从 101 个有效 Chunk 收紧为 95 个。最终 Chunk 对 `versionNonce/strokeSharpness`、Excalidraw、GitBook/RST directive、raw URL、纯数字、目录点线、扁平上标和 Unicode replacement character 的回归命中均为 0。五组概念查询的 Top-5 无模板、乱码或网址块；这组查询将作为 Step 8 RAG Harness 的首批 retrieval fixture。
+
+### RISC-V PDF 二次治理
+
+RISC-V Reader 的 PDF 文本层同时包含双栏正文、图注和目录，不能仅用“数字占比”判断噪声。质量门采用来源专属且可解释的组合规则：`locator.page < 15` 的块标记为 `front-matter`；目录点线从正文和标题路径两处移除；单整数不再升级为标题，只有 `2.1` 形式的小节号可作编号标题；含 `imm[]/rs1/rd/opcode` 的位域表、浮点寄存器对照表和汇编密集块退出索引；识别 PDF 扁平上标造成的 `29/210/225/226` 模式。最终产物的最小页码是 15，95 个 Chunk 均通过上述回归统计。
+
+### Chunk 人工移除
+
+教师移除不是物理删除：`knowledge_chunks.active` 与 `indexable` 同时置 0，删除该 Chunk 的 embedding，并在当前版本上重建 FTS；`knowledge_audit_log` 保存 `remove` 动作及移除前后快照。这样导师检索立即失效，但教师开启元数据视图仍能查看灰色历史记录，源版本和 locator 不被破坏。删除操作只接受已登录教师会话，前端需要二次确认，接口返回被移除 Chunk 供 UI 更新状态。
+
+## 12. 当前状态与后续步骤
 
 | 步骤 | 状态 | 交付物 |
 | --- | --- | --- |
@@ -301,7 +396,7 @@ stateDiagram-v2
 | 4. 章节感知分块 | 已完成 | `chunk.py`、Chunk Schema、权限/范围/风险元数据和单测 |
 | 5. SQLite + FTS | 已完成 | 独立知识库、版本化导入、中文 FTS、Lab 过滤、审计与回滚 |
 | 6. Tutor 服务与教师前端 | 已完成 | 受限 RAG、教师 API、多格式上传、审核发布、版本/Chunk 管理、三栏工作台 |
-| 7. 向量检索与混合排序 | 待确认 | embedding、BM25/FTS + 向量融合、重排 |
+| 7. 向量检索与混合排序 | 已完成 | 可替换 Embedding Provider、SQLite 向量缓存、RRF/权威度重排、FTS 降级 |
 | 8. RAG Tutor Harness | 待确认 | RAG 泄漏、引用归属、权限越权和稳定性回归 |
 
-Step 7 将在不改变 Step 6 权限与审核边界的前提下加入 embedding 与混合排序；SQLite Source/Version/Chunk 仍是权威元数据层，向量索引只是可重建的派生索引。
+Step 8 将在混合召回诊断之上补充 RAG Tutor Harness，冻结向量召回、权限、引用和降级行为的回归阈值。
