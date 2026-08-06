@@ -180,6 +180,177 @@
 
 - Node 22 的 `node:sqlite` 当前会输出 ExperimentalWarning，但数据库、事务和 FTS5 功能均正常。
 - Step 5 只提供可信数据层与 CLI；教师身份校验 API、上传处理和 `/teacher/knowledge` 前端属于 Step 6。
+---
+## 2026-08-06 - Task: 汇总提交 Lab5 手册本轮改写
+
+### What was done
+- 按 Lab1 版式重整 lab5-fs-and-sync.md：教材块、零开始之前、问题场景、任务一/二/三、验证命令与 AI 模板。
+- 扩写问题场景与背景知识 2.1–2.5（fd / 内嵌文件 / 管道与引用计数 / 数据竞争与临界区 / 自旋锁）；修复 mermaid 中 slots[3] 与 class 预览异常。
+- 实测并写入组件单测：cargo test -p os-fs --target x86_64-pc-windows-msvc，通过标准为 11 项通过。
+
+### Testing
+- 文案结构核对：H2 为零～五；任务二仍为 5 题。
+- cargo test -p os-fs --target x86_64-pc-windows-msvc：11 passed; 0 failed。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：Lab5 手册本轮全文改写与修补。
+- progress.md：追加本轮各步与本条汇总记录。
+- 回滚：git checkout -- os-lab/labs/lab5-fs-and-sync.md progress.md（若仅回退本提交则 git reset --hard HEAD~1，需确认无其它未推送提交）。
+
+---
+
+## 2026-08-06 - Task: 补全 Lab5 验证命令中的 os-fs 单测
+
+### What was done
+- 实测 cargo test -p os-fs --target x86_64-pc-windows-msvc 为 11 passed；写入「四、验证命令」表的具体命令与通过标准。
+
+### Testing
+- 在 os-lab/ 执行上述命令：11 passed; 0 failed。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：仅改第四节验证表。
+- 回滚：还原该表即可。
+
+---
+
+## 2026-08-06 - Task: 扩写 Lab5 §2.4 数据竞争与临界区
+
+### What was done
+- 扩写 2.4：衔接管道共享缓冲、区分用户隔离与内核共享、用时间线示例说明更新丢失、列出管道上的具体后果，并分步说明临界区，过渡到自旋锁。
+
+### Testing
+- 文案核对：仍位于 2.3 与 2.5 之间；概念与任务二相关题一致。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：仅改 2.4 节。
+- 回滚：还原该节即可。
+
+---
+
+## 2026-08-06 - Task: 扩写 Lab5 管道引用计数说明
+
+### What was done
+- 将管道引用计数段改写成「谁能拆水管」问题 + 加减计数规则 + 父子都持有写端的具体例子 + EOF/踩空对照，降低阅读门槛。
+
+### Testing
+- 文案核对：仍接在 fork 流水线之后、2.4 同步之前。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：仅改 2.3 引用计数相关段落。
+- 回滚：还原该段即可。
+
+---
+
+## 2026-08-06 - Task: 扩写 Lab5 背景知识 2.2–2.5
+
+### What was done
+- 按 2.1 风格扩写内嵌文件、管道、数据竞争与自旋锁四节：加强与上文/问题场景的衔接，补充步骤说明与节末过渡，保留原有 mermaid。
+
+### Testing
+- 结构核对：仍为 2.2–2.5；与任务二五道阅读题仍可对照。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：改第二节 2.2–2.5。
+- 回滚：还原该段即可。
+
+---
+
+## 2026-08-06 - Task: 扩写 Lab5「一切皆文件」小结
+
+### What was done
+- 将 2.1 末尾引用块扩写为更易读的分层说明：统一系统调用入口、FdType 内部分发、以及与后续磁盘/设备的衔接。
+
+### Testing
+- 文案核对：仍落在 2.1 与 2.2 之间；加粗标记完整。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：仅改该引用块。
+- 回滚：还原该段即可。
+
+---
+
+## 2026-08-06 - Task: 加强 Lab5 §2.1 FdType 与上文衔接
+
+### What was done
+- 在 fd 流程图之后补写「门牌号 vs 槽位内容」过渡，说明为何要用 FdType 分发；表格第三列改为「查表之后还要记住什么」，并收紧「一切皆文件」小结。
+
+### Testing
+- 文案核对：仍接 2.2 内嵌文件；三种变体与 offset/管道指针对比保留。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：仅改 2.1 中 FdType 段。
+- 回滚：还原该段即可。
+
+---
+
+## 2026-08-06 - Task: 修复 Lab5 mermaid 图 slots/class 预览异常
+
+### What was done
+- 修正 fd 查询流程图：去掉易被解析成节点语法的 slots[3]，改为「fd 表下标 3」；去掉易在预览残留的 classDef/class；同步简化文中其余 mermaid。
+
+### Testing
+- 文案核对：四张图均无 [] 标签与 class 语句；语义仍对应 fd 查表、open/read、管道、自旋锁。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：仅改 mermaid 图。
+- 回滚：还原对应 mermaid 块即可。
+
+---
+
+## 2026-08-06 - Task: Lab5 问题场景表改为「需要完成 / 如果没有会怎样」
+
+### What was done
+- 按引导句逻辑，将问题场景三列表改写为两列：需要完成、如果没有会怎样。
+
+### Testing
+- 文案核对：三行仍对应 fd 接口、管道、互斥保护。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：仅改问题场景表格。
+- 回滚：还原该表即可。
+
+---
+
+## 2026-08-05 - Task: 扩写 Lab5「一、问题场景」
+
+### What was done
+- 重写问题场景：拆开「读文件 / 传字节」两句用户诉求，用「缺什么 / 不补会怎样」表展开三个缺口，理清持久性与并发两条主线及 fd/管道/自旋锁三条抓手；顺带修正原稿加粗标记错误。
+
+### Testing
+- 文案核对：仍保留 Lab4/Lab5 对照表、四个核心问题与实验目标；与第二节背景知识衔接自然。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：仅改「一、问题场景」。
+- 回滚：还原该文件对应段落即可。
+
+---
+
+## 2026-08-05 - Task: 修复 Lab5 手册预览在「建议先读书」处像被截断
+
+### What was done
+- 修正「零、开始之前」列表内 PowerShell 代码块缩进，避免有序列表被拆碎；去掉表格中易打断解析的竖线示例；补充向下滚动提示。
+
+### Testing
+- markdown-it 渲染：零节内有序列表保持连续；全文仍含一至五各 H2。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：零节列表与表格小修。
+- 回滚：还原该文件对应段落。
+
+---
+## 2026-08-05 - Task: 按 Lab1 格式重整 Lab5 手册
+
+### What was done
+- 将 lab5-fs-and-sync.md 按 Lab1/Lab3 版式重整：教材块、零开始之前分步 PowerShell、问题场景对照表与实验目标、任务一/二/三、四验证命令表与五 AI 模板；保留 fd/管道/自旋锁背景与 mermaid。
+
+### Testing
+- 文案结构核对：H2 为零～五；任务二仍为 5 题；教材链接为 /downloads/ostep-zh.pdf#page=；答案链为 /answers/lab5-answers。
+
+### Notes
+- os-lab/labs/lab5-fs-and-sync.md：全文按 Lab1 格式重排。
+- 回滚：git checkout -- os-lab/labs/lab5-fs-and-sync.md
+
+---
 
 ## 2026-08-05 - Task: Lab3 任务三对齐 Lab1 版式
 
