@@ -6,7 +6,7 @@ feature: lab5
 prerequisites: [lab1, lab2, lab3, lab4]
 textbook: [OSTEP Ch.39 Files and Directories, OSTEP Ch.30 Condition Variables]
 status: stable
-manual_revision: lab5-fd-namespace-debug-stable-v1
+manual_revision: lab5-pipe-fill-debug-v1.1
 manual: ../../labs/lab5-fs-and-sync.md
 answers: ../../labs/answers/lab5-answers.md
 tutor_context: ../../tutor/prompts/lab5/context.md
@@ -17,8 +17,8 @@ tasks:
   - { id: orient, stage: orient, goal: 解释 fd 如何统一表示内嵌文件和管道端点 }
   - { id: read, stage: read, goal: 沿 open/read/close 与 pipe/fork 路径追踪对象生命周期 }
   - { id: run, stage: run, goal: 跑通文件内容、fs_test、pipe_test 和全部退出断言 }
-  - { id: debug, stage: debug, goal: 区分文件名查找失败、fd 错误与读取失败 }
-  - { id: reflect, stage: reflect, goal: 用最小证据说明错误发生在命名层还是数据层 }
+  - { id: debug, stage: debug, goal: 定位 fork 后管道关错端导致读不到数据 }
+  - { id: reflect, stage: reflect, goal: 用最小证据说明失败在读端关闭还是写端关闭 }
 starter_files:
   added:
     - kernel/src/sync.rs
@@ -28,12 +28,16 @@ starter_files:
     - user/src/bin/fs_test.rs
     - user/src/bin/pipe_test.rs
   editable_by_variant:
-    debug: [user/src/bin/fs_test.rs]
+    fill: [user/src/bin/pipe_test.rs]
+    debug: [user/src/bin/pipe_test.rs]
   generated: [Cargo.toml, kernel/Cargo.toml, user/Cargo.toml]
 variants:
+  fill:
+    manifest: variants/fill/manifest.yaml
+    source: ../../scaffold/exercises/lab5/fill/user/src/bin/pipe_test.rs
   debug:
     manifest: variants/debug/manifest.yaml
-    source: ../../scaffold/exercises/lab5/debug/user/src/bin/fs_test.rs
+    source: ../../scaffold/exercises/lab5/debug/user/src/bin/pipe_test.rs
 verification:
   recipe: lab5.verify.v1
   command: cargo run -p kernel --features lab5 --release

@@ -28,7 +28,7 @@
 
 > 如果上面任何一步报"找不到命令"，回到 [环境搭建指南](/setup/environment) 检查安装。
 
-1. **建议先读书**：OSTEP 第 4 章（进程抽象）与第 5 章（进程 API）。Lab4 是**进程抽象与进程 API**的核心实验；对应 feature 为 `lab4`（依赖 `lab3`）。
+5. **建议先读书**：OSTEP 第 4 章（进程抽象）与第 5 章（进程 API）。Lab4 是**进程抽象与进程 API**的核心实验；对应 feature 为 `lab4`（依赖 `lab3`）。
 
 
 
@@ -173,18 +173,16 @@ Zombie 不是仍在运行的进程，而是“等待父进程领取结果”的�
 
 
 
-### 任务一：跑通内核
+### 任务一：先完成教师下发的 fill/debug 变体，再跑通内核
 
 **第一步：确认变体。** 如果教师通过工作台下发了 debug 变体，先打开 `user/src/bin/fork_test.rs` 文件头，应看到 `【Lab4 任务：排错】`；没有任务标记则用参考实现直接运行。
 
 确认环境已激活，运行以下命令可输出版本号：
 
-```powershell
-rustc --version
-qemu-system-riscv64 --version
-```
+- **fill**：实现 `reap_two_children`，对两个子进程分别 `waitpid` 并校验 `exit_code`；
+- **debug**：通过条件写错（例如把 `exit_code == 0` 写成 `== 1`），需按现象排查修复。
 
-运行实验：
+确认环境已激活后运行：
 
 ```powershell
 cargo run -p kernel --features lab4
@@ -230,6 +228,8 @@ All processes exited.
 
 
 ### 任务三：动手修改
+
+> 教师下发的 **fill / debug** 变体是本实验主任务（见任务一）。下列修改用于加深理解，可在变体通过后再做。
 
 **修改 1：多 fork 一个孩子**
 

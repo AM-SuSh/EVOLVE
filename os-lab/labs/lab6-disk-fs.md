@@ -30,7 +30,7 @@
 
 > 如果上面任何一步报“找不到命令”，回到 [环境搭建指南](/setup/environment) 检查安装；不要急着做第 4 步预构建。
 
-1. **预构建依赖（Lab6 新增）**：Lab6 需要 VirtIO 块设备与磁盘镜像 `fs.img`。请在**已经激活环境、并且当前目录是** `os-lab` 的前提下执行（可减少 `build.rs` 嵌套 cargo 长时间占锁）：
+5. **预构建依赖（Lab6 新增）**：Lab6 需要 VirtIO 块设备与磁盘镜像 `fs.img`。请在**已经激活环境、并且当前目录是** `os-lab` 的前提下执行（可减少 `build.rs` 嵌套 cargo 长时间占锁）：
   ```powershell
    # 确认：pwd 应类似 ...\Or2-1-OS\os-lab
    cargo build -p user --target riscv64gc-unknown-none-elf --release --bins
@@ -46,8 +46,7 @@
 
 > `kernel/build.rs` 在编译 lab6 时也会自动打包 `fs.img`；可用 `make check-fs-img` 校验镜像。
 
-1. **建议先读书**：OSTEP 第 36–37 章（I/O 与硬盘）、第 40 章（文件系统实现）。带着「CPU 怎么碰到硬盘」「文件名如何落到扇区」进来即可。Lab6 对应 feature 为 `lab6`（依赖 `lab5`）。
-
+6. **建议先读书**：OSTEP 第 36–37 章（I/O 与硬盘）、第 40 章（文件系统实现）。带着「CPU 怎么碰到硬盘」「文件名如何落到扇区」进来即可。Lab6 对应 feature 为 `lab6`（依赖 `lab5`）。
 
 
 ## 一、问题场景
@@ -289,7 +288,12 @@ spawn / initproc    →  程序本身也可以从盘上加载
 
 
 
-### 任务一：跑通内核
+### 任务一：先完成教师下发的 fill/debug 变体，再跑通内核
+
+老师可能通过工作台为 Lab6 下发 **fill（补全）** 或 **debug（排错）** 变体，任务文件是 `user/src/bin/link_test.rs`。
+
+- **fill**：实现 `check_after_link` / `check_after_unlink_alias`，用「链接前 nlink」推算期望值并校验；
+- **debug**：`nlink` 断言仍按链接前计数，需结合 `fstat` 证据修复。
 
 **第一步：确认变体。** 如果教师通过工作台下发了 debug 变体，先打开 `user/src/bin/link_test.rs` 文件头，应看到 `【Lab6 任务：排错】`；没有任务标记则用参考实现直接运行。
 
@@ -338,6 +342,8 @@ All processes exited.
 
 
 ### 任务三：动手修改
+
+> 教师下发的 **fill / debug** 变体是本实验主任务（见任务一）。下列修改用于加深理解，可在变体通过后再做。
 
 **修改 1：增加预置文本文件**
 

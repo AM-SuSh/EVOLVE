@@ -145,8 +145,50 @@ const LEGACY_EXERCISES = {
   lab2: {
     default: 'fill',
     variants: {
-      fill: { label: '补全：实现 find_next_task 调度器', files: ['kernel/src/task.rs'] },
+      fill: { label: '补全：轮转实现 find_next_task', files: ['kernel/src/task.rs'] },
       debug: { label: '排错：任务管理埋了一个 bug，先复现再修复', files: ['kernel/src/task.rs'] },
+    },
+  },
+  lab3: {
+    default: 'debug',
+    variants: {
+      fill: { label: '补全：遍历用户区 remap 补回 U 位', files: ['kernel/src/mm.rs'] },
+      debug: { label: '排错：用户页缺 U 位，先复现再修复', files: ['kernel/src/mm.rs'] },
+    },
+  },
+  lab4: {
+    default: 'debug',
+    variants: {
+      fill: { label: '补全：双子进程 wait 回收', files: ['user/src/bin/fork_test.rs'] },
+      debug: { label: '排错：wait 通过条件写错，先复现再修复', files: ['user/src/bin/fork_test.rs'] },
+    },
+  },
+  lab5: {
+    default: 'debug',
+    variants: {
+      fill: { label: '补全：管道两端关闭与读写协议', files: ['user/src/bin/pipe_test.rs'] },
+      debug: { label: '排错：fork 后管道关错端', files: ['user/src/bin/pipe_test.rs'] },
+    },
+  },
+  lab6: {
+    default: 'debug',
+    variants: {
+      fill: { label: '补全：硬链接元数据校验函数', files: ['user/src/bin/link_test.rs'] },
+      debug: { label: '排错：nlink 断言仍按链接前计数', files: ['user/src/bin/link_test.rs'] },
+    },
+  },
+  lab7: {
+    default: 'debug',
+    variants: {
+      fill: { label: '补全：屏蔽/投递/解除屏蔽信号协议', files: ['user/src/bin/signal_mask_test.rs'] },
+      debug: { label: '排错：sigprocmask 未真正屏蔽 SIGUSR1', files: ['user/src/bin/signal_mask_test.rs'] },
+    },
+  },
+  lab8: {
+    default: 'debug',
+    variants: {
+      fill: { label: '补全：互斥临界区 + 双 worker 累加', files: ['user/src/bin/lab8_integration_test.rs'] },
+      debug: { label: '排错：互斥测例工作量少一轮', files: ['user/src/bin/lab8_integration_test.rs'] },
     },
   },
 }

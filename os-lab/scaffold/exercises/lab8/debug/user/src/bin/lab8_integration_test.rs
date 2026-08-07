@@ -1,3 +1,4 @@
+//! 【Lab8 任务：排错】互斥测例工作量少一轮，最终计数对不上。
 //! Lab8 debug variant: the integrated mutex workload is one update short.
 //!
 //! 【Lab8 任务：排错】`mutex_test` 最终计数 mismatch。

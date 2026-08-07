@@ -1,16 +1,16 @@
+//! 【Lab2 任务：排错】`yield` 让出 CPU 后没有被调度回来。
+//!
 //! Task control blocks and round-robin scheduling (lab2+).
 //!
-//! 【Lab2 任务：排错】这一份任务管理实现里埋了一个 bug。
-//! 现象：`yield` 程序本应输出 5 次 `Yield round`，但运行
-//! `cargo run -p kernel --features lab2 --release` 时它只输出了 1 次，
-//! 系统就打印 `All user apps exited.` 提前关机了。
+//! 现象：`yield` 本应输出 5 次 `Yield round`，但运行
+//! `cargo run -p kernel --features lab2 --release` 时往往只输出 1 次，
+//! 随后提前打印 `All user apps exited.`。
 //!
 //! 按「现象 → 假设 → 最小实验 → 证据 → 结论」排查：
-//!  1. 先复现现象，确认缺了几轮输出；
-//!  2. 提出假设：一个主动让出 CPU 的任务，之后为什么再也没被调度回来？
-//!     「让出」和「退出」在状态机上应该有什么区别？
-//!  3. 沿 sys_yield 的处理路径读下去，找到能证伪假设的那一行；
-//!  4. 修复后重新运行看到 5 轮输出，把完整的排错过程写进实验报告。
+//! 1. 先复现，确认缺了几轮输出；
+//! 2. 假设：主动让出的任务为何再也选不中？「让出」与「退出」在状态上应如何区分？
+//! 3. 沿 `sys_yield` → `mark_current_suspended` → `run_next_task` 核对状态赋值；
+//! 4. 修复后应看到 5 轮 `Yield round`，并把排错过程写进实验报告。
 
 use os_context::TrapContext;
 
@@ -158,14 +158,16 @@ pub fn run_first_task() -> ! {
     })
 }
 
+/// yield：当前任务本应 Running → Ready；此处埋了错误状态（请按现象排查）。
 pub fn mark_current_suspended() {
     TASK_MANAGER.with(|tm| {
         let task = tm.tasks[tm.current].as_mut().unwrap();
+        // PLANTED BUG: yield 应回到 Ready，而不是 Exited。
         task.task_status = TaskStatus::Exited;
     });
 }
 
-/// Copy trap context saved on the kernel stack into the current task TCB.
+/// 把内核栈上保存的 trap 现场写回当前任务的 TCB。
 pub fn sync_current_trap_cx(cx: &TrapContext) {
     TASK_MANAGER.with(|tm| {
         let current = tm.current;

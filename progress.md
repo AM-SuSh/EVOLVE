@@ -130,6 +130,142 @@
 ### Notes
 - 主要提交：`7340a22`（SIZN，2026-08-06 22:14）。
 - 主要目录：`os-lab/tutor/prompts/lab1`、`lab3`、`lab4`，`os-lab/learning/tutor-golden-dialogues-lab1/3/4.json`，Tutor/RAG harness fixture。
+## 2026-08-07 - Task: 加详 Lab2 fill/debug task.rs 学生向注释
+
+### What was done
+- 面向学生加详 Lab2 fill/debug 的 	ask.rs 注释：文件头补充调用链与验证说明；为 TaskStatus / TCB / TaskManager、find_next_task、mark_current_suspended、sync_current_trap_cx、run_next_task 补充教学说明；fill 给出分步实现提示与常见错误，debug 给出排查路径但不改埋点逻辑。
+
+### Testing
+- 人工核对：仅注释变更；fill 仍为 	odo!；debug 仍为 Exited 埋点。
+
+### Notes
+- 改动：scaffold/exercises/lab2/fill/kernel/src/task.rs、scaffold/exercises/lab2/debug/kernel/src/task.rs
+- 回滚：还原上述两文件
+
+---
+
+## 2026-08-07 - Task: 统一 Lab2 fill/debug task.rs 注释并收紧轮转要求
+
+### What was done
+- Lab2 fill 的 	ask.rs 按 Lab3/Lab4 风格重写文件头与函数注释：中文任务说明在前、英文模块一行在后；明确要求从 current+1 轮转扫描。
+- Lab2 debug 的 	ask.rs 同步同一注释版式，并把英文 Copy trap context 改为中文；埋点处补 PLANTED BUG 说明。
+- 同步手册任务一、fill manifest、published.json、scaffold.mjs 标签。
+
+### Testing
+- 人工核对：fill/debug 文件头均以 【Lab2 任务：…】 开头；手册识别标记仍匹配；代码逻辑除 fill 的 	odo! 文案与 debug 注释外未改行为。
+
+### Notes
+- 改动：scaffold/exercises/lab2/fill|debug/kernel/src/task.rs、labs/lab2-trap-and-task.md、lab-packages/lab2/variants/fill/manifest.yaml、published.json、scripts/scaffold.mjs
+- 回滚：还原上述文件
+
+---
+
+## 2026-08-07 - Task: 按 Lab1 格式重整 Lab7 手册
+
+### What was done
+- 将 lab7-ipc-signal.md 按 lab1-bare-metal.md（及已对齐的 Lab6/Lab8）版式重整：教材理论块、零开始之前的分步 PowerShell 与预构建、问题场景对照表与实验目标、背景知识串链、任务一/二/三写法、四验证命令；保留五 AI 提问模板，去掉独立提交清单。
+
+### Testing
+- 只读对照：章节标题与 Lab6/Lab8 一致；任务一仍为 signal_mask fill/debug + make test-lab7；未改内核代码。
+
+### Notes
+- 改动：os-lab/labs/lab7-ipc-signal.md
+- 回滚：git checkout -- os-lab/labs/lab7-ipc-signal.md
+
+---
+
+## 2026-08-07 - Task: Lab5 debug 改为管道关错端
+
+### What was done
+- Lab5 debug 与 fill 对齐到同一知识点（pipe + fork）：debug 改为 pipe_test.rs 中子进程关错端的排错题；移除旧的 fs_test 错文件名 debug。
+- 同步 lab.yaml、manifest、published.json、scaffold.mjs 与手册任务一说明。
+
+### Testing
+- getExerciseCatalog：lab5 fill/debug 均指向 `user/src/bin/pipe_test.rs`，debug sources 为 scaffold debug 模板；旧 fs_test debug 文件已不存在。
+
+### Notes
+- 新增：`scaffold/exercises/lab5/debug/user/src/bin/pipe_test.rs`
+- 删除：`scaffold/exercises/lab5/debug/user/src/bin/fs_test.rs`
+- 改动：`lab-packages/lab5/lab.yaml`、`variants/debug/manifest.yaml`、`checkpoints.yaml`、`published.json`、`scripts/scaffold.mjs`、`labs/lab5-fs-and-sync.md`
+- 回滚：还原上述注册与手册，并从 git 恢复旧 fs_test debug（若需要）
+
+---
+
+## 2026-08-07 - Task: 加强 Lab3–8 fill 任务难度
+
+### What was done
+- 审查并重写 Lab3–8 fill：避免「一行常量」式挖空。
+- Lab3：strip 后实现 restore_user_bit 遍历 remap；Lab4：双子进程 reap；Lab5 fill 改为 pipe_test 两端协议；Lab6：基于 nlink_before 的校验函数；Lab7：完整 mask 协议；Lab8：临界区 + worker + 双线程创建。
+- 同步 lab.yaml / published.json / scaffold.mjs / 各 Lab 手册任务一文案。
+
+### Testing
+- 抽查 fill 源码均为协议/循环级 todo；getExerciseCatalog 中 lab5 fill 指向 pipe_test.rs。
+
+### Notes
+- 主要改动：scaffold/exercises/lab{3-8}/fill/...、lab-packages/**/fill、手册 lab3–8、published.json、scaffold.mjs
+- 回滚：还原上述文件；lab5 若需旧 fs_test fill 可从 git 历史取回
+
+---
+
+## 2026-08-07 - Task: Lab3–8 增加 fill 任务变体并同步手册
+
+### What was done
+- 为 Lab3–8 各新增 
+ill 变体（保留原 debug）：mm 用户栈权限、fork 通过条件、内嵌文件名、nlink 期望、SIGUSR1 掩码、mutex 临界区。
+- 注册到 lab-packages/*/lab.yaml、
+ariants/fill/manifest.yaml、published.json 与 scripts/scaffold.mjs LEGACY 表，供教师端 fill/debug/random 分发。
+- Lab3–8 实验手册任务一改为「先完成教师下发变体再跑通」；任务三注明变体为主任务。
+
+### Testing
+- getExerciseCatalog()：lab3–8 均含 fill+debug；标签可读。
+- 抽查 fill 源码含 	odo! / 任务头注释；lab.yaml editable_by_variant 含 fill。
+
+### Notes
+- 新增：os-lab/scaffold/exercises/lab{3-8}/fill/...、lab-packages/lab{3-8}/variants/fill/manifest.yaml
+- 修改：各 lab.yaml、published.json、scaffold.mjs、lab3–8 手册
+- 回滚：删除 fill 目录与 manifest，还原 yaml/published/手册/scaffold.mjs
+
+---
+
+## 2026-08-06 - Task: Lab8 问题场景表改为「需要完成 / 作用」
+
+### What was done
+- 将问题场景对照表第二列由「如果没有会怎样」改为「作用」，正面说明线程层、阻塞同步、调度衔接与死锁检测各自完成什么。
+
+### Testing
+- 文案核对：与后文四个问题及实验目标方向一致。
+
+### Notes
+- os-lab/labs/lab8-thread-sync.md：仅改问题场景中该表。
+- 回滚：还原该表即可。
+
+---
+
+## 2026-08-06 - Task: Lab8「零、开始之前」对齐 Lab6 版式
+
+### What was done
+- 按 Lab6 零节格式微调 Lab8：自检后引用块措辞、预构建说明（含占锁提示）、产出表后的 build.rs / check-fs-img 引用块；make test-lab8 提醒仍留在任务一。
+
+### Testing
+- 与 lab6-disk-fs.md 零节结构对照：步骤块、引用块、产出表、读书提示一致。
+
+### Notes
+- os-lab/labs/lab8-thread-sync.md：仅改「零、开始之前」。
+- 回滚：还原该节即可。
+
+---
+
+## 2026-08-06 - Task: 按 Lab1 格式重整 Lab8 手册
+
+### What was done
+- 将 lab8-thread-sync.md 按 Lab1/Lab6 版式重整：教材块、零开始之前（含预构建）、问题场景对照表与实验目标、背景知识 2.1–2.6、任务一/二/三、验证命令与 AI 模板；去掉残缺句并统一答案链为 /answers/lab8-answers。
+
+### Testing
+- 文案结构核对：H2 为零～五；任务二仍为 5 题；强调 make test-lab8 而非裸 cargo run。
+
+### Notes
+- os-lab/labs/lab8-thread-sync.md：全文按 Lab1 格式重排。
+- 回滚：git checkout -- os-lab/labs/lab8-thread-sync.md
 
 ---
 

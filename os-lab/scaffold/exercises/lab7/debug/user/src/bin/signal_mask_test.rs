@@ -1,3 +1,4 @@
+//! 【Lab7 任务：排错】SIGUSR1 实际没有写进屏蔽掩码。
 //! Lab7 debug variant: SIGUSR1 is not actually included in the mask.
 //!
 //! 【Lab7 任务：排错】`signal_mask_test` 在屏蔽期间仍收到 SIGUSR1。
