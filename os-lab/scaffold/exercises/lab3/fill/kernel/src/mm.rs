@@ -163,7 +163,7 @@ fn map_elf_and_stack(user_space: &mut MemorySet, elf: &[u8]) {
     restore_user_bit(user_space);
 }
 
-/// 练习准备（请勿改）：去掉用户 app 区已映射页的 U，保留 R/W/X。
+/// 练习准备：去掉用户 app 区已映射页的 U，保留 R/W/X。
 /// 你的 `restore_user_bit` 应对同一范围做相反的事。
 fn strip_user_bit_for_exercise(user_space: &mut MemorySet) {
     let mut va = APP_BASE_ADDRESS;
