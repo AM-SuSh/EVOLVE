@@ -91,7 +91,7 @@ test('B+C sequentially issue every published Lab3-Lab8 debug variant with exact 
     const issuedSources = {
       lab3: 'kernel/src/mm.rs',
       lab4: 'user/src/bin/fork_test.rs',
-      lab5: 'user/src/bin/fs_test.rs',
+      lab5: 'user/src/bin/pipe_test.rs',
       lab6: 'user/src/bin/link_test.rs',
       lab7: 'user/src/bin/signal_mask_test.rs',
       lab8: 'user/src/bin/lab8_integration_test.rs',
