@@ -44,8 +44,9 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   return defaultLinkOpen(tokens, idx, options, env, self)
 }
 
-/** 匹配正文中的 run:/trace: 引用（UUID 或演示 id）；code / fence 内不替换。 */
-const EVIDENCE_REF_RE = /\b((?:run|trace):[A-Za-z0-9][A-Za-z0-9._-]{3,120})\b/g
+/** 匹配正文中的证据与知识库引用；code / fence 内不替换。 */
+const EVIDENCE_REF_RE =
+  /\b((?:run|trace):[A-Za-z0-9][A-Za-z0-9._-]{3,120}|kb:[A-Za-z0-9][A-Za-z0-9._:-]{1,160})\b/g
 
 function linkifyEvidenceRefs(html: string): string {
   // 只处理标签外文本，避免破坏 code / button / a 属性。
@@ -54,6 +55,9 @@ function linkifyEvidenceRefs(html: string): string {
     if (!text) return chunk
     return text.replace(EVIDENCE_REF_RE, (_match, ref: string) => {
       const safe = md.utils.escapeHtml(ref)
+      if (ref.startsWith('kb:')) {
+        return `<span class="ws-kb-citation" aria-label="知识库来源 ${safe}" title="知识库来源 ${safe}">来源</span>`
+      }
       return `<button type="button" class="ws-evidence-link" data-ref="${safe}">${safe}</button>`
     })
   })

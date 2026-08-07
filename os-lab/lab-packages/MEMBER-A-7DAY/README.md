@@ -11,8 +11,8 @@
 | 2 | Lab2 检查点机器表 | `lab2/checkpoints.yaml`（对照 `checkpoints.md`） | ✅ |
 | 3 | Lab1–4 应拒/应放行金标准 | `learning/tutor-golden-dialogues-lab1.json` 至 `...-lab4.json` | ✅ |
 | 4 | 量规 v2 冻结 + 复核对齐 | `learning/rubric-v2-frozen.md` + 既有 `teacher-review-gates.md` | ✅ |
-| 5 | 补救变式装箱；OPRE 文案 | `lab2/variants/remedial/PACKAGE.md`；`visualization/opre-copy-final.md` | ✅ |
-| 6 | 变式教学验收勾选 | `lab2/variants/remedial/TEACHER_ACCEPTANCE.md` | ✅（B/C 发布领取验收已补齐） |
+| 5 | OPRE 文案 | `visualization/opre-copy-final.md` | ✅ |
+| 6 | 内置变式收口 | Lab2 仅保留 `fill` / `debug` | ✅ |
 | 7 | 5 人可用性最小脚本 | `learning/usability-script-5person.md` | ✅（真人试用待安排） |
 
 ## 仍非 A 单人可关闭
@@ -25,4 +25,4 @@
 
 - **C 加载**：`lab2/checkpoints.yaml`、`learning/tutor-golden-dialogues-lab1.json` 至 `...-lab4.json`、`learning/rubric-v2-frozen.md`  
 - **B 文案**：`visualization/opre-copy-final.md`
-- **发布前**：`lab2/variants/remedial/TEACHER_ACCEPTANCE.md`
+- **发布前**：使用 `templates/TEACHER_REVIEW_CHECKLIST.md` 审核教师新增的任务类型

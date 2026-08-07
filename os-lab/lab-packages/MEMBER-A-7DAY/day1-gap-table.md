@@ -15,7 +15,6 @@
 | G5 | `learning/teacher-review-gates.md` | 教师端只有报告验收，无**评分复核队列** | 复核 | B + C | Day 5 |
 | G6 | `learning/ai-interaction-scoring.md` | 未实现 `aiInteraction` 子分 | 评分扩展 | C（可选本周） | 可延后 |
 | G7 | `visualization/opre-tasks.md` | Trace/手册旁无 OPRE「插入报告」入口 | 教学增强 | B / A 文案定稿（Day5） | Day 5 |
-| G9 | `lab2/variants/remedial/` | 补救变式未走 lint→发布→学生领取全链 | Lab 工厂 | C+B / A 验收（Day6） | Day 5–6 |
 | G10 | `templates/TEACHER_REVIEW_CHECKLIST.md` | 变式发布前无强制勾选入库 | Lab 工厂 | A 填好随包（Day6） | Day 6 |
 | G11 | `learning/trial-protocol-m5.md` | 无「5 人可用性」可当场执行的最短脚本 | 收口 | A（Day7） | Day 7 |
 

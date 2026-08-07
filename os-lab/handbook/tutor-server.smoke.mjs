@@ -11,7 +11,7 @@ const smokeRoot = mkdtempSync(path.join(tmpdir(), 'os-lab-tutor-smoke-'))
 const dbPath = path.join(smokeRoot, 'learning.db')
 const knowledgeDbPath = path.join(smokeRoot, 'knowledge.db')
 const knowledgeUploadRoot = path.join(smokeRoot, 'knowledge-uploads')
-const dataDir = path.join(smokeRoot, 'sessions')
+const dataDir = path.join(smokeRoot, 'student-data')
 const studentsRoot = path.join(smokeRoot, 'student-labs')
 const teacherFile = path.join(smokeRoot, 'teacher.json')
 const factoryCatalogPath = path.join(smokeRoot, 'factory-published.json')
@@ -67,7 +67,7 @@ const server = spawn(process.execPath, ['tutor-server.mjs'], {
     OS_LAB_DB_PATH: dbPath,
     OS_LAB_KNOWLEDGE_DB_PATH: knowledgeDbPath,
     OS_LAB_KNOWLEDGE_UPLOAD_ROOT: knowledgeUploadRoot,
-    OS_LAB_TUTOR_DATA_DIR: dataDir,
+    OS_LAB_STUDENT_DATA_ROOT: dataDir,
     OS_LAB_TUTOR_PORT: String(port),
     OS_LAB_STUDENTS_ROOT: studentsRoot,
     OS_LAB_TEACHER_FILE: teacherFile,
@@ -261,6 +261,12 @@ try {
   const factoryPayload = await factoryValidation.json()
   assert.equal(factoryPayload.stage, 'dry-run')
   assert.equal(factoryPayload.variants[0].variant, 'debug')
+  for (const variant of ['unknown', 'random']) {
+    const rejectedAssignment = await postJson('/teacher/config', teacherHeaders, {
+      assignment: { labId: 'lab2', variant },
+    })
+    assert.equal(rejectedAssignment.status, 400)
+  }
   const factoryTest = await postJson('/teacher/lab-factory/test', teacherHeaders, {
     labId: 'lab3',
     variant: 'debug',
@@ -508,6 +514,24 @@ try {
   assert.match(mockChatRequests[0].messages[0].content, /knowledge-chunk/)
   assert.match(mockChatRequests[0].messages[0].content, /只能转化为反问或观察目标/)
 
+  const savedConversation = await fetch(`${endpoint}/conversations/mine`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...studentHeaders },
+    body: JSON.stringify({
+      conversation: {
+        sessionId: 'smoke-learning-session',
+        labId: 'lab2',
+        stage: 'read',
+        messages: [{ id: 'saved-message', role: 'student', stage: 'read', content: 'cross-device restore', timestamp: '2026-08-07T00:00:00.000Z' }],
+        tutorState: chat.tutorState,
+      },
+    }),
+  })
+  assert.equal(savedConversation.status, 200)
+  const loadedConversation = await fetch(`${endpoint}/conversations/mine?labId=lab2`, { headers: studentHeaders })
+  assert.equal(loadedConversation.status, 200)
+  assert.equal((await loadedConversation.json()).conversation.messages[0].content, 'cross-device restore')
+
   const offlineChatResponse = await fetch(`${endpoint}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...studentHeaders },
@@ -723,6 +747,19 @@ try {
     body: JSON.stringify({ labId: 'lab2', content: reportContent }),
   })
   assert.equal(reportSubmit.status, 200)
+
+  const reportDraft = await fetch(`${endpoint}/reports/draft`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...studentHeaders },
+    body: JSON.stringify({ labId: 'lab2', draft: { mode: 'markdown', sections: {}, markdownBody: 'server draft' } }),
+  })
+  assert.equal(reportDraft.status, 200)
+  const loadedDraft = await fetch(`${endpoint}/reports/draft?labId=lab2`, { headers: studentHeaders })
+  assert.equal(loadedDraft.status, 200)
+  assert.equal((await loadedDraft.json()).draft.markdownBody, 'server draft')
+  assert.equal(readFileSync(path.join(dataDir, '2', 'reports', 'lab2', 'draft.json'), 'utf8').includes('server draft'), true)
+  assert.equal(readFileSync(path.join(dataDir, '2', 'reports', 'lab2', 'submission.md'), 'utf8').includes('Lab2'), true)
+  assert.equal(readFileSync(path.join(dataDir, '2', 'conversations', 'smoke-learning-session.json'), 'utf8').includes('cross-device restore'), true)
 
   const score = await fetch(`${endpoint}/report`, {
     method: 'POST',

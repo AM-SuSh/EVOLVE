@@ -11,29 +11,12 @@
 在开始完成中断处理与多任务之前，请确认已完成以下准备：
 
 1. **已完成 Lab1**：理解了裸机启动、SBI 调用、`#![no_std]`、内核入口与关机流程。Lab2 在 Lab1 的启动链上继续扩展。
-2. **进入工作目录**：在本仓库根目录下，进入自研实验环境目录：
-
-   ```powershell
-   cd os-lab
-   ```
-
-3. **（可选）激活当前终端环境**：如果你新开了一个终端，请在仓库**根目录**（不是 os-lab 目录）执行以下命令，让本会话能找到 Rust 和 QEMU：
-
-   ```powershell
-   . .\scripts\activate-os-env.ps1
-   cd os-lab
-   ```
-
-4. **快速自检**：以下两条命令都能输出版本号，说明环境就绪：
-
-   ```powershell
+2. **快速自检**：以下两条命令都能输出版本号，说明环境就绪：
+  ```powershell
    rustc --version                    # 预期：rustc 1.96.0 ...
    qemu-system-riscv64 --version      # 预期：QEMU emulator version 11.0.50 ...
-   ```
-
-> 如果上面任何一步报“找不到命令”，回到 [环境搭建指南](/setup/environment) 检查安装。
-
-5. **建议先读书**：OSTEP 第 6 章（受限的直接执行）+ 第 7 章（调度导论）。Lab2 是 CPU 虚拟化的起点，对应 feature 为 `lab2`（依赖 `lab1`）。
+  ```
+3. **建议先读书**：OSTEP 第 6 章（受限的直接执行）+ 第 7 章（调度导论）。Lab2 是 CPU 虚拟化的起点，对应 feature 为 `lab2`（依赖 `lab1`）。
 
 ## 一、问题场景
 
@@ -65,13 +48,15 @@ RISC-V U/S 特权级、ecall/sret、TrapContext、TCB
 
 **Lab1 与 Lab2 的对照**：
 
-| 维度 | Lab1 | Lab2 |
-| --- | --- | --- |
-| 执行者 | 内核一直在 S-mode | 用户程序在 U-mode，通过 syscall 请求内核服务 |
-| 服务入口 | 内核 `ecall` 到 OpenSBI（M-mode） | 用户 `ecall` 到内核（S-mode） |
-| 上下文保存 | 无 | TrapContext 保存寄存器与关键 CSR，`sret` 原样恢复 |
-| 程序数量 | 一个内核程序 | 多个用户任务，Ready / Running / Exited 轮转 |
-| 输出方式 | 内核直接 SBI 输出 | 用户 `sys_write` → 内核 → OpenSBI |
+
+| 维度    | Lab1                         | Lab2                                 |
+| ----- | ---------------------------- | ------------------------------------ |
+| 执行者   | 内核一直在 S-mode                 | 用户程序在 U-mode，通过 syscall 请求内核服务       |
+| 服务入口  | 内核 `ecall` 到 OpenSBI（M-mode） | 用户 `ecall` 到内核（S-mode）               |
+| 上下文保存 | 无                            | TrapContext 保存寄存器与关键 CSR，`sret` 原样恢复 |
+| 程序数量  | 一个内核程序                       | 多个用户任务，Ready / Running / Exited 轮转   |
+| 输出方式  | 内核直接 SBI 输出                  | 用户 `sys_write` → 内核 → OpenSBI        |
+
 
 本实验需要解决的**四个核心问题**：
 
@@ -86,24 +71,30 @@ RISC-V U/S 特权级、ecall/sret、TrapContext、TCB
 
 本节所有路径都相对 `os-lab/` 根目录。建议按下面的顺序阅读，每读完一小节就打开对应文件确认，不要只背概念。
 
-| 阅读顺序 | 文件 | 回答的问题 |
-| --- | --- | --- |
-| 1 | `kernel/src/main.rs` | 内核启动后先调用了哪些模块？ |
-| 2 | `os-context/src/lib.rs`、`os-context/src/trap.asm` | TrapContext 长什么样？谁保存、谁恢复？ |
-| 3 | `kernel/src/trap.rs`、`kernel/src/riscv.rs` | trap 如何分发到 syscall / timer / 异常？ |
-| 4 | `os-syscall/src/lib.rs`、`user/src/syscall.rs`、`user/src/bin/*.rs` | 用户侧如何把参数放进寄存器并发起 `ecall`？ |
-| 5 | `kernel/src/loader.rs`、`kernel/src/task.rs` | 用户程序何时被复制到内存？任务状态如何切换？ |
+
+| 阅读顺序 | 文件                                                                | 回答的问题                            |
+| ---- | ----------------------------------------------------------------- | -------------------------------- |
+| 1    | `kernel/src/main.rs`                                              | 内核启动后先调用了哪些模块？                   |
+| 2    | `os-context/src/lib.rs`、`os-context/src/trap.asm`                 | TrapContext 长什么样？谁保存、谁恢复？        |
+| 3    | `kernel/src/trap.rs`、`kernel/src/riscv.rs`                        | trap 如何分发到 syscall / timer / 异常？ |
+| 4    | `os-syscall/src/lib.rs`、`user/src/syscall.rs`、`user/src/bin/*.rs` | 用户侧如何把参数放进寄存器并发起 `ecall`？        |
+| 5    | `kernel/src/loader.rs`、`kernel/src/task.rs`                       | 用户程序何时被复制到内存？任务状态如何切换？           |
+
+
+
 
 ### 2.1 从 SBI 调用到系统调用
 
 Lab1 和 Lab2 都使用 `ecall`，但调用者和服务提供者不同：
 
-| 项目 | Lab1 | Lab2 |
-| --- | --- | --- |
-| 调用者 | S-mode 内核 | U-mode 用户程序 |
-| 服务者 | M-mode OpenSBI | S-mode 操作系统内核 |
-| 服务内容 | 控制台输出、虚拟机关机 | `write`、`exit`、`yield` |
-| 返回路径 | 由 OpenSBI 返回内核 | 内核执行 `sret` 返回用户态 |
+
+| 项目   | Lab1           | Lab2                   |
+| ---- | -------------- | ---------------------- |
+| 调用者  | S-mode 内核      | U-mode 用户程序            |
+| 服务者  | M-mode OpenSBI | S-mode 操作系统内核          |
+| 服务内容 | 控制台输出、虚拟机关机    | `write`、`exit`、`yield` |
+| 返回路径 | 由 OpenSBI 返回内核 | 内核执行 `sret` 返回用户态      |
+
 
 `ecall` 本身只表示“请求环境服务”，并不包含具体的服务含义。具体请求由寄存器中的功能号和参数决定。因此同一个 `ecall` 指令，在 Lab1 中是 SBI 调用，在 Lab2 中就是系统调用。
 
@@ -119,27 +110,33 @@ Lab1 和 Lab2 都使用 `ecall`，但调用者和服务提供者不同：
 
 需要注意，trap 并不严格等于“从低特权级切换到高特权级”。更准确地说，trap 是由**系统调用、异常或中断**引起的控制转移：
 
-| 类型 | 触发方式 | 本实验示例 | 后续实验 |
-| --- | --- | --- | --- |
-| 系统调用（syscall） | 用户程序主动执行 `ecall` | `sys_write` / `sys_exit` / `sys_yield` | Lab6 进程相关 syscall |
-| 异常（exception） | 指令执行出错 | 无 | Lab3 页错误（page fault） |
-| 中断（interrupt） | 外部设备（时钟、外设） | 本实验以理解为主 | Lab3+ 时钟中断抢占 |
+
+| 类型            | 触发方式             | 本实验示例                                  | 后续实验                 |
+| ------------- | ---------------- | -------------------------------------- | -------------------- |
+| 系统调用（syscall） | 用户程序主动执行 `ecall` | `sys_write` / `sys_exit` / `sys_yield` | Lab6 进程相关 syscall    |
+| 异常（exception） | 指令执行出错           | 无                                      | Lab3 页错误（page fault） |
+| 中断（interrupt） | 外部设备（时钟、外设）      | 本实验以理解为主                               | Lab3+ 时钟中断抢占         |
+
 
 RISC-V 通过特权级组织不同软件组件：
 
-| 模式 | 本实验中的角色 | 主要职责 |
-| --- | --- | --- |
-| U-mode | 用户程序 | 执行受限制的应用代码 |
-| S-mode | 操作系统内核 | 处理 trap、分发系统调用、管理任务 |
-| M-mode | OpenSBI | 提供更底层的固件服务 |
+
+| 模式     | 本实验中的角色 | 主要职责                |
+| ------ | ------- | ------------------- |
+| U-mode | 用户程序    | 执行受限制的应用代码          |
+| S-mode | 操作系统内核  | 处理 trap、分发系统调用、管理任务 |
+| M-mode | OpenSBI | 提供更底层的固件服务          |
+
 
 trap 发生后，硬件自动记录三个关键信息到 CSR（控制与状态寄存器）：
 
-| CSR | 全称 | trap 时硬件写入的内容 | 返回时软件必须处理的方式 |
-| --- | --- | --- | --- |
-| `sepc` | Supervisor Exception PC | trap 发生时的 PC（指向 `ecall` 指令本身） | 返回前对 syscall 做 `sepc += 4`，否则反复陷入同一条指令 |
-| `scause` | Supervisor Cause | trap 原因编码（syscall / 异常类型 / 中断号） | 内核据此分发到对应处理函数 |
-| `sstatus` | Supervisor Status | trap 前的特权级与中断使能状态 | `sret` 时硬件从 `sstatus` 恢复特权级 |
+
+| CSR       | 全称                      | trap 时硬件写入的内容                   | 返回时软件必须处理的方式                           |
+| --------- | ----------------------- | ------------------------------- | -------------------------------------- |
+| `sepc`    | Supervisor Exception PC | trap 发生时的 PC（指向 `ecall` 指令本身）   | 返回前对 syscall 做 `sepc += 4`，否则反复陷入同一条指令 |
+| `scause`  | Supervisor Cause        | trap 原因编码（syscall / 异常类型 / 中断号） | 内核据此分发到对应处理函数                          |
+| `sstatus` | Supervisor Status       | trap 前的特权级与中断使能状态               | `sret` 时硬件从 `sstatus` 恢复特权级            |
+
 
 `sret` 是 RISC-V 的监督模式返回指令，与 `ecall` 构成一对进出内核的边界。内核处理完 trap 后执行 `sret`，硬件自动完成两件事：
 
@@ -153,6 +150,8 @@ trap 发生后，硬件自动记录三个关键信息到 CSR（控制与状态�
 - `kernel/src/riscv.rs` 定义了 `SCAUSE_USER_ECALL`（8）、`SCAUSE_SUPERVISOR_ECALL`（9）、`SCAUSE_SUPERVISOR_TIMER` 等常量。
 - `kernel/src/trap.rs` 在 `trap_handler` 里读取 `scause`，再按这些常量分发。
 - 用户侧发起请求的 `ecall` 在 `user/src/syscall.rs`，内核侧处理请求的入口在 `kernel/src/trap.rs`。
+
+
 
 ### 2.2 用户程序如何首次进入 U-mode
 
@@ -174,7 +173,7 @@ task::run_first_task();  // kernel/src/task.rs::run_first_task：加载 app0 并
 - `task::init()` 为每个用户程序创建一个 `TaskControlBlock`；
 - `task::run_first_task()` 调用 `loader::load_app(0)` 把第一个用户程序复制到应用区，再进入用户态。
 
-这里要特别注意一个容易误读的点：**真正把用户程序二进制复制到约定内存地址的是 `loader::load_app(app_id)`，不是 `loader::load_apps()`**。`load_apps()` 在 `kernel/src/loader.rs` 中只负责输出“Loading 3 user apps ...”并检查数量；`load_app(0)` 才执行：
+这里要特别注意一个容易误读的点：**真正把用户程序二进制复制到约定内存地址的是** `loader::load_app(app_id)`**，不是** `loader::load_apps()`。`load_apps()` 在 `kernel/src/loader.rs` 中只负责输出“Loading 3 user apps ...”并检查数量；`load_app(0)` 才执行：
 
 ```rust
 core::ptr::copy_nonoverlapping(app_data.as_ptr(), APP_BASE_ADDRESS as *mut u8, app_data.len());
@@ -221,6 +220,8 @@ TrapContext
 → sret
 → 用户程序在 U-mode 开始执行
 ```
+
+
 
 ### 2.3 trap 如何保存和恢复用户上下文
 
@@ -322,7 +323,7 @@ sret
 
 第一次进入用户态时，`run_user_task` 走的是 `os-context/src/lib.rs` 里的 `restore_to_user`，它不经过 `__alltraps`，但复用同一份 TrapContext 布局：先写 `sscratch`、`sepc`、`sstatus`，再装载通用寄存器，最后从 `x[2]` 装载用户栈并 `sret`。
 
-**为什么 syscall 返回前要 `advance_sepc()`**
+**为什么 syscall 返回前要** `advance_sepc()`
 
 对于用户态 `ecall`，`sepc` 指向 `ecall` 指令本身。`sret` 会回到 `sepc`，如果不推进，就会再次执行同一条 `ecall`，用户程序无限次陷入内核。
 
@@ -345,19 +346,23 @@ Lab2 的 `trap.rs` 里已经有 `SCAUSE_SUPERVISOR_TIMER` 分支，但尚未真�
 
 `ecall` 只提供进入内核的入口，具体调用哪个服务由 RISC-V ABI 约定：
 
-| 寄存器 | 用途 |
-| --- | --- |
-| `a7` | 系统调用号 |
-| `a0`-`a6` | 系统调用参数 |
-| `a0` | 系统调用返回值 |
+
+| 寄存器       | 用途      |
+| --------- | ------- |
+| `a7`      | 系统调用号   |
+| `a0`-`a6` | 系统调用参数  |
+| `a0`      | 系统调用返回值 |
+
 
 Lab2 使用的主要系统调用：
 
-| 编号 | 名称 | 作用 |
-| --- | --- | --- |
-| 64 | `sys_write` | 输出字符 |
-| 93 | `sys_exit` | 结束当前用户程序 |
+
+| 编号  | 名称          | 作用       |
+| --- | ----------- | -------- |
+| 64  | `sys_write` | 输出字符     |
+| 93  | `sys_exit`  | 结束当前用户程序 |
 | 124 | `sys_yield` | 主动让出 CPU |
+
 
 用户侧 `write` 的封装在 `user/src/syscall.rs`：
 
@@ -530,69 +535,34 @@ flowchart TD
     N --> O
 ```
 
-一句话概括：**trap 负责“进出内核”，调度发生在 `trap_handler` 处理完 `yield` / `exit` 之后**。普通 syscall 只把控制权还给当前任务，不换人。
+
+
+一句话概括：**trap 负责“进出内核”，调度发生在** `trap_handler` **处理完** `yield` **/** `exit` **之后**。普通 syscall 只把控制权还给当前任务，不换人。
 
 ## 三、实验任务
 
-Lab2 复用了初赛阶段留下的 `kernel/src/task.rs` 作业。老师可能通过工作台下发 fill（挖空）或 debug（排错）变体；文件头注释会明确告诉你当前是哪一种。如果没有下发变体，`kernel/src/task.rs` 就是完整参考实现，可以直接跑通。
-
 主要相关文件（路径相对 `os-lab/`）：
 
-| 文件 | 角色 | 阅读时重点确认 |
-| --- | --- | --- |
-| `os-context/src/lib.rs` | TrapContext 定义 | GPR、CSR 与 `kernel_sp` 的布局 |
-| `os-context/src/trap.asm` | 保存 / 恢复汇编（双栈、`sscratch`） | 保存和恢复槽位是否严格对称 |
-| `os-syscall/src/lib.rs` | syscall 编号 | 用户态与内核是否共享同一编号约定 |
-| `kernel/src/trap.rs` | trap 分发 | `scause`、`a7`、`advance_sepc()` 的先后关系 |
-| `kernel/src/task.rs` | 任务管理与调度 | Ready / Running / Exited 如何转换 |
-| `kernel/src/loader.rs` | 用户程序加载 | `load_apps` 与 `load_app` 的职责差别 |
-| `user/src/syscall.rs` | 用户态 syscall 封装 | 参数如何进入 `a0`-`a7` |
-| `user/src/lib.rs`、`user/src/bin/*.rs` | 用户程序入口与业务逻辑 | `println` / `exit` / `yield_` 如何使用 |
 
-### 任务一：先完成教师下发的 fill/debug 变体，再跑通内核
+| 文件                                    | 角色                       | 阅读时重点确认                              |
+| ------------------------------------- | ------------------------ | ------------------------------------ |
+| `os-context/src/lib.rs`               | TrapContext 定义           | GPR、CSR 与 `kernel_sp` 的布局            |
+| `os-context/src/trap.asm`             | 保存 / 恢复汇编（双栈、`sscratch`） | 保存和恢复槽位是否严格对称                        |
+| `os-syscall/src/lib.rs`               | syscall 编号               | 用户态与内核是否共享同一编号约定                     |
+| `kernel/src/trap.rs`                  | trap 分发                  | `scause`、`a7`、`advance_sepc()` 的先后关系 |
+| `kernel/src/task.rs`                  | 任务管理与调度                  | Ready / Running / Exited 如何转换        |
+| `kernel/src/loader.rs`                | 用户程序加载                   | `load_apps` 与 `load_app` 的职责差别       |
+| `user/src/syscall.rs`                 | 用户态 syscall 封装           | 参数如何进入 `a0`-`a7`                     |
+| `user/src/lib.rs`、`user/src/bin/*.rs` | 用户程序入口与业务逻辑              | `println` / `exit` / `yield_` 如何使用   |
 
-**第一步：确认你拿到的 `kernel/src/task.rs` 是哪一种。**
 
-打开文件头部注释：
 
-- 如果出现 `【Lab2 任务：补全调度器】`，说明是 **fill 变体**；
-- 如果出现 `【Lab2 任务：排错】`，说明是 **debug 变体**；
-- 如果出现 `【Lab2 任务：补救】`，说明是 **remedial 变体**；起点与 debug 相同，但需先完成状态对照表；
-- 如果出现 `【Lab2 任务：参考实现】`，说明是完整参考实现，跳过第二步和第三步，直接执行“第四步：运行验证”。
 
-**第二步（fill）：补全调度器**
+### 任务一：完成实验
 
-需要修改的位置：`kernel/src/task.rs` 中的 `TaskManager::find_next_task`，当前是 `todo!("Lab2：在这里实现你的调度器（见上方提示）")`。
+本实验的任务文件为 `kernel/src/task.rs`，请在工作区中打开文件，并根据注释提示完成实验 。
 
-补全要求：
-
-- 只从 `task_status == TaskStatus::Ready` 的任务里选择；
-- 选中后更新 `self.current` 为选中下标；
-- 没有可运行任务时返回 `None`；
-- 可以从 0 号槽扫描，也可以从 `self.current + 1` 循环扫描；本实验默认输出不一定能直接看出两种写法的差别，建议在报告中从代码逻辑说明，或临时构造多个同时 Ready 的任务来观察。
-- 只补 `find_next_task` 的函数体；不要改动 `run_next_task`、`all_exited` 或用户程序来绕过调度。
-
-未补全时 `cargo run` 会在调用 `find_next_task` 时 panic；补全后才能看到三个用户程序依次完成。
-
-**第三步（debug / remedial）：修复 yield 只出现一轮的问题**
-
-典型现象：`yield` 程序本应输出 5 行 `Yield round`，实际只输出 1 行，随后系统打印 `All user apps exited.` 并关机。注意此时进程退出码仍可能为 0，因此**不能只用退出码判断是否通过**。
-
-需要排查的位置：`kernel/src/task.rs`。建议按“现象 → 假设 → 最小实验 → 证据 → 结论”推进：
-
-1. 先完整运行一次，亲手数 `Yield round` 出现几次；
-2. 提出假设：一个主动让出 CPU 的任务，为什么之后再也没有被调度回来？“让出”和“退出”在状态机上应该有什么区别？
-3. 沿 `SYS_YIELD` 的处理路径读下去：`trap.rs` 的 `SYS_YIELD` 分支 → `sync_current_trap_cx` → `mark_current_suspended` → `run_next_task`；
-4. 对照 `sys_exit` 的状态赋值，找到写反的那一处；
-5. 修复后重新运行，必须看到 5 行 `Yield round`。
-
-修复范围应限制在 `kernel/src/task.rs` 的状态赋值处；不要通过删掉其他 app、改写 `yield.rs` 或只改 `sys_exit` 来让输出“看起来通过”。
-
-如果工作台下发的是 remedial 变体，起点与 debug 相同，但报告里还要求先填写 `yield → Ready / exit → Exited` 的状态对照表。
-
-**第四步：运行验证**
-
-确认环境已激活后运行：
+运行验证：
 
 ```powershell
 cargo run -p kernel --features lab2 --release
@@ -619,12 +589,14 @@ All user apps exited.                   ← 全部退出，关机
 
 **通过标准**（四条输出断言缺一不可）：
 
-| 断言 | 必须看到 |
-| --- | --- |
-| `hello-output` | `Hello from user app!` |
-| `power-result` | `409684505` |
+
+| 断言                  | 必须看到                    |
+| ------------------- | ----------------------- |
+| `hello-output`      | `Hello from user app!`  |
+| `power-result`      | `409684505`             |
 | `yield-five-rounds` | `Yield round` 出现不少于 5 次 |
-| `all-exited` | `All user apps exited.` |
+| `all-exited`        | `All user apps exited.` |
+
 
 且 QEMU 正常退出（终端命令返回，没有卡住或报错）。
 
@@ -639,6 +611,8 @@ All user apps exited.                   ← 全部退出，关机
 7. `find_next_task` 从 0 号槽开始扫描，和从 `self.current + 1` 开始轮转扫描，在系统同时存在多个 Ready 任务时各有什么影响？本实验默认的 hello / power / yield 顺序执行，为什么单靠默认输出不一定能区分这两种写法？
 8. “让出”和“退出”在任务状态上应该分别转换成什么？如果这两个转换写反，你最可能在 `Yield round` 输出上看到什么现象？
 9. `loader::load_apps()` 和 `loader::load_app(i)` 的职责各是什么？为什么不能说 `load_apps` 负责把用户程序复制到应用区？
+
+
 
 ### 任务三：动手修改
 
@@ -673,19 +647,11 @@ println("Hello again from user!");
 
 ## 四、验证命令
 
-| 验证项 | 命令 | 通过标准 |
-| --- | --- | --- |
-| 主编译 | `cargo check -p kernel --features lab2` | 无 error |
-| QEMU | `cargo run -p kernel --features lab2 --release` | 同时满足下列**输出断言** |
-| 组件单测（可选） | `cargo test -p os-context --target x86_64-pc-windows-msvc` | 通过 |
 
-**输出断言（与 `lab-packages/lab2/lab.yaml` 对齐；缺一不算通过）**：
+| 验证项      | 命令                                                         | 通过标准                                                                         |
+| -------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| 主编译      | `cargo check -p kernel --features lab2`                    | 无 error                                                                      |
+| QEMU     | `cargo run -p kernel --features lab2 --release`            | `Hello from user app!`、`409684505`、5 行 `Yield round`、`All user apps exited.` |
+| 组件单测（可选） | `cargo test -p os-context --target x86_64-pc-windows-msvc` | 通过                                                                           |
 
-| 断言 id | 必须看到 |
-| --- | --- |
-| `hello-output` | `Hello from user app!` |
-| `power-result` | `409684505` |
-| `yield-five-rounds` | `Yield round` 出现不少于 5 次 |
-| `all-exited` | `All user apps exited.` |
 
-> 任意白名单命令“退出码 0”**不等于** Lab 通过；例如 `Yield round` 不足 5 行时，命令仍可能返回 0。

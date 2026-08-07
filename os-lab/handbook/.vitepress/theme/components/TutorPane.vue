@@ -1,21 +1,18 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { Plus, RefreshCw, Send, Server, X } from 'lucide-vue-next'
+import { Bot, MessageSquarePlus, RefreshCw, Send, X } from 'lucide-vue-next'
 import TutorMessage from './TutorMessage.vue'
-import TutorEvidenceBar from './TutorEvidenceBar.vue'
 import { chatSourceLabels, type ChatAttachment } from '../chat-attachments'
 import {
   tutorPromptsFor,
   type TutorLab,
   type TutorMessage as TutorMessageType,
   type TutorPrompt,
-  type TutorStageId,
-  type TutorState,
 } from '../tutor-model'
 
 /**
- * AI 导师对话栏。阶段机制退到数据层（事件仍带 stage 字段），
- * 顶栏下挂 TutorEvidenceBar 展示门控阶段 / 证据 / 下一步。
+ * AI 导师对话栏。阶段、证据门控和提示等级保留在数据层，
+ * 学生端只展示对话与可执行操作，不暴露内部教学状态。
  */
 const props = defineProps<{
   lab: TutorLab
@@ -24,8 +21,6 @@ const props = defineProps<{
   streamingId: string
   connection: 'checking' | 'remote' | 'offline'
   connectionLabel: string
-  tutorState: TutorState | null
-  activeStage: TutorStageId
   attachments?: ChatAttachment[]
 }>()
 
@@ -62,6 +57,7 @@ function submit() {
   if (!canSend.value) return
   emit('send', draft.value.trim())
   draft.value = ''
+  nextTick(resizeComposer)
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -74,7 +70,18 @@ function onKeydown(event: KeyboardEvent) {
 function usePrompt(prompt: TutorPrompt) {
   draft.value = prompt.text
   emit('use-prompt', prompt)
-  nextTick(() => composer.value?.focus())
+  nextTick(() => {
+    resizeComposer()
+    composer.value?.focus()
+  })
+}
+
+function resizeComposer() {
+  const input = composer.value
+  if (!input) return
+  input.style.height = 'auto'
+  input.style.height = `${Math.min(input.scrollHeight, 120)}px`
+  input.style.overflowY = input.scrollHeight > 120 ? 'auto' : 'hidden'
 }
 
 async function scrollToLatest() {
@@ -113,35 +120,35 @@ defineExpose({ scrollToLatest, focusComposer })
       @pointercancel="emit('drag-end', $event)"
       @lostpointercapture="emit('drag-end', $event)"
     >
-      <strong>AI 导师</strong>
+      <div class="ws-tutor-identity">
+        <span class="ws-tutor-mark" aria-hidden="true"><Bot :size="18" /></span>
+        <span class="ws-tutor-title">
+          <strong>AI 导师</strong>
+          <small><i :class="connection" aria-hidden="true" />{{ connectionLabel }}</small>
+        </span>
+      </div>
       <div class="ws-tutor-actions">
         <button
           class="ws-connection"
           :class="connection"
           type="button"
+          :aria-label="`重新检查模型连接，当前：${connectionLabel}`"
           :title="`重新检查模型连接（当前：${connectionLabel}）`"
           @click="emit('check-connection')"
         >
-          <Server :size="14" aria-hidden="true" />
-          <span>{{ connectionLabel }}</span>
-          <RefreshCw :size="12" aria-hidden="true" />
+          <RefreshCw :size="15" aria-hidden="true" />
         </button>
         <button
           class="ws-new-session"
           type="button"
+          aria-label="新对话"
           title="开始一次新的学习对话"
           @click="emit('new-session')"
         >
-          <Plus :size="15" aria-hidden="true" /><span>新对话</span>
+          <MessageSquarePlus :size="16" aria-hidden="true" />
         </button>
       </div>
     </header>
-
-    <TutorEvidenceBar
-      :tutor-state="tutorState"
-      :fallback-stage="activeStage"
-      @open-evidence="emit('open-evidence', $event)"
-    />
 
     <div ref="messageList" class="ws-message-list" aria-live="polite">
       <div class="ws-message-inner">
@@ -154,8 +161,8 @@ defineExpose({ scrollToLatest, focusComposer })
           @open-attachment="emit('open-attachment', $event)"
         />
         <div v-if="sending && !streamingId" class="ws-thinking" role="status">
-          <div class="ws-thinking-avatar" aria-hidden="true">OS</div>
-          <span /><span /><span />
+          <div class="ws-thinking-avatar" aria-hidden="true"><Bot :size="16" /></div>
+          <div class="ws-thinking-dots" aria-hidden="true"><span /><span /><span /></div>
           <em class="ws-visually-hidden">导师正在思考</em>
         </div>
       </div>
@@ -198,24 +205,19 @@ defineExpose({ scrollToLatest, focusComposer })
           id="ws-tutor-input"
           ref="composer"
           v-model="draft"
-          rows="3"
+          rows="2"
           :placeholder="
             attachments.length
-              ? '可再写一句你的判断或问题，发送时会连同上方附件一起交给导师…'
-              : '写下你的判断、观察到的现象或卡住的地方…（导师只引导，不代写）'
+              ? '补充你的判断或问题…'
+              : '描述你观察到的现象或卡住的地方…'
           "
+          @input="resizeComposer"
           @keydown="onKeydown"
         />
         <div class="ws-composer-foot">
-          <span>
-            {{
-              attachments.length
-                ? `将附带 ${attachments.length} 段工作台内容 · Ctrl+Enter 发送`
-                : '匿名会话 · 记录保存在本机 · Ctrl+Enter 发送'
-            }}
-          </span>
-          <button type="submit" :disabled="!canSend">
-            <Send :size="16" aria-hidden="true" /><span>发送</span>
+          <span>{{ attachments.length ? `已附带 ${attachments.length} 项内容` : 'Ctrl + Enter 发送' }}</span>
+          <button type="submit" :disabled="!canSend" aria-label="发送消息" title="发送消息">
+            <Send :size="17" aria-hidden="true" />
           </button>
         </div>
       </form>
@@ -226,9 +228,10 @@ defineExpose({ scrollToLatest, focusComposer })
 <style scoped>
 .ws-tutor-pane {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   background: var(--ws-surface);
 }
 
@@ -247,9 +250,10 @@ defineExpose({ scrollToLatest, focusComposer })
   align-items: center;
   justify-content: space-between;
   gap: var(--ws-space-3);
+  min-height: 52px;
   padding: var(--ws-space-2) var(--ws-space-4);
   border-bottom: 1px solid var(--ws-line);
-  background: var(--ws-surface-alt);
+  background: var(--ws-surface-raised);
   cursor: grab;
   touch-action: none;
 }
@@ -258,8 +262,60 @@ defineExpose({ scrollToLatest, focusComposer })
   cursor: grabbing;
 }
 
-.ws-tutor-head > strong {
+.ws-tutor-identity {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--ws-space-2);
+}
+
+.ws-tutor-mark {
+  display: grid;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  color: var(--ws-accent-contrast);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-accent);
+  place-items: center;
+}
+
+.ws-tutor-title {
+  display: grid;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.ws-tutor-title strong {
+  color: var(--ws-ink);
   font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-tutor-title small {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  color: var(--ws-ink-faint);
+  font-size: var(--ws-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-tutor-title i {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--ws-radius-full);
+  background: var(--ws-ink-faint);
+}
+
+.ws-tutor-title i.remote {
+  background: var(--ws-ok);
+}
+
+.ws-tutor-title i.offline {
+  background: var(--ws-warn);
 }
 
 .ws-tutor-actions {
@@ -271,52 +327,58 @@ defineExpose({ scrollToLatest, focusComposer })
 
 .ws-connection,
 .ws-new-session {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ws-space-1);
-  min-height: var(--ws-control-sm);
-  padding: var(--ws-space-1) var(--ws-space-2);
+  display: grid;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   color: var(--ws-ink-muted);
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-md);
-  background: var(--ws-surface);
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius-sm);
+  background: transparent;
   font: inherit;
-  font-size: var(--ws-text-xs);
+  place-items: center;
   cursor: pointer;
 }
 
-.ws-connection.remote {
-  color: var(--ws-accent);
-  border-color: var(--ws-accent);
-  background: var(--ws-accent-soft);
-}
-
-.ws-connection.offline {
-  color: var(--ws-warn);
-  border-color: var(--ws-warn);
-  background: var(--ws-warn-soft);
+.ws-connection.checking svg {
+  animation: ws-spin 0.9s linear infinite;
 }
 
 .ws-connection:hover,
-.ws-new-session:hover {
-  border-color: var(--ws-accent);
+.ws-connection:focus-visible,
+.ws-new-session:hover,
+.ws-new-session:focus-visible {
+  color: var(--ws-accent);
+  border-color: var(--ws-line);
+  background: var(--ws-accent-soft);
+}
+
+@keyframes ws-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* -- 消息 ------------------------------------------------------------------ */
 .ws-message-list {
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   scroll-behavior: smooth;
 }
 
 .ws-message-inner {
-  padding: var(--ws-space-4) var(--ws-space-5) var(--ws-space-4);
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--ws-space-5);
 }
 
 .ws-thinking {
   display: flex;
   align-items: center;
-  gap: var(--ws-space-2);
+  gap: var(--ws-space-3);
 }
 
 .ws-thinking-avatar {
@@ -327,12 +389,18 @@ defineExpose({ scrollToLatest, focusComposer })
   border-radius: var(--ws-radius-sm);
   background: var(--ws-accent);
   place-items: center;
-  font-family: var(--ws-font-mono);
-  font-size: var(--ws-text-xs);
-  font-weight: var(--ws-weight-bold);
 }
 
-.ws-thinking > span {
+.ws-thinking-dots {
+  display: flex;
+  gap: 5px;
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-surface-raised);
+}
+
+.ws-thinking-dots > span {
   width: 6px;
   height: 6px;
   border-radius: var(--ws-radius-full);
@@ -340,11 +408,11 @@ defineExpose({ scrollToLatest, focusComposer })
   animation: ws-thinking 1s ease-in-out infinite;
 }
 
-.ws-thinking > span:nth-of-type(2) {
+.ws-thinking-dots > span:nth-of-type(2) {
   animation-delay: 120ms;
 }
 
-.ws-thinking > span:nth-of-type(3) {
+.ws-thinking-dots > span:nth-of-type(3) {
   animation-delay: 240ms;
 }
 
@@ -362,9 +430,12 @@ defineExpose({ scrollToLatest, focusComposer })
 
 /* -- 输入区 ---------------------------------------------------------------- */
 .ws-composer-dock {
+  position: relative;
+  z-index: 1;
   padding: var(--ws-space-2) var(--ws-space-5) var(--ws-space-4);
   border-top: 1px solid var(--ws-line);
-  background: var(--ws-surface);
+  background: var(--ws-surface-raised);
+  box-shadow: 0 -8px 20px rgba(16, 28, 32, 0.04);
 }
 
 .ws-chat-attachments {
@@ -445,7 +516,7 @@ defineExpose({ scrollToLatest, focusComposer })
 .ws-prompt-row {
   display: flex;
   gap: var(--ws-space-2);
-  margin-bottom: var(--ws-space-2);
+  margin-bottom: var(--ws-space-1);
   padding-bottom: 2px;
   overflow-x: auto;
   scrollbar-width: none;
@@ -457,14 +528,14 @@ defineExpose({ scrollToLatest, focusComposer })
 
 .ws-prompt-row button {
   flex: 0 0 auto;
-  min-height: var(--ws-control-sm);
-  padding: var(--ws-space-1) var(--ws-space-3);
+  min-height: 26px;
+  padding: 2px var(--ws-space-2);
   color: var(--ws-ink-muted);
   border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-full);
-  background: var(--ws-surface);
+  border-radius: var(--ws-radius-sm);
+  background: transparent;
   font: inherit;
-  font-size: var(--ws-text-sm);
+  font-size: var(--ws-text-xs);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -476,21 +547,24 @@ defineExpose({ scrollToLatest, focusComposer })
 }
 
 .ws-composer {
-  padding: var(--ws-space-3);
+  padding: var(--ws-space-2) var(--ws-space-2) var(--ws-space-2) var(--ws-space-3);
   border: 1px solid var(--ws-line-strong);
-  border-radius: var(--ws-radius-lg);
+  border-radius: var(--ws-radius-sm);
   background: var(--ws-surface);
-  box-shadow: var(--ws-shadow-2);
+  box-shadow: var(--ws-shadow-1);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
 .ws-composer:focus-within {
   border-color: var(--ws-accent);
+  box-shadow: 0 0 0 2px var(--ws-accent-soft);
 }
 
 .ws-composer textarea {
   display: block;
   width: 100%;
-  min-height: 52px;
+  min-height: 44px;
+  max-height: 120px;
   color: var(--ws-ink);
   border: 0;
   outline: 0;
@@ -510,7 +584,7 @@ defineExpose({ scrollToLatest, focusComposer })
   align-items: center;
   justify-content: space-between;
   gap: var(--ws-space-3);
-  margin-top: var(--ws-space-2);
+  margin-top: var(--ws-space-1);
 }
 
 .ws-composer-foot > span {
@@ -519,18 +593,17 @@ defineExpose({ scrollToLatest, focusComposer })
 }
 
 .ws-composer-foot button {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ws-space-1);
-  min-height: var(--ws-control-md);
-  padding: var(--ws-space-2) var(--ws-space-4);
+  display: grid;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  padding: 0;
   color: var(--ws-accent-contrast);
   border: 0;
-  border-radius: var(--ws-radius-md);
+  border-radius: var(--ws-radius-sm);
   background: var(--ws-accent);
   font: inherit;
-  font-size: var(--ws-text-sm);
-  font-weight: var(--ws-weight-semibold);
+  place-items: center;
   cursor: pointer;
 }
 
@@ -549,14 +622,21 @@ defineExpose({ scrollToLatest, focusComposer })
     padding-inline: var(--ws-space-4);
   }
 
-  .ws-connection span {
-    display: none;
-  }
-
   .ws-composer-foot > span {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .ws-message-inner,
+  .ws-composer-dock {
+    padding-inline: var(--ws-space-3);
+  }
+
+  .ws-tutor-title small {
+    max-width: 150px;
   }
 }
 </style>

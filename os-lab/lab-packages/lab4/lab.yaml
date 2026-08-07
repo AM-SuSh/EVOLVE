@@ -43,10 +43,14 @@ starter_files:
     - user/src/bin/fork_test.rs
     - user/src/bin/exec_test.rs
   editable_by_variant:
+    fill: [user/src/bin/fork_test.rs]
     debug: [user/src/bin/fork_test.rs]
   generated: [Cargo.toml, kernel/Cargo.toml, user/Cargo.toml]
 
 variants:
+  fill:
+    manifest: variants/fill/manifest.yaml
+    source: ../../scaffold/exercises/lab4/fill/user/src/bin/fork_test.rs
   debug:
     manifest: variants/debug/manifest.yaml
     source: ../../scaffold/exercises/lab4/debug/user/src/bin/fork_test.rs

@@ -1,25 +1,57 @@
-id: lab5-debug-file-namespace
+# Lab5 debug 变体：管道关错端
+
+id: lab5-debug-pipe-ends
 lab: lab5
 variant: debug
-version: 1.0.0
-learning_goal: 用 open/read 的分层证据定位文件名查找失败，而不是把问题误归因于 fd 或管道。
-target_concepts: [os.fs.fd]
-student_file: user/src/bin/fs_test.rs
-source_template: ../../../../scaffold/exercises/lab5/debug/user/src/bin/fs_test.rs
-manual_anchor: labs/lab5-fs-and-sync.md#任务一跑通-lab5
+version: 1.1.0
+
+learning_goal: |
+  学生按现象→假设排查：fork 后管道读/写端关闭顺序错误，导致子进程读不到数据。
+  与 fill 变体考察同一知识点（pipe + fork 两端协议），形式为排错而非补全。
+
+target_concepts:
+  - os.ipc.pipe
+  - os.fs.fd
+
+student_file: user/src/bin/pipe_test.rs
+source_template: ../../../../scaffold/exercises/lab5/debug/user/src/bin/pipe_test.rs
+manual_anchor: labs/lab5-fs-and-sync.md
+
 planted_bug:
-  location: fs_test 首次 open 的文件名
-  wrong: 请求不存在的 missing_testfile
-  correct: 请求镜像内已有的 testfile
-  symptom: 输出 open testfile failed，后续 fs/pipe 断言缺失
+  location: fork 后子进程的 close
+  wrong: 子进程关闭了读端 fds[0]，却仍试图从 fds[0] 读取
+  correct: 子进程应关闭写端 fds[1]，从读端 fds[0] 读取
+  symptom: |
+    看不到 pipe says hi / pipe_test pass，或子进程 read 持续失败；
+    父进程侧 write 可能仍成功，容易误判「管道坏了」或「调度问题」。
+
 success_criteria:
   recipe: lab5.verify.v1
   assertions: [file-content, fs-pass, pipe-pass, all-processes-exited]
+
 negative_tests:
-  - { id: missing-embedded-name, expect_fail_assertions: [file-content, fs-pass], description: 错误名字必须阻断文件内容与 fs_test pass }
+  - id: wrong-end-closed
+    description: 未修复时 pipe_test pass 缺失
+    expect_fail_assertions: [pipe-pass]
+
+common_mistakes:
+  - 去改 fs_test / 文件名，忽略管道端
+  - 只改父进程，不核对子进程该关哪一端
+
 hint_ladder:
-  - { level: 0, when: 尚未运行, say: 先记录第一个失败输出，不要先改管道。 }
-  - { level: 1, when: open 失败, say: 对照 embedded 文件表与 open 参数。 }
-  - { level: 2, when: 怀疑 read, say: read 是否在 fd 小于 0 时执行？ }
-  - { level: 3, when: 已定位名字, say: 修正唯一名字后跑完整文件与管道回归。 }
-report_prompts: [哪条证据说明失败发生在命名层？, 为什么 pipe_test 缺失不能直接证明管道有 bug？]
+  - level: 0
+    when: 尚未复现
+    say: 先记录有没有 pipe_test pass，以及父进程是否打印 pipe write failed。
+  - level: 1
+    when: 已确认管道测例失败
+    say: fork 之后，读端进程通常应关掉哪一端？写端进程呢？
+  - level: 2
+    when: 假设停在「write 失败」
+    say: 若父进程 write 成功但子进程仍无输出，更应检查子进程 close/read 用的 fd。
+  - level: 3
+    when: 已读到子进程 close
+    say: 对照注释中的 PLANTED BUG；修复后必须看到 pipe says hi 与 pipe_test pass。
+
+report_prompts:
+  - 你的第一个假设是什么？哪条输出否定了它？
+  - fill（补全协议）与 debug（关错端）考察的是同一点的哪两个侧面？

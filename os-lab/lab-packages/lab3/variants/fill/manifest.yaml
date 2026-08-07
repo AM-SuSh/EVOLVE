@@ -1,0 +1,44 @@
+# lab3 fill 变体（加强版）
+
+id: lab3-fill
+lab: lab3
+variant: fill
+version: 1.1.0
+
+learning_goal: |
+  学生在练习准备去掉 U 后，遍历用户区 remap 补回 U 位，理解用户页权限。
+
+target_concepts:
+  - os.mm.pte-flags
+  - os.mm.address-space
+
+student_file: kernel/src/mm.rs
+source_template: ../../../scaffold/exercises/lab3/fill/kernel/src/mm.rs
+
+what_is_blank:
+  - symbol: restore_user_bit
+    hint_in_source: true
+
+success_criteria:
+  recipe: lab3.verify.v1
+  assertions: [hello-output, power-result, yield-five-rounds, all-exited]
+
+negative_tests:
+  - id: leave-todo
+    description: 未实现（仍 todo!）则编译或运行失败
+    expect_fail: true
+
+hint_ladder:
+  - level: 0
+    when: 尚未描述协议/循环
+    say: 先用自己的话写出要补的步骤，再对照函数注释。
+  - level: 1
+    when: 方向正确但仍卡住
+    say: 对照手册背景知识，用最小改动验证每一步假设。
+  - level: 2
+    when: 能编译但断言失败
+    say: 对照预期输出与边界（关闭哪一端、nlink 推算、是否持锁）。
+
+report_prompts:
+  - 你实现的关键步骤是什么？用测例输出证明正确。
+  - 若某一步顺序反了（例如先关错管道端、未持锁），会发生什么？

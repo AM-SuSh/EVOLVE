@@ -8,6 +8,7 @@ export interface ReportAttachmentMeta {
   mime: string
   size: number
   addedAt: string
+  storedName?: string
 }
 
 const DB_NAME = 'os-lab-report-attachments'

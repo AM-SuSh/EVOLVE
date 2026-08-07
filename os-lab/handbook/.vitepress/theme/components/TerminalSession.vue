@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Check, Copy, FilePlus2, HelpCircle, MessageSquarePlus, RotateCcw, Square, SquareTerminal } from 'lucide-vue-next'
+import { RotateCcw, Square } from 'lucide-vue-next'
 import { authHeaders, type TutorLab } from '../tutor-model'
 import XtermOutput from './XtermOutput.vue'
 
@@ -43,21 +43,11 @@ const emit = defineEmits<{
   (event: 'run-exit', runId: string): void
   /** 运行结束时附带的编译诊断（若有），供立即切换 Problems。 */
   (event: 'run-diagnostics', payload: { runId: string; diagnostics: unknown[] }): void
-  /** 学生把本次输出插进实验报告的「过程记录」。 */
-  (event: 'insert-report', text: string): void
-  /** 把终端输出添加到 AI 导师对话（优先 xterm 选区，否则本次完整输出）。 */
-  (event: 'add-to-chat', payload: {
-    source: 'terminal'
-    title: string
-    body: string
-    origin?: { runId?: string; scope?: 'selection' | 'full' }
-  }): void
 }>()
 
 const command = ref('')
 const inputBuffer = ref('')
 const running = ref(false)
-const showHelp = ref(false)
 const output = ref('')
 const exitInfo = ref<{
   code: number
@@ -69,13 +59,10 @@ const exitInfo = ref<{
   assertions: RunAssertion[]
   stopped?: string
 } | null>(null)
-const inserted = ref(false)
-const copyState = ref<'idle' | 'copied' | 'failed'>('idle')
 const stepTitle = ref('')
 const errorText = ref('')
 const lastRunCommand = ref('')
 const xtermRef = ref<InstanceType<typeof XtermOutput> | null>(null)
-let copyStateTimer = 0
 
 /** 本 Lab 推荐的验证命令，作为终端输入行的 ghost text（虚写提示）。 */
 const recommendedCommand = computed(() => props.lab.verificationCommand)
@@ -249,8 +236,6 @@ watch(() => props.lab.id, () => {
   command.value = ''
   output.value = ''
   exitInfo.value = null
-  inserted.value = false
-  copyState.value = 'idle'
   errorText.value = ''
   lastRunCommand.value = ''
   histIdx.value = -1
@@ -274,50 +259,10 @@ function runSummary() {
   return `$ ${lastRunCommand.value || command.value.trim()}\n${tail}`
 }
 
-function fullRunOutput() {
-  const content = `$ ${lastRunCommand.value || command.value.trim()}\n${output.value}`
-  return content.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
-}
-
-function setCopyState(state: 'copied' | 'failed') {
-  copyState.value = state
-  window.clearTimeout(copyStateTimer)
-  copyStateTimer = window.setTimeout(() => (copyState.value = 'idle'), 1800)
-}
-
-async function copyLatestOutput() {
-  const text = fullRunOutput()
-  try {
-    if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable')
-    await navigator.clipboard.writeText(text)
-    setCopyState('copied')
-    return
-  } catch {
-    const textarea = document.createElement('textarea')
-    textarea.value = text
-    textarea.setAttribute('readonly', '')
-    textarea.style.position = 'fixed'
-    textarea.style.opacity = '0'
-    document.body.appendChild(textarea)
-    let copied = false
-    try {
-      textarea.select()
-      copied = document.execCommand('copy')
-    } catch {
-      copied = false
-    } finally {
-      textarea.remove()
-    }
-    setCopyState(copied ? 'copied' : 'failed')
-  }
-}
-
 async function run() {
   if (running.value) return
   running.value = true
   // 不在开跑时清空 exitInfo / 整段 output：上一轮状态与滚动历史保留到本轮结束。
-  inserted.value = false
-  copyState.value = 'idle'
   errorText.value = ''
   stepTitle.value = ''
   const runCommand = command.value.trim()
@@ -445,29 +390,7 @@ async function stop() {
   }
 }
 
-function insertReport() {
-  emit('insert-report', runSummary())
-  inserted.value = true
-}
-
-function addOutputToChat() {
-  const selected = String(xtermRef.value?.getSelection?.() || '').trim()
-  const full = fullRunOutput().trim() || output.value.trim()
-  const body = selected || full
-  if (!body) return
-  const cmd = lastRunCommand.value || command.value.trim() || '终端输出'
-  const scope = selected ? ('selection' as const) : ('full' as const)
-  const title = `${scope === 'selection' ? '选区' : '全文'} · ${cmd}`.slice(0, 80)
-  emit('add-to-chat', {
-    source: 'terminal',
-    title,
-    body,
-    origin: { runId: exitInfo.value?.runId || undefined, scope },
-  })
-}
-
 onBeforeUnmount(() => {
-  window.clearTimeout(copyStateTimer)
   if (running.value) void stop()
 })
 </script>
@@ -508,31 +431,6 @@ onBeforeUnmount(() => {
 
       
     </div>
-
-    <footer v-if="exitInfo || output" class="ws-terminal-foot">
-      <button
-        v-if="exitInfo"
-        type="button"
-        :data-state="copyState"
-        :title="copyState === 'failed' ? '复制失败，请重试' : '复制本次命令和完整终端输出'"
-        @click="copyLatestOutput"
-      >
-        <Check v-if="copyState === 'copied'" :size="14" aria-hidden="true" />
-        <Copy v-else :size="14" aria-hidden="true" />
-        {{ copyState === 'copied' ? '已复制' : copyState === 'failed' ? '复制失败' : '复制输出' }}
-      </button>
-      <button
-        type="button"
-        title="添加到 AI 导师对话：有选中文本则只附选区，否则附本次完整输出（与工作区一致）"
-        @click="addOutputToChat"
-      >
-        <MessageSquarePlus :size="14" aria-hidden="true" />添加到对话
-      </button>
-      <button v-if="exitInfo && !inserted" type="button" @click="insertReport">
-        <FilePlus2 :size="14" aria-hidden="true" />把输出插入实验报告
-      </button>
-      <span v-else-if="exitInfo && inserted" class="done">已插入实验报告的「过程记录」。</span>
-    </footer>
   </section>
 </template>
 
@@ -719,47 +617,4 @@ onBeforeUnmount(() => {
   color: var(--ws-danger, #c0392b);
 }
 
-.ws-terminal-foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--ws-space-2);
-  padding: var(--ws-space-2) var(--ws-space-3);
-  border-top: 1px solid var(--ws-line);
-  font-size: var(--ws-text-xs);
-}
-
-.ws-terminal-foot button {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ws-space-1);
-  min-height: var(--ws-control-sm);
-  padding: var(--ws-space-1) var(--ws-space-3);
-  color: var(--ws-accent);
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-md);
-  background: var(--ws-surface);
-  font: inherit;
-  font-size: var(--ws-text-xs);
-  font-weight: var(--ws-weight-semibold);
-  cursor: pointer;
-}
-
-.ws-terminal-foot button:hover {
-  border-color: var(--ws-accent);
-}
-
-.ws-terminal-foot button[data-state='copied'] {
-  color: var(--ws-ok, #1a7f37);
-  border-color: var(--ws-ok, #1a7f37);
-}
-
-.ws-terminal-foot button[data-state='failed'] {
-  color: var(--ws-danger, #c0392b);
-  border-color: var(--ws-danger, #c0392b);
-}
-
-.ws-terminal-foot .done {
-  color: var(--ws-ok, #1a7f37);
-}
 </style>

@@ -1,5 +1,419 @@
 # os-lab 项目进度总览
 
+## 2026-08-07 - Task: 重整学生端 AI 导师对话 UI
+
+### What was done
+- 修正移除内部状态条后遗留的四行网格配置，将导师窗明确拆为“紧凑标题栏 / 独立滚动消息区 / 固定底部输入区”，输入框不再占用中间弹性区域。
+- 精简导师标题栏：以统一的导师图标、连接状态点和状态文本替代按钮堆叠；连接刷新和新对话改为带提示的图标按钮，保留窗口拖动、缩放与连接检查逻辑。
+- 统一消息视觉：导师使用图标头像与轻量标题，学生消息使用独立气泡；复制与知识来源保留为紧凑图标，悬停提示和复制结果反馈保持可用。
+- 快捷问题移动到输入框上方并压缩尺寸；输入框支持随内容自动增高，发送按钮收为图标操作，并补充 480px 以下的窄屏布局。
+
+### Testing
+- `npm test`：55/55 通过，导师状态机、RAG、Lab 合约与学习数据回归均正常。
+- `npm run build`：通过，VitePress 客户端/服务端 bundle 与页面渲染完成。
+- `http://127.0.0.1:5175/learn/lab2`：本地服务返回 HTTP 200；当前环境无可连接浏览器实例，未执行截图验收。
+- `git diff --check`：通过；仅有工作区既有的 LF/CRLF 提示。
+
+---
+
+## 2026-08-07 - Task: 隐藏学生端 AI 导师内部状态并补充维护指南
+
+### What was done
+- 从学生端 AI 导师悬浮窗移除阶段、已有证据、下一步所需和 L0-L4 提示等级状态条，并清理消息气泡中的分类、提示等级和护栏状态徽标；删除不再使用的 `TutorEvidenceBar.vue`，服务端阶段机、证据门控、状态持久化和 Prompt 注入保持不变。
+- 新增 `os-lab/docs/ai-tutor-stage-guide.md`，说明六阶段流转、状态字段、Prompt 覆盖顺序、任务 manifest 提示阶梯、阶段调整方法、引导话术设计和回归验证流程。
+- 在 `agent-system-technical.md` 增加维护指南入口，明确内部教学状态只供服务端决策、教师审计和评估使用，不向学生直接展示。
+
+### Testing
+- `npm test`：55/55 通过，包含阶段机、提示等级、证据门控和 Harness 回归。
+- `npm run build`：通过，VitePress 客户端/服务端 bundle 与页面渲染完成。
+- `git diff --check`：通过；仅有工作区既有的 LF/CRLF 提示。
+
+---
+
+## 2026-08-07 - Task: Lab2 验证表写明具体输出断言
+
+### What was done
+- 将 lab2-trap-and-task.md「验证命令」表中 QEMU 一行的通过标准，由笼统的「同时满足下列输出断言」改为与任务一一致的四条具体输出。
+
+### Testing
+- 人工对照任务一通过标准四条断言。
+
+### Notes
+- 改动：os-lab/labs/lab2-trap-and-task.md（第四节 QEMU 通过标准）；progress.md（本条）
+- 回滚：将该单元格改回原表述
+
+---
+
+## 2026-08-07 - Task: 按 Lab2 格式补强 Lab3 手册代码讲解
+
+### What was done
+- 对照 lab2-trap-and-task.md 结构，重写 lab3-memory.md 背景知识：增加阅读顺序表、知识路径、`mm::init` / Sv39 拆分与 PTE 代码锚点、用户空间与 U 位、trap 的 satp 切换与时间线。
+- 任务一与 scaffold lab3 fill（`restore_user_bit`）/ debug（`map_elf_and_stack` 权限问题）对齐；阅读理解题补充 U 位与 remap 考点。
+
+### Testing
+- 人工对照 lab2 章节骨架与 lab3 fill/debug mm.rs 题面；手册不给出完整解法。
+
+### Notes
+- 改动：os-lab/labs/lab3-memory.md（结构与代码讲解扩展）；progress.md（本条）
+- 回滚：还原 lab3-memory.md 本轮内容
+
+---
+
+## 2026-08-07 - Task: 补一句 Lab3 debug map_elf_and_stack 注释
+
+### What was done
+- 将 map_elf_and_stack 函数注释改为一句：说明用户 ELF 页原本应保留 U，并点出此处埋了权限问题。
+
+### Testing
+- 人工核对仅改一行文档注释。
+
+### Notes
+- 改动：scaffold/exercises/lab3/debug/kernel/src/mm.rs
+- 回滚：还原该注释
+
+---
+
+## 2026-08-07 - Task: Lab3 debug mm.rs 注释对齐通过标准与填空风格
+
+### What was done
+- 按 Lab2 debug / Lab3 fill 风格改写 Lab3 debug mm.rs：文件头写清现象与通过断言；map_elf_and_stack 增加思路提示与栈/ELF 权限对照，埋点旁引导最小修复方向，不给出完整补丁。
+
+### Testing
+- 人工核对：埋点仍为去掉 ELF 区 U；注释含通过标准四条输出。
+
+### Notes
+- 改动：scaffold/exercises/lab3/debug/kernel/src/mm.rs
+- 回滚：还原该文件
+
+---
+
+## 2026-08-07 - Task: Lab3 mm.rs 注释对齐 Lab2 fill 风格
+
+### What was done
+- 按 Lab2 fill `task.rs` 风格改写 Lab3 fill/debug 的 mm.rs：文件头两行点明任务；
+`restore_user_bit` 用「思路提示」分条引导，不给完整实现；debug 头注释改为现象+排查步骤。
+- 手册变体识别标记改为 【Lab3 任务：fill/debug】。
+
+### Testing
+- 人工对照 Lab2 fill 文件头与函数提示结构；fill 仍为 `todo!`，debug 埋点未改。
+
+### Notes
+- 改动：scaffold/exercises/lab3/fill|debug/kernel/src/mm.rs、labs/lab3-memory.md
+- 回滚：还原上述文件
+
+---
+
+## 2026-08-07 - Task: 收口 Lab2 内置任务类型
+
+### What was done
+- 删除 `exercises/lab2/remedial/` 学生任务目录及其完整参考实现、manifest、教师验收资料和发布 catalog 条目。
+- Lab2 内置任务类型固定为 `fill`、`debug`；教师端下发选择器、scaffold 命令和服务端配置校验不再提供 `remedial` 或 `random`，教师仍可通过 Lab 工厂新增自定义任务类型。
+- 清理 Lab2 的变体映射、发布凭证和回归测试，使学生领取链路只接受当前 catalog 中声明的任务类型。
+
+### Testing
+- `npm test`：55/55 通过。
+- `npm run build`：通过，VitePress 客户端/服务端 bundle 和页面渲染完成。
+- `git diff --check`：通过；仅保留工作区既有的 LF/CRLF 提示。
+
+---
+
+## 2026-08-07 - Task: 优化 AI 导师消息操作与知识来源展示
+
+### What was done
+- 为 AI 导师对话中的每条消息增加一键复制操作，复制完整消息文本；同时复用带浏览器兼容回退的剪贴板逻辑，并提供复制成功、失败和自动恢复状态。
+- 将导师回复下方原本展开的「参考知识」来源列表和检索诊断压缩为一个小书本图标；图标仅用于展示，鼠标悬停可查看本轮参考数量、来源标题、章节路径及检索降级信息，不再响应点击或执行知识库跳转。
+- Tutor Prompt 要求模型仅在知识块确实支撑陈述时附加当轮允许的 `kb:` 引用；Markdown 渲染将该引用显示为正文内的小型「来源」标注，不暴露知识块正文，也不提供文档跳转。
+- 删除 AI 导师单条回复底部单独生成的 `run:`、`trace:` 等证据按钮，避免出现额外的「测试结果」跳转；工作区其他面板原有的证据查看机制保持不变。
+
+### Testing
+- `npm test`：54/54 通过。
+- `npx vitepress build`：通过，客户端、服务端 bundle 与页面渲染均完成。
+- `git diff --check`：通过；仅有工作区既有的 LF/CRLF 提示。
+- 浏览器自动化运行时无可用浏览器实例，因此未执行截图与鼠标悬停的自动化回归；本地开发服务正常运行。
+
+### Notes
+- 主要文件：`TutorMessage.vue`、`markdown.ts`、`tutor-server.mjs`。
+- 本项只收口 AI 导师消息层的复制、知识来源展示与回复底部操作，不改变知识检索、权限过滤和教师知识库管理逻辑。
+
+---
+
+## 2026-08-07 - Task: 清理终端面板中的冗余命令按钮
+
+### What was done
+- 移除终端输出区域的「复制输出」「添加到 AI 导师对话」「插入实验报告」三个按钮及其事件链路，删除 `TerminalSession` 中对应的状态、复制逻辑和报告/对话注入逻辑。
+- 同步清理 `TerminalPanel`、`LabWorkspace` 的事件转发；实验报告的过程记录提示改为引导学生自行挑选关键运行结果作为证据。
+
+### Testing
+- 提交本身未附测试命令；当前工作区后续统一执行 Handbook 回归测试与构建检查。
+
+### Notes
+- 主要提交：`83a41d2`（AM-SuSh，2026-08-07 13:05）。
+- 主要文件：`TerminalSession.vue`、`TerminalPanel.vue`、`LabWorkspace.vue`、`report-template.ts`。
+
+---
+
+## 2026-08-07 - Task: 重整学生工作台导航
+
+### What was done
+- 新增 `WorkspaceNav.vue` 与 `workspace-nav.ts`，把实验路径、手册/工作区/学习支持切换和模型设置入口接入 VitePress 顶部导航。
+- `LabWorkspace` 改为通过共享状态向顶栏同步当前 Lab、已应用变体、面板状态和成长档案操作，移除工作台内部重复的顶栏入口。
+- 将模型设置移动到学生账号菜单；调整教师工作台和窄屏布局，统一使用站点导航高度计算工作区位置。
+
+### Testing
+- 提交本身未附测试命令；当前工作区后续统一执行 Handbook 回归测试与构建检查。
+
+### Notes
+- 主要提交：`7ecade1`（AM-SuSh，2026-08-07 12:56）。
+- 主要文件：`Layout.vue`、`LabWorkspace.vue`、`UserNav.vue`、`WorkspaceNav.vue`、`workspace-nav.ts`。
+
+---
+
+## 2026-08-07 - Task: 移除工作台冗余二级导航
+
+### What was done
+- 删除 `LabWorkspace` 内部重复的工作台顶栏及其相关样式、任务徽标和导航入口。
+- 将工作区主体直接对齐到 VitePress 顶部导航下方，简化桌面端和移动端的 grid 行布局，减少重复入口和空间占用。
+
+### Testing
+- 提交本身未附测试命令；当前工作区后续统一执行 Handbook 回归测试与构建检查。
+
+### Notes
+- 主要提交：`d2a9de8`（AM-SuSh，2026-08-07 12:12）。
+- 主要文件：`os-lab/handbook/.vitepress/theme/components/LabWorkspace.vue`。
+
+---
+
+## 2026-08-07 - Task: 增加 AI 导师离线回退
+
+### What was done
+- Tutor Server 从 `handbook/data/labs.json` 读取 Lab 运行元数据，并为 Lab1–Lab8 提供验证命令回退值。
+- 上游模型不可用、返回错误、超时或空响应时，不再直接返回 502/504 或 SSE error，而是返回结构完整的离线导师回复，保留 `tutorState`、知识元数据和检索诊断。
+- 离线回复按 Lab 和阶段给出定界、阅读、验证、排错、复盘或迁移提示；直接索要完整答案时仍先执行 guardrail。
+- 增加 Tutor Server smoke 对上游不可用时 `mode: offline`、`offline-tutor` 和 Lab2 `sepc/trap` 引导内容的检查；学生端取消仅允许 remote 连接时才请求导师的限制。
+
+### Testing
+- 新增离线回退 smoke 场景，覆盖 JSON/SSE 返回结构和导师状态保留。
+
+### Notes
+- 主要提交：`c6b145b`（AM-SuSh，2026-08-07 11:23）。
+- 主要文件：`tutor-server.mjs`、`tutor-server.smoke.mjs`、`LabWorkspace.vue`。
+
+---
+
+## 2026-08-07 - Task: 重做 Lab2 实验手册与 fill 变体说明
+
+### What was done
+- 重排 Lab2 手册的开始准备、问题场景、知识路径、Lab1/Lab2 对照、背景知识和实验任务结构，补充按源码调用链阅读的文件表。
+- 将变体流程统一到“任务一”：明确 fill/debug/remedial 的入口、现象、排错路径、提示边界和恢复要求；修正 fill 变体对轮转扫描差异的表述，要求在多 Ready 场景或代码逻辑中解释。
+- 将验证标准明确为四条输出断言：Hello、幂结果、`Yield round` 至少 5 次、全部用户程序退出，并强调退出码 0 不等于实验通过。
+- 在 Lab2 参考答案中补充普通 syscall 与 yield 的 trap 分叉、扫描起点差异、yield/exit 状态转换和 `load_apps`/`load_app` 职责四个问题。
+- 更新知识表、fill scaffold 注释和变体报告问题，使实验手册、答案、variant manifest 与实现保持一致。
+
+### Testing
+- 提交内容包含手册、答案、知识表、variant manifest 和 fill scaffold 的同步修改；后续统一执行 Handbook 回归测试与构建检查。
+
+### Notes
+- 主要提交：`1b0c38b`（SIZN，2026-08-07 11:16）。
+- 主要文件：`os-lab/labs/lab2-trap-and-task.md`、`os-lab/labs/answers/lab2-answers.md`、`os-lab/lab-packages/lab2/knowledge-table.md`、`variants/fill/manifest.yaml`。
+
+---
+
+## 2026-08-06 - Task: 将 Tutor 阶段提示扩展到 Lab1/3/4
+
+### What was done
+- 为 Lab1、Lab3、Lab4 补充各自的可讨论范围、客观验证标准和 `orient/read/run/debug/reflect` 五阶段提示。
+- Tutor Server 从只加载 Lab2 阶段 prompt 改为按 Lab 加载，并保留共享阶段 prompt 作为回退。
+- 新增 Lab1、Lab3、Lab4 金标准对话，覆盖完整答案拒答、无可信证据不得确认通过、纠正典型错误假设，以及有证据后的深化追问。
+- 扩充 Tutor/RAG harness：增加 Lab1 启动链、Lab3 `U` 权限位、Lab4 `fork/wait` 等场景。
+- 修正 Lab2 “任务四”旧引用和 fill/debug/remedial variant 的手册锚点，改为当前“任务一”位置。
+
+### Testing
+- 新增的 Tutor/RAG fixture 和测试覆盖学生答案安全、证据门控、Lab 范围和知识块元数据约束。
+
+### Notes
+- 主要提交：`7340a22`（SIZN，2026-08-06 22:14）。
+- 主要目录：`os-lab/tutor/prompts/lab1`、`lab3`、`lab4`，`os-lab/learning/tutor-golden-dialogues-lab1/3/4.json`，Tutor/RAG harness fixture。
+## 2026-08-07 - Task: Lab3 fill mm.rs 文件头压缩为两行
+
+### What was done
+- 将 Lab3 fill 的 mm.rs 文件头改为两行：任务要做什么 + 如何验证。
+
+### Testing
+- 人工核对文件头仅两行 //! 说明。
+
+### Notes
+- 改动：scaffold/exercises/lab3/fill/kernel/src/mm.rs
+- 回滚：还原该文件头
+
+---
+
+## 2026-08-07 - Task: 加详 Lab3 fill/debug mm.rs 学生向注释
+
+### What was done
+- 重写 Lab3 fill/debug 的 mm.rs 学生向注释：文件头说明 U 位与地址空间；fill 对 strip/restore 给出步骤、API 与常见错误；debug 给出排查路径并在埋点旁引导对照权限。
+
+### Testing
+- 人工核对：fill 仍为 	odo!；debug 埋点逻辑未改；修正 fill 中误用的 //! 行内文档标记。
+
+### Notes
+- 改动：scaffold/exercises/lab3/fill/kernel/src/mm.rs、scaffold/exercises/lab3/debug/kernel/src/mm.rs
+- 回滚：还原上述两文件
+
+---
+
+## 2026-08-07 - Task: Lab3 手册合并地址空间 2.1 与 2.5
+
+### What was done
+- 将 lab3-memory.md 原 2.1（分页与地址空间）与 2.5（MemorySet）融合为新的 2.1；原 2.6 顺延为 2.5，并更新文内引用。
+
+### Testing
+- 人工核对：章节现为 2.1–2.5；任务三「修改 3」已指向 2.5 流程图。
+
+### Notes
+- 改动：os-lab/labs/lab3-memory.md
+- 回滚：git checkout -- os-lab/labs/lab3-memory.md
+
+---
+
+## 2026-08-07 - Task: 加详 Lab2 fill/debug task.rs 学生向注释
+
+### What was done
+- 面向学生加详 Lab2 fill/debug 的 	ask.rs 注释：文件头补充调用链与验证说明；为 TaskStatus / TCB / TaskManager、find_next_task、mark_current_suspended、sync_current_trap_cx、run_next_task 补充教学说明；fill 给出分步实现提示与常见错误，debug 给出排查路径但不改埋点逻辑。
+
+### Testing
+- 人工核对：仅注释变更；fill 仍为 	odo!；debug 仍为 Exited 埋点。
+
+### Notes
+- 改动：scaffold/exercises/lab2/fill/kernel/src/task.rs、scaffold/exercises/lab2/debug/kernel/src/task.rs
+- 回滚：还原上述两文件
+
+---
+
+## 2026-08-07 - Task: 统一 Lab2 fill/debug task.rs 注释并收紧轮转要求
+
+### What was done
+- Lab2 fill 的 	ask.rs 按 Lab3/Lab4 风格重写文件头与函数注释：中文任务说明在前、英文模块一行在后；明确要求从 current+1 轮转扫描。
+- Lab2 debug 的 	ask.rs 同步同一注释版式，并把英文 Copy trap context 改为中文；埋点处补 PLANTED BUG 说明。
+- 同步手册任务一、fill manifest、published.json、scaffold.mjs 标签。
+
+### Testing
+- 人工核对：fill/debug 文件头均以 【Lab2 任务：…】 开头；手册识别标记仍匹配；代码逻辑除 fill 的 	odo! 文案与 debug 注释外未改行为。
+
+### Notes
+- 改动：scaffold/exercises/lab2/fill|debug/kernel/src/task.rs、labs/lab2-trap-and-task.md、lab-packages/lab2/variants/fill/manifest.yaml、published.json、scripts/scaffold.mjs
+- 回滚：还原上述文件
+
+---
+
+## 2026-08-07 - Task: 按 Lab1 格式重整 Lab7 手册
+
+### What was done
+- 将 lab7-ipc-signal.md 按 lab1-bare-metal.md（及已对齐的 Lab6/Lab8）版式重整：教材理论块、零开始之前的分步 PowerShell 与预构建、问题场景对照表与实验目标、背景知识串链、任务一/二/三写法、四验证命令；保留五 AI 提问模板，去掉独立提交清单。
+
+### Testing
+- 只读对照：章节标题与 Lab6/Lab8 一致；任务一仍为 signal_mask fill/debug + make test-lab7；未改内核代码。
+
+### Notes
+- 改动：os-lab/labs/lab7-ipc-signal.md
+- 回滚：git checkout -- os-lab/labs/lab7-ipc-signal.md
+
+---
+
+## 2026-08-07 - Task: Lab5 debug 改为管道关错端
+
+### What was done
+- Lab5 debug 与 fill 对齐到同一知识点（pipe + fork）：debug 改为 pipe_test.rs 中子进程关错端的排错题；移除旧的 fs_test 错文件名 debug。
+- 同步 lab.yaml、manifest、published.json、scaffold.mjs 与手册任务一说明。
+
+### Testing
+- getExerciseCatalog：lab5 fill/debug 均指向 `user/src/bin/pipe_test.rs`，debug sources 为 scaffold debug 模板；旧 fs_test debug 文件已不存在。
+
+### Notes
+- 新增：`scaffold/exercises/lab5/debug/user/src/bin/pipe_test.rs`
+- 删除：`scaffold/exercises/lab5/debug/user/src/bin/fs_test.rs`
+- 改动：`lab-packages/lab5/lab.yaml`、`variants/debug/manifest.yaml`、`checkpoints.yaml`、`published.json`、`scripts/scaffold.mjs`、`labs/lab5-fs-and-sync.md`
+- 回滚：还原上述注册与手册，并从 git 恢复旧 fs_test debug（若需要）
+
+---
+
+## 2026-08-07 - Task: 加强 Lab3–8 fill 任务难度
+
+### What was done
+- 审查并重写 Lab3–8 fill：避免「一行常量」式挖空。
+- Lab3：strip 后实现 restore_user_bit 遍历 remap；Lab4：双子进程 reap；Lab5 fill 改为 pipe_test 两端协议；Lab6：基于 nlink_before 的校验函数；Lab7：完整 mask 协议；Lab8：临界区 + worker + 双线程创建。
+- 同步 lab.yaml / published.json / scaffold.mjs / 各 Lab 手册任务一文案。
+
+### Testing
+- 抽查 fill 源码均为协议/循环级 todo；getExerciseCatalog 中 lab5 fill 指向 pipe_test.rs。
+
+### Notes
+- 主要改动：scaffold/exercises/lab{3-8}/fill/...、lab-packages/**/fill、手册 lab3–8、published.json、scaffold.mjs
+- 回滚：还原上述文件；lab5 若需旧 fs_test fill 可从 git 历史取回
+
+---
+
+## 2026-08-07 - Task: Lab3–8 增加 fill 任务变体并同步手册
+
+### What was done
+- 为 Lab3–8 各新增 
+ill 变体（保留原 debug）：mm 用户栈权限、fork 通过条件、内嵌文件名、nlink 期望、SIGUSR1 掩码、mutex 临界区。
+- 注册到 lab-packages/*/lab.yaml、
+ariants/fill/manifest.yaml、published.json 与 scripts/scaffold.mjs LEGACY 表，供教师端 fill/debug/random 分发。
+- Lab3–8 实验手册任务一改为「先完成教师下发变体再跑通」；任务三注明变体为主任务。
+
+### Testing
+- getExerciseCatalog()：lab3–8 均含 fill+debug；标签可读。
+- 抽查 fill 源码含 	odo! / 任务头注释；lab.yaml editable_by_variant 含 fill。
+
+### Notes
+- 新增：os-lab/scaffold/exercises/lab{3-8}/fill/...、lab-packages/lab{3-8}/variants/fill/manifest.yaml
+- 修改：各 lab.yaml、published.json、scaffold.mjs、lab3–8 手册
+- 回滚：删除 fill 目录与 manifest，还原 yaml/published/手册/scaffold.mjs
+
+---
+
+## 2026-08-06 - Task: Lab8 问题场景表改为「需要完成 / 作用」
+
+### What was done
+- 将问题场景对照表第二列由「如果没有会怎样」改为「作用」，正面说明线程层、阻塞同步、调度衔接与死锁检测各自完成什么。
+
+### Testing
+- 文案核对：与后文四个问题及实验目标方向一致。
+
+### Notes
+- os-lab/labs/lab8-thread-sync.md：仅改问题场景中该表。
+- 回滚：还原该表即可。
+
+---
+
+## 2026-08-06 - Task: Lab8「零、开始之前」对齐 Lab6 版式
+
+### What was done
+- 按 Lab6 零节格式微调 Lab8：自检后引用块措辞、预构建说明（含占锁提示）、产出表后的 build.rs / check-fs-img 引用块；make test-lab8 提醒仍留在任务一。
+
+### Testing
+- 与 lab6-disk-fs.md 零节结构对照：步骤块、引用块、产出表、读书提示一致。
+
+### Notes
+- os-lab/labs/lab8-thread-sync.md：仅改「零、开始之前」。
+- 回滚：还原该节即可。
+
+---
+
+## 2026-08-06 - Task: 按 Lab1 格式重整 Lab8 手册
+
+### What was done
+- 将 lab8-thread-sync.md 按 Lab1/Lab6 版式重整：教材块、零开始之前（含预构建）、问题场景对照表与实验目标、背景知识 2.1–2.6、任务一/二/三、验证命令与 AI 模板；去掉残缺句并统一答案链为 /answers/lab8-answers。
+
+### Testing
+- 文案结构核对：H2 为零～五；任务二仍为 5 题；强调 make test-lab8 而非裸 cargo run。
+
+### Notes
+- os-lab/labs/lab8-thread-sync.md：全文按 Lab1 格式重排。
+- 回滚：git checkout -- os-lab/labs/lab8-thread-sync.md
+
+---
+
 ## 2026-08-06 - Task: 扩写 Lab6 背景知识
 
 ### What was done
@@ -4234,3 +4648,27 @@
 - `docs/project_plan.md`：新增项目完成计划文档，明确实施路径、验收方式和三人分工。
 - `progress.md`：新增本轮正式文档交付记录。
 - 回滚方式：删除 `docs/project_plan.md` 和本文件中的本轮记录；若 `docs/` 目录仅包含本轮创建内容，可一并删除 `docs/` 目录。
+## 2026-08-07 - Task: unify student learning data persistence
+
+### What was done
+
+- 保留 `student-labs/<username>/` 作为纯代码工作区；新增 `learning/student-data/<userId>/` 作为学生学习数据统一根目录，按数据库用户 ID 而不是可变用户名分桶。
+- 新增 `os-lab/learning/student-data-store.mjs`：提供报告草稿、正式报告正文、草稿附件、学习事件、Tutor 会话和运行制品的安全路径、原子写入与读取能力。
+- 运行输出与 Trace 改为 `student-data/<userId>/runs/<labId>/<runId>/output.log|trace.jsonl`；旧 `learning/sessions/` Trace 仍可回退读取。
+- 报告新增服务端草稿接口：`GET|PUT /reports/draft`，草稿正文由原子 JSON 文件保存，附件保存到同一 Lab 的 `draft-attachments/`；浏览器 localStorage/IndexedDB 仅作为离线缓冲。
+- 报告正式提交同时写入 `reports/<labId>/submission.md`，SQLite `reports.content_path` 记录文件路径；旧报告附件目录保留兼容读取。
+- AI 会话新增 `GET|PUT /conversations/mine`，服务端按账号保存会话快照与 JSONL 原始轮次；前端登录后优先从服务端恢复，失败时回退本机副本。
+- 新增 `report_drafts` SQLite 元数据表，SQLite 继续负责权限、索引、状态、断言、评分和教师查询，文件系统负责正文与大体量原始材料。
+- 更新教师指南和 handbook README，明确代码工作区、学习数据目录、离线缓存与旧数据兼容边界。
+
+### Testing
+
+- `npm test`：通过，54 项测试全绿。
+- `npm run test:smoke`：通过；覆盖运行/Trace、账号隔离、报告、草稿恢复、会话恢复和 Lab Factory 链路。
+- `npm run build`：通过；VitePress 客户端/服务端 bundle、页面渲染与链接检查通过。
+- `git diff --check`：通过。
+
+### Notes
+
+- 新数据不再写入全局 `learning/sessions/` 或旧报告附件目录；这些路径仅作为已有数据的兼容来源。
+- 清理学生数据时应根据 SQLite 中的 `users.id` 删除对应 `learning/student-data/<userId>/`，不要仅按用户名目录猜测归属。

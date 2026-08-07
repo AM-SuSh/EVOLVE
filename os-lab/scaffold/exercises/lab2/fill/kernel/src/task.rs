@@ -1,6 +1,4 @@
-//! Task control blocks and round-robin scheduling (lab2+).
-//!
-//! 【Lab2 任务：补全调度器】当前 `TaskManager::find_next_task` 是 `todo!()`。
+//! 【Lab2 任务：fill】当前 `TaskManager::find_next_task` 是 `todo!()`。
 //! 请先阅读 `find_next_task` 上方的思路提示，再实现调度选择逻辑。
 
 use os_context::TrapContext;
@@ -90,23 +88,17 @@ impl TaskManager {
         }
     }
 
-    /// 【Lab2 任务：补全调度器】
-    ///
-    /// 从任务表里挑出下一个可以运行的任务，返回它的下标；没有可运行任务时返回 None。
+    /// 【Lab2 任务：fill】选出下一个 Ready 任务的下标；没有则返回 None。
     ///
     /// 思路提示（先自己想清楚再动手）：
-    ///  1. 任务表是 `self.tasks[0..self.num_app]`，每一项是 `Option<TaskControlBlock>`；
-    ///  2. 只有 `task_status == TaskStatus::Ready` 的任务可以被选中；
-    ///  3. 选中后要把 `self.current` 更新为它的下标——trap 返回时内核靠它找到「当前任务」；
-    ///  4. 想一想：从 0 号槽开始扫和从 `self.current + 1` 开始「轮转」扫，行为差别是什么？
-    ///     本实验默认的 hello / power / yield 是顺序 batch，yield 通常是唯一 Ready 任务，
-    ///     所以两种写法的默认输出不一定能直接看出差异；可以临时构造多个同时 Ready 的任务
-    ///     来观察，或在报告中从循环边界直接解释差异。
-    ///
-    /// 验证：补全后运行 `cargo run -p kernel --features lab2 --release`，
-    /// 应看到 hello / power / yield 三个程序依次完成，最后打印 `All user apps exited.`。
+    /// 1. 任务表是 `self.tasks[0..self.num_app]`，每一项是 `Option<TaskControlBlock>`；
+    /// 2. 只有 `Ready` 可被选中；选中后更新 `self.current`；
+    /// 3. 轮转扫描：从 `(self.current + 1) % self.num_app` 起最多看 `num_app` 个槽；
+    /// 4. 想清楚：从 0 扫和从 `current + 1` 扫，在「同时有多个 Ready」时差在哪？
+    ///    默认 hello / power / yield 是顺序 batch，默认输出不一定能直接看出差异，
+    ///    报告里应用循环边界解释，或临时构造多 Ready 场景观察。
     fn find_next_task(&mut self) -> Option<usize> {
-        todo!("Lab2：在这里实现你的调度器（见上方提示）")
+        todo!("Lab2：实现从 current+1 起的轮转调度（见上方提示）")
     }
 
     fn all_exited(&self) -> bool {
@@ -156,6 +148,7 @@ pub fn run_first_task() -> ! {
     })
 }
 
+/// yield：当前任务 Running → Ready，之后由 `run_next_task` 再选下一个。
 pub fn mark_current_suspended() {
     TASK_MANAGER.with(|tm| {
         let task = tm.tasks[tm.current].as_mut().unwrap();
@@ -163,7 +156,7 @@ pub fn mark_current_suspended() {
     });
 }
 
-/// Copy trap context saved on the kernel stack into the current task TCB.
+/// 把内核栈上保存的 trap 现场写回当前任务的 TCB。
 pub fn sync_current_trap_cx(cx: &TrapContext) {
     TASK_MANAGER.with(|tm| {
         let current = tm.current;

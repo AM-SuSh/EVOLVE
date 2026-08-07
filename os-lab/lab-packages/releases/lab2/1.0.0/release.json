@@ -83,50 +83,40 @@
         "kernel/src/task.rs": "scaffold/exercises/lab2/debug/kernel/src/task.rs"
       },
       "manifest": "lab-packages/lab2/variants/debug/manifest.yaml"
-    },
-    "remedial": {
-      "label": "面向「已接触 debug/fill 但仍混淆让出与退出」的学生。",
-      "files": [
-        "kernel/src/task.rs"
-      ],
-      "sources": {
-        "kernel/src/task.rs": "scaffold/exercises/lab2/remedial/kernel/src/task.rs"
-      },
-      "manifest": "lab-packages/lab2/variants/remedial/manifest.yaml"
     }
   },
   "source": {
-    "specHash": "d13c1966563459e6bafa250a4b4b332a09b9901a3620a09aab149ee30da319ef",
+    "specHash": "be69aa14a84a56eea1f8a7a5f7f04aefe56a0375e641f352adf204905d50cf90",
     "specPath": "lab-packages/lab2/lab.yaml"
   },
   "test": {
-    "runId": "d3f0dfdb-76fd-4739-b43f-44ce77624841",
+    "runId": "31623147-d4c9-4521-8a32-504ea50c2d53",
     "labId": "lab2",
     "version": "1.0.0",
-    "variant": "remedial",
-    "specHash": "d13c1966563459e6bafa250a4b4b332a09b9901a3620a09aab149ee30da319ef",
+    "variant": "debug",
+    "specHash": "be69aa14a84a56eea1f8a7a5f7f04aefe56a0375e641f352adf204905d50cf90",
     "status": "passed",
     "isolated": true,
     "commands": [
       {
         "kind": "baseline-build",
         "exitCode": 0,
-        "outputHash": "06d9f295fa1e656f45c60c90645bdb98581da84709713400cf6e5ed1d7922d4d"
+        "outputHash": "480869d72ce1ec3ad0fa82a8530358a181c5f700b38abd758b08aaa86a49cfff"
       },
       {
         "kind": "baseline-trusted-test",
         "exitCode": 0,
-        "outputHash": "b5555c721d1308058f39b45f5d22dab2ceab55fddf9dbf9815f50236c96b222e"
+        "outputHash": "d997bb59710b794aaf48fed133fc8f84245e78be5716ca03f20f1f152f3b6ea2"
       },
       {
         "kind": "variant-build",
         "exitCode": 0,
-        "outputHash": "d656bc1d4fa33a2607aa576d2db8e0c7ef25f89ba4ae9c474f3712448b37765e"
+        "outputHash": "2e2e77622ab140ade54d5bc7c9d5d41e84dfa23d496886de5f26e93f41f002e3"
       },
       {
         "kind": "variant-trusted-test",
         "exitCode": 0,
-        "outputHash": "b9b2b58bc474083936f6bf58c3b1be82d021638c10bb44f04676edfcbcd21336"
+        "outputHash": "8c71657382ab296670df54463169f0ff9f530422e87e47b669f02d8fbdbcc4fa"
       }
     ],
     "baselineAssertions": [
@@ -166,9 +156,9 @@
       }
     ],
     "negativeMatched": true,
-    "startedAt": "2026-08-01T19:05:19.825Z",
-    "finishedAt": "2026-08-01T19:05:32.984Z",
-    "author": "admin"
+    "startedAt": "2026-08-07T07:08:02.031Z",
+    "finishedAt": "2026-08-07T07:08:16.553Z",
+    "author": "variant-cleanup"
   },
   "approval": {
     "approved": true,

@@ -228,6 +228,16 @@ CREATE TABLE IF NOT EXISTS review_decisions (
 );
 CREATE INDEX IF NOT EXISTS review_decisions_review_revision_idx ON review_decisions(review_id, revision);
 `)
+applyMigration('20260807_student_data_v1', `
+CREATE TABLE IF NOT EXISTS report_drafts (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  lab_id TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(user_id, lab_id)
+);
+CREATE INDEX IF NOT EXISTS report_drafts_user_updated_idx ON report_drafts(user_id, updated_at DESC);
+`)
 try {
   db.exec('ALTER TABLE reports ADD COLUMN feedback TEXT NOT NULL DEFAULT ""')
 } catch {
@@ -242,6 +252,12 @@ try {
   db.exec('ALTER TABLE run_assertions ADD COLUMN hint TEXT')
 } catch {
   /* 列已存在 */
+}
+
+try {
+  db.exec("ALTER TABLE reports ADD COLUMN content_path TEXT NOT NULL DEFAULT ''")
+} catch {
+  /* column already exists */
 }
 
 function insertUser(name, password, role, className) {
@@ -347,7 +363,7 @@ function parseAttachments(raw) {
   }
 }
 
-export function submitReport(userId, labId, content, attachments = []) {
+export function submitReport(userId, labId, content, attachments = [], contentPath = '') {
   const meta = JSON.stringify(
     (Array.isArray(attachments) ? attachments : []).map((item) => ({
       name: String(item.name || ''),
@@ -357,19 +373,20 @@ export function submitReport(userId, labId, content, attachments = []) {
     })),
   )
   db.prepare(
-    `INSERT INTO reports (user_id, lab_id, content, updated_at, attachments) VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO reports (user_id, lab_id, content, updated_at, attachments, content_path) VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(user_id, lab_id) DO UPDATE SET
        content = excluded.content,
        updated_at = excluded.updated_at,
-       attachments = excluded.attachments`,
-  ).run(userId, labId, content, now(), meta)
+       attachments = excluded.attachments,
+       content_path = excluded.content_path`,
+  ).run(userId, labId, content, now(), meta, String(contentPath || ''))
   return { ok: true }
 }
 
 export function listMyReports(userId) {
   return db
     .prepare(
-      'SELECT lab_id AS labId, updated_at AS updatedAt, feedback, attachments FROM reports WHERE user_id = ? ORDER BY lab_id',
+      'SELECT lab_id AS labId, updated_at AS updatedAt, feedback, attachments, content_path AS contentPath FROM reports WHERE user_id = ? ORDER BY lab_id',
     )
     .all(userId)
     .map((row) => ({ ...row, attachments: parseAttachments(row.attachments) }))
@@ -378,7 +395,7 @@ export function listMyReports(userId) {
 export function listAllReports() {
   return db
     .prepare(
-      `SELECT u.username AS user, u.class_name AS className, r.lab_id AS labId, r.updated_at AS updatedAt, r.content, r.feedback, r.attachments
+      `SELECT u.username AS user, u.class_name AS className, r.lab_id AS labId, r.updated_at AS updatedAt, r.content, r.feedback, r.attachments, r.content_path AS contentPath
        FROM reports r JOIN users u ON u.id = r.user_id ORDER BY u.class_name, u.username, r.lab_id`,
     )
     .all()
@@ -386,6 +403,23 @@ export function listAllReports() {
 }
 
 /** 按用户名取某份报告的附件元数据（教师下载用）。 */
+export function saveReportDraft(userId, labId, filePath, updatedAt = now()) {
+  db.prepare(
+    `INSERT INTO report_drafts (user_id, lab_id, file_path, updated_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id, lab_id) DO UPDATE SET
+       file_path = excluded.file_path,
+       updated_at = excluded.updated_at`,
+  ).run(userId, labId, String(filePath || ''), updatedAt)
+  return { ok: true, updatedAt }
+}
+
+export function getReportDraftMeta(userId, labId) {
+  return db.prepare(
+    `SELECT lab_id AS labId, file_path AS filePath, updated_at AS updatedAt
+     FROM report_drafts WHERE user_id = ? AND lab_id = ?`,
+  ).get(userId, labId) || null
+}
+
 export function getReportAttachmentMeta(username, labId) {
   const row = db
     .prepare(

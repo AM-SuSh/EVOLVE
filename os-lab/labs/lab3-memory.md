@@ -15,24 +15,12 @@
 在开始建立虚存之前，请确认已完成以下准备：
 
 1. **已完成 Lab2**：理解 trap、系统调用、上下文切换与任务调度（见 [Lab2 中断与任务](/labs/lab2-trap-and-task)）。本实验在 Lab2 的 trap 路径上增加地址空间与 `satp` 切换。
-2. **进入工作目录**：在本仓库根目录下，进入自研实验环境目录：
+2. **快速自检**：以下两条命令都能输出版本号，说明环境就绪：
   ```powershell
-   cd os-lab
+   rustc --version                    # 预期：rustc 1.96.0 ...
+   qemu-system-riscv64 --version      # 预期：QEMU emulator version 11.0.50 ...
   ```
-3. **（可选）激活当前终端环境**：如果你新开了一个终端，请在仓库**根目录**（不是 os-lab 目录）执行以下命令，让本会话能找到 Rust 和 QEMU：
-  ```powershell
-   . .\scripts\activate-os-env.ps1
-   cd os-lab
-  ```
-4. **快速自检**：以下两条命令都能输出版本号，说明环境就绪：
-  ```powershell
-   rustc --version          # 预期：rustc 1.96.0 ...
-   qemu-system-riscv64 --version   # 预期：QEMU emulator version ...
-  ```
-
-> 如果上面任何一步报“找不到命令”，回到 [环境搭建指南](/setup/environment) 检查安装。
-
-1. **建议先读书**：OSTEP 第 13–16 章（地址空间、地址转换、分段）与第 18 章分页。Lab3 是**内存虚拟化**的核心实验；对应 feature 为 `lab3`（依赖 `lab2`）。
+3. **建议先读书**：OSTEP 第 13–16 章（地址空间、地址转换、分段）与第 18 章分页。Lab3 是**内存虚拟化**的核心实验；对应 feature 为 `lab3`（依赖 `lab2`）。
 
 
 
@@ -40,7 +28,7 @@
 
 Lab2 已经能加载用户程序、处理系统调用，并在多个任务之间切换。但此时，内核与用户程序仍**直接使用物理地址**：程序写 `0x80400000`，CPU 就真的访问那块物理内存。
 
-应用到实际场景中，就会出现三个问题：
+与实际场景中的操作系统相比，我们目前为止完成的这个小系统还存在很严重的三个问题：
 
 
 | 问题    | 后果                    |
@@ -50,9 +38,9 @@ Lab2 已经能加载用户程序、处理系统调用，并在多个任务之间
 | 无虚拟地址 | 可用内存被物理 RAM 大小直接卡死    |
 
 
-OSTEP 的答案是**虚拟内存**：每个程序拥有独立的虚拟地址空间，由内核维护页表完成翻译，并用页表项（PTE）上的权限位（读 / 写 / 执行、`U` 位）做隔离。
+OSTEP 中给出解决这些的问题的方法是**虚拟内存**：让每个程序拥有独立的虚拟地址空间，由内核维护页表完成翻译，并用页表项（PTE）上的权限位（读 / 写 / 执行、`U` 位）做隔离。
 
-Lab2中的普通「物理地址直达」与本实验「经页表翻译」可以对照如下：
+Lab2 与本实验可以对照如下：
 
 
 | 执行环节    | Lab2（物理地址）    | 本实验 Lab3（Sv39 虚存）              |
@@ -74,9 +62,9 @@ Lab2中的普通「物理地址直达」与本实验「经页表翻译」可以�
 
 ## 二、背景知识
 
-Lab2 里用户程序与内核共用物理地址；Lab3 需要完成从物理地址直达」到「按地址空间隔离」的升级，具体来说就是每个程序建立独立的虚拟地址空间，由硬件页表完成翻译，并用 PTE 权限位做隔离。
+在Lab3 中我们需要完成从物理地址直达」到「按地址空间隔离」的升级，具体来说就是前面提到我们用**虚拟内存**可以实现的：每个程序建立独立的虚拟地址空间，由硬件页表完成翻译，并用 PTE 权限位做隔离，接下来我们将一一了解。
 
-### 2.1 分页与地址空间
+### 2.1 地址空间：从虚拟视图到 MemorySet
 
 先分清两套「地址世界」：
 
@@ -87,7 +75,9 @@ Lab2 里用户程序与内核共用物理地址；Lab3 需要完成从物理地�
 | **物理地址** | CPU 真正访问内存条 / DRAM 时用的地址 | 机器上唯一的那一套底层编号                  |
 
 
-**地址空间**，就是某个进程能看见、能使用的那一整段虚拟地址视图。通常按用途分成几块：代码段、数据段、堆、栈等。进程并不直接「看见」物理内存有多大；它只在自己的地址空间里读写。
+**地址空间**，就是某个进程能看见、能使用的那一整段虚拟地址视图。通常按用途分成几块：代码段、数据段、堆、栈等。进程并不直接「看见」物理内存有多大；它只在自己的地址空间里读写。Lab2 尚未建立这套抽象时，程序地址大致就是物理地址；Lab3 起，用户程序必须先经过页表，才能落到真正的物理内存上。
+
+**为何按「页」映射，而不是按字节**
 
 如果内核按**每一个字节**单独记录「虚拟地址 ↔ 物理地址」，页表会大到无法接受。因此真实系统把内存切成固定大小的块来管理：
 
@@ -113,7 +103,26 @@ Lab2 里用户程序与内核共用物理地址；Lab3 需要完成从物理地�
 
 页表就是内核为每个地址空间维护的「目录」：哪些虚拟页有效、对应哪块物理帧、允许读 / 写 / 执行等。若程序访问**尚未映射**的虚拟页，或权限不允许，硬件会触发**页错误（page fault）**，陷入内核；内核再决定补映射、换页，或终止该进程。
 
-Lab2 尚未建立这套抽象时，程序地址大致就是物理地址；Lab3 起，用户程序必须先经过页表，才能落到真正的物理内存上。下一小节将看到 RISC-V Sv39 如何用三级页表高效实现上述查表。
+**在本实验里：MemorySet 就是「完整地址空间」**
+
+若把页表比作「目录」，**MemorySet** 就是「这个进程完整的内存视图」：它内部持有根页表，并由若干 **MapArea**（一段连续的虚拟页范围 + 统一权限）描述代码、数据、栈等区域。概念上的「地址空间」，落到代码里主要就是这份 MemorySet。定义与操作集中在 `os-vm/src/lib.rs`。
+
+本实验里三类映射最重要：
+
+1. **内核恒等映射（identity map）**
+    虚拟地址数值等于物理地址。开分页之后，CPU 每一次取指、访存都要走页表；如果内核自己的代码 / 数据还没有映射，一打开分页就会立刻页错误。因此 `mm::init` 会在开启分页前，把内核需要的区间（大致从 `stext` 到帧池起点一带）先做成恒等映射，且通常不带 `U`。
+2. **用户映射**
+    解析 ELF 的 `PT_LOAD` 段，按段权限映射到用户虚拟地址，并加上 `U`；再为用户栈分配帧并映射为可读写的用户页。为用户建立「仍需用到的内核 trap 相关区域」时，会小心地跳过用户程序占用的物理区间（如 `APP_BASE..APP_BASE+APP_REGION`），避免和用户镜像冲突。
+3. **激活与切换**
+    把该地址空间根页表的物理页号写入 `satp`（并设置 Sv39 模式），再 `sfence.vma`。多任务时，每个任务绑定自己的用户 MemorySet；调度切换用户任务，本质上常常伴随「换一套页表」。
+
+代码对照：
+
+- `MemorySet::new_bare()` 分配根页表；
+- `map_identical_region` / `map_area` / `map_elf_pt_load` 往里挂映射；
+- `MemorySet::token()` / `activate()` 生成 `satp` 值并写入硬件。
+
+
 
 ### 2.2 Sv39 三级页表
 
@@ -138,7 +147,22 @@ RISC-V **Sv39** 约定：有效虚拟地址用 **39** 位（高位按符号扩�
 | `satp` **寄存器**         | 指出「当前地址空间」的根页表在物理内存的哪里（并标明 Sv39 模式） |
 
 
-硬件（或软件模拟的走表逻辑）查表顺序是固定的：
+`os-vm` 里把「页号」包成 `VirtPageNum`，拆分就在 `indexes`：
+
+```rust
+impl VirtPageNum {
+    pub fn indexes(&self) -> [usize; 3] {
+        let vpn = self.0;
+        [
+            (vpn >> 18) & 0x1ff, // VPN2
+            (vpn >> 9) & 0x1ff,  // VPN1
+            vpn & 0x1ff,         // VPN0
+        ]
+    }
+}
+```
+
+`0x1ff` 正好是 9 位全 1（511），所以能取出每一级索引。硬件（或软件走表）查表顺序是固定的：
 
 ```text
 从 satp 找到根页表
@@ -148,13 +172,23 @@ RISC-V **Sv39** 约定：有效虚拟地址用 **39** 位（高位按符号扩�
 → 从叶级 PTE 取出物理帧号，拼上 Offset
 ```
 
-中间某一级若「还没有对应页表页」，建立映射时可以按需分配新帧；只查询时则视为未映射。
+对应实现是 `PageTable::find_pte(vpn, alloc)`：
 
-查表很贵，所以 CPU 用 **TLB（Translation Lookaside Buffer）** 缓存近期「虚拟页 → 物理帧」的结果。切换任务、换掉根页表之后，旧 TLB 条目可能仍指向上一进程的翻译，必须执行 `sfence.vma` 刷新，否则会用错地址空间。
+- `alloc == false`：只查询；中间缺表就返回 `None`（翻译失败 / 未映射）；
+- `alloc == true`：建立映射时用；中间缺表就 `frame_alloc` 新页并写成「指针 PTE」。
+
+查表很贵，所以 CPU 用 **TLB** 缓存近期翻译。换掉根页表之后必须 `sfence.vma`，否则可能仍用上一进程的缓存结果。`os-vm` 的 `activate(token)` 正是：
+
+```rust
+asm!("csrw satp, {}", in(reg) token);
+asm!("sfence.vma");
+```
+
+
 
 ### 2.3 页表项 PTE
 
-每一级页表里的一项叫 **PTE（Page Table Entry）**。在本实验的 Sv39 布局里，一项是 **64 位**：高位（63）附近放物理帧号，最低 10 位（0-9）放标志位。示意如下：
+每一级页表里的一项叫 **PTE（Page Table Entry）**。在本实验的 Sv39 布局里，一项是 **64 位**：高位附近放物理帧号，最低 10 位放标志位。示意如下：
 
 ```text
 63            54 53                    10 9 8 7 6 5 4 3 2 1 0
@@ -173,6 +207,25 @@ RISC-V **Sv39** 约定：有效虚拟地址用 **39** 位（高位按符号扩�
 
 隔离的关键点之一是：**内核页通常不带** `U`**，用户代码 / 数据 / 栈带** `U`。这样用户态即使猜到内核虚拟地址，硬件也会在权限检查处拦住。
 
+`MapPermission` 与 PTE 标志的对应在 `os-vm`：
+
+```rust
+pub const R: Self = Self(1 << 1);
+pub const W: Self = Self(1 << 2);
+pub const X: Self = Self(1 << 3);
+pub const U: Self = Self(1 << 4);
+```
+
+写入叶级 PTE 时：
+
+```rust
+fn new_ppn(ppn: PhysPageNum, perm: MapPermission) -> Self {
+    let mut flags = PTE_V; // V 位自动置上
+    // 按 perm 或上 R/W/X/U …
+    Self(ppn.0 << 10 | flags)
+}
+```
+
 两个容易混的移位，请分开记：
 
 
@@ -182,7 +235,9 @@ RISC-V **Sv39** 约定：有效虚拟地址用 **39** 位（高位按符号扩�
 | 把 PPN **拼成物理地址** | **12** | 一帧 4KB，帧号要对齐到页边界        |
 
 
-也就是说：`<< 10` 是「塞进表项格式」，`<< 12` 是「变成可访存的物理地址」。阅读 `PageTableEntry::new_ppn` 与 `translate` 时，对着这两行想就不会晕。
+也就是说：`<< 10` 是「塞进表项格式」，`<< 12` 是「变成可访存的物理地址」。
+
+已有映射只改权限时，用 `PageTable::remap`（同一 VPN、同一 PPN，换一套 `perm`），不要再 `map` 一次——`map` 会断言「尚未映射」。fill / debug 练习都会用到 `leaf_perm` → `translate` → `remap` 这条链。
 
 ### 2.4 页帧分配器
 
@@ -196,35 +251,97 @@ RISC-V **Sv39** 约定：有效虚拟地址用 **39** 位（高位按符号扩�
 
 可以把它想成：从一大片连续空闲物理页里「往前掰帧」，够本实验创建页表和装用户程序即可。
 
-布局上，`config.rs` 会把帧池起点 `FRAME_POOL_START` 抬到足够高的位置，避开用户程序常用的物理槽位（例如 `0x80400000` 一带），避免「帧池」和「用户镜像」抢同一块物理内存。真正的操作系统里常见 buddy、slab 等更复杂的分配器；Lab3 用栈式分配，是为了把注意力留在页表与地址空间上。
+布局上，`kernel/src/config.rs` 会把帧池起点 `FRAME_POOL_START` 抬到足够高的位置，避开用户程序常用的物理槽位（例如 `0x80400000` 一带），避免「帧池」和「用户镜像」抢同一块物理内存。真正的操作系统里常见 buddy、slab 等更复杂的分配器；Lab3 用栈式分配，是为了把注意力留在页表与地址空间上。
 
-### 2.5 地址空间 MemorySet
+`mm::init` 开头调用 `init_frame_allocator(FRAME_POOL_START, MEMORY_END)`；之后 `PageTable::new` / `map_frame` 都会从这里取帧。开分页后新分配的帧还要通过 hook 补进内核恒等映射（见下一小节），否则内核自己都访问不了刚分到的页表页。
 
-若把页表比作「目录」，**MemorySet** 就是「这个进程完整的内存视图」：它内部持有根页表，并由若干 **MapArea**（一段连续的虚拟页范围 + 统一权限）描述代码、数据、栈等区域。
+### 2.5 内核如何开启分页：`mm::init`
 
-本实验里三类映射最重要：
+用户程序不是「突然」进入虚存世界的：必须先让**内核自己**在分页下仍能取指、访存。
 
-1. **内核恒等映射（identity map）**
-  虚拟地址数值等于物理地址。开分页之后，CPU 每一次取指、访存都要走页表；如果内核自己的代码 / 数据还没有映射，一打开分页就会立刻页错误。因此 `mm::init` 会在开启分页前，把内核需要的区间（大致从 `stext` 到帧池起点一带）先做成恒等映射，且通常不带 `U`。
-2. **用户映射**
-  解析 ELF 的 `PT_LOAD` 段，按段权限映射到用户虚拟地址，并加上 `U`；再为用户栈分配帧并映射为可读写的用户页。为用户建立「仍需用到的内核 trap 相关区域」时，会小心地跳过用户程序占用的物理区间（如 `APP_BASE..APP_BASE+APP_REGION`），避免和用户镜像冲突。
-3. **激活与切换**
-  把该地址空间根页表的物理页号写入 `satp`（并设置 Sv39 模式），再 `sfence.vma`。多任务时，每个任务绑定自己的用户 MemorySet；调度切换用户任务，本质上常常伴随「换一套页表」。
+在 `kernel/src/main.rs` 中，Lab3 及以上 feature 会在 trap / 任务初始化之前调用：
 
-建议阅读代码的顺序：
-
-```text
-os-alloc（帧从哪来）
-→ os-vm（页表怎么走、MemorySet 怎么装映射）
-→ kernel/mm.rs（内核 / 用户布局如何拼起来）
-→ kernel/trap.rs（activate_kernel / restore_to_user_paged：trap 时如何切 satp）
+```rust
+println!("os-lab kernel lab3: enabling virtual memory...");
+mm::init();
+println!("os-lab kernel lab3: virtual memory ready.");
 ```
 
-和 Lab2 对比时请抓住主线：**Lab3 的关键差异是地址空间隔离（独立页表 +** `U` **位），不是 yield 打印几轮**（Lab2 / Lab3 都可以稳定看到 5 轮 `Yield round`）。
+`kernel/src/mm.rs` 的 `init` 大致做这些事：
 
-### 2.6 从一个虚拟地址走到物理内存
+```text
+init_frame_allocator(FRAME_POOL_START, MEMORY_END)
+→ MemorySet::new_bare()                    // 分配内核根页表
+→ map_kernel_trap_regions(...)             // stext .. FRAME_POOL_START 恒等映射（无 U）
+→ identity_map_allocated_frames(...)       // 把已分配的页表帧也恒等映射进去
+→ 保存 KERNEL_SPACE，PAGING_ENABLED = true
+→ set_frame_alloc_hook(on_frame_allocated) // 之后再 alloc 的帧自动补映射
+→ KERNEL_SPACE.activate()                  // 写 satp，真正打开 Sv39
+```
 
-把 2.1–2.5 串成一次用户态访存，可以按下面检查清单走：
+其中：
+
+- `map_kernel_trap_regions` 用 `kernel_perm()`（`R|W|X`，**没有** `U`）做恒等映射；
+- 开分页后若再分配页表页却未映射，内核访问该物理页会立刻页错误，所以需要 `on_frame_allocated` 钩子；
+- `activate()` 之后，CPU 取指地址仍是原来的数值，但已经走页表——这正是恒等映射存在的意义。
+
+对照 Lab2：Lab2 全程 `satp=0`（或等价地不启用分页），用户与内核共物理地址；Lab3 从这里开始，「当前用哪套页表」成为 trap 路径上的显式状态。
+
+### 2.6 用户地址空间如何建立，以及 `U` 位为何关键
+
+每个用户任务在 `task::init` → `TaskManager::init_tasks` 里会调用：
+
+```rust
+mm::create_user_space(i, get_app_elf(i));
+let user_token = mm::user_token(i);
+```
+
+`create_user_space`（`kernel/src/mm.rs`）的骨架是：
+
+```text
+activate_kernel()                          // 改页表时先站在内核空间
+→ MemorySet::new_bare()                    // 该任务自己的根页表
+→ map_kernel_trap_regions_user(...)        // 内核 trap 仍要能跑，但跳过用户镜像槽
+→ map_elf_and_stack(...)                   // ELF PT_LOAD + 用户栈
+→ 存入 USER_SPACES[space_id]
+```
+
+`map_elf_and_stack` 正常应做两件事：
+
+1. `user_space.map_elf_pt_load(elf, 0)`
+    在 `os-vm` 里解析 ELF 的 `PT_LOAD`：对每个段先以 `MapPermission::U` 为底，再按 `p_flags` 或上 R/W/X，然后分配帧、拷贝段内容。
+2. 在 `[APP_BASE + APP_REGION - USER_STACK_SIZE, APP_BASE + APP_REGION)` 映射用户栈，权限为 `U | R | W`。
+
+因此，**健康状态下**：用户代码页带 `U`（通常还有 `R|X`），用户栈带 `U|R|W`；内核恒等映射不带 `U`。
+
+TCB 里多出来的 `user_token` 就是该任务根页表对应的 `satp` 值（`8 << 60 | root_ppn`），返回用户态时要把它写回硬件。
+
+```text
+映射在、R/W/X 也在，但若叶子 PTE 没有 U
+→ U-mode 取指 / 访存仍会页错误
+→ 往往看不到 Hello from user app!
+```
+
+阅读 `strip_user_bit_for_exercise`（fill）或 debug 中改权限的循环时，请注意它如何用 `leaf_perm` / `translate` / `remap`：**改权限不等于重新分配一页**。实现或修复时若丢掉原来的 `X` 或 `W`，也会表现为取指失败或写栈失败——现象可能和「缺 U」类似，排查时要对照权限集合，不要只看「有没有映射」。
+
+### 2.7 开分页后 trap 如何切换地址空间
+
+Lab2 的 trap 路径保存 / 恢复通用寄存器与 `sepc` / `sstatus`；Lab3 在此基础上，进出内核时还要换页表。
+
+`kernel/src/trap.rs` 里与虚存相关的关键点：
+
+1. `trap_handler` **入口立刻** `activate_kernel()`
+    用户 trap 进来时，`satp` 往往仍是用户页表。内核代码与数据主要挂在内核 MemorySet 上；先切回内核页表，后续 Rust 代码、帧分配、改用户页表才安全。
+2. `trap_handler` **返回前** `activate_current_user()`
+    处理完 syscall / 调度后，再切回当前任务的用户页表（通过 `user_token(current_app_id)`）。
+3. **首次 / 再次进入用户态走** `run_user_task` **→** `restore_to_user_paged`
+    与 Lab2 的 `restore_to_user` 相比，多传入用户 `satp`：
+
+
+
+### 2.8 从一个虚拟地址走到物理内存
+
+把 2.1–2.4 串成一次用户态访存，可以按下面检查清单走：
 
 ```mermaid
 flowchart LR
@@ -245,14 +362,14 @@ flowchart LR
 flowchart TD
     M["MemorySet"] --> K["内核恒等映射：无 U 位"]
     M --> T["trap 所需区域"]
-    M --> E["ELF PT_LOAD 段：按段权限"]
+    M --> E["ELF PT_LOAD 段：U + 段权限"]
     M --> S["用户栈：U | R | W"]
     M --> P["根页表物理页：写入 satp"]
 ```
 
 
 
-最后再收一次三个易混数字（读代码时可以当口诀）：
+最后再加强一下三个易混数字的记忆：
 
 
 | 数字     | 出现在哪里                 | 含义           |
@@ -269,35 +386,26 @@ flowchart TD
 本实验主要相关文件（路径相对 `os-lab/`）：
 
 
-| 文件                    | 角色                    | 阅读时重点确认                  |
-| --------------------- | --------------------- | ------------------------ |
-| `os-alloc/src/lib.rs` | 页帧分配器                 | `[current, end)` 如何分配与回收 |
-| `os-vm/src/lib.rs`    | Sv39 页表 + MemorySet   | VPN 拆分、PTE 布局、中间页表按需创建   |
-| `kernel/src/mm.rs`    | 内核与用户地址空间布局           | 恒等映射、用户 ELF 段和 `U` 位如何建立 |
-| `kernel/src/trap.rs`  | Lab3 trap 层 `satp` 切换 | 何时进入内核页表、何时恢复用户页表        |
-| `kernel/src/task.rs`  | 每任务独立用户映射             | 每个任务如何绑定自己的根页表           |
+| 文件                    | 角色                    | 阅读时重点确认                            |
+| --------------------- | --------------------- | ---------------------------------- |
+| `os-alloc/src/lib.rs` | 页帧分配器                 | `[current, end)` 如何分配与回收           |
+| `os-vm/src/lib.rs`    | Sv39 页表 + MemorySet   | VPN 拆分、PTE 布局、中间页表按需创建、`remap`     |
+| `kernel/src/mm.rs`    | 内核与用户地址空间布局           | 恒等映射、用户 ELF / 栈与 `U` 位；**任务一动手点**  |
+| `kernel/src/trap.rs`  | Lab3 trap 层 `satp` 切换 | 何时 `activate_kernel`、何时恢复用户页表      |
+| `kernel/src/task.rs`  | 每任务独立用户映射             | `create_user_space` 与 `user_token` |
 
 
 > 完整代码走读与参考答案见 [lab3 参考答案](/answers/lab3-answers)。
 
 
 
-### 任务一：跑通内核
+### 任务一：完成实验
 
-**第一步：确认变体。** 如果教师通过工作台下发了 debug 变体，先打开 `kernel/src/mm.rs` 文件头，应看到 `【Lab3 任务：排错】`；没有任务标记则用参考实现直接运行。
+本实验的任务文件为 `kernel/src/mm.rs`，请在工作区中打开文件，并根据注释提示完成实验。
 
-确认环境已激活，运行以下命令可输出版本号：
-
-```powershell
-rustc --version
-qemu-system-riscv64 --version
-```
-
-运行实验：
+运行验证：
 
 ```powershell
-cargo run -p kernel --features lab3
-# 或 release 验证
 cargo run -p kernel --features lab3 --release
 ```
 
@@ -322,21 +430,32 @@ App 2 exited with code 0
 All user apps exited.
 ```
 
-**通过标准**：看到 `Hello from user app!`、`409684505`、五轮 `Yield round`、`All user apps exited.`，且 QEMU 正常退出（终端命令返回，没有卡住或报错）。
+**通过标准**（四条输出断言缺一不可）：
 
-> 对比 Lab2：Lab3 下 yield 同样为 **5 轮**（yield 程序自身循环调用 `sys_yield`）。Lab3 的可观察差异主要在虚存隔离——各用户程序有独立地址空间与 `U` 位权限，而非 yield 轮次。
+
+| 断言                  | 必须看到                    |
+| ------------------- | ----------------------- |
+| `hello-output`      | `Hello from user app!`  |
+| `power-result`      | `409684505`             |
+| `yield-five-rounds` | `Yield round` 出现不少于 5 次 |
+| `all-exited`        | `All user apps exited.` |
+
+
+且 QEMU 正常退出（终端命令返回，没有卡住或报错）。
+
+> 对比 Lab2：Lab3 下 yield 同样为 **5 轮**。Lab3 的可观察差异主要在虚存隔离——各用户程序有独立地址空间与 `U` 位权限。若缺 `U`，常见现象是**几乎看不到用户输出**（与 Lab2 debug 里「Yield 只打一轮就全退出」不同）。
 
 
 
 ### 任务二：阅读理解
 
-参考答案见 [lab3 参考答案](/answers/lab3-answers)。
-
 1. 对照 `VirtPageNum::indexes`：Sv39 的 39 位虚拟地址如何拆成 3×9 + 12？`0x1ff` 为什么刚好取出一级索引？
 2. 对照 `PageTableEntry::new_ppn`：PTE 里物理帧号为何左移 10 位而不是 12 位？这和形成物理地址时的移位有何区别？
-3. 对照 `mm::init`：开分页后内核为何还能继续执行原地址附近的代码？恒等映射覆盖了哪些区域？
-4. 三级页表查找时中间表项为空怎么办？`find_pte` 的 `alloc` 参数分别对应“查询”和“建立映射”中的哪种行为？
-5. 开分页后 trap 进内核时要不要切 `satp`？沿 `activate_kernel` / `restore_to_user_paged` 说明 Lab3 在 Rust 层比 Lab2 多了什么。
+3. 对照 `mm::init`：开分页后内核为何还能继续执行原地址附近的代码？恒等映射覆盖了哪些区域？`on_frame_allocated` 解决什么问题？
+4. 三级页表查找时中间表项为空怎么办？`find_pte` 的 `alloc` 参数分别对应「查询」和「建立映射」中的哪种行为？
+5. 开分页后 trap 进内核时要不要切 `satp`？沿 `activate_kernel` / `run_user_task` → `restore_to_user_paged` 说明 Lab3 在 Rust 层比 Lab2 多了什么。
+6. `map_elf_pt_load` 给用户段加了哪些权限位？若叶子 PTE 有映射、有 `X`，但没有 `U`，用户态取指时会发生什么？这与任务一 fill / debug 的考点如何对应？
+7. 为何改用户页权限时用 `remap` 而不是再次 `map`？若 `remap` 时丢掉原来的 `W` 或 `X`，你可能分别看到什么现象？
 
 
 
@@ -344,7 +463,7 @@ All user apps exited.
 
 **修改 1：去掉用户页的** `U` **位**
 
-我们在背景知识里说过：用户访问没有 `U` 的页会页错误——隔离靠权限位，不是把地址藏起来。尝试在建立用户映射处（ELF `PT_LOAD`、用户栈）临时去掉 `MapPermission::U`（可在 `kernel/src/mm.rs` 搜该符号），不要动内核恒等映射。执行：
+我们在背景知识里说过：用户访问没有 `U` 的页会页错误——隔离靠权限位，不是把地址藏起来。尝试在建立用户映射处（ELF `PT_LOAD`、用户栈）临时去掉 `MapPermission::U`（可在 `kernel/src/mm.rs` 或 `os-vm` 的 `map_elf_pt_load` 搜该符号），不要动内核恒等映射。执行：
 
 ```powershell
 cargo run -p kernel --features lab3
@@ -358,13 +477,11 @@ cargo run -p kernel --features lab3
 
 页大小看起来只是配置常量，实际同时约束地址怎么拆、页表几项、PPN 左移几位，以及硬件按多大页解释。只改软件数字却和 Sv39 的 4KB 约定不一致，整条链会对不上。
 
-这一项**不必真的改代码跑崩**（真改还要动掩码、`<< 12` / `<< 10`、链接布局等，噪音很大）。想清楚后写一段话即可，例如可顺着想：偏移变 13 位后 VA 怎么拆？`0x1ff` 还成立吗？`PPN << 12` 与 PTE 的 `<< 10` 哪些必须跟着变？硬件仍按 4KB 解释又会怎样？
-
-- 通过标准：能说明「页大小是地址拆分、页表格式和硬件约定的交汇点」，而不是只写「会出错」。
+这一项**不必真的改代码验证运行错误**（真是修改还需要一并修改掩码、`<< 12` / `<< 10`、链接布局等内容，噪音很大）。想清楚后在实验报告里即可，例如：偏移变 13 位后 VA 怎么拆？`0x1ff` 还成立吗？`PPN << 12` 与 PTE 的 `<< 10` 哪些必须跟着变？硬件仍按 4KB 解释又会怎样？
 
 **修改 3：追踪一次地址翻译**
 
-把 2.6 的流程图变成真实日志：在 `os-vm` 的 `PageTable::translate`（或实际走表函数）里临时加少量 `println!`，打印虚拟地址 / VPN、三级索引和最终 PPN。打印太多时，可只对第一次成功翻译或某个固定 VA 打一次，然后：
+在 `os-vm` 的 `PageTable::translate`（或实际走表函数）里临时加少量 `println!`，打印虚拟地址 / VPN、三级索引和最终 PPN。打印太多时，可只对第一次成功翻译或某个固定 VA 打一次，然后：
 
 ```powershell
 cargo run -p kernel --features lab3
@@ -381,8 +498,10 @@ cargo run -p kernel --features lab3
 
 | 验证项      | 命令                                                                | 通过标准                                                                         |
 | -------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| 主编译      | `cargo check -p kernel --features lab3`                           | 无 error                                                                      |
+| 主编译      | `cargo check -p kernel --features lab3`                           | 无 error + 四条输出断言                                                             |
 | QEMU     | `cargo run -p kernel --features lab3 --release`                   | `Hello from user app!`、`409684505`、5 行 `Yield round`、`All user apps exited.` |
 | 组件单测（可选） | `cargo test -p os-vm -p os-alloc --target x86_64-pc-windows-msvc` | 通过                                                                           |
 
+
+> 任意白名单命令“退出码 0”**不等于** Lab 通过；例如 `Yield round` 不足 5 行时，命令仍可能返回 0。
 

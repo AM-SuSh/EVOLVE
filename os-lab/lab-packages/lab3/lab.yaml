@@ -57,10 +57,14 @@ starter_files:
     - os-alloc/
     - os-vm/
   editable_by_variant:
+    fill: [kernel/src/mm.rs]
     debug: [kernel/src/mm.rs]
   generated: [Cargo.toml, kernel/Cargo.toml, user/Cargo.toml]
 
 variants:
+  fill:
+    manifest: variants/fill/manifest.yaml
+    source: ../../scaffold/exercises/lab3/fill/kernel/src/mm.rs
   debug:
     manifest: variants/debug/manifest.yaml
     source: ../../scaffold/exercises/lab3/debug/kernel/src/mm.rs

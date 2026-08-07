@@ -268,20 +268,66 @@ function loadTutorConversation() {
 }
 
 function persistTutorConversation() {
-  if (typeof localStorage === 'undefined' || !sessionId.value || messages.value.length === 0) return
-  try {
-    const raw = localStorage.getItem(TUTOR_CONVERSATION_STORAGE_KEY)
-    const all = raw ? (JSON.parse(raw) as Record<string, StoredTutorConversation>) : {}
-    all[tutorConversationKey()] = {
-      sessionId: sessionId.value,
-      stage: activeStage.value,
-      messages: messages.value.slice(-MAX_STORED_TUTOR_MESSAGES),
-      tutorState: lastTutorState.value,
-      updatedAt: new Date().toISOString(),
+  if (typeof localStorage !== 'undefined' && sessionId.value && messages.value.length) {
+    try {
+      const raw = localStorage.getItem(TUTOR_CONVERSATION_STORAGE_KEY)
+      const all = raw ? (JSON.parse(raw) as Record<string, StoredTutorConversation>) : {}
+      all[tutorConversationKey()] = {
+        sessionId: sessionId.value,
+        stage: activeStage.value,
+        messages: messages.value.slice(-MAX_STORED_TUTOR_MESSAGES),
+        tutorState: lastTutorState.value,
+        updatedAt: new Date().toISOString(),
+      }
+      localStorage.setItem(TUTOR_CONVERSATION_STORAGE_KEY, JSON.stringify(all))
+    } catch {
+      // Storage failures must not interrupt the active conversation.
     }
-    localStorage.setItem(TUTOR_CONVERSATION_STORAGE_KEY, JSON.stringify(all))
+  }
+  if (auth.value && sessionId.value && messages.value.length) {
+    void fetch(`${endpoint}/conversations/mine`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({
+        conversation: {
+          sessionId: sessionId.value,
+          labId: props.labId,
+          stage: activeStage.value,
+          messages: messages.value.slice(-MAX_STORED_TUTOR_MESSAGES),
+          tutorState: lastTutorState.value,
+          updatedAt: new Date().toISOString(),
+        },
+      }),
+    }).catch(() => {
+      /* local storage remains the offline buffer */
+    })
+  }
+}
+
+async function loadServerTutorConversation() {
+  if (!auth.value) return false
+  try {
+    const response = await fetch(`${endpoint}/conversations/mine?labId=${encodeURIComponent(props.labId)}`, {
+      headers: authHeaders(),
+    })
+    if (!response.ok) return false
+    const payload = await response.json()
+    const stored = payload?.conversation as StoredTutorConversation | null
+    if (!stored || !Array.isArray(stored.messages) || !stored.messages.length) return false
+    const restored = stored.messages.filter((message) =>
+      message &&
+      (message.role === 'student' || message.role === 'assistant') &&
+      typeof message.content === 'string',
+    )
+    if (!restored.length) return false
+    sessionId.value = stored.sessionId
+    activeStage.value = tutorStages.some((item) => item.id === stored.stage) ? stored.stage : 'orient'
+    messages.value = restored.slice(-MAX_STORED_TUTOR_MESSAGES)
+    lastTutorState.value = stored.tutorState || null
+    persistTutorConversation()
+    return true
   } catch {
-    // Storage failures must not interrupt the active conversation.
+    return false
   }
 }
 
@@ -2681,7 +2727,9 @@ watchEffect(syncWorkspaceNavState)
 watch(studentId, (next, previous) => {
   if (next === previous) return
   if (next) {
-    if (!loadTutorConversation()) startSession()
+    void loadServerTutorConversation().then((restored) => {
+      if (!restored && !loadTutorConversation()) startSession()
+    })
     return
   }
   tutorOpen.value = false
@@ -2714,7 +2762,7 @@ onMounted(async () => {
   void loadClassNames()
   await checkConnection()
   await refreshLearningAccess()
-  if (!loadTutorConversation()) startSession()
+  if (!(await loadServerTutorConversation()) && !loadTutorConversation()) startSession()
   void refreshScaffold()
   void loadMyFeedback()
   void loadReportTemplate()
@@ -2726,6 +2774,9 @@ watch(
     manualTocOpen.value = false
     void loadMyFeedback()
     void loadReportTemplate()
+    void loadServerTutorConversation().then((restored) => {
+      if (!restored && !loadTutorConversation()) startSession()
+    })
   },
 )
 
@@ -3040,8 +3091,6 @@ onBeforeUnmount(() => {
                       @run-finished="onRunFinished"
                       @run-exit="onRunExit"
                       @run-diagnostics="onRunDiagnostics"
-                      @insert-report="onInsertReport"
-                      @add-to-chat="addToChat"
                     />
                     <ProblemsPanel
                       ref="problemsPanelRef"
@@ -3336,6 +3385,8 @@ onBeforeUnmount(() => {
               :insert-payload="reportInsert"
               :teacher-feedback="teacherFeedback"
               :report-template="reportTemplate"
+              :endpoint="endpoint"
+              :authenticated="Boolean(auth && !isTeacherRole)"
               @reflect="submitReflection"
               @review="reviewReport"
               @submit-teacher="submitReportToTeacher"
@@ -3466,8 +3517,6 @@ onBeforeUnmount(() => {
           :streaming-id="streamingId"
           :connection="connection"
           :connection-label="connectionLabel"
-          :tutor-state="lastTutorState"
-          :active-stage="activeStage"
           :attachments="chatAttachments"
           @send="sendTutorMessage"
           @new-session="startSession"

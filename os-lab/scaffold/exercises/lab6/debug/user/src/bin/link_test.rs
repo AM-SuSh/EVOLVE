@@ -1,3 +1,4 @@
+//! 【Lab6 任务：排错】link 后的 nlink 仍按链接前的值检查。
 //! Lab6 debug variant: link count is checked against the pre-link value.
 //!
 //! 【Lab6 任务：排错】`linkat` 后 `fstat` 报 `nlink mismatch`。

@@ -45,6 +45,24 @@ handbook/
 ## 内容源
 
 | 手册路径 | 源文件 |
+## 学生数据持久化边界
+
+学生代码仍只放在仓库根目录的 `student-labs/<username>/`，学习数据不混入代码工作区。Tutor Server 按数据库用户 ID 统一保存：
+
+```text
+learning/student-data/<userId>/
+  reports/<labId>/draft.json
+  reports/<labId>/submission.md
+  reports/<labId>/attachments/
+  conversations/<sessionId>.jsonl
+  conversations/<sessionId>.json
+  events/<sessionId>.jsonl
+  runs/<labId>/<runId>/output.log
+  runs/<labId>/<runId>/trace.jsonl
+```
+
+SQLite `learning/os-lab.db` 保存权限、索引、运行状态、断言、评分和报告元数据；文件系统保存正文、会话原文和运行制品。浏览器的 localStorage/IndexedDB 只作为离线缓冲，登录后会通过 `/reports/draft` 和 `/conversations/mine` 同步。旧 `learning/sessions/`、旧报告附件目录只用于兼容读取，不再接收新数据。
+
 | --- | --- |
 | `/learn/labN` | 路由壳；正文由 `GET /manual` 按教师发布与学习证据返回 |
 | `/project/*` | `os-lab/docs/` |
