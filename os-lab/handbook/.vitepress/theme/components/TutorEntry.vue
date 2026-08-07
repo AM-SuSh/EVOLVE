@@ -47,7 +47,6 @@ async function launchStudent() {
 }
 
 function openLogin() {
-  sessionStorage.removeItem('os-lab-guest')
   window.location.reload()
 }
 
@@ -66,7 +65,7 @@ onMounted(() => {
           <span>教师工作区</span>
           <h2>备课、发布与验收，围绕每个实验完成</h2>
           <p>
-            选择一个实验进入双栏工作台：左侧预览或编辑实验手册，右侧安排开放范围、任务类型和班级公告。
+            选择一个实验进入双栏工作台：左侧预览或编辑实验手册，右侧安排分发范围、任务类型和班级公告。
             学生提交后统一进入实验验收。
           </p>
           <div class="ws-entry-cta">

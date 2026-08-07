@@ -18,6 +18,18 @@ test('students only receive published labs after the previous trusted completion
   assert.equal(accessForLab(progressed, 'lab3').unlocked, false)
 })
 
+test('trusted evidence alone does not unlock later labs before the teacher distributes them', () => {
+  const notDistributed = buildLearningAccess({
+    role: 'student',
+    openLab: 'lab1',
+    evidence: [{ labId: 'lab1', verified: true, reflected: true }],
+  })
+  assert.equal(accessForLab(notDistributed, 'lab1').unlocked, true)
+  assert.equal(accessForLab(notDistributed, 'lab2').unlocked, false)
+  assert.equal(accessForLab(notDistributed, 'lab2').state, 'waiting_teacher')
+  assert.match(accessForLab(notDistributed, 'lab2').reason, /分发/)
+})
+
 test('already issued labs remain readable and teachers can preview every manual', () => {
   const legacy = buildLearningAccess({ role: 'student', openLab: 'lab2', applied: ['lab1', 'lab2'] })
   assert.equal(accessForLab(legacy, 'lab2').unlocked, true)

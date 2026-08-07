@@ -22,6 +22,12 @@ test('student registration requires a class', () => {
   assert.match(result.error, /班级/)
 })
 
+test('student registration rejects classes outside the teacher class list', () => {
+  const result = learningDb.register('bad-class-test', 'secret1', '不存在班级', ['计科2301'])
+  assert.equal(result.ok, false)
+  assert.match(result.error, /班级/)
+})
+
 test('migration binds events and immutable runs to the authenticated user', () => {
   const registration = learningDb.register('member-c-test', 'secret1', '计科2301')
   const session = learningDb.resolveSession(registration.token)
@@ -60,7 +66,7 @@ test('migration binds events and immutable runs to the authenticated user', () =
     exitCode: 0,
     durationMs: 1000,
     verified: true,
-    assertions: [{ id: 'a1', label: 'trace', passed: true, expected: '1', observed: '1' }],
+    assertions: [{ id: 'a1', label: 'trace', passed: true, expected: '1', observed: '1', hint: '先检查 trace 输出' }],
     output: { hash: 'a'.repeat(64), bytes: 10, path: 'runs/run.output.log' },
     trace: { version: 1, count: 2, hash: 'b'.repeat(64), path: 'runs/run.trace.jsonl' },
   }, [{
@@ -77,11 +83,13 @@ test('migration binds events and immutable runs to the authenticated user', () =
   const stored = learningDb.getRun(session.id, runId)
   assert.equal(stored.verified, true)
   assert.equal(stored.trace.count, 2)
+  assert.equal(stored.assertions[0].hint, '先检查 trace 输出')
   const history = learningDb.listRunHistory(session.id, 'lab2', 10)
   assert.equal(history.length, 1)
   assert.equal(history[0].runId, runId)
   assert.equal(history[0].verified, true)
   assert.equal(history[0].assertions[0].passed, true)
+  assert.equal(history[0].assertions[0].hint, '先检查 trace 输出')
   assert.equal(learningDb.listRunHistory(999999, 'lab2').length, 0)
   const diagnosticResult = learningDb.getRunDiagnostics(session.id, runId)
   assert.equal(diagnosticResult.diagnostics.length, 1)

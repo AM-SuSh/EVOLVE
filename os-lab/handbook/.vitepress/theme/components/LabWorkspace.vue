@@ -96,12 +96,34 @@ const teacherEditing = ref(false)
 const showIdentity = ref(false)
 const authMode = ref<'login' | 'register'>('login')
 const authForm = ref({ username: '', password: '', className: '' })
+const classNames = ref<string[]>([])
+const classNamesLoading = ref(false)
 const authBusy = ref(false)
 const authError = ref('')
 const manualKey = ref(0)
 
 function apiUrl(pathname: string) {
   return `${endpoint}${pathname}`
+}
+
+async function loadClassNames() {
+  classNamesLoading.value = true
+  try {
+    const response = await fetch(apiUrl('/auth/classes'))
+    const payload = await response.json().catch(() => ({}))
+    classNames.value = response.ok && Array.isArray(payload.classes) ? payload.classes : []
+  } catch {
+    classNames.value = []
+  } finally {
+    classNamesLoading.value = false
+  }
+}
+
+function switchAuthMode() {
+  authMode.value = authMode.value === 'login' ? 'register' : 'login'
+  authError.value = ''
+  authForm.value.className = ''
+  if (authMode.value === 'register') void loadClassNames()
 }
 
 async function submitAuth() {
@@ -171,8 +193,8 @@ async function doLogout() {
   scaffold.value = null
   learningAccess.value = []
   manualKey.value += 1
-  showIdentity.value = false
-  toast('已退出登录（游客只读）。')
+  showIdentity.value = true
+  toast('已退出登录，请重新登录后再使用工作台。')
 }
 
 const { isDark } = useData()
@@ -214,7 +236,7 @@ interface StoredTutorConversation {
 }
 
 function tutorConversationKey() {
-  const user = studentId.value || 'guest'
+  const user = studentId.value || 'local'
   return `${user}:${props.labId}`
 }
 
@@ -270,6 +292,7 @@ type RunAssertionItem = {
   passed: boolean
   expected: string
   observed: string
+  hint?: string
 }
 type StoredRunResult = {
   runId: string
@@ -1580,6 +1603,7 @@ const keyAssertionPassed = computed(() => {
   const item = lastAssertions.value.find((assertion) => assertion.id === key.id)
   return item ? item.passed : null
 })
+const failedCurrentCount = computed(() => lastAssertions.value.filter((item) => !item.passed).length)
 function orderedAssertions(assertions: RunAssertionItem[]) {
   const key = keyAssertion.value
   if (!key) return assertions
@@ -2042,9 +2066,13 @@ function formatAssertionsForChat(
         ? `状态：${meta.verified ? '已通过' : '未通过'}`
         : '',
   ].filter(Boolean)
-  const lines = assertions.map(
-    (item) =>
-      `${item.passed ? '✓' : '✗'} ${item.label || item.id}\n  期望：${item.expected}\n  实际：${item.observed}`,
+  const lines = assertions.map((item) =>
+    [
+      `${item.passed ? '✓' : '✗'} ${item.label || item.id}`,
+      `  期望：${item.expected}`,
+      `  实际：${item.observed}`,
+      ...(!item.passed && item.hint ? [`  修改建议：${item.hint}`] : []),
+    ].join('\n'),
   )
   return [...head, '', ...lines].join('\n').trim()
 }
@@ -2055,6 +2083,7 @@ function formatOneAssertionForChat(item: RunAssertionItem, runId?: string) {
     `${item.passed ? '✓' : '✗'} ${item.label || item.id}`,
     `期望：${item.expected}`,
     `实际：${item.observed}`,
+    ...(!item.passed && item.hint ? [`修改建议：${item.hint}`] : []),
   ]
     .filter(Boolean)
     .join('\n')
@@ -2586,6 +2615,7 @@ onMounted(async () => {
   clampTutorFabToViewport()
   events.value = loadEvents()
   if (!studentId.value) showIdentity.value = true
+  void loadClassNames()
   await checkConnection()
   await refreshLearningAccess()
   if (!loadTutorConversation()) startSession()
@@ -2958,6 +2988,9 @@ onBeforeUnmount(() => {
                               <code v-if="lastAssertionsRunId" class="ws-tests-run-id">run:{{ lastAssertionsRunId.slice(0, 8) }}…</code>
                               <span class="ws-tests-pass-summary">{{ lastAssertions.filter((a) => a.passed).length }}/{{ lastAssertions.length }} 通过</span>
                             </header>
+                            <p v-if="failedCurrentCount" class="ws-tests-fail-note">
+                              未通过 {{ failedCurrentCount }} 条：按下方修改建议修复后重新运行可信验证。
+                            </p>
                             <p v-if="keyAssertion" class="ws-tests-key-note">
                               关键断言：{{ keyAssertion.label }} · {{ keyAssertion.note }} ·
                               {{ keyAssertionPassed === null ? '尚未验证' : keyAssertionPassed ? '已通过' : '未通过' }}
@@ -2966,12 +2999,16 @@ onBeforeUnmount(() => {
                               <li
                                 v-for="item in currentAssertions"
                                 :key="item.id"
-                                :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed }]"
+                                :class="[
+                                  'ws-test-assertion',
+                                  { passed: item.passed, failed: !item.passed, 'has-hint': !item.passed && item.hint },
+                                ]"
                               >
                                 <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
                                 <span class="ws-test-label">{{ item.label || item.id }}</span>
                                 <span class="ws-test-expected">期望：{{ item.expected }}</span>
                                 <span class="ws-test-observed">实际：{{ item.observed }}</span>
+                                <span v-if="!item.passed && item.hint" class="ws-test-hint">修改建议：{{ item.hint }}</span>
                                 <button
                                   type="button"
                                   class="ws-tests-add-chat ws-test-assertion-add"
@@ -3026,12 +3063,16 @@ onBeforeUnmount(() => {
                                 <li
                                   v-for="item in orderedAssertions(entry.assertions)"
                                   :key="`${entry.runId}:${item.id}`"
-                                  :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed }]"
+                                  :class="[
+                                    'ws-test-assertion',
+                                    { passed: item.passed, failed: !item.passed, 'has-hint': !item.passed && item.hint },
+                                  ]"
                                 >
                                   <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
                                   <span class="ws-test-label">{{ item.label || item.id }}</span>
                                   <span class="ws-test-expected">期望：{{ item.expected }}</span>
                                   <span class="ws-test-observed">实际：{{ item.observed }}</span>
+                                  <span v-if="!item.passed && item.hint" class="ws-test-hint">修改建议：{{ item.hint }}</span>
                                   <button
                                     type="button"
                                     class="ws-tests-add-chat ws-test-assertion-add"
@@ -3325,7 +3366,7 @@ onBeforeUnmount(() => {
       role="dialog"
       aria-modal="true"
       aria-label="账号"
-      @click.self="showIdentity = false"
+      @click.self="auth ? showIdentity = false : undefined"
     >
       <div class="ws-modal">
         <template v-if="auth">
@@ -3360,8 +3401,7 @@ onBeforeUnmount(() => {
         <template v-else>
           <h2>{{ authMode === 'login' ? '登录' : '注册' }}</h2>
           <p class="ws-modal-hint">
-            账号保存在本机导师服务的数据库里；你的系统、进度与报告都绑定账号。
-            只想看参考实现可以直接关闭（游客只读）。
+            账号保存在本机导师服务的数据库里；你的系统、进度与报告都绑定账号，登录后才能使用工作台。
           </p>
           <label class="ws-modal-field">
             <span>用户名（学号或昵称）</span>
@@ -3377,21 +3417,31 @@ onBeforeUnmount(() => {
             />
           </label>
           <label v-if="authMode === 'register'" class="ws-modal-field">
-            <span>班级（如 计科2301）</span>
-            <input v-model="authForm.className" type="text" spellcheck="false" autocomplete="off" />
+            <span>班级</span>
+            <select v-model="authForm.className" required :disabled="!classNames.length">
+              <option value="" disabled>{{ classNamesLoading ? '正在加载班级…' : classNames.length ? '请选择班级' : '老师尚未创建班级' }}</option>
+              <option v-for="c in classNames" :key="c" :value="c">{{ c }}</option>
+            </select>
           </label>
+          <p v-if="authMode === 'register' && !classNamesLoading && !classNames.length" class="ws-modal-status" data-state="offline">
+            请先联系老师创建班级后再注册。
+          </p>
           <p v-if="authError" class="ws-modal-status" data-state="offline">{{ authError }}</p>
           <div class="ws-modal-actions">
             <button
               type="button"
               class="ws-modal-secondary"
-              @click="authMode = authMode === 'login' ? 'register' : 'login'; authError = ''"
+              @click="switchAuthMode"
             >
               {{ authMode === 'login' ? '没有账号？注册' : '已有账号？登录' }}
             </button>
             <span class="ws-modal-spacer" aria-hidden="true"></span>
-            <button type="button" class="ws-modal-secondary" @click="showIdentity = false">游客浏览</button>
-            <button type="button" class="ws-modal-primary" :disabled="authBusy" @click="submitAuth">
+            <button
+              type="button"
+              class="ws-modal-primary"
+              :disabled="authBusy || (authMode === 'register' && !authForm.className)"
+              @click="submitAuth"
+            >
               {{ authBusy ? '请稍候…' : authMode === 'login' ? '登录' : '注册并进入' }}
             </button>
           </div>
@@ -3958,6 +4008,13 @@ onBeforeUnmount(() => {
 .ws-tests-key-note {
   margin: var(--ws-space-1) 0 0;
   color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+  line-height: var(--ws-leading-normal);
+}
+
+.ws-tests-fail-note {
+  margin: var(--ws-space-2) 0 0 !important;
+  color: var(--ws-danger, #c0392b);
   font-size: var(--ws-text-xs);
   line-height: var(--ws-leading-normal);
 }
@@ -4570,6 +4627,14 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
+.ws-test-assertion.has-hint {
+  grid-template-areas:
+    'mark label add'
+    'mark expected add'
+    'mark observed add'
+    'mark hint add';
+}
+
 .ws-test-assertion-add {
   grid-area: add;
   align-self: center;
@@ -4622,6 +4687,20 @@ onBeforeUnmount(() => {
   font-family: var(--ws-font-mono);
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.ws-test-hint {
+  grid-area: hint;
+  min-width: 0;
+  margin-top: 4px;
+  padding: 6px 8px;
+  color: var(--ws-danger, #c0392b);
+  background: var(--ws-danger-soft, color-mix(in srgb, var(--ws-danger, #c0392b) 12%, transparent));
+  border: 1px solid color-mix(in srgb, var(--ws-danger, #c0392b) 28%, var(--ws-line));
+  border-radius: var(--ws-radius-sm);
+  font-size: var(--ws-text-xs);
+  line-height: var(--ws-leading-normal);
+  overflow-wrap: anywhere;
 }
 
 /* 教师右栏：整栏一个作业发布面板。 */
@@ -4816,7 +4895,8 @@ onBeforeUnmount(() => {
   font-weight: var(--ws-weight-medium);
 }
 
-.ws-modal-field input {
+.ws-modal-field input,
+.ws-modal-field select {
   width: 100%;
   min-height: var(--ws-control-md);
   padding: var(--ws-space-1) var(--ws-space-3);
@@ -4828,7 +4908,8 @@ onBeforeUnmount(() => {
   font-size: var(--ws-text-sm);
 }
 
-.ws-modal-field input:focus {
+.ws-modal-field input:focus,
+.ws-modal-field select:focus {
   border-color: var(--ws-accent);
   outline: none;
 }

@@ -31,7 +31,7 @@ import {
  * 以「班级」为主视角发布当前 Lab 的作业：
  *  - 任务类型可插拔：来自 scaffold/exercises/<lab>/ 的变体（补代码 fill、排错 debug…），
  *    新变体放进目录即自动出现在下拉里；
- *  - 每个班级独立一行：A 班留 fill、B 班留 debug 互不影响，也可跟随全局默认；
+ *  - 班级用下拉选择：老师先在这里创建班级，学生注册时只能从这些班级中选择；
  *  - 附带按范围分发进度、个别学生调整、作业公告与报告版式布置。
  */
 const props = defineProps<{ lab: TutorLab; endpoint: string; variantHint?: string }>()
@@ -101,8 +101,21 @@ const reportPreview = computed(() => {
   return lines.join('\n')
 })
 
-const classList = computed(() => overview.value?.classNames || [])
-const studentList = computed(() => (overview.value?.students || []).map((s) => s.user))
+const classList = computed(() => {
+  const serverClasses = overview.value?.classNames
+  if (Array.isArray(serverClasses) && serverClasses.length) return serverClasses
+  const names = new Set(Object.keys(overview.value?.config.classes || {}))
+  for (const student of overview.value?.students || []) {
+    const className = String(student.className || '').trim()
+    if (className) names.add(className)
+  }
+  return [...names].sort((a, b) => a.localeCompare(b, 'zh-CN'))
+})
+const studentList = computed(() => {
+  const students = overview.value?.students || []
+  if (!selectedClass.value) return students.map((s) => s.user)
+  return students.filter((s) => s.className === selectedClass.value).map((s) => s.user)
+})
 const defaultVariant = computed(() => overview.value?.exercises?.[props.lab.id]?.default || '')
 const variants = computed(() =>
   (overview.value?.exercises?.[props.lab.id]?.variants || []).map((v) => ({
@@ -377,6 +390,10 @@ watch(noticeScope, (scope) => {
     : overview.value.config.notice || ''
 })
 
+watch(selectedClass, () => {
+  if (studentSel.value && !studentList.value.includes(studentSel.value)) studentSel.value = ''
+})
+
 watch(
   () => props.lab.id,
   () => {
@@ -510,7 +527,7 @@ onMounted(load)
       <section class="ws-pub-block">
         <div class="ws-pub-section-title">
           <span>02</span>
-          <div><h3>个别调整</h3><p>仅在学生需要不同任务或额外分发时使用。</p></div>
+          <div><h3>个别调整</h3><p>仅在学生需要不同任务或额外分发时使用；上方已选班级时，这里只显示该班学生。</p></div>
         </div>
         <div class="ws-pub-student-row">
           <select v-model="studentSel" aria-label="选择学生">
@@ -544,7 +561,7 @@ onMounted(load)
             </button>
           </template>
         </div>
-        <p v-if="!studentList.length" class="ws-pub-empty">还没有学生注册。</p>
+        <p v-if="!studentList.length" class="ws-pub-empty">{{ selectedClass ? `该班级还没有学生。` : '还没有学生注册。' }}</p>
       </section>
 
       <section class="ws-pub-block">
@@ -830,6 +847,43 @@ onMounted(load)
   margin-top: 2px;
   color: var(--ws-ink-faint);
   font-size: var(--ws-text-xs);
+}
+
+.ws-pub-class-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--ws-space-3);
+  padding: var(--ws-space-3) 0;
+}
+
+.ws-pub-class-select {
+  display: grid;
+  gap: var(--ws-space-1);
+}
+
+.ws-pub-class-select span {
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-pub-class-select select,
+.ws-pub-create-class input {
+  width: 100%;
+  min-height: var(--ws-control-sm);
+  padding: var(--ws-space-1) var(--ws-space-2);
+  color: var(--ws-ink);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+  font: inherit;
+  font-size: var(--ws-text-xs);
+}
+
+.ws-pub-create-class {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--ws-space-2);
 }
 
 .ws-pub-target {
@@ -1304,6 +1358,10 @@ onMounted(load)
 }
 
 @media (max-width: 1180px) {
+  .ws-pub-class-picker {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .ws-pub-target {
     grid-template-columns: minmax(0, 1fr);
   }

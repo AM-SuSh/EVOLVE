@@ -1540,7 +1540,7 @@ const modeLabel = computed(() =>
           :class="{ 'is-active-section': activeSection === FIXED_REFLECTION.id }"
         >
           <h3>
-            {{ FIXED_REFLECTION.title }}（写完再保存，才能解锁下一层）
+            {{ FIXED_REFLECTION.title }}（写完再保存，下一层由老师分发后解锁）
             <small v-if="activeSection === FIXED_REFLECTION.id">（当前段 · 插入目标）</small>
           </h3>
           <p class="ws-report-prompt">填写提示：{{ FIXED_REFLECTION.prompt }}</p>
@@ -1610,7 +1610,7 @@ const modeLabel = computed(() =>
         </div>
 
         <section class="ws-report-section ws-report-reflect">
-          <h3>{{ FIXED_REFLECTION.title }}（写完再保存，才能解锁下一层）</h3>
+          <h3>{{ FIXED_REFLECTION.title }}（写完再保存，下一层由老师分发后解锁）</h3>
           <p class="ws-report-prompt">填写提示：{{ FIXED_REFLECTION.prompt }}</p>
           <textarea
             :ref="(el) => setSectionEditor(FIXED_REFLECTION.id, el)"

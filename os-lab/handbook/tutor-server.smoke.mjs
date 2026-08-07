@@ -135,6 +135,32 @@ async function runLab(headers, sessionId) {
 
 try {
   await waitForServer()
+  const earlyTeacher = await fetch(`${endpoint}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'admin', password: 'admin123' }),
+  }).then((response) => response.json())
+  assert.equal(earlyTeacher.ok, true)
+  const earlyTeacherHeaders = { Authorization: `Bearer ${earlyTeacher.token}` }
+  const createClass = await postJson('/teacher/config', earlyTeacherHeaders, {
+    scope: { type: 'class', id: '计科2301' },
+    createClass: true,
+  })
+  assert.equal(createClass.status, 200)
+
+  const noClassRegistration = await postJson('/auth/register', {}, {
+    username: 'member-c-no-class',
+    password: 'secret1',
+  }).then((response) => response.json())
+  assert.equal(noClassRegistration.ok, false)
+  assert.match(noClassRegistration.error, /班级/)
+  const badClassRegistration = await postJson('/auth/register', {}, {
+    username: 'member-c-bad-class',
+    password: 'secret1',
+    className: '不存在班级',
+  }).then((response) => response.json())
+  assert.equal(badClassRegistration.ok, false)
+  assert.match(badClassRegistration.error, /班级/)
   const registration = await fetch(`${endpoint}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -317,7 +343,19 @@ try {
   assert.equal(otherReflection.status, 202)
   const progressedAccess = await fetch(`${endpoint}/learning/access`, { headers: studentHeaders })
     .then((response) => response.json())
-  assert.equal(progressedAccess.labs.find((lab) => lab.labId === 'lab2').unlocked, true)
+  assert.equal(progressedAccess.labs.find((lab) => lab.labId === 'lab2').unlocked, false)
+  assert.equal(progressedAccess.labs.find((lab) => lab.labId === 'lab2').state, 'waiting_teacher')
+  assert.equal((await fetch(`${endpoint}/manual?labId=lab2`, { headers: studentHeaders })).status, 403)
+
+  const distributeLab2 = await postJson('/teacher/config', teacherHeaders, {
+    scope: { type: 'global', id: '' },
+    openLab: 'lab2',
+    assignment: { labId: 'lab2', variant: 'fill' },
+  })
+  assert.equal(distributeLab2.status, 200)
+  const distributedAccess = await fetch(`${endpoint}/learning/access`, { headers: studentHeaders })
+    .then((response) => response.json())
+  assert.equal(distributedAccess.labs.find((lab) => lab.labId === 'lab2').unlocked, true)
   assert.equal((await fetch(`${endpoint}/manual?labId=lab2`, { headers: studentHeaders })).status, 200)
 
   const lab2Upgrade = await postJson('/scaffold/upgrade', studentHeaders, { variant: 'fill' })
@@ -614,6 +652,21 @@ try {
   const issuedLab3 = await fetch(`${endpoint}/fs/file?path=kernel%2Fsrc%2Fmm.rs`, { headers: studentHeaders })
     .then((response) => response.json())
   assert.match(issuedLab3.content, /PLANTED BUG: preserve R\/W\/X but strip U/)
+
+  const lab3BrokenSave = await postJson('/fs/save', studentHeaders, {
+    path: 'kernel/src/mm.rs',
+    content: `${issuedLab3.content}\n// smoke reset marker\n`,
+  })
+  assert.equal(lab3BrokenSave.status, 200)
+  const lab3Reset = await postJson('/fs/reset', studentHeaders, { labId: 'lab3' })
+  assert.equal(lab3Reset.status, 200)
+  const lab3ResetPayload = await lab3Reset.json()
+  assert.equal(lab3ResetPayload.ok, true)
+  assert.equal(lab3ResetPayload.count > 0, true)
+  const resetLab3 = await fetch(`${endpoint}/fs/file?path=kernel%2Fsrc%2Fmm.rs`, { headers: studentHeaders })
+    .then((response) => response.json())
+  assert.match(resetLab3.content, /PLANTED BUG: preserve R\/W\/X but strip U/)
+  assert.doesNotMatch(resetLab3.content, /smoke reset marker/)
 
   const assessmentResponse = await postJson('/assessment', studentHeaders, {
     sessionId: 'smoke-learning-session',

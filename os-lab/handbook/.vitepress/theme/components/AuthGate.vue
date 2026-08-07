@@ -4,9 +4,9 @@ import { withBase } from 'vitepress'
 import { authHeaders, loadAuth, saveAuth } from '../tutor-model'
 
 /**
- * 站点入口登录门：进入本系统先登录/注册（学生注册需填班级），
+ * 站点入口登录门：进入本系统先登录/注册（学生注册需选择老师创建的班级），
  * 教师直接用管理员账号（预置 admin / admin123）。
- * 「游客浏览」仅本次会话有效，只能阅读公开说明页；实验正文必须登录并通过解锁判定。
+ * 未登录不能浏览站点，登录后由访问判定决定可读内容。
  */
 const endpoint = String(
   import.meta.env.VITE_OS_LAB_TUTOR_ENDPOINT || 'http://127.0.0.1:8787',
@@ -15,13 +15,23 @@ const endpoint = String(
 const locked = ref(false)
 const mode = ref<'login' | 'register'>('login')
 const form = ref({ username: '', password: '', className: '' })
+const classNames = ref<string[]>([])
+const classNamesLoading = ref(false)
 const busy = ref(false)
 const error = ref('')
 const serverDown = ref(false)
 
-function unlockAsGuest() {
-  if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('os-lab-guest', '1')
-  locked.value = false
+async function loadClasses() {
+  classNamesLoading.value = true
+  try {
+    const response = await fetch(`${endpoint}/auth/classes`)
+    const payload = await response.json().catch(() => ({}))
+    classNames.value = response.ok && Array.isArray(payload.classes) ? payload.classes : []
+  } catch {
+    classNames.value = []
+  } finally {
+    classNamesLoading.value = false
+  }
 }
 
 async function verifyExisting() {
@@ -31,10 +41,17 @@ async function verifyExisting() {
     if (response.status === 401) saveAuth(null)
     return false
   } catch {
-    // 导师服务未启动：不锁死公开说明页，但工作台正文仍无法从服务端取得。
+    // 导师服务未启动时也无法登录，必须启动服务后才能进入。
     serverDown.value = true
     return false
   }
+}
+
+function switchMode() {
+  mode.value = mode.value === 'login' ? 'register' : 'login'
+  error.value = ''
+  form.value.className = ''
+  if (mode.value === 'register') void loadClasses()
 }
 
 async function submit() {
@@ -64,7 +81,7 @@ async function submit() {
 }
 
 onMounted(async () => {
-  if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('os-lab-guest')) return
+  void loadClasses()
   const existingAuth = loadAuth()
   if (existingAuth && (await verifyExisting())) return
   locked.value = true
@@ -78,7 +95,7 @@ onMounted(async () => {
       <h1>{{ mode === 'login' ? '登录' : '学生注册' }}</h1>
 
       <p v-if="serverDown" class="ag-warn">
-        未连接到导师服务（<code>npm run tutor</code>）。可先游客浏览公开说明，实验正文与登录功能暂不可用。
+        未连接到导师服务（<code>npm run tutor</code>）。必须启动服务并登录后才能进入系统。
       </p>
 
       <label>
@@ -91,20 +108,30 @@ onMounted(async () => {
       </label>
       <label v-if="mode === 'register'">
         <span>班级</span>
-        <input v-model="form.className" type="text" spellcheck="false" placeholder="例如 计科2301" @keydown.enter="submit" />
+        <select v-model="form.className" required :disabled="!classNames.length">
+          <option value="" disabled>{{ classNamesLoading ? '正在加载班级…' : classNames.length ? '请选择班级' : '老师尚未创建班级' }}</option>
+          <option v-for="c in classNames" :key="c" :value="c">{{ c }}</option>
+        </select>
       </label>
+      <p v-if="mode === 'register' && !classNamesLoading && !classNames.length" class="ag-warn">
+        请先联系老师创建班级后再注册。
+      </p>
 
       <p v-if="error" class="ag-error">{{ error }}</p>
 
-      <button class="ag-primary" type="button" :disabled="busy" @click="submit">
+      <button
+        class="ag-primary"
+        type="button"
+        :disabled="busy || (mode === 'register' && !form.className.trim())"
+        @click="submit"
+      >
         {{ busy ? '请稍候…' : mode === 'login' ? '登录' : '注册并进入' }}
       </button>
 
       <p class="ag-foot">
-        <a href="javascript:void 0" @click="mode = mode === 'login' ? 'register' : 'login'; error = ''">
+        <a href="javascript:void 0" @click="switchMode">
           {{ mode === 'login' ? '学生首次使用？注册账号' : '已有账号？去登录' }}
         </a>
-        <a href="javascript:void 0" @click="unlockAsGuest">游客浏览</a>
       </p>
     </div>
   </div>
@@ -185,7 +212,8 @@ onMounted(async () => {
   font-size: 13px;
 }
 
-.ag-card input {
+.ag-card input,
+.ag-card select {
   width: 100%;
   padding: 9px 12px;
   border: 1px solid var(--vp-c-divider);
@@ -195,7 +223,8 @@ onMounted(async () => {
   transition: border-color 160ms ease-out, box-shadow 160ms ease-out;
 }
 
-.ag-card input:focus {
+.ag-card input:focus,
+.ag-card select:focus {
   border-color: var(--vp-c-brand-1);
   outline: none;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--vp-c-brand-1) 16%, transparent);

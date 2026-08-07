@@ -49,7 +49,7 @@ export function buildLearningAccess({ role = 'student', openLab = 'lab1', applie
     if (teacher) state = completed ? 'completed' : 'teacher'
     else if (!published) {
       state = 'waiting_teacher'
-      reason = `教师当前开放到 ${openLab.toUpperCase()}`
+      reason = `教师尚未手动分发该实验（当前分发到 ${openLab.toUpperCase()}）`
     } else if (!unlocked) {
       state = 'waiting_prerequisite'
       reason = `先完成 ${previousId.toUpperCase()} 的可信验证与学习复盘`

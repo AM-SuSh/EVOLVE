@@ -43,6 +43,7 @@ import {
   getExerciseCatalog,
   listStudents,
   readTeacherConfig,
+  resetLab,
   sanitizeUser,
   scaffoldStatus,
   studentRootFor,
@@ -148,6 +149,36 @@ async function learningContextFor(session, effectiveOverride) {
   }
 }
 
+/** 可选班级：老师已创建的班级 + 已有学生填写的班级（兼容存量数据）。 */
+async function availableClassNames() {
+  const config = await readTeacherConfig()
+  const names = new Set(Object.keys(config.classes || {}))
+  for (const user of listUsers()) {
+    const className = String(user.className || '').trim()
+    if (user.role === 'student' && className) names.add(className)
+  }
+  return [...names].sort((a, b) => a.localeCompare(b, 'zh-CN'))
+}
+
+/** 把学生库里已有的班级补进教师配置，保证旧班级在新班级体系里可见可选。 */
+async function seedLegacyClasses() {
+  try {
+    const config = await readTeacherConfig()
+    const classes = { ...(config.classes || {}) }
+    let changed = false
+    for (const user of listUsers()) {
+      const className = String(user.className || '').trim()
+      if (user.role === 'student' && className && !classes[className]) {
+        classes[className] = {}
+        changed = true
+      }
+    }
+    if (changed) await writeTeacherConfig({ classes })
+  } catch (error) {
+    console.warn(`seed legacy classes skipped: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
 /** 从请求头解析登录会话（Authorization / X-Auth-Token；附件直链可带 ?token=）。 */
 function sessionOf(request, requestUrl) {
   const auth = String(request.headers.authorization || '')
@@ -158,7 +189,7 @@ function sessionOf(request, requestUrl) {
 
 /**
  * 账号制工作区：带 user（学号/昵称）且该生已初始化时，终端与代码读写都指向
- * student-labs/<user>/；否则回落参考实现 os-lab（教师/游客视角，只读）。
+ * student-labs/<user>/；否则回落参考实现 os-lab（仅登录后使用，只读）。
  */
 async function resolveWorkRoot(user) {
   const safe = sanitizeUser(user)
@@ -213,6 +244,7 @@ async function resolveLlm(studentLlm) {
 
 const stageIds = new Set(['orient', 'read', 'run', 'debug', 'reflect', 'transfer'])
 const labIds = new Set(['lab1', 'lab2', 'lab3', 'lab4', 'lab5', 'lab6', 'lab7', 'lab8'])
+const CLASS_NAME_RE = /^[A-Za-z0-9_一-龥-]{1,32}$/
 const labLabels = {
   lab1: 'Lab1 裸机启动与 SBI',
   lab2: 'Lab2 Trap 与任务切换',
@@ -1713,15 +1745,29 @@ const server = http.createServer(async (request, response) => {
 
   const requestUrl = new URL(request.url || '/', 'http://localhost')
   const pathname = requestUrl.pathname
-  // 身份只来自登录会话（不再信任 ?user=，防止冒名）；未登录 = 游客只读。
+  // 身份只来自登录会话（不再信任 ?user=，防止冒名）；未登录拒绝访问。
   const session = sessionOf(request, requestUrl)
   const reqUser = session?.username || ''
   try {
     /* -- 账号 --------------------------------------------------------------- */
 
+    if (request.method === 'GET' && pathname === '/auth/classes') {
+      json(response, 200, { ok: true, classes: await availableClassNames() }, origin)
+      return
+    }
+
     if (request.method === 'POST' && pathname === '/auth/register') {
       const body = await readBody(request)
-      const result = register(body.username, body.password, body.className)
+      const className = String(body.className || '').trim()
+      const classNames = await availableClassNames()
+      if (!classNames.includes(className)) {
+        json(response, 400, {
+          ok: false,
+          error: classNames.length ? '请从老师创建的班级中选择' : '老师尚未创建班级',
+        }, origin)
+        return
+      }
+      const result = register(body.username, body.password, className, classNames)
       json(response, result.ok ? 200 : 400, result, origin)
       return
     }
@@ -1990,6 +2036,35 @@ const server = http.createServer(async (request, response) => {
       const workRoot = await resolveWorkRoot(reqUser)
       const relative = requestUrl.searchParams.get('path')
       await handleFsFile(workRoot.root, relative, response, origin)
+      return
+    }
+
+    if (request.method === 'POST' && pathname === '/fs/reset') {
+      if (!session) {
+        json(response, 401, { error: '请先登录' }, origin)
+        return
+      }
+      if (activeRuns.has(session.id)) {
+        json(response, 409, { error: '你的账号有命令正在运行，先停止再重置' }, origin)
+        return
+      }
+      const body = await readBody(request)
+      const labId = String(body.labId || '')
+      if (!labIds.has(labId)) {
+        json(response, 400, { error: 'labId 必须 lab1 到 lab8 之一' }, origin)
+        return
+      }
+      const workRoot = await resolveWorkRoot(reqUser)
+      if (!workRoot.user) {
+        json(response, 403, { error: '参考实现是只读的；填写学号并初始化“我的系统”后才能重置' }, origin)
+        return
+      }
+      const result = await resetLab(reqUser, labId)
+      if (!result.ok) {
+        json(response, 400, result, origin)
+        return
+      }
+      json(response, 200, { ...result, status: await fsStatusFor(workRoot, labId) }, origin)
       return
     }
 
@@ -2500,6 +2575,7 @@ const server = http.createServer(async (request, response) => {
       }
       if (request.method === 'GET' && pathname === '/teacher/overview') {
         const config = await readTeacherConfig()
+        const classNames = await availableClassNames()
         const workspaces = await listStudents()
         // 合并注册账号与已建工作区：注册了还没初始化的学生也要能看到。
         const registered = listUsers().filter((u) => u.role === 'student')
@@ -2511,6 +2587,7 @@ const server = http.createServer(async (request, response) => {
         for (const w of workspaces) if (!students.some((s) => s.user === w.user)) students.push({ className: '', ...w })
         json(response, 200, {
           config: { ...config, llm: { ...config.llm, apiKey: config.llm?.apiKey ? '（已设置）' : '' } },
+          classNames,
           students,
           labs: LAB_ORDER,
           exercises: Object.fromEntries(
@@ -2580,6 +2657,10 @@ const server = http.createServer(async (request, response) => {
         // 班级 / 学生 级覆盖
         if (!scopeId) {
           json(response, 400, { error: '缺少班级名/学生名' }, origin)
+          return
+        }
+        if (!CLASS_NAME_RE.test(scopeId)) {
+          json(response, 400, { error: '班级名需为 1-32 位字母、数字、中文、_ 或 -' }, origin)
           return
         }
         const config = await readTeacherConfig()
@@ -2719,6 +2800,8 @@ const server = http.createServer(async (request, response) => {
     json(response, message.includes('aborted') ? 504 : 500, { error: message }, origin)
   }
 })
+
+await seedLegacyClasses()
 
 server.listen(port, '127.0.0.1', () => {
   console.log(`os-lab tutor proxy: http://127.0.0.1:${port}`)
