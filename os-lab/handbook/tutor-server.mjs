@@ -67,6 +67,7 @@ import {
   listAllReports,
   listMastery,
   listMyReports,
+  listRunHistory,
   listUsers,
   login,
   logout,
@@ -1930,6 +1931,21 @@ const server = http.createServer(async (request, response) => {
         return
       }
       json(response, 200, { ok: true, ...result }, origin)
+      return
+    }
+
+    if (request.method === 'GET' && pathname === '/runs/history') {
+      if (!session) {
+        json(response, 401, { error: '请先登录' }, origin)
+        return
+      }
+      const labId = String(requestUrl.searchParams.get('labId') || '')
+      if (!labIds.has(labId)) {
+        json(response, 400, { error: 'labId 必须是 lab1 到 lab8 之一' }, origin)
+        return
+      }
+      const limit = Number(requestUrl.searchParams.get('limit') || 100)
+      json(response, 200, { ok: true, labId, runs: listRunHistory(session.id, labId, limit) }, origin)
       return
     }
 

@@ -919,6 +919,37 @@ export function getRun(userId, runId) {
   }
 }
 
+export function listRunHistory(userId, labId, limit = 100) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 200)
+  const rows = db
+    .prepare(
+      `SELECT id, lab_id AS labId, recipe_id AS recipeId, trusted, status,
+              started_at AS startedAt, finished_at AS finishedAt, exit_code AS exitCode, verified
+       FROM runs
+       WHERE user_id = ? AND lab_id = ?
+         AND status != 'running'
+       ORDER BY started_at DESC, id DESC
+       LIMIT ?`,
+    )
+    .all(userId, String(labId), safeLimit)
+  const assertionStmt = db.prepare(
+    `SELECT assertion_id AS id, label, passed, expected, observed
+     FROM run_assertions WHERE run_id = ? ORDER BY assertion_id`,
+  )
+  return rows.map((row) => ({
+    runId: row.id,
+    labId: row.labId,
+    recipeId: row.recipeId,
+    trusted: Boolean(row.trusted),
+    verified: Boolean(row.verified),
+    status: row.status,
+    startedAt: row.startedAt,
+    finishedAt: row.finishedAt,
+    exitCode: row.exitCode,
+    assertions: assertionStmt.all(row.id).map((item) => ({ ...item, passed: Boolean(item.passed) })),
+  }))
+}
+
 export function getRunDiagnostics(userId, runId) {
   const run = db
     .prepare('SELECT id, lab_id, workspace_version, status FROM runs WHERE id = ? AND user_id = ?')

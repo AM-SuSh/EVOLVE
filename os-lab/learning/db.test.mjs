@@ -16,6 +16,12 @@ after(() => {
   rmSync(tempRoot, { recursive: true, force: true })
 })
 
+test('student registration requires a class', () => {
+  const result = learningDb.register('no-class-test', 'secret1', '')
+  assert.equal(result.ok, false)
+  assert.match(result.error, /班级/)
+})
+
 test('migration binds events and immutable runs to the authenticated user', () => {
   const registration = learningDb.register('member-c-test', 'secret1', '计科2301')
   const session = learningDb.resolveSession(registration.token)
@@ -71,6 +77,12 @@ test('migration binds events and immutable runs to the authenticated user', () =
   const stored = learningDb.getRun(session.id, runId)
   assert.equal(stored.verified, true)
   assert.equal(stored.trace.count, 2)
+  const history = learningDb.listRunHistory(session.id, 'lab2', 10)
+  assert.equal(history.length, 1)
+  assert.equal(history[0].runId, runId)
+  assert.equal(history[0].verified, true)
+  assert.equal(history[0].assertions[0].passed, true)
+  assert.equal(learningDb.listRunHistory(999999, 'lab2').length, 0)
   const diagnosticResult = learningDb.getRunDiagnostics(session.id, runId)
   assert.equal(diagnosticResult.diagnostics.length, 1)
   assert.equal(diagnosticResult.diagnostics[0].code, 'E0425')

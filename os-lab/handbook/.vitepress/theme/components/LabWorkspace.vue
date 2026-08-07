@@ -280,6 +280,19 @@ type StoredRunResult = {
   assertions: RunAssertionItem[]
 }
 
+interface ServerRunHistoryItem {
+  runId: string
+  labId: string
+  recipeId: string | null
+  trusted: boolean
+  verified: boolean
+  status: string
+  startedAt: string
+  finishedAt: string | null
+  exitCode: number | null
+  assertions: RunAssertionItem[]
+}
+
 /** 测试结果本地缓存：按 lab + 学生隔离，默认保留 24 小时（刷新不丢）。 */
 const RUN_RESULTS_STORAGE_KEY = 'os-lab-run-results-v1'
 const RUN_RESULTS_TTL_MS = 24 * 60 * 60 * 1000
@@ -399,6 +412,40 @@ function restoreRunResultsForScope() {
   runResultHistory.value = loaded.history
   if (workspaceContext && loaded.lastRunId) {
     workspaceContext.lastRunId = loaded.lastRunId
+  }
+  void loadServerRunHistory()
+}
+
+async function loadServerRunHistory() {
+  if (!studentId.value) return
+  try {
+    const response = await fetch(
+      `${endpoint}/runs/history?labId=${encodeURIComponent(props.labId)}&limit=100`,
+      { headers: authHeaders() },
+    )
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok || !Array.isArray(payload.runs)) return
+    const history: StoredRunResult[] = payload.runs.map((run: ServerRunHistoryItem) => ({
+      runId: run.runId,
+      verified: run.verified,
+      trusted: run.trusted,
+      stopped: run.status === 'stopped' ? 'stopped' : undefined,
+      at: run.finishedAt || run.startedAt,
+      assertions: run.assertions || [],
+    }))
+    const latestWithAssertions = history.find((item) => item.assertions.length)
+    runResultHistory.value = history
+    if (history.length) lastRunId.value = history[0].runId
+    if (latestWithAssertions) {
+      lastAssertions.value = latestWithAssertions.assertions
+      lastAssertionsRunId.value = latestWithAssertions.runId
+    } else {
+      lastAssertions.value = []
+      lastAssertionsRunId.value = ''
+    }
+    saveCurrentRunResults()
+  } catch {
+    // keep the local cache when the server is temporarily unavailable
   }
 }
 
@@ -1533,8 +1580,40 @@ const keyAssertionPassed = computed(() => {
   const item = lastAssertions.value.find((assertion) => assertion.id === key.id)
   return item ? item.passed : null
 })
-function isKeyAssertion(id: string) {
-  return keyAssertion.value?.id === id
+function orderedAssertions(assertions: RunAssertionItem[]) {
+  const key = keyAssertion.value
+  if (!key) return assertions
+  return [...assertions].sort((left, right) => Number(left.id !== key.id) - Number(right.id !== key.id))
+}
+const currentAssertions = computed(() => orderedAssertions(lastAssertions.value))
+const historyWithAssertions = computed(() =>
+  runResultHistory.value.filter((entry) => entry.assertions.length),
+)
+const historyEmpty = computed(() =>
+  runResultHistory.value.filter((entry) => !entry.assertions.length),
+)
+const passedHistoryCount = computed(
+  () => runResultHistory.value.filter((entry) => entry.verified && !entry.stopped && entry.assertions.length).length,
+)
+const failedHistoryCount = computed(
+  () => runResultHistory.value.filter((entry) => !entry.verified && !entry.stopped && entry.assertions.length).length,
+)
+const stoppedHistoryCount = computed(
+  () => runResultHistory.value.filter((entry) => entry.stopped).length,
+)
+const emptyHistoryCount = computed(
+  () => historyEmpty.value.filter((entry) => !entry.stopped).length,
+)
+
+function formatRunTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleString([], {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 watch(activeStage, (stage) => {
@@ -2174,9 +2253,11 @@ function announceUnlock(wasCompleted: boolean) {
   if (wasCompleted || !journeyItem.value?.completed) return
   const next = journey.value[journeyItem.value.index + 1]
   toast(
-    next
-      ? `${lab.value.systemLayer}已构建，${next.lab.label} · ${next.lab.systemLayer} 已解锁。`
-      : '全部系统层已经构建完成。',
+    !next
+      ? '全部系统层已经构建完成。'
+      : next.unlocked
+        ? `${lab.value.systemLayer}已构建，${next.lab.label} · ${next.lab.systemLayer} 已解锁。`
+        : `${lab.value.systemLayer}已构建，等待老师按范围分发 ${next.lab.label} · ${next.lab.systemLayer}。`,
     5000,
   )
 }
@@ -2245,7 +2326,12 @@ function onRunExit(runId: string) {
 /** Problems 诊断加载完成：有条目时自动展开底部面板并切到 Problems。 */
 function onDiagnosticsLoaded(payload: { runId: string; count: number }) {
   lastDiagnosticCount.value = payload.count
-  if (payload.count <= 0 || !payload.runId) return
+  if (payload.count <= 0 || !payload.runId) {
+    if (bottomTab.value === 'problems') {
+      bottomTab.value = lastAssertions.value.length ? 'tests' : 'terminal'
+    }
+    return
+  }
   terminalDockOpen.value = true
   bottomTab.value = 'problems'
 }
@@ -2254,7 +2340,12 @@ function onDiagnosticsLoaded(payload: { runId: string; count: number }) {
 function onRunDiagnostics(payload: { runId: string; diagnostics: unknown[] }) {
   if (payload.runId) lastRunId.value = payload.runId
   lastDiagnosticCount.value = payload.diagnostics.length
-  if (payload.diagnostics.length <= 0) return
+  if (payload.diagnostics.length <= 0) {
+    if (bottomTab.value === 'problems') {
+      bottomTab.value = lastAssertions.value.length ? 'tests' : 'terminal'
+    }
+    return
+  }
   terminalDockOpen.value = true
   bottomTab.value = 'problems'
 }
@@ -2680,7 +2771,7 @@ onBeforeUnmount(() => {
       >
         <LockKeyhole :size="28" aria-hidden="true" />
         <strong>{{ accessLoading ? '正在确认学习进度' : '当前实验尚未解锁' }}</strong>
-        <p>{{ currentAccess?.reason || (auth ? '请从学习路径确认教师开放范围和前置任务。' : '登录后才能进入实验工作台。') }}</p>
+        <p>{{ currentAccess?.reason || (auth ? '请从学习路径确认教师分发范围和前置任务。' : '登录后才能进入实验工作台。') }}</p>
         <a :href="withBase('/guide/ai-tutor')">返回学习路径</a>
       </div>
 
@@ -2778,6 +2869,7 @@ onBeforeUnmount(() => {
                         @click="bottomTab = 'terminal'"
                       >终端</button>
                       <button
+                        v-if="lastDiagnosticCount > 0"
                         type="button"
                         role="tab"
                         :aria-selected="bottomTab === 'problems'"
@@ -2837,7 +2929,12 @@ onBeforeUnmount(() => {
                     <div v-show="bottomTab === 'tests'" class="ws-tests-panel">
                       <header class="ws-tests-intro">
                         <div class="ws-tests-intro-row">
-                          <strong>测试结果 · 可信断言</strong>
+                          <div class="ws-tests-title-block">
+                            <strong>测试结果</strong>
+                            <span v-if="runResultHistory.length" class="ws-tests-summary">
+                              共 {{ runResultHistory.length }} 次 · 通过 {{ passedHistoryCount }} · 未通过 {{ failedHistoryCount }} · 停止 {{ stoppedHistoryCount }} · 未验证 {{ emptyHistoryCount }}
+                            </span>
+                          </div>
                           <button
                             v-if="lastAssertions.length"
                             type="button"
@@ -2848,40 +2945,28 @@ onBeforeUnmount(() => {
                             <MessageSquarePlus :size="13" aria-hidden="true" />添加到对话
                           </button>
                         </div>
-                        <p>
-                          汇总<strong>可信验证命令</strong>的断言（期望 vs 实际）；停止或无断言的运行不会冲掉上一份结果。
-                          结果按 Lab/账号缓存在本机约 24 小时，刷新页面后仍可查看。
-                          与 Problems（编译诊断）、Trace（运行时事件回放）互补。
-                        </p>
+                        <p>可信断言通过状态；历史从服务端读取。</p>
                       </header>
                       <div class="ws-tests-body">
-                        <div
-                          v-if="keyAssertion"
-                          class="ws-tests-focus"
-                          :data-state="keyAssertionPassed === null ? 'unknown' : keyAssertionPassed ? 'ok' : 'fail'"
-                        >
-                          <strong>{{ keyAssertion.label }}</strong>
-                          <span>{{ keyAssertion.note }}</span>
-                          <span class="ws-tests-focus-state" v-if="keyAssertionPassed === null">
-                            尚未看到该断言；请运行可信验证。
-                          </span>
-                          <span class="ws-tests-focus-state" v-else-if="keyAssertionPassed">已观察到。</span>
-                          <span class="ws-tests-focus-state" v-else>当前结果中未通过。</span>
-                        </div>
                         <p v-if="!lastAssertionsRunId && !runResultHistory.length">
-                          在「终端」页签运行可信验证命令后，断言结果将汇总在此。
+                          运行可信验证后，断言结果会显示在这里。
                         </p>
                         <template v-else>
                           <section v-if="lastAssertions.length" class="ws-tests-current" aria-label="当前断言结果">
                             <header class="ws-tests-run-head">
                               <strong>当前结果</strong>
-                              <code v-if="lastAssertionsRunId">run:{{ lastAssertionsRunId.slice(0, 8) }}…</code>
+                              <code v-if="lastAssertionsRunId" class="ws-tests-run-id">run:{{ lastAssertionsRunId.slice(0, 8) }}…</code>
+                              <span class="ws-tests-pass-summary">{{ lastAssertions.filter((a) => a.passed).length }}/{{ lastAssertions.length }} 通过</span>
                             </header>
+                            <p v-if="keyAssertion" class="ws-tests-key-note">
+                              关键断言：{{ keyAssertion.label }} · {{ keyAssertion.note }} ·
+                              {{ keyAssertionPassed === null ? '尚未验证' : keyAssertionPassed ? '已通过' : '未通过' }}
+                            </p>
                             <ul class="ws-tests-assertions">
                               <li
-                                v-for="item in lastAssertions"
+                                v-for="item in currentAssertions"
                                 :key="item.id"
-                                :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed, focus: isKeyAssertion(item.id) }]"
+                                :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed }]"
                               >
                                 <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
                                 <span class="ws-test-label">{{ item.label || item.id }}</span>
@@ -2905,19 +2990,18 @@ onBeforeUnmount(() => {
                               的结果如下方历史。</template>
                             <strong> 不表示验证已通过。</strong>
                           </p>
-                          <section v-if="runResultHistory.length" class="ws-tests-history" aria-label="近期运行历史">
+                          <section v-if="runResultHistory.length" class="ws-tests-history" aria-label="历史运行记录">
                             <header class="ws-tests-run-head">
-                              <strong>近期历史</strong>
+                              <strong>历史</strong>
                               <span>{{ runResultHistory.length }} 次</span>
                             </header>
                             <details
-                              v-for="entry in runResultHistory"
+                              v-for="entry in historyWithAssertions"
                               :key="entry.runId"
                               class="ws-tests-history-item"
-                              :open="entry.runId === lastAssertionsRunId"
                             >
                               <summary>
-                                <code>run:{{ entry.runId.slice(0, 8) }}…</code>
+                                <code class="ws-tests-run-id">run:{{ entry.runId.slice(0, 8) }}…</code>
                                 <span
                                   class="ws-tests-history-badge"
                                   :data-state="entry.stopped ? 'stopped' : entry.verified ? 'ok' : 'fail'"
@@ -2927,6 +3011,7 @@ onBeforeUnmount(() => {
                                 <span v-if="entry.assertions.length" class="ws-tests-history-count">
                                   {{ entry.assertions.filter((a) => a.passed).length }}/{{ entry.assertions.length }}
                                 </span>
+                                <time v-if="entry.at" class="ws-tests-history-time">{{ formatRunTime(entry.at) }}</time>
                                 <button
                                   v-if="entry.assertions.length"
                                   type="button"
@@ -2937,11 +3022,11 @@ onBeforeUnmount(() => {
                                   <MessageSquarePlus :size="12" aria-hidden="true" />
                                 </button>
                               </summary>
-                              <ul v-if="entry.assertions.length" class="ws-tests-assertions">
+                              <ul class="ws-tests-assertions">
                                 <li
-                                  v-for="item in entry.assertions"
+                                  v-for="item in orderedAssertions(entry.assertions)"
                                   :key="`${entry.runId}:${item.id}`"
-                                  :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed, focus: isKeyAssertion(item.id) }]"
+                                  :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed }]"
                                 >
                                   <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
                                   <span class="ws-test-label">{{ item.label || item.id }}</span>
@@ -2957,7 +3042,23 @@ onBeforeUnmount(() => {
                                   </button>
                                 </li>
                               </ul>
-                              <p v-else class="ws-tests-note">本次无断言列表（可能被停止或未走可信 recipe）。</p>
+                            </details>
+                            <details v-if="historyEmpty.length" class="ws-tests-history-item ws-tests-history-empty">
+                              <summary>
+                                <strong>无断言运行 {{ historyEmpty.length }} 次</strong>
+                                <span
+                                  class="ws-tests-history-badge"
+                                  :data-state="historyEmpty.some((e) => e.stopped) ? 'stopped' : 'fail'"
+                                >
+                                  已停止 / 未走可信 recipe
+                                </span>
+                              </summary>
+                              <ul class="ws-tests-empty-runs">
+                                <li v-for="entry in historyEmpty" :key="entry.runId">
+                                  <code>run:{{ entry.runId.slice(0, 8) }}…</code>
+                                  <span>{{ entry.stopped ? '已停止' : '未验证' }}</span>
+                                </li>
+                              </ul>
                             </details>
                           </section>
                         </template>
@@ -3324,7 +3425,7 @@ onBeforeUnmount(() => {
             <template v-if="!scaffold.exists">{{ scaffold.user }}，尚未初始化。点击下方按钮领取 Lab1 起步代码。</template>
             <template v-else-if="scaffold.next">
               当前进度：{{ scaffold.applied.join(' → ') }}；下一步 {{ scaffold.next }}（{{ scaffold.nextSummary }}）
-              <template v-if="!scaffold.nextAllowed">——老师当前开放到 {{ scaffold.openLab }}，{{ scaffold.next }} 尚未开放。</template>
+              <template v-if="!scaffold.nextAllowed">——老师当前分发到 {{ scaffold.openLab }}，{{ scaffold.next }} 尚未分发。</template>
               <template v-else>——请到顶栏「系统构建路径」中点击 {{ scaffold.next }} 的「领取并开始」，代码才会发到本机，「我的系统」也会同步显示。</template>
             </template>
             <template v-else>八个 Lab 已全部发放，继续自由完善你的系统吧。</template>
@@ -3817,6 +3918,20 @@ onBeforeUnmount(() => {
   font-size: var(--ws-text-sm);
 }
 
+.ws-tests-title-block {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--ws-space-2);
+  min-width: 0;
+}
+
+.ws-tests-summary {
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
 .ws-tests-add-chat {
   display: inline-flex;
   align-items: center;
@@ -3838,6 +3953,13 @@ onBeforeUnmount(() => {
   color: var(--ws-ink);
   border-color: var(--ws-accent, #3b82f6);
   background: var(--ws-surface-alt);
+}
+
+.ws-tests-key-note {
+  margin: var(--ws-space-1) 0 0;
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+  line-height: var(--ws-leading-normal);
 }
 
 .ws-tests-focus {
@@ -3933,6 +4055,23 @@ onBeforeUnmount(() => {
   color: var(--ws-ink-faint);
 }
 
+.ws-tests-run-id {
+  color: var(--ws-ink-muted);
+  font-family: var(--ws-font-mono);
+}
+
+.ws-tests-pass-summary {
+  margin-left: auto;
+  color: var(--ws-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ws-tests-history-time {
+  color: var(--ws-ink-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
 .ws-tests-note {
   margin: 0 0 var(--ws-space-3) !important;
   color: var(--ws-ink-muted);
@@ -3986,6 +4125,35 @@ onBeforeUnmount(() => {
 .ws-tests-history-count {
   color: var(--ws-ink-faint);
   font-variant-numeric: tabular-nums;
+}
+
+.ws-tests-history-empty summary {
+  color: var(--ws-ink-muted);
+}
+
+.ws-tests-history-empty summary strong {
+  color: var(--ws-ink);
+}
+
+.ws-tests-empty-runs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: var(--ws-space-2) 0 2px;
+  padding: 0;
+  list-style: none;
+}
+
+.ws-tests-empty-runs li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ws-ink-muted);
+}
+
+.ws-tests-empty-runs code {
+  color: var(--ws-ink);
+  font-family: var(--ws-font-mono);
 }
 
 .ws-zone-assistant .ws-zone-body {

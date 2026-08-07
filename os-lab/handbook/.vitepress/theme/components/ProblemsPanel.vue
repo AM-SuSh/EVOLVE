@@ -139,10 +139,7 @@ defineExpose({
           <MessageSquarePlus :size="13" aria-hidden="true" />添加到对话
         </button>
       </div>
-      <p>
-        汇总<strong>最近一次运行</strong>解析出的编译错误与警告（文件、行号、错误码）。
-        点击一条可跳到工作区对应源码；这里不是终端输出原文，而是结构化问题列表。
-      </p>
+      <p>最近一次运行的编译错误与警告；点击可跳到源码。</p>
     </header>
     <p v-if="loading" class="ws-problems-state" role="status">正在读取编译诊断…</p>
     <div v-else-if="error" class="ws-problems-state error" role="alert">
@@ -182,13 +179,7 @@ defineExpose({
     <div v-else class="ws-problems-empty" role="status">
       <FileWarning :size="20" aria-hidden="true" />
       <strong>{{ runId ? '本次运行没有编译诊断' : '还没有编译诊断' }}</strong>
-      <p>
-        {{
-          runId
-            ? '构建已成功或未产生可解析的 cargo 诊断。若编译失败却仍为空，请确认命令走了 tutor 运行通道。'
-            : '先保存再构建：在「终端」页签运行构建/验证命令后，有错误或警告时会自动切到本页签。'
-        }}
-      </p>
+      <p>{{ runId ? '本次运行没有编译错误或警告。' : '运行构建/验证命令后，有错误或警告会显示在这里。' }}</p>
     </div>
   </section>
 </template>
