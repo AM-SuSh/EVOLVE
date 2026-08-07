@@ -12,7 +12,14 @@ const props = defineProps<{
   dark?: boolean
 }>()
 
-type RunAssertion = { id: string; label: string; passed: boolean; expected: string; observed: string }
+type RunAssertion = {
+  id: string
+  label: string
+  passed: boolean
+  expected: string
+  observed: string
+  hint?: string
+}
 type RunFinishedPayload = {
   content: string
   passed: boolean
@@ -121,6 +128,8 @@ const ghostText = computed(() => {
   return rec.startsWith(buf) ? rec.slice(buf.length) : ''
 })
 
+const failedAssertions = computed(() => (exitInfo.value?.assertions || []).filter((item) => !item.passed))
+
 const statusLabel = computed(() => {
   if (running.value) return stepTitle.value ? `运行中 · ${stepTitle.value}` : '运行中…'
   if (errorText.value) return errorText.value
@@ -129,8 +138,13 @@ const statusLabel = computed(() => {
   if (exitInfo.value.stopped) return '已手动停止'
   if (exitInfo.value.verified) return '可信验证通过，已自动记录为验证证据'
   if (exitInfo.value.ok && !exitInfo.value.trusted) return '运行成功；自定义命令不作为实验通过证据'
+  if (exitInfo.value.ok && failedAssertions.value.length) {
+    const labels = failedAssertions.value.slice(0, 3).map((item) => item.label || item.id)
+    const more = failedAssertions.value.length > 3 ? ` 等 ${failedAssertions.value.length} 条` : ''
+    return `运行结束，断言未全部通过：${labels.join('、')}${more}；查看“测试结果”的修改建议后重新运行`
+  }
   if (exitInfo.value.ok) return '运行结束，但实验行为断言未全部通过'
-  return `运行结束（退出码 ${exitInfo.value.code}）`
+  return `运行失败（退出码 ${exitInfo.value.code}），先修复报错后重新运行`
 })
 
 /** 重绘当前输入行：清行后写出 `$ ` + 已输入内容 + 灰色 ghost 提示。 */

@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   collectTraceEvents,
+  validateAssertion,
   validateInteractionEvent,
   validateRunResult,
   validateTraceEvent,
@@ -77,6 +78,20 @@ test('run-result-v1 only verifies trusted zero-exit runs with passing assertions
   }
   assert.equal(validateRunResult(result), true)
   assert.equal(validateRunResult({ ...result, trusted: false }), false)
+})
+
+test('assertions may carry a fix hint and failed Lab2 checks expose it', () => {
+  const base = { id: 'a1', label: '输出', passed: false, expected: '1', observed: '0' }
+  assert.equal(validateAssertion(base), true)
+  assert.equal(validateAssertion({ ...base, hint: '先检查 sys_write' }), true)
+  assert.equal(validateAssertion({ ...base, hint: '' }), false)
+  assert.equal(validateAssertion({ ...base, hint: 'x'.repeat(2001) }), false)
+
+  const output = 'Hello from user app!\n409684505\nPower check ok\nYield round\n'
+  const assertions = evaluateRunAssertions('lab2.verify-trace.v1', output, [])
+  const failed = assertions.filter((item) => !item.passed)
+  assert.ok(failed.length > 0)
+  assert.ok(failed.every((item) => typeof item.hint === 'string' && item.hint.length > 0))
 })
 
 test('Lab2 trusted recipe checks behavior and both teaching trace types', () => {

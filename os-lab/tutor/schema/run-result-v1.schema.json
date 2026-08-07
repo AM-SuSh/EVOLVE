@@ -41,7 +41,8 @@
         "label": { "type": "string", "minLength": 1, "maxLength": 200 },
         "passed": { "type": "boolean" },
         "expected": { "type": "string", "maxLength": 2000 },
-        "observed": { "type": "string", "maxLength": 2000 }
+        "observed": { "type": "string", "maxLength": 2000 },
+        "hint": { "type": "string", "minLength": 1, "maxLength": 2000 }
       }
     },
     "artifact": {
