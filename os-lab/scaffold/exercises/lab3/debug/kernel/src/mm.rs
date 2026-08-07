@@ -1,8 +1,15 @@
-//! Virtual memory: kernel address space, per-task user spaces (lab3+).
+//! 【Lab3 任务：debug】开启分页后用户程序无法正常取指 / 输出。
 //!
-//! 【Lab3 任务：排错】开启分页后用户程序无法正常输出/取指。
-//! 先复现并对照 `kernel/src/mm.rs` 中用户 ELF 映射的权限，
-//! 再沿 PTE 权限位检查用户页是否真的可被 U-mode 访问。
+//! 现象：运行 `cargo run -p kernel --features lab3 --release` 时，往往看不到
+//! `Hello from user app!`（或很快故障）；内核自身仍可能短暂运行。
+//!
+//! 按「现象 → 假设 → 最小实验 → 证据 → 结论」排查：
+//! 1. 先复现：数一数有没有用户输出，不要只看退出码；
+//! 2. 假设：页表映射是否在？若在，用户态还缺哪一个 PTE 权限位（对照 U / R / W / X）？
+//! 3. 沿 `create_user_space` → `map_elf_and_stack` 核对：ELF 映射之后有没有改权限？
+//!    再对比用户栈最终带了哪些位；
+//! 4. 修复后必须看到 hello / power / 五轮 `Yield round` / `All user apps exited.`，
+//!    不要只看「内核没 panic」。
 
 #![allow(dead_code)]
 
@@ -144,10 +151,10 @@ pub fn create_user_space(space_id: usize, elf: &'static [u8]) {
     });
 }
 
+/// 装入 ELF 与用户栈：用户代码/数据页原本应保留 U（可被 U-mode 访问），此处附近埋了权限问题。
 fn map_elf_and_stack(user_space: &mut MemorySet, elf: &[u8]) {
     user_space.map_elf_pt_load(elf, 0);
 
-    // PLANTED BUG: preserve R/W/X but strip U from every user ELF mapping.
     let mut va = APP_BASE_ADDRESS;
     while va < APP_BASE_ADDRESS + APP_REGION_SIZE - USER_STACK_SIZE {
         if let Some(perm) = user_space.leaf_perm(va) {
@@ -167,8 +174,8 @@ fn map_elf_and_stack(user_space: &mut MemorySet, elf: &[u8]) {
     }
 
     let stack_bottom = APP_BASE_ADDRESS + APP_REGION_SIZE - USER_STACK_SIZE;
-    // User stack only (guard page at APP_BASE+APP_REGION stays unmapped).
     let stack_top = APP_BASE_ADDRESS + APP_REGION_SIZE;
+    // 对比：用户栈这里带了 U；上面 ELF 区有 U 吗？
     user_space.map_area(MapArea::new(
         VirtAddr(stack_bottom).floor(),
         VirtAddr(stack_top).ceil(),

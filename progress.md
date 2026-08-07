@@ -1,5 +1,78 @@
 # os-lab 项目进度总览
 
+## 2026-08-07 - Task: Lab2 验证表写明具体输出断言
+
+### What was done
+- 将 lab2-trap-and-task.md「验证命令」表中 QEMU 一行的通过标准，由笼统的「同时满足下列输出断言」改为与任务一一致的四条具体输出。
+
+### Testing
+- 人工对照任务一通过标准四条断言。
+
+### Notes
+- 改动：os-lab/labs/lab2-trap-and-task.md（第四节 QEMU 通过标准）；progress.md（本条）
+- 回滚：将该单元格改回原表述
+
+---
+
+## 2026-08-07 - Task: 按 Lab2 格式补强 Lab3 手册代码讲解
+
+### What was done
+- 对照 lab2-trap-and-task.md 结构，重写 lab3-memory.md 背景知识：增加阅读顺序表、知识路径、`mm::init` / Sv39 拆分与 PTE 代码锚点、用户空间与 U 位、trap 的 satp 切换与时间线。
+- 任务一与 scaffold lab3 fill（`restore_user_bit`）/ debug（`map_elf_and_stack` 权限问题）对齐；阅读理解题补充 U 位与 remap 考点。
+
+### Testing
+- 人工对照 lab2 章节骨架与 lab3 fill/debug mm.rs 题面；手册不给出完整解法。
+
+### Notes
+- 改动：os-lab/labs/lab3-memory.md（结构与代码讲解扩展）；progress.md（本条）
+- 回滚：还原 lab3-memory.md 本轮内容
+
+---
+
+## 2026-08-07 - Task: 补一句 Lab3 debug map_elf_and_stack 注释
+
+### What was done
+- 将 map_elf_and_stack 函数注释改为一句：说明用户 ELF 页原本应保留 U，并点出此处埋了权限问题。
+
+### Testing
+- 人工核对仅改一行文档注释。
+
+### Notes
+- 改动：scaffold/exercises/lab3/debug/kernel/src/mm.rs
+- 回滚：还原该注释
+
+---
+
+## 2026-08-07 - Task: Lab3 debug mm.rs 注释对齐通过标准与填空风格
+
+### What was done
+- 按 Lab2 debug / Lab3 fill 风格改写 Lab3 debug mm.rs：文件头写清现象与通过断言；map_elf_and_stack 增加思路提示与栈/ELF 权限对照，埋点旁引导最小修复方向，不给出完整补丁。
+
+### Testing
+- 人工核对：埋点仍为去掉 ELF 区 U；注释含通过标准四条输出。
+
+### Notes
+- 改动：scaffold/exercises/lab3/debug/kernel/src/mm.rs
+- 回滚：还原该文件
+
+---
+
+## 2026-08-07 - Task: Lab3 mm.rs 注释对齐 Lab2 fill 风格
+
+### What was done
+- 按 Lab2 fill 	ask.rs 风格改写 Lab3 fill/debug 的 mm.rs：文件头两行点明任务；
+estore_user_bit 用「思路提示」分条引导，不给完整实现；debug 头注释改为现象+排查步骤。
+- 手册变体识别标记改为 【Lab3 任务：fill/debug】。
+
+### Testing
+- 人工对照 Lab2 fill 文件头与函数提示结构；fill 仍为 	odo!，debug 埋点未改。
+
+### Notes
+- 改动：scaffold/exercises/lab3/fill|debug/kernel/src/mm.rs、labs/lab3-memory.md
+- 回滚：还原上述文件
+
+---
+
 ## 2026-08-07 - Task: 收口 Lab2 内置任务类型
 
 ### What was done
@@ -130,6 +203,48 @@
 ### Notes
 - 主要提交：`7340a22`（SIZN，2026-08-06 22:14）。
 - 主要目录：`os-lab/tutor/prompts/lab1`、`lab3`、`lab4`，`os-lab/learning/tutor-golden-dialogues-lab1/3/4.json`，Tutor/RAG harness fixture。
+## 2026-08-07 - Task: Lab3 fill mm.rs 文件头压缩为两行
+
+### What was done
+- 将 Lab3 fill 的 mm.rs 文件头改为两行：任务要做什么 + 如何验证。
+
+### Testing
+- 人工核对文件头仅两行 //! 说明。
+
+### Notes
+- 改动：scaffold/exercises/lab3/fill/kernel/src/mm.rs
+- 回滚：还原该文件头
+
+---
+
+## 2026-08-07 - Task: 加详 Lab3 fill/debug mm.rs 学生向注释
+
+### What was done
+- 重写 Lab3 fill/debug 的 mm.rs 学生向注释：文件头说明 U 位与地址空间；fill 对 strip/restore 给出步骤、API 与常见错误；debug 给出排查路径并在埋点旁引导对照权限。
+
+### Testing
+- 人工核对：fill 仍为 	odo!；debug 埋点逻辑未改；修正 fill 中误用的 //! 行内文档标记。
+
+### Notes
+- 改动：scaffold/exercises/lab3/fill/kernel/src/mm.rs、scaffold/exercises/lab3/debug/kernel/src/mm.rs
+- 回滚：还原上述两文件
+
+---
+
+## 2026-08-07 - Task: Lab3 手册合并地址空间 2.1 与 2.5
+
+### What was done
+- 将 lab3-memory.md 原 2.1（分页与地址空间）与 2.5（MemorySet）融合为新的 2.1；原 2.6 顺延为 2.5，并更新文内引用。
+
+### Testing
+- 人工核对：章节现为 2.1–2.5；任务三「修改 3」已指向 2.5 流程图。
+
+### Notes
+- 改动：os-lab/labs/lab3-memory.md
+- 回滚：git checkout -- os-lab/labs/lab3-memory.md
+
+---
+
 ## 2026-08-07 - Task: 加详 Lab2 fill/debug task.rs 学生向注释
 
 ### What was done
