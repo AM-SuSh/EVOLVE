@@ -13,7 +13,7 @@
 | `lab2/` | **样板 Lab**（Trap / 系统调用 / 协作式调度） |
 | `lab2/lab.yaml` | Lab 元数据、知识点索引、文件、验证、变体 |
 | `lab2/concepts/` | 机制 spec（`trap.yaml`、`scheduler.yaml`） |
-| `lab2/variants/` | fill / debug / remedial |
+| `lab2/variants/` | 内置 fill / debug；教师可通过 Lab 工厂新增类型 |
 | `lab2/checkpoints.md` | 检查点与迁移题 |
 | `lab2/knowledge-table.md` | Lab2 知识点细表（六层次 + 误区） |
 | `lab3/` | **第二样板**（虚存 / Sv39） |
@@ -49,7 +49,7 @@
 | --- | --- |
 | `labs/labN-*.md` | 学生正文（`lab.yaml.manual` 引用） |
 | `labs/answers/` | 参考答案（不对学生默认暴露） |
-| `scaffold/exercises/lab2/{fill,debug,remedial}/` | 变体实现文件 |
+| `scaffold/exercises/lab2/{fill,debug}/` | 内置变体实现文件；新增类型由教师通过 Lab 工厂发布 |
 | `tutor/prompts/lab2/` | 导师上下文（后续可迁入 `lab2/tutor/`） |
 | `handbook/data/labs.json` | 前端进度清单（由 C/B 后续从 `lab.yaml` 生成） |
 

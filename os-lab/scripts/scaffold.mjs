@@ -10,7 +10,7 @@
  *     Lab，学生才能升级到那一层——升级只补必需的新文件，永不覆盖学生已有文件，
  *     学生的补全、修改与自建程序（bonus）全部保留。
  *  3. 核心学习点不发参考实现，而发 scaffold/exercises/ 里的任务版（补全/排错等
- *     变体），教师可按班级/学生灵活或随机分配。
+ *     变体），教师可按班级/学生灵活分配。
  *  4. 三个清单文件（根/kernel/user 的 Cargo.toml）属于框架，按进度生成并覆盖。
  *
  * 教师配置集中在 scaffold/teacher.json（不进 git）：
@@ -21,7 +21,7 @@
  *   node scripts/scaffold.mjs status <学号>
  *   node scripts/scaffold.mjs init <学号> | upgrade <学号> [变体]
  *   node scripts/scaffold.mjs add-bin <学号> <名字>
- *   node scripts/scaffold.mjs assign <lab> <变体|random> | open <labN>
+ *   node scripts/scaffold.mjs assign <lab> <变体> | open <labN>
  */
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -139,8 +139,7 @@ const KERNEL_DEPS = {
 
 /**
  * 核心学习点的任务变体。文件放在 scaffold/exercises/<lab>/<variant>/<相对路径>，
- * 发放时替代参考实现。教师在控制台（或 assign 命令）指定各 Lab 用哪个变体，
- * "random" 表示随机——不同学生拿到不同任务。
+ * 发放时替代参考实现。教师在控制台（或 assign 命令）指定各 Lab 用哪个变体。
  */
 const LEGACY_EXERCISES = {
   lab2: {
@@ -173,6 +172,20 @@ export const EXERCISES = LEGACY_EXERCISES
 
 /* -- 教师配置 ---------------------------------------------------------------- */
 
+function validAssignments(value) {
+  if (!value || typeof value !== 'object') return {}
+  const catalog = getExerciseCatalog()
+  return Object.fromEntries(
+    Object.entries(value).filter(([labId, variant]) =>
+      typeof variant === 'string' && Boolean(catalog[labId]?.variants?.[variant]),
+    ),
+  )
+}
+
+function validStudentVariants(value) {
+  return validAssignments(value)
+}
+
 export async function readTeacherConfig() {
   let raw = {}
   try {
@@ -182,7 +195,7 @@ export async function readTeacherConfig() {
   }
   const scope = (value) => ({
     openLab: LAB_ORDER.includes(value?.openLab) ? value.openLab : undefined,
-    assignments: value?.assignments && typeof value.assignments === 'object' ? value.assignments : {},
+    assignments: validAssignments(value?.assignments),
     notice: typeof value?.notice === 'string' ? value.notice : undefined,
   })
   const mapOf = (value) =>
@@ -191,7 +204,7 @@ export async function readTeacherConfig() {
       : {}
   return {
     openLab: LAB_ORDER.includes(raw.openLab) ? raw.openLab : 'lab8',
-    assignments: raw.assignments && typeof raw.assignments === 'object' ? raw.assignments : {},
+    assignments: validAssignments(raw.assignments),
     llm: raw.llm && typeof raw.llm === 'object' ? raw.llm : {},
     allowStudentLlm: raw.allowStudentLlm !== false,
     notice: typeof raw.notice === 'string' ? raw.notice : '',
@@ -232,6 +245,13 @@ export function effectiveConfigFor(config, username, className) {
 export async function writeTeacherConfig(patch) {
   const current = await readTeacherConfig()
   const next = { ...current, ...patch }
+  next.assignments = validAssignments(next.assignments)
+  next.classes = Object.fromEntries(
+    Object.entries(next.classes || {}).map(([name, value]) => [name, { ...value, assignments: validAssignments(value?.assignments) }]),
+  )
+  next.students = Object.fromEntries(
+    Object.entries(next.students || {}).map(([name, value]) => [name, { ...value, assignments: validAssignments(value?.assignments) }]),
+  )
   if (!LAB_ORDER.includes(next.openLab)) next.openLab = current.openLab
   await mkdir(path.dirname(TEACHER_FILE), { recursive: true })
   await writeFile(TEACHER_FILE, `${JSON.stringify(next, null, 2)}\n`, 'utf8')
@@ -241,10 +261,10 @@ export async function writeTeacherConfig(patch) {
 export async function writeAssignment(labId, variant) {
   const exercise = getExerciseCatalog()[labId]
   if (!exercise) return { ok: false, log: [`${labId} 目前没有任务变体（先在 EXERCISES 表登记）`] }
-  if (variant !== 'random' && !exercise.variants[variant]) {
+  if (!exercise.variants[variant]) {
     return {
       ok: false,
-      log: [`${labId} 可选变体：${Object.keys(exercise.variants).join(' / ')} 或 random`],
+      log: [`${labId} 可选变体：${Object.keys(exercise.variants).join(' / ')}`],
     }
   }
   const config = await readTeacherConfig()
@@ -257,12 +277,9 @@ export async function writeAssignment(labId, variant) {
 async function resolveVariant(labId, explicit, effectiveAssignments) {
   const exercise = getExerciseCatalog()[labId]
   if (!exercise) return null
-  const names = Object.keys(exercise.variants)
-  const pick = (value) =>
-    value === 'random' ? names[Math.floor(Math.random() * names.length)] : value
-  if (explicit && (explicit === 'random' || exercise.variants[explicit])) return pick(explicit)
+  if (explicit && exercise.variants[explicit]) return explicit
   const assigned = (effectiveAssignments || (await readTeacherConfig()).assignments)[labId]
-  if (assigned && (assigned === 'random' || exercise.variants[assigned])) return pick(assigned)
+  if (assigned && exercise.variants[assigned]) return assigned
   return exercise.default
 }
 
@@ -275,7 +292,7 @@ async function readState(studentRoot) {
     return {
       applied: Array.isArray(state.applied) ? state.applied.filter((l) => LAB_ORDER.includes(l)) : [],
       extraBins: Array.isArray(state.extraBins) ? state.extraBins : [],
-      variants: state.variants && typeof state.variants === 'object' ? state.variants : {},
+      variants: validStudentVariants(state.variants),
     }
   } catch {
     return { applied: [], extraBins: [], variants: {} }
@@ -636,6 +653,13 @@ export async function applyNext(user, explicitVariant, effective) {
 
   // 教师开放进度门控（生效配置 = 学生覆盖 > 班级覆盖 > 全局默认）。
   const teacher = effective || (await readTeacherConfig())
+  const exercise = getExerciseCatalog()[next]
+  if (explicitVariant && (!exercise || !exercise.variants[explicitVariant])) {
+    return {
+      ok: false,
+      log: [`${next} 不支持任务变体「${explicitVariant}」；当前可用：${Object.keys(exercise?.variants || {}).join(' / ') || '无'}`],
+    }
+  }
   if (LAB_ORDER.indexOf(next) > LAB_ORDER.indexOf(teacher.openLab)) {
     return {
       ok: false,
@@ -738,7 +762,7 @@ if (invokedDirectly) {
       console.log(`${s.user}: ${s.applied.join(' → ') || '未初始化'}`)
     }
   } else {
-    console.log('用法：status <学号> | init|upgrade <学号> [变体] | add-bin <学号> <名字> | assign <lab> <变体|random> | open <labN> | list')
+    console.log('用法：status <学号> | init|upgrade <学号> [变体] | add-bin <学号> <名字> | assign <lab> <变体> | open <labN> | list')
     process.exitCode = 1
   }
 }

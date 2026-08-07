@@ -2786,7 +2786,7 @@ const server = http.createServer(async (request, response) => {
           const labId = String(body.assignment.labId || '')
           const variant = String(body.assignment.variant || '')
           const exercise = getExerciseCatalog()[labId]
-          if (!exercise || (variant !== 'random' && !exercise.variants[variant])) {
+          if (!exercise || !exercise.variants[variant]) {
             json(response, 400, { error: `无效的任务分配（${labId} / ${variant}）` }, origin)
             return
           }

@@ -1,5 +1,138 @@
 # os-lab 项目进度总览
 
+## 2026-08-07 - Task: 收口 Lab2 内置任务类型
+
+### What was done
+- 删除 `exercises/lab2/remedial/` 学生任务目录及其完整参考实现、manifest、教师验收资料和发布 catalog 条目。
+- Lab2 内置任务类型固定为 `fill`、`debug`；教师端下发选择器、scaffold 命令和服务端配置校验不再提供 `remedial` 或 `random`，教师仍可通过 Lab 工厂新增自定义任务类型。
+- 清理 Lab2 的变体映射、发布凭证和回归测试，使学生领取链路只接受当前 catalog 中声明的任务类型。
+
+### Testing
+- `npm test`：55/55 通过。
+- `npm run build`：通过，VitePress 客户端/服务端 bundle 和页面渲染完成。
+- `git diff --check`：通过；仅保留工作区既有的 LF/CRLF 提示。
+
+---
+
+## 2026-08-07 - Task: 优化 AI 导师消息操作与知识来源展示
+
+### What was done
+- 为 AI 导师对话中的每条消息增加一键复制操作，复制完整消息文本；同时复用带浏览器兼容回退的剪贴板逻辑，并提供复制成功、失败和自动恢复状态。
+- 将导师回复下方原本展开的「参考知识」来源列表和检索诊断压缩为一个小书本图标；图标仅用于展示，鼠标悬停可查看本轮参考数量、来源标题、章节路径及检索降级信息，不再响应点击或执行知识库跳转。
+- Tutor Prompt 要求模型仅在知识块确实支撑陈述时附加当轮允许的 `kb:` 引用；Markdown 渲染将该引用显示为正文内的小型「来源」标注，不暴露知识块正文，也不提供文档跳转。
+- 删除 AI 导师单条回复底部单独生成的 `run:`、`trace:` 等证据按钮，避免出现额外的「测试结果」跳转；工作区其他面板原有的证据查看机制保持不变。
+
+### Testing
+- `npm test`：54/54 通过。
+- `npx vitepress build`：通过，客户端、服务端 bundle 与页面渲染均完成。
+- `git diff --check`：通过；仅有工作区既有的 LF/CRLF 提示。
+- 浏览器自动化运行时无可用浏览器实例，因此未执行截图与鼠标悬停的自动化回归；本地开发服务正常运行。
+
+### Notes
+- 主要文件：`TutorMessage.vue`、`markdown.ts`、`tutor-server.mjs`。
+- 本项只收口 AI 导师消息层的复制、知识来源展示与回复底部操作，不改变知识检索、权限过滤和教师知识库管理逻辑。
+
+---
+
+## 2026-08-07 - Task: 清理终端面板中的冗余命令按钮
+
+### What was done
+- 移除终端输出区域的「复制输出」「添加到 AI 导师对话」「插入实验报告」三个按钮及其事件链路，删除 `TerminalSession` 中对应的状态、复制逻辑和报告/对话注入逻辑。
+- 同步清理 `TerminalPanel`、`LabWorkspace` 的事件转发；实验报告的过程记录提示改为引导学生自行挑选关键运行结果作为证据。
+
+### Testing
+- 提交本身未附测试命令；当前工作区后续统一执行 Handbook 回归测试与构建检查。
+
+### Notes
+- 主要提交：`83a41d2`（AM-SuSh，2026-08-07 13:05）。
+- 主要文件：`TerminalSession.vue`、`TerminalPanel.vue`、`LabWorkspace.vue`、`report-template.ts`。
+
+---
+
+## 2026-08-07 - Task: 重整学生工作台导航
+
+### What was done
+- 新增 `WorkspaceNav.vue` 与 `workspace-nav.ts`，把实验路径、手册/工作区/学习支持切换和模型设置入口接入 VitePress 顶部导航。
+- `LabWorkspace` 改为通过共享状态向顶栏同步当前 Lab、已应用变体、面板状态和成长档案操作，移除工作台内部重复的顶栏入口。
+- 将模型设置移动到学生账号菜单；调整教师工作台和窄屏布局，统一使用站点导航高度计算工作区位置。
+
+### Testing
+- 提交本身未附测试命令；当前工作区后续统一执行 Handbook 回归测试与构建检查。
+
+### Notes
+- 主要提交：`7ecade1`（AM-SuSh，2026-08-07 12:56）。
+- 主要文件：`Layout.vue`、`LabWorkspace.vue`、`UserNav.vue`、`WorkspaceNav.vue`、`workspace-nav.ts`。
+
+---
+
+## 2026-08-07 - Task: 移除工作台冗余二级导航
+
+### What was done
+- 删除 `LabWorkspace` 内部重复的工作台顶栏及其相关样式、任务徽标和导航入口。
+- 将工作区主体直接对齐到 VitePress 顶部导航下方，简化桌面端和移动端的 grid 行布局，减少重复入口和空间占用。
+
+### Testing
+- 提交本身未附测试命令；当前工作区后续统一执行 Handbook 回归测试与构建检查。
+
+### Notes
+- 主要提交：`d2a9de8`（AM-SuSh，2026-08-07 12:12）。
+- 主要文件：`os-lab/handbook/.vitepress/theme/components/LabWorkspace.vue`。
+
+---
+
+## 2026-08-07 - Task: 增加 AI 导师离线回退
+
+### What was done
+- Tutor Server 从 `handbook/data/labs.json` 读取 Lab 运行元数据，并为 Lab1–Lab8 提供验证命令回退值。
+- 上游模型不可用、返回错误、超时或空响应时，不再直接返回 502/504 或 SSE error，而是返回结构完整的离线导师回复，保留 `tutorState`、知识元数据和检索诊断。
+- 离线回复按 Lab 和阶段给出定界、阅读、验证、排错、复盘或迁移提示；直接索要完整答案时仍先执行 guardrail。
+- 增加 Tutor Server smoke 对上游不可用时 `mode: offline`、`offline-tutor` 和 Lab2 `sepc/trap` 引导内容的检查；学生端取消仅允许 remote 连接时才请求导师的限制。
+
+### Testing
+- 新增离线回退 smoke 场景，覆盖 JSON/SSE 返回结构和导师状态保留。
+
+### Notes
+- 主要提交：`c6b145b`（AM-SuSh，2026-08-07 11:23）。
+- 主要文件：`tutor-server.mjs`、`tutor-server.smoke.mjs`、`LabWorkspace.vue`。
+
+---
+
+## 2026-08-07 - Task: 重做 Lab2 实验手册与 fill 变体说明
+
+### What was done
+- 重排 Lab2 手册的开始准备、问题场景、知识路径、Lab1/Lab2 对照、背景知识和实验任务结构，补充按源码调用链阅读的文件表。
+- 将变体流程统一到“任务一”：明确 fill/debug/remedial 的入口、现象、排错路径、提示边界和恢复要求；修正 fill 变体对轮转扫描差异的表述，要求在多 Ready 场景或代码逻辑中解释。
+- 将验证标准明确为四条输出断言：Hello、幂结果、`Yield round` 至少 5 次、全部用户程序退出，并强调退出码 0 不等于实验通过。
+- 在 Lab2 参考答案中补充普通 syscall 与 yield 的 trap 分叉、扫描起点差异、yield/exit 状态转换和 `load_apps`/`load_app` 职责四个问题。
+- 更新知识表、fill scaffold 注释和变体报告问题，使实验手册、答案、variant manifest 与实现保持一致。
+
+### Testing
+- 提交内容包含手册、答案、知识表、variant manifest 和 fill scaffold 的同步修改；后续统一执行 Handbook 回归测试与构建检查。
+
+### Notes
+- 主要提交：`1b0c38b`（SIZN，2026-08-07 11:16）。
+- 主要文件：`os-lab/labs/lab2-trap-and-task.md`、`os-lab/labs/answers/lab2-answers.md`、`os-lab/lab-packages/lab2/knowledge-table.md`、`variants/fill/manifest.yaml`。
+
+---
+
+## 2026-08-06 - Task: 将 Tutor 阶段提示扩展到 Lab1/3/4
+
+### What was done
+- 为 Lab1、Lab3、Lab4 补充各自的可讨论范围、客观验证标准和 `orient/read/run/debug/reflect` 五阶段提示。
+- Tutor Server 从只加载 Lab2 阶段 prompt 改为按 Lab 加载，并保留共享阶段 prompt 作为回退。
+- 新增 Lab1、Lab3、Lab4 金标准对话，覆盖完整答案拒答、无可信证据不得确认通过、纠正典型错误假设，以及有证据后的深化追问。
+- 扩充 Tutor/RAG harness：增加 Lab1 启动链、Lab3 `U` 权限位、Lab4 `fork/wait` 等场景。
+- 修正 Lab2 “任务四”旧引用和 fill/debug/remedial variant 的手册锚点，改为当前“任务一”位置。
+
+### Testing
+- 新增的 Tutor/RAG fixture 和测试覆盖学生答案安全、证据门控、Lab 范围和知识块元数据约束。
+
+### Notes
+- 主要提交：`7340a22`（SIZN，2026-08-06 22:14）。
+- 主要目录：`os-lab/tutor/prompts/lab1`、`lab3`、`lab4`，`os-lab/learning/tutor-golden-dialogues-lab1/3/4.json`，Tutor/RAG harness fixture。
+
+---
+
 ## 2026-08-06 - Task: 扩写 Lab6 背景知识
 
 ### What was done

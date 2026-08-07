@@ -161,7 +161,6 @@ function studentEntry(user: string) {
 }
 
 function variantLabel(name: string) {
-  if (name === 'random') return '每人随机'
   return variants.value.find((v) => v.name === name)?.label || ''
 }
 
@@ -448,7 +447,6 @@ onMounted(load)
               <select v-model="variantDrafts['']" aria-label="快速下发任务类型">
                 <option value="" disabled>选择任务类型</option>
                 <option v-for="v in variants" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
-                <option value="random">random · 每人随机</option>
               </select>
               <button
                 type="button"
@@ -488,7 +486,6 @@ onMounted(load)
               <select v-model="variantDrafts['']" aria-label="全局默认任务类型">
                 <option value="" disabled>选择任务类型</option>
                 <option v-for="v in variants" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
-                <option value="random">random · 每人随机</option>
               </select>
               <button type="button" :disabled="busy || !variantDrafts['']" title="下发任务" @click="assignTo('')"><Send :size="14" aria-hidden="true" />下发</button>
             </template>
@@ -510,7 +507,6 @@ onMounted(load)
               <select v-model="variantDrafts[c]" :aria-label="`${c}任务类型`">
                 <option value="" disabled>选择任务类型</option>
                 <option v-for="v in variants" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
-                <option value="random">random · 每人随机</option>
               </select>
               <button type="button" :disabled="busy || !variantDrafts[c]" title="下发任务" @click="assignTo(c)"><Send :size="14" aria-hidden="true" />下发</button>
             </template>
@@ -522,8 +518,8 @@ onMounted(load)
         <p v-if="!classList.length" class="ws-pub-empty">学生注册并填写班级后，班级会自动出现在这里。</p>
 
         <details class="ws-pub-variant-help">
-          <summary>查看本实验可用的 {{ variants.length + 1 }} 种任务类型</summary>
-          <p v-if="variants.length"><span v-for="v in variants" :key="v.name"><code>{{ v.name }}</code> {{ v.label }}</span><span><code>random</code> 每人随机</span></p>
+          <summary>查看本实验可用的 {{ variants.length }} 种任务类型</summary>
+          <p v-if="variants.length"><span v-for="v in variants" :key="v.name"><code>{{ v.name }}</code> {{ v.label }}</span></p>
           <p v-else>当前只有默认任务。向 <code>scaffold/exercises/{{ lab.id }}/</code> 添加变体后会自动出现。</p>
         </details>
       </section>
@@ -545,7 +541,6 @@ onMounted(load)
             <select v-model="variantDrafts[`student:${studentSel}`]" :disabled="!variants.length" aria-label="学生任务类型">
               <option value="" disabled>选择任务类型</option>
               <option v-for="v in variants" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
-              <option value="random">random</option>
             </select>
             <button
               type="button"

@@ -235,6 +235,12 @@ try {
   const factoryPayload = await factoryValidation.json()
   assert.equal(factoryPayload.stage, 'dry-run')
   assert.equal(factoryPayload.variants[0].variant, 'debug')
+  for (const variant of ['unknown', 'random']) {
+    const rejectedAssignment = await postJson('/teacher/config', teacherHeaders, {
+      assignment: { labId: 'lab2', variant },
+    })
+    assert.equal(rejectedAssignment.status, 400)
+  }
   const factoryTest = await postJson('/teacher/lab-factory/test', teacherHeaders, {
     labId: 'lab3',
     variant: 'debug',

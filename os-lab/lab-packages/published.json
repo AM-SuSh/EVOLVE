@@ -134,16 +134,6 @@
             "kernel/src/task.rs": "scaffold/exercises/lab2/debug/kernel/src/task.rs"
           },
           "manifest": "lab-packages/lab2/variants/debug/manifest.yaml"
-        },
-        "remedial": {
-          "label": "面向「已接触 debug/fill 但仍混淆让出与退出」的学生。",
-          "files": [
-            "kernel/src/task.rs"
-          ],
-          "sources": {
-            "kernel/src/task.rs": "scaffold/exercises/lab2/remedial/kernel/src/task.rs"
-          },
-          "manifest": "lab-packages/lab2/variants/remedial/manifest.yaml"
         }
       },
       "release": "releases/lab2/1.0.0/release.json"

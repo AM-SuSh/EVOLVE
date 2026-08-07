@@ -549,50 +549,11 @@ Lab2 复用了初赛阶段留下的 `kernel/src/task.rs` 作业。老师可能�
 | `user/src/syscall.rs` | 用户态 syscall 封装 | 参数如何进入 `a0`-`a7` |
 | `user/src/lib.rs`、`user/src/bin/*.rs` | 用户程序入口与业务逻辑 | `println` / `exit` / `yield_` 如何使用 |
 
-### 任务一：先完成教师下发的 fill/debug 变体，再跑通内核
+### 任务一：完成实验
 
-**第一步：确认你拿到的 `kernel/src/task.rs` 是哪一种。**
+本实验的任务文件为 `kernel/src/task.rs`，请在工作区中打开文件，并根据注释提示完成实验 。
 
-打开文件头部注释：
-
-- 如果出现 `【Lab2 任务：补全调度器】`，说明是 **fill 变体**；
-- 如果出现 `【Lab2 任务：排错】`，说明是 **debug 变体**；
-- 如果出现 `【Lab2 任务：补救】`，说明是 **remedial 变体**；起点与 debug 相同，但需先完成状态对照表；
-- 如果出现 `【Lab2 任务：参考实现】`，说明是完整参考实现，跳过第二步和第三步，直接执行“第四步：运行验证”。
-
-**第二步（fill）：补全调度器**
-
-需要修改的位置：`kernel/src/task.rs` 中的 `TaskManager::find_next_task`，当前是 `todo!("Lab2：在这里实现你的调度器（见上方提示）")`。
-
-补全要求：
-
-- 只从 `task_status == TaskStatus::Ready` 的任务里选择；
-- 选中后更新 `self.current` 为选中下标；
-- 没有可运行任务时返回 `None`；
-- 可以从 0 号槽扫描，也可以从 `self.current + 1` 循环扫描；本实验默认输出不一定能直接看出两种写法的差别，建议在报告中从代码逻辑说明，或临时构造多个同时 Ready 的任务来观察。
-- 只补 `find_next_task` 的函数体；不要改动 `run_next_task`、`all_exited` 或用户程序来绕过调度。
-
-未补全时 `cargo run` 会在调用 `find_next_task` 时 panic；补全后才能看到三个用户程序依次完成。
-
-**第三步（debug / remedial）：修复 yield 只出现一轮的问题**
-
-典型现象：`yield` 程序本应输出 5 行 `Yield round`，实际只输出 1 行，随后系统打印 `All user apps exited.` 并关机。注意此时进程退出码仍可能为 0，因此**不能只用退出码判断是否通过**。
-
-需要排查的位置：`kernel/src/task.rs`。建议按“现象 → 假设 → 最小实验 → 证据 → 结论”推进：
-
-1. 先完整运行一次，亲手数 `Yield round` 出现几次；
-2. 提出假设：一个主动让出 CPU 的任务，为什么之后再也没有被调度回来？“让出”和“退出”在状态机上应该有什么区别？
-3. 沿 `SYS_YIELD` 的处理路径读下去：`trap.rs` 的 `SYS_YIELD` 分支 → `sync_current_trap_cx` → `mark_current_suspended` → `run_next_task`；
-4. 对照 `sys_exit` 的状态赋值，找到写反的那一处；
-5. 修复后重新运行，必须看到 5 行 `Yield round`。
-
-修复范围应限制在 `kernel/src/task.rs` 的状态赋值处；不要通过删掉其他 app、改写 `yield.rs` 或只改 `sys_exit` 来让输出“看起来通过”。
-
-如果工作台下发的是 remedial 变体，起点与 debug 相同，但报告里还要求先填写 `yield → Ready / exit → Exited` 的状态对照表。
-
-**第四步：运行验证**
-
-确认环境已激活后运行：
+运行验证：
 
 ```powershell
 cargo run -p kernel --features lab2 --release

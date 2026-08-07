@@ -1,15 +1,4 @@
-# 变式评估：Lab2 remedial-yield 与 Lab3 debug（成员 A · 第 8–9 周）
-
-## Lab2 `remedial-yield`
-
-| 维度 | 评估 |
-| --- | --- |
-| 难度 | 低于完整 fill；略低于首次做 debug（有强制对照表） |
-| 答案一致性 | 与 debug 同一根因（suspended→Ready）；断言集与基线 lab2 完全一致 |
-| 教学价值 | 专攻「yield=exit」顽固误区；适合二次课或补考 |
-| 风险 | 与 debug 共用源模板，教师需避免未修学生互相剧透具体行号 |
-
-**结论**：适合作为补救变式发布草案；须走审核清单。
+# 变式评估：Lab3 debug（成员 A · 第 8–9 周）
 
 ## Lab3 `debug`（缺 U）
 

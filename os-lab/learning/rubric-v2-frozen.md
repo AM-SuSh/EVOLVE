@@ -95,7 +95,7 @@ reflection = F_raw
 | H2 | R3 为边界（count==5 且输出截断标记）或教师标记存疑 | 进复核 |
 | H3 | F1=F2=1 但反思文本与任何 `runId`/输出无引用 | 进复核 |
 | H4 | `guardrail_triggered≥3` 且 `process≥80` | 进复核 |
-| H5 | 变体 ∈ {fill,debug,remedial} 且自动 total 与教师抽检样本冲突 | 进复核 |
+| H5 | 变体 ∈ {fill,debug} 或教师新增变体，且自动 total 与教师抽检样本冲突 | 进复核 |
 | H6 | 学生提交申诉 | 进复核 |
 
 Soft S1–S3 建议实现，不阻塞 MVP。

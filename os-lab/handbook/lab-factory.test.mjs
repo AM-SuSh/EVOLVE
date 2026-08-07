@@ -26,7 +26,7 @@ test('C6 validates frozen schema and materializes every declared Lab2 variant in
   assert.equal(inspected.ok, true, inspected.errors?.join('\n'))
   const dryRun = await scaffoldDryRun('lab2', options)
   assert.equal(dryRun.ok, true)
-  assert.deepEqual(dryRun.variants.map((item) => item.variant).sort(), ['debug', 'fill', 'remedial'])
+  assert.deepEqual(dryRun.variants.map((item) => item.variant).sort(), ['debug', 'fill'])
   assert.equal(dryRun.variants.every((item) => item.fileCount > 0 && /^[a-f0-9]{64}$/.test(item.manifestHash)), true)
 })
 
@@ -37,24 +37,19 @@ test('C6 every published variant source carries a file header task marker', asyn
   }
 })
 
-test('C6 issues the published Lab2 remedial variant through the normal scaffold path', async () => {
-  const previousStudentsRoot = process.env.OS_LAB_STUDENTS_ROOT
-  const studentsRoot = path.join(temporary, 'remedial-students')
-  process.env.OS_LAB_STUDENTS_ROOT = studentsRoot
-  try {
-    const teacher = { openLab: 'lab2', assignments: { lab2: 'remedial' } }
-    assert.equal((await applyNext('remedial-student', undefined, teacher)).lab, 'lab1')
-    const issued = await applyNext('remedial-student', undefined, teacher)
-    assert.equal(issued.ok, true)
-    assert.equal(issued.lab, 'lab2')
+test('C6 rejects undeclared Lab2 variants', async () => {
+  const dryRun = await scaffoldDryRun('lab2', { ...options, variant: 'unknown' })
+  assert.equal(dryRun.ok, false)
+  assert.match(dryRun.errors.join('\n'), /未知变体: unknown/)
 
-    const studentRoot = path.join(studentsRoot, 'remedial-student')
-    const state = JSON.parse(await readFile(path.join(studentRoot, '.scaffold-state.json'), 'utf8'))
-    assert.equal(state.variants.lab2, 'remedial')
-    assert.equal(
-      await readFile(path.join(studentRoot, 'kernel', 'src', 'task.rs'), 'utf8'),
-      await readFile(path.join(repositoryRoot, 'scaffold', 'exercises', 'lab2', 'remedial', 'kernel', 'src', 'task.rs'), 'utf8'),
-    )
+  const previousStudentsRoot = process.env.OS_LAB_STUDENTS_ROOT
+  process.env.OS_LAB_STUDENTS_ROOT = path.join(temporary, 'rejected-variants-students')
+  try {
+    const teacher = { openLab: 'lab2', assignments: {} }
+    assert.equal((await applyNext('rejected-variant-student', undefined, teacher)).lab, 'lab1')
+    const rejected = await applyNext('rejected-variant-student', 'unknown', teacher)
+    assert.equal(rejected.ok, false)
+    assert.match(rejected.log.join('\n'), /不支持任务变体「unknown」/)
   } finally {
     if (previousStudentsRoot === undefined) delete process.env.OS_LAB_STUDENTS_ROOT
     else process.env.OS_LAB_STUDENTS_ROOT = previousStudentsRoot

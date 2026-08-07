@@ -306,11 +306,7 @@ async function loadFactory() {
     inspected.value = payload.inspected || null
     const names = Object.keys(payload.inspected?.spec?.variants || {})
     if (!names.includes(variant.value)) {
-      variant.value = names.includes('remedial')
-        ? 'remedial'
-        : names.includes('debug')
-          ? 'debug'
-          : names[0] || ''
+      variant.value = names.includes('debug') ? 'debug' : names[0] || ''
     }
   } catch (err) {
     note.value = err instanceof Error ? err.message : '无法连接导师服务（npm run tutor）'
@@ -757,7 +753,7 @@ onMounted(() => {
               v-model="approvalNote"
               rows="3"
               maxlength="2000"
-              placeholder="例如：Lab2 remedial 教师验收通过，发布到测试班。"
+              placeholder="例如：Lab2 debug 教师验收通过，发布到测试班。"
             />
           </label>
         </fieldset>

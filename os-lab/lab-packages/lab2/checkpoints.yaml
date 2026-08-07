@@ -9,7 +9,6 @@ source_md: checkpoints.md
 hint_ladder_ref:
   fill: variants/fill/manifest.yaml#hint_ladder
   debug: variants/debug/manifest.yaml#hint_ladder
-  remedial: variants/remedial/manifest.yaml#hint_ladder
 
 # hintLevel：导师当前允许给出的最高提示阶（0–3）；无足够证据时不得升到泄露实现的级别
 # requiredEvidence：进入该检查点「已满足」前必须具备的证据种类

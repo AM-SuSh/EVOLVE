@@ -1,14 +1,14 @@
 # Lab 创建模板（成员 A · 第 8–9 周）
 
-用于教师或助教创建**补救变式 / debug 变式 / 新练习面**。AI 可填草稿，但发布必须过审核清单。
+用于教师或助教创建新的实验任务类型。平台内置 `fill` 和 `debug`，其他类型由教师自行命名并通过 Lab 工厂发布。AI 可填草稿，但发布必须过审核清单。
 
 ## 1. 元数据
 
 | 字段 | 填写 |
 | --- | --- |
-| `id` | 如 `lab2-remedial-yield` |
+| `id` | 如 `lab2-trace-analysis` |
 | 基线 Lab | lab1…lab8 |
-| 变体类型 | fill / debug / remedial / extension |
+| 变体类型 | fill / debug / 教师自定义名称 |
 | 版本 | semver-draft |
 | 先修 | |
 | 课本锚点 | OSTEP 章节 |
