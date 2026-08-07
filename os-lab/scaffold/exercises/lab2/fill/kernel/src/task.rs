@@ -96,7 +96,9 @@ impl TaskManager {
     ///  2. 只有 `task_status == TaskStatus::Ready` 的任务可以被选中；
     ///  3. 选中后要把 `self.current` 更新为它的下标——trap 返回时内核靠它找到「当前任务」；
     ///  4. 想一想：从 0 号槽开始扫和从 `self.current + 1` 开始「轮转」扫，行为差别是什么？
-    ///     跑通 yield 测试后，两种写法各试一次，观察输出顺序的变化，写进你的实验报告。
+    ///     本实验默认的 hello / power / yield 是顺序 batch，yield 通常是唯一 Ready 任务，
+    ///     所以两种写法的默认输出不一定能直接看出差异；可以临时构造多个同时 Ready 的任务
+    ///     来观察，或在报告中从循环边界直接解释差异。
     ///
     /// 验证：补全后运行 `cargo run -p kernel --features lab2 --release`，
     /// 应看到 hello / power / yield 三个程序依次完成，最后打印 `All user apps exited.`。
