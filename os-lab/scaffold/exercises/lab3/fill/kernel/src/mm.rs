@@ -1,6 +1,5 @@
-//! 【Lab3 任务：补全】在练习准备去掉 U 之后，遍历用户区并把 U 位补回去。
-//!
-//! Virtual memory: kernel address space, per-task user spaces (lab3+).
+//! 【Lab3 任务：fill】当前 `restore_user_bit` 是 `todo!()`。
+//! 请阅读该函数上方的思路提示，把用户区缺的 U 位补回去。
 
 #![allow(dead_code)]
 
@@ -144,6 +143,8 @@ pub fn create_user_space(space_id: usize, elf: &'static [u8]) {
 }
 
 
+/// 为用户地址空间装入 ELF 段与用户栈，再进入「去 U → 补 U」的练习步骤。
+/// 顺序很重要：先建好映射，练习函数才能按页改权限。
 fn map_elf_and_stack(user_space: &mut MemorySet, elf: &[u8]) {
     user_space.map_elf_pt_load(elf, 0);
 
@@ -157,14 +158,13 @@ fn map_elf_and_stack(user_space: &mut MemorySet, elf: &[u8]) {
             .union(MapPermission::W),
     ));
 
-    // 练习准备：故意去掉用户区页的 U 位（保留 R/W/X），模拟「映射在但用户不可访问」。
+    // 练习准备：先去掉用户区 U；再由你实现 restore_user_bit 补回。
     strip_user_bit_for_exercise(user_space);
-
-    // 【Lab3 任务：补全】把用户区缺 U 的页重新补上 U，否则 U-mode 无法取指/访存。
     restore_user_bit(user_space);
 }
 
-/// 教学用：去掉 `[APP_BASE, APP_BASE+APP_REGION)` 内已映射用户页的 U 位。
+/// 练习准备（请勿改）：去掉用户 app 区已映射页的 U，保留 R/W/X。
+/// 你的 `restore_user_bit` 应对同一范围做相反的事。
 fn strip_user_bit_for_exercise(user_space: &mut MemorySet) {
     let mut va = APP_BASE_ADDRESS;
     while va < APP_BASE_ADDRESS + APP_REGION_SIZE {
@@ -187,16 +187,20 @@ fn strip_user_bit_for_exercise(user_space: &mut MemorySet) {
     }
 }
 
-/// 【Lab3 任务：补全】遍历用户 app 区，对已映射但缺少 U 的页执行 remap，补上 U（保留原 R/W/X）。
+/// 【Lab3 任务：fill】给已映射但缺少 U 的用户页补上 U；保留原有 R/W/X。
 ///
-/// 提示：
-/// - 可用 `leaf_perm` / `translate` / `page_table_mut().remap`
-/// - 范围与上面 `strip_user_bit_for_exercise` 一致
-/// - 不要给内核恒等映射乱加 U
+/// 思路提示（先自己想清楚再动手）：
+/// 1. 遍历范围应与上面的 `strip_user_bit_for_exercise` 一致：
+///    `[APP_BASE_ADDRESS, APP_BASE_ADDRESS + APP_REGION_SIZE)`，步长 `PAGE_SIZE`；
+/// 2. 用 `leaf_perm(va)` 看这一页有没有映射、是否已经带 `MapPermission::U`；
+/// 3. 对「有映射但没有 U」的页：拼出「原 R/W/X + U」，再 `translate` 得到 PPN，
+///    用 `page_table_mut().remap(...)` 写回（不要新建一页去 `map`）；
+/// 4. 想清楚：为什么用户态必须有 U？若 remap 时丢掉了原来的 X 或 W，会出现什么现象？
 ///
-/// 验证：`cargo run -p kernel --features lab3 --release`
+/// 验证：`cargo run -p kernel --features lab3 --release`，
+/// 应看到 hello / power / 五轮 yield。
 fn restore_user_bit(user_space: &mut MemorySet) {
-    todo!("Lab3: walk user VA range and remap pages to add MapPermission::U")
+    todo!("Lab3：按上方提示补回用户区 MapPermission::U")
 }
 
 /// Deep-copy user pages (U) from parent; kernel trap regions are rebuilt identically.
