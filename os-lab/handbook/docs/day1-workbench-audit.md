@@ -70,5 +70,5 @@
 - Day3 已收口：引用跳转 + 提示阶梯/拒答态（见 `workbench-ui.md`「证据引用跳转」）。
 - Day4 已落地：评分细项 UI（学生报告区 + TeacherReport）。
 - Day5 已落地：教师评分复核改分留痕（`POST /teacher/review`）、OPRE 条。
-- Day6 已落地：`LabCreateWizard`（`/guide/lab-factory`）对接 validate → test → publish；班级下发仍用 `TeacherPublishPanel`。
+- Day6 曾落地 `LabCreateWizard`（`/guide/lab-factory`）validate → test → publish；后续已从前端移除，班级下发直接走 `TeacherPublishPanel`。
 - Day7 已复核：关键断言、提示阶梯证据条与 OPRE 入口可用；窄屏断言区换行与底部页签溢出已修；`workbench-ui.md` 终端/AI 导师挂载描述已对齐实现。
