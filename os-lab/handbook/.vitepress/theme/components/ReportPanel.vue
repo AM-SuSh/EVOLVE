@@ -23,7 +23,7 @@ import {
   Upload,
   X,
 } from 'lucide-vue-next'
-import type { TutorLab } from '../tutor-model'
+import { authHeaders, type TutorLab } from '../tutor-model'
 import { createReportMarkdown, renderReportHtml } from '../report-markdown'
 import {
   DEFAULT_REPORT_TEMPLATE,
@@ -55,6 +55,8 @@ const props = defineProps<{
   insertPayload: { id: number; text: string } | null
   teacherFeedback?: string
   reportTemplate?: ReportTemplate | null
+  endpoint?: string
+  authenticated?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -114,6 +116,7 @@ const libraryCollapsed = ref(true)
 
 const storageKey = computed(() => `os-lab-report-${props.lab.id}-v2`)
 const legacyKey = computed(() => `os-lab-report-${props.lab.id}-v1`)
+const canSyncServer = computed(() => Boolean(props.authenticated && props.endpoint))
 
 const imageLibrary = computed(() =>
   attachments.value.filter((item) => item.mime.startsWith('image/')),
@@ -256,7 +259,17 @@ async function hydrateAttachmentUrls(labId: string, metas: ReportAttachmentMeta[
       continue
     }
     try {
-      const blob = await getAttachmentBlob(labId, meta.id)
+      let blob = await getAttachmentBlob(labId, meta.id)
+      if (!blob && canSyncServer.value && meta.storedName) {
+        const response = await fetch(
+          `${props.endpoint}/reports/draft/attachments?labId=${encodeURIComponent(labId)}&id=${encodeURIComponent(meta.id)}`,
+          { headers: authHeaders() },
+        )
+        if (response.ok) {
+          blob = await response.blob()
+          await putAttachmentBlob(labId, meta.id, blob)
+        }
+      }
       if (!blob) continue
       // 预览用 blob URL 即可（renderReportHtml 已不依赖 Markdown 解析 URL）。
       next[meta.id] = URL.createObjectURL(blob)
@@ -341,9 +354,7 @@ function load() {
         draft.value.sections[sectionId] || '',
       )
     }
-    void hydrateAttachmentUrls(props.lab.id, attachments.value).then(() => {
-      persist(false)
-    })
+    void hydrateAttachmentUrls(props.lab.id, attachments.value)
   } catch {
     draft.value = emptyDraft()
     attachments.value = []
@@ -351,7 +362,37 @@ function load() {
   }
 }
 
-watch(() => props.lab.id, load, { immediate: true })
+async function loadServerDraft() {
+  if (!canSyncServer.value) return false
+  try {
+    const response = await fetch(`${props.endpoint}/reports/draft?labId=${encodeURIComponent(props.lab.id)}`, {
+      headers: authHeaders(),
+    })
+    if (!response.ok) return false
+    const payload = await response.json()
+    if (!payload?.draft) return false
+    const draftValue = payload.draft
+    const localRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(storageKey.value) : null
+    const localValue = localRaw ? JSON.parse(localRaw) : null
+    const localTime = Date.parse(String(localValue?.updatedAt || localValue?.savedAt || ''))
+    const serverTime = Date.parse(String(draftValue.updatedAt || ''))
+    if (Number.isFinite(localTime) && Number.isFinite(serverTime) && localTime > serverTime) {
+      return false
+    }
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(storageKey.value, JSON.stringify({ ...draftValue, savedAt: draftValue.updatedAt || '' }))
+    }
+    load()
+    return true
+  } catch {
+    return false
+  }
+}
+
+watch(() => [props.lab.id, props.authenticated] as const, () => {
+  load()
+  void loadServerDraft()
+}, { immediate: true })
 watch(
   () => props.reportTemplate,
   () => {
@@ -396,19 +437,22 @@ watch(
 )
 
 function persist(announce = true) {
-  if (typeof localStorage === 'undefined') return
+  const updatedAt = new Date().toISOString()
   savedAt.value = new Date().toLocaleString('zh-CN', { hour12: false })
   try {
-    localStorage.setItem(
-      storageKey.value,
-      JSON.stringify({
-        mode: draft.value.mode,
-        sections: draft.value.sections,
-        markdownBody: draft.value.markdownBody,
-        attachments: attachments.value,
-        savedAt: savedAt.value,
-      }),
-    )
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(
+        storageKey.value,
+        JSON.stringify({
+          mode: draft.value.mode,
+          sections: draft.value.sections,
+          markdownBody: draft.value.markdownBody,
+          attachments: attachments.value,
+          savedAt: savedAt.value,
+          updatedAt,
+        }),
+      )
+    }
   } catch (err) {
     // 配额满不应导致「上传失败」；附件二进制已在 IndexedDB。
     console.warn('[ReportPanel] persist failed', err)
@@ -417,7 +461,24 @@ function persist(announce = true) {
     }
     return
   }
-  if (announce) emit('notice', '已保存到本机，刷新页面也不会丢。')
+  if (canSyncServer.value) {
+    void fetch(`${props.endpoint}/reports/draft`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({
+        labId: props.lab.id,
+        draft: {
+          mode: draft.value.mode,
+          sections: draft.value.sections,
+          markdownBody: draft.value.markdownBody,
+          attachments: attachments.value,
+        },
+      }),
+    }).catch(() => {
+      /* The browser copy remains available as an offline buffer. */
+    })
+  }
+  if (announce) emit('notice', canSyncServer.value ? '草稿已同步到账号数据。' : '已保存到本机。')
 }
 
 function reflectionText() {
@@ -779,6 +840,23 @@ async function storeFile(file: File, options?: { asImage?: boolean }) {
     size: blob.size,
     addedAt: new Date().toISOString(),
   }
+  if (canSyncServer.value) {
+    try {
+      const response = await fetch(`${props.endpoint}/reports/draft/attachments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          labId: props.lab.id,
+          attachment: { ...meta, dataBase64: await blobToBase64(blob) },
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || !payload?.attachment?.storedName) throw new Error('server attachment sync failed')
+      meta.storedName = payload.attachment.storedName
+    } catch {
+      // The IndexedDB copy stays available and the next draft save retries metadata sync.
+    }
+  }
   // 先挂 URL 再写 attachments，避免列表渲染时缩略图空白
   const url = URL.createObjectURL(blob)
   attachmentUrls.value = { ...attachmentUrls.value, [id]: url }
@@ -966,6 +1044,12 @@ function closeLightbox() {
 async function removeAttachment(id: string) {
   const meta = attachments.value.find((item) => item.id === id)
   if (!meta) return
+  if (canSyncServer.value && meta.storedName) {
+    void fetch(
+      `${props.endpoint}/reports/draft/attachments?labId=${encodeURIComponent(props.lab.id)}&id=${encodeURIComponent(id)}`,
+      { method: 'DELETE', headers: authHeaders() },
+    ).catch(() => {})
+  }
   await deleteAttachmentBlob(props.lab.id, id)
   if (attachmentUrls.value[id]) {
     const url = attachmentUrls.value[id]

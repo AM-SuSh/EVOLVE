@@ -4234,3 +4234,27 @@
 - `docs/project_plan.md`：新增项目完成计划文档，明确实施路径、验收方式和三人分工。
 - `progress.md`：新增本轮正式文档交付记录。
 - 回滚方式：删除 `docs/project_plan.md` 和本文件中的本轮记录；若 `docs/` 目录仅包含本轮创建内容，可一并删除 `docs/` 目录。
+## 2026-08-07 - Task: unify student learning data persistence
+
+### What was done
+
+- 保留 `student-labs/<username>/` 作为纯代码工作区；新增 `learning/student-data/<userId>/` 作为学生学习数据统一根目录，按数据库用户 ID 而不是可变用户名分桶。
+- 新增 `os-lab/learning/student-data-store.mjs`：提供报告草稿、正式报告正文、草稿附件、学习事件、Tutor 会话和运行制品的安全路径、原子写入与读取能力。
+- 运行输出与 Trace 改为 `student-data/<userId>/runs/<labId>/<runId>/output.log|trace.jsonl`；旧 `learning/sessions/` Trace 仍可回退读取。
+- 报告新增服务端草稿接口：`GET|PUT /reports/draft`，草稿正文由原子 JSON 文件保存，附件保存到同一 Lab 的 `draft-attachments/`；浏览器 localStorage/IndexedDB 仅作为离线缓冲。
+- 报告正式提交同时写入 `reports/<labId>/submission.md`，SQLite `reports.content_path` 记录文件路径；旧报告附件目录保留兼容读取。
+- AI 会话新增 `GET|PUT /conversations/mine`，服务端按账号保存会话快照与 JSONL 原始轮次；前端登录后优先从服务端恢复，失败时回退本机副本。
+- 新增 `report_drafts` SQLite 元数据表，SQLite 继续负责权限、索引、状态、断言、评分和教师查询，文件系统负责正文与大体量原始材料。
+- 更新教师指南和 handbook README，明确代码工作区、学习数据目录、离线缓存与旧数据兼容边界。
+
+### Testing
+
+- `npm test`：通过，54 项测试全绿。
+- `npm run test:smoke`：通过；覆盖运行/Trace、账号隔离、报告、草稿恢复、会话恢复和 Lab Factory 链路。
+- `npm run build`：通过；VitePress 客户端/服务端 bundle、页面渲染与链接检查通过。
+- `git diff --check`：通过。
+
+### Notes
+
+- 新数据不再写入全局 `learning/sessions/` 或旧报告附件目录；这些路径仅作为已有数据的兼容来源。
+- 清理学生数据时应根据 SQLite 中的 `users.id` 删除对应 `learning/student-data/<userId>/`，不要仅按用户名目录猜测归属。
