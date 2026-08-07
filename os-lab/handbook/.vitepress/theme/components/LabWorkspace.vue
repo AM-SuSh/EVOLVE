@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useData, useRouter, withBase } from 'vitepress'
-import { Blocks, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, Code2, GripVertical, LockKeyhole, Maximize2, MessageSquarePlus, MessagesSquare, Minimize2, Moon, PanelLeftClose, Play, Settings, Sun, TableOfContents, UserRound, X } from 'lucide-vue-next'
+import { Blocks, BookOpen, ChevronDown, ChevronUp, Code2, GripVertical, LockKeyhole, Maximize2, MessageSquarePlus, MessagesSquare, Minimize2, PanelLeftClose, Play, Settings, TableOfContents, X } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
 import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
@@ -1524,27 +1524,6 @@ let noticeTimer = 0
 
 const lab = computed(() => getTutorLab(props.labId))
 
-/** 当前 Lab 变体（知识路径弱提示）；无 scaffold 数据时为空。 */
-const currentLabVariant = computed(() => {
-  const labId = lab.value?.id
-  if (!labId || !scaffold.value?.variants) return ''
-  return String(scaffold.value.variants[labId] || '')
-})
-const currentLabDefaultVariant = computed(() => {
-  const labId = lab.value?.id
-  if (!labId || !scaffold.value?.defaults) return ''
-  return String(scaffold.value.defaults[labId] || '')
-})
-const isDefaultTask = computed(() => {
-  const variant = currentLabVariant.value
-  return !variant || variant === currentLabDefaultVariant.value
-})
-const taskLabel = computed(() => {
-  const variant = currentLabVariant.value
-  const fallback = currentLabDefaultVariant.value
-  if (!variant) return fallback ? `${fallback} · 默认任务` : '默认任务'
-  return variant === fallback ? `${variant} · 默认任务` : variant
-})
 const journey = computed(() => buildLabJourney(events.value, props.labId, learningAccess.value))
 const journeyItem = computed(() => journey.value.find((item) => item.lab.id === props.labId))
 const currentAccess = computed(() => learningAccess.value.find((item) => item.labId === props.labId))
@@ -2535,42 +2514,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="ws-workspace">
-    <header class="ws-topbar">
-      <a class="ws-brand" :href="withBase('/')">
-        <span class="ws-brand-mark" aria-hidden="true">OS</span>
-        <span class="ws-brand-text">
-          <strong>os-lab 引导式学习</strong>
-          <small>{{ lab.label }} · {{ lab.systemLayer }}</small>
-        </span>
-      </a>
-
-      <span
-        v-if="!isTeacherRole && studentId"
-        class="ws-task-badge"
-        :class="{ 'is-default': isDefaultTask }"
-        :title="taskLabel"
-      >
-        <span>当前任务</span>
-        <strong>{{ taskLabel }}</strong>
-      </span>
-
+  <div class="ws-workspace" :class="{ 'ws-workspace--teacher': isTeacherRole }">
+    <header v-if="!isTeacherRole" class="ws-topbar">
       <div class="ws-topbar-actions">
         <button
-          class="ws-topbar-link"
-          type="button"
-          :title="studentId ? '账号与退出' : '注册/登录，开始维护你自己的系统'"
-          @click="authError = ''; showIdentity = true"
-        >
-          <UserRound :size="15" aria-hidden="true" /><span>{{ studentId || '登录' }}</span>
-        </button>
-        <template v-if="isTeacherRole">
-          <a class="ws-topbar-link" :href="withBase('/teacher-review')">
-            <ClipboardCheck :size="15" aria-hidden="true" /><span>实验验收</span>
-          </a>
-        </template>
-        <button
-          v-else
           class="ws-topbar-link ws-scaffold-chip"
           type="button"
           :title="scaffold?.exists ? '查看/升级我的系统' : '初始化属于你自己的系统代码'"
@@ -2622,16 +2569,6 @@ onBeforeUnmount(() => {
           @click="openLlmSettings"
         >
           <Settings :size="16" aria-hidden="true" />
-        </button>
-        <button
-          class="ws-topbar-icon"
-          type="button"
-          :aria-label="isDark ? '切换到浅色主题' : '切换到深色主题'"
-          :title="isDark ? '切换到浅色主题' : '切换到深色主题'"
-          @click="isDark = !isDark"
-        >
-          <Sun v-if="isDark" :size="16" aria-hidden="true" />
-          <Moon v-else :size="16" aria-hidden="true" />
         </button>
       </div>
     </header>
@@ -3550,91 +3487,33 @@ onBeforeUnmount(() => {
   background: var(--ws-surface-alt);
 }
 
+.ws-workspace--teacher {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.ws-workspace--teacher .ws-panes {
+  grid-row: 1;
+}
+
 /* -- 顶栏 ------------------------------------------------------------------ */
 .ws-topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: var(--ws-space-4);
   padding: 0 var(--ws-space-4);
   border-bottom: 1px solid var(--ws-line);
   background: var(--ws-surface);
 }
 
-.ws-brand {
-  display: flex;
-  align-items: center;
-  gap: var(--ws-space-2);
-  min-width: 0;
-  color: inherit;
-  text-decoration: none;
-}
-
-.ws-brand-mark {
-  display: grid;
-  flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  color: var(--ws-accent-contrast);
-  border-radius: var(--ws-radius-sm);
-  background: var(--ws-accent);
-  place-items: center;
-  font-family: var(--ws-font-mono);
-  font-size: var(--ws-text-xs);
-  font-weight: var(--ws-weight-bold);
-}
-
-.ws-brand-text {
-  min-width: 0;
-}
-
-.ws-brand-text strong,
-.ws-brand-text small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ws-brand-text strong {
-  font-size: var(--ws-text-base);
-  font-weight: var(--ws-weight-semibold);
-}
-
-.ws-brand-text small {
-  color: var(--ws-ink-muted);
-  font-size: var(--ws-text-xs);
-}
-
-.ws-task-badge {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: var(--ws-space-1);
-  min-height: var(--ws-control-md);
-  padding: var(--ws-space-1) var(--ws-space-3);
-  color: var(--ws-ink-muted);
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-md);
-  background: var(--ws-surface);
-  font-size: var(--ws-text-xs);
-  white-space: nowrap;
-}
-
-.ws-task-badge strong {
-  color: var(--ws-ink);
-  font-weight: var(--ws-weight-semibold);
-}
-
-.ws-task-badge.is-default strong {
-  color: var(--ws-ok, #1a7f37);
-}
-
 .ws-topbar-actions {
   display: flex;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   align-items: center;
   gap: var(--ws-space-2);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .ws-topbar-link {
@@ -5037,8 +4916,12 @@ onBeforeUnmount(() => {
     top: 0;
   }
 
-  .ws-brand-text small {
-    display: none;
+  .ws-workspace--teacher {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .ws-workspace--teacher .ws-panes {
+    grid-row: 2;
   }
 
   .ws-topbar {
@@ -5055,16 +4938,6 @@ onBeforeUnmount(() => {
     overscroll-behavior-x: contain;
     scrollbar-width: thin;
     -webkit-overflow-scrolling: touch;
-  }
-
-  .ws-task-badge {
-    min-height: var(--ws-control-sm);
-    padding: 3px 6px;
-    font-size: var(--ws-text-xs);
-  }
-
-  .ws-task-badge > span {
-    display: none;
   }
 
   .ws-topbar-link span {
@@ -5108,6 +4981,7 @@ onBeforeUnmount(() => {
   }
 
   .ws-panes {
+    grid-row: 3;
     grid-template-columns: minmax(0, 1fr);
   }
 
