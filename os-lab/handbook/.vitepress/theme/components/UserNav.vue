@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ChevronDown, LogOut, UserRound } from 'lucide-vue-next'
+import { ChevronDown, LogOut, Settings, UserRound } from 'lucide-vue-next'
 import { authHeaders, loadAuth, saveAuth, type AuthSession } from '../tutor-model'
+import { requestWorkspaceLlmSettings } from '../workspace-nav'
 
 /**
- * 站点顶栏右上角：显示当前登录用户；点击展开「退出登录」。
- * 工作台自有顶栏另有账号入口；本组件挂在 VitePress 默认导航上。
+ * 站点顶栏右上角：显示当前登录用户；点击展开账号菜单。
  */
+const props = defineProps<{ workspaceSettings?: boolean }>()
+
 const endpoint = String(
   import.meta.env.VITE_OS_LAB_TUTOR_ENDPOINT || 'http://127.0.0.1:8787',
 ).replace(/\/$/, '')
@@ -21,9 +23,15 @@ const label = computed(() => {
   const role = auth.value.role === 'teacher' ? '教师' : '学生'
   return `${auth.value.username}（${role}）`
 })
+const showWorkspaceSettings = computed(() => props.workspaceSettings && auth.value?.role !== 'teacher')
 
 function refresh() {
   auth.value = loadAuth()
+}
+
+function openWorkspaceSettings() {
+  open.value = false
+  requestWorkspaceLlmSettings()
 }
 
 async function logout() {
@@ -80,6 +88,10 @@ onBeforeUnmount(() => {
     </button>
     <div v-if="open" class="un-menu" role="menu">
       <p class="un-meta">{{ label }}</p>
+      <button v-if="showWorkspaceSettings" type="button" role="menuitem" class="un-item" @click="openWorkspaceSettings">
+        <Settings :size="14" aria-hidden="true" />
+        模型设置
+      </button>
       <button type="button" role="menuitem" class="un-item" :disabled="busy" @click="logout">
         <LogOut :size="14" aria-hidden="true" />
         {{ busy ? '退出中…' : '退出登录' }}

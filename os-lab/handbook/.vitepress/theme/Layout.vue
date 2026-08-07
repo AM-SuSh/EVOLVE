@@ -6,6 +6,7 @@ import AuthGate from './components/AuthGate.vue'
 import LabWorkspace from './components/LabWorkspace.vue'
 import TeacherNav from './components/TeacherNav.vue'
 import UserNav from './components/UserNav.vue'
+import WorkspaceNav from './components/WorkspaceNav.vue'
 import type { TutorLabId } from './tutor-model'
 
 /**
@@ -25,7 +26,8 @@ const { frontmatter } = useData()
   <VPNav v-if="frontmatter.workspace || frontmatter.launch || frontmatter.teacherReview || frontmatter.knowledgeManager">
     <template #nav-bar-content-after>
       <TeacherNav />
-      <UserNav />
+      <WorkspaceNav v-if="frontmatter.workspace" />
+      <UserNav :workspace-settings="Boolean(frontmatter.workspace)" />
     </template>
   </VPNav>
   <LabWorkspace

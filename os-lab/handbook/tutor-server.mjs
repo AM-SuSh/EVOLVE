@@ -222,6 +222,26 @@ const labLabels = {
   lab7: 'Lab7 IPC 与信号',
   lab8: 'Lab8 线程与同步',
 }
+const labRuntimeMeta = (() => {
+  try {
+    const payload = JSON.parse(readFileSync(path.join(handbookRoot, 'data', 'labs.json'), 'utf8'))
+    return Object.fromEntries((payload.labs || []).map((lab) => [lab.id, lab]))
+  } catch {
+    return {}
+  }
+})()
+
+const fallbackVerifyCommands = {
+  lab1: 'cargo run -p kernel --features lab1 --release',
+  lab2: 'cargo run -p kernel --features lab2 --release',
+  lab3: 'cargo run -p kernel --features lab3 --release',
+  lab4: 'cargo run -p kernel --features lab4 --release',
+  lab5: 'cargo run -p kernel --features lab5 --release',
+  lab6: 'cargo run -p kernel --features lab6 --release',
+  lab7: 'cargo run -p kernel --features lab7 --release',
+  lab8: 'cargo run -p kernel --features lab8 --release',
+}
+
 const promptFiles = {
   system: path.join(promptRoot, 'system.md'),
   guardrails: path.join(promptRoot, 'guardrails.yaml'),
@@ -798,6 +818,91 @@ async function readUpstreamJson(upstreamResponse) {
   }
 }
 
+function fallbackLabLabel(labId) {
+  return (labLabels[labId] || labId).split(' ')[0]
+}
+
+function fallbackVerifyCommand(labId) {
+  return labRuntimeMeta[labId]?.verifyCmd || fallbackVerifyCommands[labId] || 'cargo test'
+}
+
+function serverOfflineTutorReply(message, labId, tutorState, guardrailTriggered = false) {
+  const label = fallbackLabLabel(labId)
+  const command = fallbackVerifyCommand(labId)
+
+  if (guardrailTriggered) {
+    return `我不能交付可直接提交的完整实现。先把 ${label} 的任务缩小到一个机制或函数，并写出你已经确认的一条事实；我会继续用代码路径和验证问题引导你。`
+  }
+
+  if (labId === 'lab2' && /(sepc|ecall)/i.test(message)) {
+    return '沿控制流想：trap 发生后 sepc 指向哪条指令？如果 sret 回到同一地址，CPU 下一步又会做什么？先回答这两个问题，再定位 advance_sepc 的调用位置。'
+  }
+
+  if (labId === 'lab2' && /(sscratch|csrrw|栈|sp)/i.test(message)) {
+    return '设想不用 sscratch：trap 刚发生时 sp 仍属于谁？在保存任何通用寄存器前，哪一个寄存器还能临时借用而不破坏用户现场？先用这两个问题检查栈交换的必要性。'
+  }
+
+  const stageReplies = {
+    orient: `先不急着写实现。围绕 ${label}，写下你认为最关键的一个系统边界，以及这个判断的依据；我再帮你把它拆成可验证的小问题。`,
+    read: '从当前阅读位置选一个入口，沿调用链或数据流追到核心实现。每经过一层，分别写下输入、状态变化和输出，我们再检查哪一环最薄弱。',
+    run: `先写下你预期会看到的三个关键输出，再运行 ${command}。完成后只贴和预期不同的部分，我们用差异定位下一步。`,
+    debug: '把排错拆成证据链：精确现象、当前假设、能证伪它的最小实验。先补齐这三项，我再给下一层提示。',
+    reflect: `用三句话收束 ${label}：你能独立解释什么？AI 提醒了哪一个关键点？你用哪条运行结果或代码路径验证了它？`,
+    transfer: `改变一个关键条件后，${label} 的原结论还成立吗？先写预测，再说明你会用什么代码路径或运行证据验证。`,
+  }
+
+  return stageReplies[tutorState.stage] || stageReplies.orient
+}
+
+function sendOfflineTutorResponse({
+  response,
+  origin,
+  wantsStream,
+  reply,
+  framework,
+  tutorState,
+  knowledgeMeta,
+  retrieval,
+  guardrail = false,
+  rule = '',
+  detail = '',
+}) {
+  const upstream = detail ? { connected: false, detail } : undefined
+  const payload = {
+    type: 'done',
+    reply,
+    mode: 'offline',
+    model: 'offline-tutor',
+    framework: { ...framework, prompt: undefined },
+    tutorState,
+    guardrail: { triggered: Boolean(guardrail), rule },
+    knowledge: knowledgeMeta,
+    retrieval: retrieval.diagnostics,
+    upstream,
+  }
+
+  if (wantsStream || response.headersSent) {
+    if (!response.headersSent) openEventStream(response, origin)
+    sendFrame(response, {
+      type: 'meta',
+      model: 'offline-tutor',
+      mode: 'offline',
+      triggered: payload.guardrail.triggered,
+      rule,
+      framework: framework.version,
+      tutorState,
+      knowledge: knowledgeMeta,
+      retrieval: retrieval.diagnostics,
+      upstream,
+    })
+    sendFrame(response, payload)
+    response.end()
+    return
+  }
+
+  json(response, 200, payload, origin)
+}
+
 async function handleChat(body, request, response, origin, session) {
   const labId = String(body.labId || '')
   if (!labIds.has(labId)) {
@@ -964,6 +1069,20 @@ async function handleChat(body, request, response, origin, session) {
     return { reply: extractCompletionText(payload).trim(), payload, error: '', meta }
   }
 
+  const sendOffline = (detail) => {
+    sendOfflineTutorResponse({
+      response,
+      origin,
+      wantsStream,
+      reply: serverOfflineTutorReply(message, labId, tutorState),
+      framework,
+      tutorState,
+      knowledgeMeta,
+      retrieval,
+      detail: `${llm.upstream} (${llm.model}): ${detail}`,
+    })
+  }
+
   try {
     const upstreamResponse = await requestUpstream(wantsStream)
 
@@ -979,13 +1098,7 @@ async function handleChat(body, request, response, origin, session) {
             ? '（API Key 可能失效）'
             : ''
       const error = (payload?.error?.message || `上游模型返回 ${upstreamResponse.status}`) + hint
-      if (wantsStream) {
-        openEventStream(response, origin)
-        sendFrame(response, { type: 'error', error })
-        response.end()
-      } else {
-        json(response, 502, { error }, origin)
-      }
+      sendOffline(error)
       return
     }
 
@@ -998,7 +1111,7 @@ async function handleChat(body, request, response, origin, session) {
         reply = responsesResult.reply
         if (!reply) {
           await logEmptyUpstream(llm, responsesResult.payload, 'responses-fallback')
-          json(response, 502, { error: responsesResult.error || emptyCompletionReason(responsesResult.payload) }, origin)
+          sendOffline(responsesResult.error || emptyCompletionReason(responsesResult.payload))
           return
         }
       }
@@ -1042,8 +1155,10 @@ async function handleChat(body, request, response, origin, session) {
       if (!reply) await logEmptyUpstream(llm, emptyPayload, 'responses-fallback')
     }
 
-    if (!reply) sendFrame(response, { type: 'error', error: emptyCompletionReason(emptyPayload) })
-    else {
+    if (!reply) {
+      sendOffline(emptyCompletionReason(emptyPayload))
+      return
+    } else {
       const guardedOutput = enforceTutorOutput(reply, tutorState, { allowedKnowledgeRefs })
       if (guardedOutput.guarded) {
         sendFrame(response, {
@@ -1068,12 +1183,7 @@ async function handleChat(body, request, response, origin, session) {
     const raw = error instanceof Error ? error.message : '导师服务发生未知错误'
     const aborted = raw.toLowerCase().includes('abort')
     const detail = aborted ? '连接上游超时（30 秒内未建立连接），检查网络或接口地址' : raw
-    if (response.headersSent) {
-      sendFrame(response, { type: 'error', error: detail })
-      response.end()
-      return
-    }
-    json(response, aborted ? 504 : 502, { error: detail }, origin)
+    sendOffline(detail)
   } finally {
     clearTimeout(timer)
   }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeMount, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import { useData, useRouter, withBase } from 'vitepress'
-import { Blocks, BookOpen, ChevronDown, ChevronUp, ClipboardCheck, Code2, GripVertical, LockKeyhole, Maximize2, MessageSquarePlus, MessagesSquare, Minimize2, Moon, PanelLeftClose, Play, Settings, Sun, TableOfContents, UserRound, X } from 'lucide-vue-next'
+import { BookOpen, ChevronDown, ChevronUp, Code2, GripVertical, LockKeyhole, Maximize2, MessageSquarePlus, MessagesSquare, Minimize2, PanelLeftClose, Play, TableOfContents, X } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
 import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
@@ -10,9 +10,13 @@ import AssessmentPane from './AssessmentPane.vue'
 import CodePanel from './CodePanel.vue'
 import ProblemsPanel from './ProblemsPanel.vue'
 import TraceViewer from './TraceViewer.vue'
-import JourneyRail from './JourneyRail.vue'
 import TeacherDocPanel from './TeacherDocPanel.vue'
 import TeacherPublishPanel from './TeacherPublishPanel.vue'
+import {
+  WORKSPACE_OPEN_LLM_SETTINGS_EVENT,
+  clearWorkspaceNav,
+  updateWorkspaceNav,
+} from '../workspace-nav'
 import { DEFAULT_REPORT_TEMPLATE, cloneTemplate, type ReportTemplate } from '../report-template'
 import {
   createWorkspaceContext,
@@ -762,9 +766,9 @@ let tutorFabDragOrigin: (TutorPosition & { pointerX: number; pointerY: number })
 let tutorPanelHeightDragOrigin: { pointerY: number; height: number } | null = null
 
 function tutorTopbarHeight() {
-  if (typeof window === 'undefined') return 48
-  const stored = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ws-topbar-height'))
-  return Number.isFinite(stored) ? stored : 48
+  if (typeof window === 'undefined') return 56
+  const stored = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--vp-nav-height'))
+  return Number.isFinite(stored) ? stored : 56
 }
 
 function tutorPanelHeightMax() {
@@ -1315,13 +1319,6 @@ async function refreshLearningAccess() {
   }
 }
 
-const scaffoldLabel = computed(() => {
-  if (!studentId.value) return '我的系统 · 未登录'
-  if (!scaffold.value?.ok) return `我的系统 · ${studentId.value}`
-  if (!scaffold.value.exists) return `我的系统 · 未初始化`
-  return `我的系统 · ${scaffold.value.current}`
-})
-
 /** 老师在教师端发布的作业/公告，展示在工作台横幅。 */
 const teacherNotice = computed(() => (scaffold.value as { notice?: string } | null)?.notice || '')
 const noticeDismissed = ref(false)
@@ -1524,27 +1521,6 @@ let noticeTimer = 0
 
 const lab = computed(() => getTutorLab(props.labId))
 
-/** 当前 Lab 变体（知识路径弱提示）；无 scaffold 数据时为空。 */
-const currentLabVariant = computed(() => {
-  const labId = lab.value?.id
-  if (!labId || !scaffold.value?.variants) return ''
-  return String(scaffold.value.variants[labId] || '')
-})
-const currentLabDefaultVariant = computed(() => {
-  const labId = lab.value?.id
-  if (!labId || !scaffold.value?.defaults) return ''
-  return String(scaffold.value.defaults[labId] || '')
-})
-const isDefaultTask = computed(() => {
-  const variant = currentLabVariant.value
-  return !variant || variant === currentLabDefaultVariant.value
-})
-const taskLabel = computed(() => {
-  const variant = currentLabVariant.value
-  const fallback = currentLabDefaultVariant.value
-  if (!variant) return fallback ? `${fallback} · 默认任务` : '默认任务'
-  return variant === fallback ? `${variant} · 默认任务` : variant
-})
 const journey = computed(() => buildLabJourney(events.value, props.labId, learningAccess.value))
 const journeyItem = computed(() => journey.value.find((item) => item.lab.id === props.labId))
 const currentAccess = computed(() => learningAccess.value.find((item) => item.labId === props.labId))
@@ -1771,8 +1747,6 @@ async function requestReply(
   evidenceRefs: string[],
   onDelta: (text: string) => void,
 ): Promise<ReplyOutcome | null> {
-  if (connection.value !== 'remote') return null
-
   const response = await fetch(`${endpoint}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...authHeaders() },
@@ -2470,6 +2444,24 @@ function exportGrowth() {
   toast('成长档案已导出为 JSONL。')
 }
 
+function syncWorkspaceNavState() {
+  updateWorkspaceNav({
+    teacher: isTeacherRole.value,
+    panels: panelOpen.value,
+    journey: journey.value,
+    appliedLabs: (scaffold.value?.applied || []) as TutorLabId[],
+    togglePanel,
+    enterLab,
+    exportGrowth,
+  })
+}
+
+function handleWorkspaceLlmSettings() {
+  openLlmSettings()
+}
+
+watchEffect(syncWorkspaceNavState)
+
 watch(studentId, (next, previous) => {
   if (next === previous) return
   if (next) {
@@ -2497,6 +2489,7 @@ onMounted(async () => {
   window.addEventListener('resize', clampTutorPanelToViewport)
   window.addEventListener('resize', clampTutorFabToViewport)
   window.addEventListener('keydown', closeMaximizedOnEscape)
+  window.addEventListener(WORKSPACE_OPEN_LLM_SETTINGS_EVENT, handleWorkspaceLlmSettings)
   clampPaneSplitToViewport()
   clampTutorPanelToViewport()
   clampTutorFabToViewport()
@@ -2532,112 +2525,14 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', clampTutorPanelToViewport)
   window.removeEventListener('resize', clampTutorFabToViewport)
   window.removeEventListener('keydown', closeMaximizedOnEscape)
+  window.removeEventListener(WORKSPACE_OPEN_LLM_SETTINGS_EVENT, handleWorkspaceLlmSettings)
+  clearWorkspaceNav()
   window.clearTimeout(noticeTimer)
 })
 </script>
 
 <template>
   <div class="ws-workspace">
-    <header class="ws-topbar">
-      <a class="ws-brand" :href="withBase('/')">
-        <span class="ws-brand-mark" aria-hidden="true">OS</span>
-        <span class="ws-brand-text">
-          <strong>os-lab 引导式学习</strong>
-          <small>{{ lab.label }} · {{ lab.systemLayer }}</small>
-        </span>
-      </a>
-
-      <span
-        v-if="!isTeacherRole && studentId"
-        class="ws-task-badge"
-        :class="{ 'is-default': isDefaultTask }"
-        :title="taskLabel"
-      >
-        <span>当前任务</span>
-        <strong>{{ taskLabel }}</strong>
-      </span>
-
-      <div class="ws-topbar-actions">
-        <button
-          class="ws-topbar-link"
-          type="button"
-          :title="studentId ? '账号与退出' : '注册/登录，开始维护你自己的系统'"
-          @click="authError = ''; showIdentity = true"
-        >
-          <UserRound :size="15" aria-hidden="true" /><span>{{ studentId || '登录' }}</span>
-        </button>
-        <template v-if="isTeacherRole">
-          <a class="ws-topbar-link" :href="withBase('/teacher-review')">
-            <ClipboardCheck :size="15" aria-hidden="true" /><span>实验验收</span>
-          </a>
-        </template>
-        <button
-          v-else
-          class="ws-topbar-link ws-scaffold-chip"
-          type="button"
-          :title="scaffold?.exists ? '查看/升级我的系统' : '初始化属于你自己的系统代码'"
-          @click="showScaffold = true; scaffoldLog = []; void refreshScaffold()"
-        >
-          <Blocks :size="15" aria-hidden="true" /><span>{{ scaffoldLabel }}</span>
-        </button>
-        <JourneyRail
-          :journey="journey"
-          :applied-labs="(scaffold?.applied || []) as TutorLabId[]"
-          @enter-lab="enterLab"
-          @export-growth="exportGrowth"
-        />
-        <button
-          v-if="!isTeacherRole"
-          type="button"
-          class="ws-topbar-link"
-          :class="{ 'ws-topbar-link--active': panelOpen.manual }"
-          title="显示/隐藏实验手册"
-          @click="togglePanel('manual')"
-        >
-          <BookOpen :size="15" aria-hidden="true" /><span>手册</span>
-        </button>
-        <button
-          v-if="!isTeacherRole"
-          type="button"
-          class="ws-topbar-link"
-          :class="{ 'ws-topbar-link--active': panelOpen.practice }"
-          title="显示/隐藏代码与运行工作区"
-          @click="togglePanel('practice')"
-        >
-          <Code2 :size="15" aria-hidden="true" /><span>工作区</span>
-        </button>
-        <button
-          v-if="!isTeacherRole"
-          type="button"
-          class="ws-topbar-link"
-          :class="{ 'ws-topbar-link--active': panelOpen.terminal }"
-          title="显示/隐藏报告与 Trace"
-          @click="togglePanel('terminal')"
-        >
-          <MessagesSquare :size="15" aria-hidden="true" /><span>学习支持</span>
-        </button>
-        <button
-          class="ws-topbar-icon"
-          type="button"
-          aria-label="模型设置"
-          title="模型设置"
-          @click="openLlmSettings"
-        >
-          <Settings :size="16" aria-hidden="true" />
-        </button>
-        <button
-          class="ws-topbar-icon"
-          type="button"
-          :aria-label="isDark ? '切换到浅色主题' : '切换到深色主题'"
-          :title="isDark ? '切换到浅色主题' : '切换到深色主题'"
-          @click="isDark = !isDark"
-        >
-          <Sun v-if="isDark" :size="16" aria-hidden="true" />
-          <Moon v-else :size="16" aria-hidden="true" />
-        </button>
-      </div>
-    </header>
-
     <div class="ws-mobile-switch" role="tablist" aria-label="学习视图">
       <button
         type="button"
@@ -3543,7 +3438,7 @@ onBeforeUnmount(() => {
   /* 隐式的 auto 列会以子项 min-content 为下限，窄屏下会把整个外壳顶宽
      （grid blowout）。显式 minmax(0, 1fr) 把下限压到 0。 */
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: var(--ws-topbar-height) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   position: relative;
   top: var(--vp-nav-height);
   height: calc(100dvh - var(--vp-nav-height));
@@ -3552,137 +3447,13 @@ onBeforeUnmount(() => {
   background: var(--ws-surface-alt);
 }
 
-/* -- 顶栏 ------------------------------------------------------------------ */
-.ws-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ws-space-4);
-  padding: 0 var(--ws-space-4);
-  border-bottom: 1px solid var(--ws-line);
-  background: var(--ws-surface);
-}
-
-.ws-brand {
-  display: flex;
-  align-items: center;
-  gap: var(--ws-space-2);
-  min-width: 0;
-  color: inherit;
-  text-decoration: none;
-}
-
-.ws-brand-mark {
-  display: grid;
-  flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  color: var(--ws-accent-contrast);
-  border-radius: var(--ws-radius-sm);
-  background: var(--ws-accent);
-  place-items: center;
-  font-family: var(--ws-font-mono);
-  font-size: var(--ws-text-xs);
-  font-weight: var(--ws-weight-bold);
-}
-
-.ws-brand-text {
-  min-width: 0;
-}
-
-.ws-brand-text strong,
-.ws-brand-text small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ws-brand-text strong {
-  font-size: var(--ws-text-base);
-  font-weight: var(--ws-weight-semibold);
-}
-
-.ws-brand-text small {
-  color: var(--ws-ink-muted);
-  font-size: var(--ws-text-xs);
-}
-
-.ws-task-badge {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: var(--ws-space-1);
-  min-height: var(--ws-control-md);
-  padding: var(--ws-space-1) var(--ws-space-3);
-  color: var(--ws-ink-muted);
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-md);
-  background: var(--ws-surface);
-  font-size: var(--ws-text-xs);
-  white-space: nowrap;
-}
-
-.ws-task-badge strong {
-  color: var(--ws-ink);
-  font-weight: var(--ws-weight-semibold);
-}
-
-.ws-task-badge.is-default strong {
-  color: var(--ws-ok, #1a7f37);
-}
-
-.ws-topbar-actions {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: var(--ws-space-2);
-}
-
-.ws-topbar-link {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ws-space-1);
-  min-height: var(--ws-control-md);
-  padding: var(--ws-space-1) var(--ws-space-3);
-  color: var(--ws-ink-muted);
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-md);
-  font-size: var(--ws-text-sm);
-  text-decoration: none;
-}
-
-.ws-topbar-link:hover,
-.ws-topbar-icon:hover {
-  color: var(--ws-accent);
-  border-color: var(--ws-accent);
-}
-
-.ws-topbar-link--active {
-  color: var(--ws-accent);
-  border-color: var(--ws-accent);
-  background: var(--ws-accent-soft);
-}
-
-.ws-topbar-icon {
-  display: grid;
-  width: var(--ws-control-md);
-  height: var(--ws-control-md);
-  color: var(--ws-ink-muted);
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-md);
-  background: var(--ws-surface);
-  place-items: center;
-  cursor: pointer;
-}
-
 /* -- 双栏 ------------------------------------------------------------------ */
 .ws-panes {
   display: grid;
   /* 单行占满可用高度，避免手册内容撑开行高、右侧百分比高度失效 */
   grid-template-rows: minmax(0, 1fr);
   grid-template-columns: minmax(0, 57.5%) 10px minmax(0, 1fr);
-  grid-row: 2;
+  grid-row: 1;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -3909,7 +3680,7 @@ onBeforeUnmount(() => {
 
 .ws-workspace-terminal.ws-dock-maximized {
   position: fixed;
-  top: var(--ws-topbar-height);
+  top: var(--vp-nav-height);
   right: 0;
   bottom: 0;
   left: 0;
@@ -4288,7 +4059,7 @@ onBeforeUnmount(() => {
 
 .ws-tutor-popover {
   position: fixed;
-  top: var(--ws-topbar-height);
+  top: var(--vp-nav-height);
   right: 0;
   bottom: 0;
   z-index: 81;
@@ -4463,7 +4234,7 @@ onBeforeUnmount(() => {
 }
 .ws-zone-maximized {
   position: fixed;
-  top: var(--ws-topbar-height);
+  top: var(--vp-nav-height);
   right: 0;
   bottom: 0;
   left: 0;
@@ -4739,7 +4510,7 @@ onBeforeUnmount(() => {
 /* -- 老师公告横幅 ----------------------------------------------------------- */
 .ws-teacher-notice {
   position: fixed;
-  top: calc(var(--ws-topbar-height) + var(--ws-space-2));
+  top: calc(var(--vp-nav-height) + var(--ws-space-2));
   left: 50%;
   z-index: 30;
   display: flex;
@@ -4959,7 +4730,7 @@ onBeforeUnmount(() => {
   }
 
   .ws-tutor-popover {
-    top: var(--ws-topbar-height);
+    top: var(--vp-nav-height);
     right: 0;
     bottom: 0;
     left: 0;
@@ -4974,7 +4745,7 @@ onBeforeUnmount(() => {
   }
 
   .ws-tutor-popover.is-floating {
-    top: var(--ws-topbar-height);
+    top: var(--vp-nav-height);
     right: 0;
     bottom: 0;
     left: 0;
@@ -5035,42 +4806,8 @@ onBeforeUnmount(() => {
 
 @media (max-width: 900px) {
   .ws-workspace {
-    grid-template-rows: var(--ws-topbar-height) auto minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
     top: 0;
-  }
-
-  .ws-brand-text small {
-    display: none;
-  }
-
-  .ws-topbar {
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scrollbar-width: thin;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .ws-topbar-actions {
-    flex: 1 1 auto;
-    min-width: 0;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    scrollbar-width: thin;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .ws-task-badge {
-    min-height: var(--ws-control-sm);
-    padding: 3px 6px;
-    font-size: var(--ws-text-xs);
-  }
-
-  .ws-task-badge > span {
-    display: none;
-  }
-
-  .ws-topbar-link span {
-    display: none;
   }
 
   .ws-mobile-switch {
@@ -5110,6 +4847,7 @@ onBeforeUnmount(() => {
   }
 
   .ws-panes {
+    grid-row: 2;
     grid-template-columns: minmax(0, 1fr);
   }
 
