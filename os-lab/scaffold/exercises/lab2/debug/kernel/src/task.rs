@@ -1,4 +1,4 @@
-//! 【Lab2 任务：排错】`yield` 让出 CPU 后没有被调度回来。
+//! 【Lab2 任务：debug】`yield` 让出 CPU 后没有被调度回来。
 //!
 //! Task control blocks and round-robin scheduling (lab2+).
 //!

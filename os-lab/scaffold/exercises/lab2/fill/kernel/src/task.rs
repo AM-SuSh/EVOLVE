@@ -1,8 +1,4 @@
-//! 【Lab2 任务：补全调度器】实现 `find_next_task`，从 Ready 集合里选出下一个任务。
-//!
-//! Task control blocks and round-robin scheduling (lab2+).
-//!
-//! 【Lab2 任务：补全调度器】当前 `TaskManager::find_next_task` 是 `todo!()`。
+//! 【Lab2 任务：fill】当前 `TaskManager::find_next_task` 是 `todo!()`。
 //! 请先阅读 `find_next_task` 上方的思路提示，再实现调度选择逻辑。
 
 use os_context::TrapContext;
@@ -92,7 +88,7 @@ impl TaskManager {
         }
     }
 
-    /// 【Lab2 任务：补全】选出下一个 Ready 任务的下标；没有则返回 None。
+    /// 【Lab2 任务：fill】选出下一个 Ready 任务的下标；没有则返回 None。
     ///
     /// 思路提示（先自己想清楚再动手）：
     /// 1. 任务表是 `self.tasks[0..self.num_app]`，每一项是 `Option<TaskControlBlock>`；
