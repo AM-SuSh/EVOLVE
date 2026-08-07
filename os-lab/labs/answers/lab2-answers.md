@@ -195,6 +195,22 @@ pub fn write(fd: usize, buf: &[u8]) -> isize {
 
 TCB 至少记录任务状态、`TrapContext`、用户栈与内核栈（及 Lab3+ 的地址空间 token 等）。用户栈和内核栈必须分开，原因有三：① **安全**——用户栈在用户空间，用户程序能随意写；内核栈在内核空间，用户碰不到。② **正确**——trap 时若仍用用户栈，可能已满或状态不可信，内核往里写会出错（Lab3 虚存后用户栈甚至可能未映射）。③ **隔离**——用户栈溢出不会破坏内核数据；合成一个栈则无法实现特权级隔离。Lab3 会进一步用独立地址空间把两套栈彻底分开。
 
+### 第 6 题：普通 syscall 和 yield 都走同一 trap 路径，为什么只有后者切换任务
+
+普通 `sys_write` 分支在 `kernel/src/trap.rs` 里只执行 `sys_write(...)` 和 `cx.set_return_value(ret)`，随后函数返回，`__restore` 恢复当前任务。`SYS_YIELD` 分支多做了三步：`sync_current_trap_cx(cx)` 把当前现场写回 TCB、`mark_current_suspended()` 把当前任务置为 Ready、`run_next_task()` 调用调度器选择下一个任务。所以 trap 的入口和返回路径相同，但“是否换任务”由 `trap_handler` 内是否调用 `run_next_task` 决定。
+
+### 第 7 题：从 0 扫描和从 current+1 轮转扫描的区别
+
+从 0 号槽开始扫描会一直选择编号最小的 Ready 任务；从 `self.current + 1` 循环扫描则从当前任务之后开始找，多个任务同时 Ready 时更接近标准轮转。本实验默认的 hello / power / yield 是顺序 batch：hello 和 power 都先 `sys_exit` 再运行下一个，`yield` 通常是唯一处于 Ready 的任务，所以两种扫描起点最终都会选中 yield，单靠默认输出不一定能区分。想观察差异，可以让两个任务同时保持 Ready，或直接在报告中从 `find_next_task` 的循环边界分析。
+
+### 第 8 题：让出和退出的状态转换
+
+`sys_yield` 应把当前任务从 Running 置为 Ready，`sys_exit` 应把当前任务置为 Exited。如果 `yield` 路径错误地把任务写成 Exited，第一次 `yield` 后任务表中就没有 Ready 任务，`run_next_task` 会走到 `all_exited()` 或 `find_next_task()` 返回 None 的关机分支，于是只看到 1 行 `Yield round` 就打印 `All user apps exited.`。命令退出码仍可能为 0，所以必须用 `Yield round` 出现不少于 5 次来判定。
+
+### 第 9 题：load_apps 和 load_app 的职责
+
+`loader::load_apps()` 在 `kernel/src/loader.rs` 中负责登记用户程序列表、打印 `Loading N user apps ...` 并检查 `NUM_APP <= MAX_APP_NUM`，它不执行复制。真正把 `hello.bin` / `power.bin` / `yield.bin` 复制到 `APP_BASE_ADDRESS`（`0x8040_0000`）并执行 `fence.i` 的是 `loader::load_app(app_id)`；`run_first_task` 和 `sys_exit` 都会调用它。因此手册和报告里应说“load_app 负责复制”，而不是“load_apps 负责复制”。
+
 ## 三、任务三动手修改的现象参考
 
 - **修改 1（hello 多说一句）**：看到两行 Hello 输出，证明用户程序修改→重新编译→内核加载运行链路通畅。

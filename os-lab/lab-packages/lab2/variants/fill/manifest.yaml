@@ -7,7 +7,7 @@ version: 0.2.0-draft
 
 learning_goal: |
   学生独立实现 `TaskManager::find_next_task`，理解 Ready 集合选取与
-  current 更新；跑通 hello/power/yield 全链，并能对比两种扫描起点对输出顺序的影响。
+  current 更新；跑通 hello/power/yield 全链，并能从代码逻辑说明两种扫描起点的差异。
 
 target_concepts:
   - os.sched.round-robin
@@ -24,7 +24,7 @@ what_is_blank:
       - 仅选择 task_status == Ready 的任务
       - 更新 self.current 为选中下标
       - 无 Ready 时返回 None
-      - 推荐从 current+1 轮转扫描（允许从 0 扫描，但需在报告中说明顺序差异）
+      - 推荐从 current+1 轮转扫描（允许从 0 扫描；默认 batch 输出不一定能直接区分，需在报告中说明逻辑差异或构造多 Ready 场景）
 
 success_criteria:
   recipe: lab2.verify-trace.v1
@@ -65,5 +65,6 @@ hint_ladder:
     say: 对照 run_next_task 与 all_exited：没有 Ready 时应返回 None 并走到关机路径，而不是 panic 或死循环。仍不要索要整函数粘贴。
 
 report_prompts:
-  - 你从 current+1 扫描还是从 0 扫描？对 Yield 输出穿插有何影响？
+  - 你从 current+1 扫描还是从 0 扫描？在同时存在多个 Ready 任务时有什么影响？
+  - 默认 hello/power/yield 顺序执行时，为什么两种写法可能看不到输出差异？怎样构造场景才能观察到？
   - 若所有任务都 Exited，find_next_task 与 all_exited 如何配合关机？
