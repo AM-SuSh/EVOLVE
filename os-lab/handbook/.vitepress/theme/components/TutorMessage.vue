@@ -1,11 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { BookOpen, Check, Copy, ShieldAlert } from 'lucide-vue-next'
+import { BookOpen, Bot, Check, Copy } from 'lucide-vue-next'
 import { chatSourceLabels, studentQuestionFromChat, type ChatAttachment } from '../chat-attachments'
 import {
-  categoryLabels,
-  describeTutorHintLevel,
-  tutorHintDetail,
   type TutorKnowledgeChunk,
   type TutorRetrievalDiagnostics,
   type TutorMessage,
@@ -31,19 +28,11 @@ const displayContent = computed(() => {
 })
 const html = computed(() => renderTutorMarkdown(displayContent.value))
 const messageCopyText = computed(() => displayContent.value.trim() || props.message.content.trim())
-const messageCopyLabel = computed(() => {
-  if (messageCopyStatus.value === 'copied') return '已复制'
-  if (messageCopyStatus.value === 'failed') return '复制失败'
-  return '复制'
-})
 const messageCopyTitle = computed(() => {
   if (messageCopyStatus.value === 'copied') return '已复制这条消息'
   if (messageCopyStatus.value === 'failed') return '复制失败，请重试'
   return '复制这条消息'
 })
-const hintLabel = computed(() => describeTutorHintLevel(props.message.hintLevel))
-const hintTitle = computed(() => tutorHintDetail(props.message.hintLevel))
-const refused = computed(() => Boolean(props.message.refused || props.message.guardrail))
 const knowledge = computed<TutorKnowledgeChunk[]>(() => props.message.knowledge || [])
 const retrieval = computed<TutorRetrievalDiagnostics | undefined>(() => props.message.retrieval)
 const knowledgeSummary = computed(() => {
@@ -156,21 +145,11 @@ async function onBodyClick(event: MouseEvent) {
 </script>
 
 <template>
-  <article class="ws-message" :class="[message.role, { refused }]">
-    <div v-if="isAssistant" class="ws-message-avatar" aria-hidden="true">OS</div>
+  <article class="ws-message" :class="message.role">
+    <div v-if="isAssistant" class="ws-message-avatar" aria-hidden="true"><Bot :size="16" /></div>
     <div class="ws-message-body">
-      <div class="ws-message-meta">
-        <strong>{{ isAssistant ? '引导导师' : '你' }}</strong>
-        <span v-if="message.category" class="ws-message-tag">
-          {{ categoryLabels[message.category] }}
-        </span>
-        <span v-if="hintLabel" class="ws-message-tag hint" :title="hintTitle">{{ hintLabel }}</span>
-        <span v-if="refused" class="ws-message-tag guarded" title="本轮拒答完整实现，改为引导判断或观察">
-          <ShieldAlert :size="13" aria-hidden="true" />已拒答完整实现
-        </span>
-        <span v-else-if="message.guardrail" class="ws-message-tag guarded">
-          <ShieldAlert :size="13" aria-hidden="true" />学习护栏
-        </span>
+      <div v-if="isAssistant" class="ws-message-meta">
+        <strong>AI 导师</strong>
       </div>
       <div class="ws-message-content" :class="{ streaming }" @click="onBodyClick" v-html="html" />
       <div v-if="messageCopyText || (isAssistant && knowledge.length)" class="ws-message-actions">
@@ -185,7 +164,6 @@ async function onBodyClick(event: MouseEvent) {
         >
           <Check v-if="messageCopyStatus === 'copied'" :size="13" aria-hidden="true" />
           <Copy v-else :size="13" aria-hidden="true" />
-          <span>{{ messageCopyLabel }}</span>
         </button>
         <span
           v-if="isAssistant && knowledge.length"
@@ -218,7 +196,11 @@ async function onBodyClick(event: MouseEvent) {
   display: flex;
   align-items: flex-start;
   gap: var(--ws-space-3);
-  margin-bottom: var(--ws-space-6);
+  margin-bottom: var(--ws-space-5);
+}
+
+.ws-message:last-child {
+  margin-bottom: 0;
 }
 
 .ws-message.student {
@@ -241,14 +223,15 @@ async function onBodyClick(event: MouseEvent) {
 
 .ws-message-body {
   min-width: 0;
-  max-width: calc(100% - 42px);
+  max-width: min(680px, calc(100% - 42px));
 }
 
 .ws-message.student .ws-message-body {
-  max-width: min(560px, 88%);
+  max-width: min(560px, 86%);
   padding: var(--ws-space-3) var(--ws-space-4);
-  border-radius: var(--ws-radius-md);
-  background: var(--ws-surface-soft);
+  border: 1px solid color-mix(in srgb, var(--ws-accent) 24%, var(--ws-line));
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-accent-soft);
 }
 
 .ws-message-meta {
@@ -256,37 +239,14 @@ async function onBodyClick(event: MouseEvent) {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--ws-space-2);
-  margin-bottom: var(--ws-space-1);
+  margin-bottom: 6px;
   font-size: var(--ws-text-xs);
 }
 
 .ws-message-meta strong {
-  color: var(--ws-ink);
-  font-size: var(--ws-text-sm);
-  font-weight: var(--ws-weight-semibold);
-}
-
-.ws-message-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ws-space-1);
-  padding: 1px var(--ws-space-2);
-  color: var(--ws-accent);
-  border-radius: var(--ws-radius-sm);
-  background: var(--ws-accent-soft);
-}
-
-.ws-message-tag.hint {
   color: var(--ws-ink-muted);
-  border: 1px solid var(--ws-line);
-  background: var(--ws-surface);
-  font-family: var(--ws-font-mono, ui-monospace, monospace);
-}
-
-.ws-message-tag.guarded {
-  color: var(--ws-warn);
-  border: 1px solid var(--ws-warn);
-  background: var(--ws-warn-soft);
+  font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-semibold);
 }
 
 .ws-message-content {
@@ -308,18 +268,16 @@ async function onBodyClick(event: MouseEvent) {
 }
 
 .ws-message-copy {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  min-height: 28px;
-  padding: 2px var(--ws-space-2);
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   color: var(--ws-ink-faint);
   border: 1px solid transparent;
   border-radius: var(--ws-radius-sm);
   background: transparent;
   font: inherit;
-  font-size: var(--ws-text-xs);
+  place-items: center;
   cursor: pointer;
   touch-action: manipulation;
   transition:
@@ -376,6 +334,25 @@ async function onBodyClick(event: MouseEvent) {
   color: var(--ws-accent);
   border-color: var(--ws-line);
   background: var(--ws-surface);
+}
+
+@media (max-width: 480px) {
+  .ws-message {
+    gap: var(--ws-space-2);
+  }
+
+  .ws-message-avatar {
+    width: 28px;
+    height: 28px;
+  }
+
+  .ws-message-body {
+    max-width: calc(100% - 36px);
+  }
+
+  .ws-message.student .ws-message-body {
+    max-width: 90%;
+  }
 }
 
 .ws-message-attachments {
