@@ -141,7 +141,7 @@
             "kernel/src/task.rs"
           ],
           "sources": {
-            "kernel/src/task.rs": "scaffold/exercises/lab2/debug/kernel/src/task.rs"
+            "kernel/src/task.rs": "scaffold/exercises/lab2/remedial/kernel/src/task.rs"
           },
           "manifest": "lab-packages/lab2/variants/remedial/manifest.yaml"
         }

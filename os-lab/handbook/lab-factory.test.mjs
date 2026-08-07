@@ -30,6 +30,13 @@ test('C6 validates frozen schema and materializes every declared Lab2 variant in
   assert.equal(dryRun.variants.every((item) => item.fileCount > 0 && /^[a-f0-9]{64}$/.test(item.manifestHash)), true)
 })
 
+test('C6 every published variant source carries a file header task marker', async () => {
+  for (const labId of ['lab2', 'lab3', 'lab4', 'lab5', 'lab6', 'lab7', 'lab8']) {
+    const inspected = await inspectLabPackage(labId, options)
+    assert.equal(inspected.ok, true, `${labId}: ${inspected.errors?.join('\n')}`)
+  }
+})
+
 test('C6 issues the published Lab2 remedial variant through the normal scaffold path', async () => {
   const previousStudentsRoot = process.env.OS_LAB_STUDENTS_ROOT
   const studentsRoot = path.join(temporary, 'remedial-students')
@@ -46,7 +53,7 @@ test('C6 issues the published Lab2 remedial variant through the normal scaffold 
     assert.equal(state.variants.lab2, 'remedial')
     assert.equal(
       await readFile(path.join(studentRoot, 'kernel', 'src', 'task.rs'), 'utf8'),
-      await readFile(path.join(repositoryRoot, 'scaffold', 'exercises', 'lab2', 'debug', 'kernel', 'src', 'task.rs'), 'utf8'),
+      await readFile(path.join(repositoryRoot, 'scaffold', 'exercises', 'lab2', 'remedial', 'kernel', 'src', 'task.rs'), 'utf8'),
     )
   } finally {
     if (previousStudentsRoot === undefined) delete process.env.OS_LAB_STUDENTS_ROOT

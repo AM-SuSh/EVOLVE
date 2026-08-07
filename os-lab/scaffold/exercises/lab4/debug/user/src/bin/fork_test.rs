@@ -1,4 +1,7 @@
 //! Lab4 debug variant: the parent confuses the wait result with the exit code.
+//!
+//! 【Lab4 任务：排错】`fork_test` 缺少 `fork_test pass`。
+//! 先运行并记录 `waitpid` 返回值与 `exit_code`，区分「子进程 pid」和「退出码」。
 
 #![no_std]
 #![no_main]

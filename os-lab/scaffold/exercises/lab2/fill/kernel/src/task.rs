@@ -1,4 +1,7 @@
 //! Task control blocks and round-robin scheduling (lab2+).
+//!
+//! 【Lab2 任务：补全调度器】当前 `TaskManager::find_next_task` 是 `todo!()`。
+//! 请先阅读 `find_next_task` 上方的思路提示，再实现调度选择逻辑。
 
 use os_context::TrapContext;
 

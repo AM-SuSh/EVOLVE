@@ -168,6 +168,8 @@ sequenceDiagram
 
 ### 任务一：跑通 lab7
 
+**第一步：确认变体。** 如果教师通过工作台下发了 debug 变体，先打开 `user/src/bin/signal_mask_test.rs` 文件头，应看到 `【Lab7 任务：排错】`；没有任务标记则用参考实现直接运行。
+
 ```powershell
 make test-lab7
 ```

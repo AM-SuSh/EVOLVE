@@ -1,4 +1,7 @@
 //! Lab5 debug variant: the first open uses a name absent from the embedded FS.
+//!
+//! 【Lab5 任务：排错】`open` 阶段报 `open testfile failed`。
+//! 先对照内嵌文件表中的真实文件名，再修首次 `open` 的名字。
 
 #![no_std]
 #![no_main]

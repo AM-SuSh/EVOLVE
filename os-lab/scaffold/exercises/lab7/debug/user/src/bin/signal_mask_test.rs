@@ -1,4 +1,7 @@
 //! Lab7 debug variant: SIGUSR1 is not actually included in the mask.
+//!
+//! 【Lab7 任务：排错】`signal_mask_test` 在屏蔽期间仍收到 SIGUSR1。
+//! 先记录 `sigprocmask` 的入参与 SIGUSR1 编号，再修正信号位掩码。
 
 #![no_std]
 #![no_main]

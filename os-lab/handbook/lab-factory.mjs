@@ -174,6 +174,19 @@ export async function inspectLabPackage(labId, options = {}) {
       errors.push(`$.${field}: 引用不存在 (${relative})`)
     }
   }
+  for (const [name, variant] of Object.entries(spec.variants || {})) {
+    const sourcePath = path.resolve(specDir, variant.source)
+    let sourceText = ''
+    try {
+      sourceText = await readFile(sourcePath, 'utf8')
+    } catch {
+      /* 路径缺失已由 referencedPaths 检查报告 */
+    }
+    const headerMarker = new RegExp(`【${safeLabId} 任务：`, 'i')
+    if (!headerMarker.test(sourceText.slice(0, 2000))) {
+      errors.push(`$.variants.${name}.source: 变体源文件头部缺少【${safeLabId} 任务：...】任务标记`)
+    }
+  }
   const recipe = getRunRecipe(safeLabId)
   if (!recipe || recipe.id !== spec.verification?.recipe) errors.push('$.verification.recipe: 与服务端可信 recipe 不一致')
   const assertionIds = new Set((spec.verification?.assertions || []).map((item) => item.id))

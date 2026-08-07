@@ -49,7 +49,7 @@
 | --- | --- |
 | `labs/labN-*.md` | 学生正文（`lab.yaml.manual` 引用） |
 | `labs/answers/` | 参考答案（不对学生默认暴露） |
-| `scaffold/exercises/lab2/{fill,debug}/` | 变体实现文件 |
+| `scaffold/exercises/lab2/{fill,debug,remedial}/` | 变体实现文件 |
 | `tutor/prompts/lab2/` | 导师上下文（后续可迁入 `lab2/tutor/`） |
 | `handbook/data/labs.json` | 前端进度清单（由 C/B 后续从 `lab.yaml` 生成） |
 

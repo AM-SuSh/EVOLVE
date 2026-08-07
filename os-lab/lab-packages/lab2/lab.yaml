@@ -80,7 +80,7 @@ variants:
     source: ../../scaffold/exercises/lab2/debug/kernel/src/task.rs
   remedial:
     manifest: variants/remedial/manifest.yaml
-    source: ../../scaffold/exercises/lab2/debug/kernel/src/task.rs
+    source: ../../scaffold/exercises/lab2/remedial/kernel/src/task.rs
 
 verification:
   recipe: lab2.verify-trace.v1

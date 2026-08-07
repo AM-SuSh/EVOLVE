@@ -1,7 +1,8 @@
 //! Task control blocks and round-robin scheduling (lab2+).
 //!
-//! 【Lab2 任务：参考实现】本文件是完整参考实现，不包含 fill/debug 任务标记。
-//! 若教师通过工作台下发了 fill 或 debug 变体，任务文件会替换为带对应文件头注释的版本。
+//! 【Lab2 任务：补救】本文件从 debug 起点开始，`mark_current_suspended`
+//! 把「让出」误写成 `Exited`。先完成 yield→Ready / exit→Exited 对照表，
+//! 再沿 `SYS_YIELD` 路径修复状态赋值，最后必须看到 5 轮 `Yield round`。
 
 use os_context::TrapContext;
 
@@ -152,7 +153,7 @@ pub fn run_first_task() -> ! {
 pub fn mark_current_suspended() {
     TASK_MANAGER.with(|tm| {
         let task = tm.tasks[tm.current].as_mut().unwrap();
-        task.task_status = TaskStatus::Ready;
+        task.task_status = TaskStatus::Exited;
     });
 }
 

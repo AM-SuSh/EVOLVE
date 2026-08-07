@@ -11,7 +11,7 @@
 | `manifest.yaml` | 学习目标、提示阶梯、成功/负向标准 |
 | `PACKAGE.md`（本文件） | 装箱与 lint 预期 |
 | `TEACHER_ACCEPTANCE.md` | Day6 教学验收勾选 |
-| 源码起点 | `scaffold/exercises/lab2/debug/kernel/src/task.rs`（与 debug 同起点） |
+| 源码起点 | `scaffold/exercises/lab2/remedial/kernel/src/task.rs`（与 debug 同起点，独立文件头标记） |
 | 手册锚点 | `labs/lab2-trap-and-task.md` 变体任务节 |
 
 ## 学习设计摘要

@@ -1,4 +1,7 @@
 //! Lab8 debug variant: the integrated mutex workload is one update short.
+//!
+//! 【Lab8 任务：排错】`mutex_test` 最终计数 mismatch。
+//! 先区分「临界区是否加锁」与「每个线程实际执行次数」，再修正循环上界。
 
 #![no_std]
 #![no_main]

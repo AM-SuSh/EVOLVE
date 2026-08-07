@@ -1,4 +1,8 @@
 //! Virtual memory: kernel address space, per-task user spaces (lab3+).
+//!
+//! 【Lab3 任务：排错】开启分页后用户程序无法正常输出/取指。
+//! 先复现并对照 `kernel/src/mm.rs` 中用户 ELF 映射的权限，
+//! 再沿 PTE 权限位检查用户页是否真的可被 U-mode 访问。
 
 #![allow(dead_code)]
 
