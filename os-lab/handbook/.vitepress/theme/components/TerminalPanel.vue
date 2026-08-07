@@ -27,13 +27,6 @@ const emit = defineEmits<{
   }): void
   (event: 'run-exit', runId: string): void
   (event: 'run-diagnostics', payload: { runId: string; diagnostics: unknown[] }): void
-  (event: 'insert-report', text: string): void
-  (event: 'add-to-chat', payload: {
-    source: 'terminal'
-    title: string
-    body: string
-    origin?: { runId?: string; scope?: 'selection' | 'full' }
-  }): void
 }>()
 
 const MAX_SESSIONS = 4
@@ -94,8 +87,6 @@ function closeTab(id: string) {
         @run-finished="emit('run-finished', $event)"
         @run-exit="emit('run-exit', $event)"
         @run-diagnostics="emit('run-diagnostics', $event)"
-        @insert-report="emit('insert-report', $event)"
-        @add-to-chat="emit('add-to-chat', $event)"
       />
     </div>
 

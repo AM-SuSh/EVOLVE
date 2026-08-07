@@ -35,7 +35,7 @@ export const DEFAULT_REPORT_TEMPLATE: ReportTemplate = {
     {
       id: 'process',
       title: '二、过程记录',
-      prompt: '记下你做了什么、看到了什么。终端跑完后，也可以点「把输出插入实验报告」。',
+      prompt: '记下你做了什么、看到了什么，并挑选关键运行结果作为证据。',
       rows: 6,
     },
     {

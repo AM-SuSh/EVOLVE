@@ -2822,8 +2822,6 @@ onBeforeUnmount(() => {
                       @run-finished="onRunFinished"
                       @run-exit="onRunExit"
                       @run-diagnostics="onRunDiagnostics"
-                      @insert-report="onInsertReport"
-                      @add-to-chat="addToChat"
                     />
                     <ProblemsPanel
                       ref="problemsPanelRef"
