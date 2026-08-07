@@ -1771,8 +1771,6 @@ async function requestReply(
   evidenceRefs: string[],
   onDelta: (text: string) => void,
 ): Promise<ReplyOutcome | null> {
-  if (connection.value !== 'remote') return null
-
   const response = await fetch(`${endpoint}/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...authHeaders() },

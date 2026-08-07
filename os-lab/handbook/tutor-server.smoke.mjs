@@ -32,7 +32,13 @@ const mockUpstream = http.createServer(async (request, response) => {
   if (request.method === 'POST' && requestUrl.pathname === '/v1/chat/completions') {
     let raw = ''
     for await (const chunk of request) raw += chunk.toString('utf8')
-    mockChatRequests.push(JSON.parse(raw))
+    const payload = JSON.parse(raw)
+    mockChatRequests.push(payload)
+    if (payload.messages?.some((message) => String(message.content || '').includes('offline fallback check'))) {
+      response.statusCode = 503
+      response.end(JSON.stringify({ error: { message: 'mock upstream down' } }))
+      return
+    }
     response.end(JSON.stringify({
       choices: [{
         message: {
@@ -463,6 +469,27 @@ try {
   assert.match(mockChatRequests[0].messages[0].content, /Lab2/)
   assert.match(mockChatRequests[0].messages[0].content, /knowledge-chunk/)
   assert.match(mockChatRequests[0].messages[0].content, /只能转化为反问或观察目标/)
+
+  const offlineChatResponse = await fetch(`${endpoint}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...studentHeaders },
+    body: JSON.stringify({
+      sessionId: 'smoke-learning-session',
+      labId: 'lab2',
+      stage: 'read',
+      message: 'offline fallback check sepc',
+      evidenceRefs: [],
+    }),
+  })
+  assert.equal(offlineChatResponse.status, 200)
+  const offlineFrames = parseSseFrames(await offlineChatResponse.text())
+  const offlineDone = offlineFrames.find((frame) => frame.type === 'done')
+  assert.equal(offlineDone.mode, 'offline')
+  assert.equal(offlineDone.model, 'offline-tutor')
+  assert.match(offlineDone.reply, /sepc|trap/i)
+  assert.ok(offlineDone.tutorState?.stage)
+  assert.ok(offlineDone.retrieval)
+  assert.equal(mockChatRequests.length, 2)
 
   const removedKnowledge = await fetch(`${endpoint}/teacher/knowledge/chunk?id=${encodeURIComponent(uploadedChunk.id)}`, {
     method: 'DELETE', headers: teacherHeaders,
