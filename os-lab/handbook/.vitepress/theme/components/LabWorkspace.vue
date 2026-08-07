@@ -473,9 +473,6 @@ function toggleMaximized(target: 'workspace' | 'assistant' | 'dock') {
   maximized.value = maximized.value === target ? 'none' : target
 }
 
-/** 终端 → 报告「过程记录」的插入载荷（id 递增触发）。 */
-const reportInsert = ref<{ id: number; text: string } | null>(null)
-
 /* -- 三栏开关与纵向比例（手册 / 工作区 / 学习支持） ------------------------ */
 
 const PANEL_STORAGE_KEY = 'os-lab-panels-v1'
@@ -2431,16 +2428,6 @@ function onTraceInspected(payload: { runId: string; view: string; eventRange: { 
   })
 }
 
-/** 终端输出插入实验报告的「过程记录」。 */
-function onInsertReport(text: string) {
-  reportInsert.value = { id: (reportInsert.value?.id ?? 0) + 1, text }
-  rightTab.value = 'report'
-  mobileView.value = 'practice'
-  panelOpen.value.terminal = true
-  persistPanels()
-  toast('输出已插入实验报告。')
-}
-
 /** 报告面板请 AI 点评：打开对话并把报告作为提问发送。 */
 function reviewReport(content: string) {
   tutorOpen.value = true
@@ -3092,7 +3079,6 @@ onBeforeUnmount(() => {
             <ReportPanel
               v-show="rightTab === 'report'"
               :lab="lab"
-              :insert-payload="reportInsert"
               :teacher-feedback="teacherFeedback"
               :report-template="reportTemplate"
               :endpoint="endpoint"
@@ -3115,12 +3101,9 @@ onBeforeUnmount(() => {
               ref="traceViewerRef"
               v-show="rightTab === 'trace'"
               :run-id="lastRunId"
-              :lab-id="lab.id"
               :endpoint="endpoint"
               @jump="onTraceJump"
-              @insert-report="onInsertReport"
               @trace-inspected="onTraceInspected"
-              @add-to-chat="addToChat"
             />
           </div>
         </section>

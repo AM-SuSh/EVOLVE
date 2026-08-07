@@ -6,13 +6,13 @@
  * - 视图切换：Trap 时序图 / 任务状态时间线（默认 Trap，Lab2 主视图）。
  * - 播放控制：播放/暂停、单步、速度、类型/pid 过滤、重置。
  * - 事件列表：>200 条时只渲染窗口，避免大数据卡顿。
- * - 选中事件详情：「跳到源码」「插入报告」。
+ * - 选中事件详情：用学生可理解的语义解释，并可跳到对应源码。
  * - 上报 `trace_inspected` 事件（切换视图或移动 playhead 时）。
  *
  * 与成员 C 契约：接口未就绪时 unavailable=true，文案明确「查询接口尚未返回真实事件」。
  */
 import { computed, nextTick, ref, watch } from 'vue'
-import { GitBranch, Play, Pause, SkipForward, SkipBack, RotateCcw, Code2, FileText, MessageSquarePlus } from 'lucide-vue-next'
+import { GitBranch, Play, Pause, SkipForward, SkipBack, RotateCcw, Code2 } from 'lucide-vue-next'
 import { authHeaders } from '../tutor-model'
 import {
   useTracePlayback,
@@ -20,31 +20,21 @@ import {
   collectPids,
   isValidTraceEvent,
   sourceAnchorFor,
-  formatTraceEvidence,
   TRACE_PLAYBACK_SPEEDS,
   type TraceEvent,
   type TraceView,
 } from '../composables/useTracePlayback'
 import TraceTrapView from './TraceTrapView.vue'
 import TraceTimelineView from './TraceTimelineView.vue'
-import OpreBar from './OpreBar.vue'
 
 const props = defineProps<{
   runId?: string
-  labId?: string
   endpoint?: string
 }>()
 
 const emit = defineEmits<{
   (event: 'jump', payload: { path: string; line: number }): void
-  (event: 'insert-report', text: string): void
   (event: 'trace-inspected', payload: { runId: string; view: TraceView; eventRange: { start: number; end: number } }): void
-  (event: 'add-to-chat', payload: {
-    source: 'trace'
-    title: string
-    body: string
-    origin?: { runId?: string; seq?: number; path?: string; line?: number }
-  }): void
 }>()
 
 const allEvents = ref<TraceEvent[]>([])
@@ -72,6 +62,32 @@ const EVENT_LIST_CAP = 200
 const listEvents = computed(() => filteredEvents.value.slice(0, EVENT_LIST_CAP))
 const listTruncated = computed(() => filteredEvents.value.length > EVENT_LIST_CAP)
 const currentEvent = computed<TraceEvent | null>(() => playback.current.value)
+const trapCount = computed(() => allEvents.value.filter((event) => event.type === 'trap_enter').length)
+const switchCount = computed(() => allEvents.value.filter((event) => event.type === 'task_switch').length)
+
+function eventTypeLabel(event: TraceEvent) {
+  return event.type === 'trap_enter' ? '进入内核' : '任务切换'
+}
+
+const currentTitle = computed(() => {
+  const event = currentEvent.value
+  if (!event) return ''
+  if (event.type === 'trap_enter') {
+    return event.cause === 'user_ecall' ? `任务 ${event.pid} 发起系统调用` : `任务 ${event.pid} 触发 Trap`
+  }
+  return `任务 ${event.pid} 被调度运行`
+})
+
+const currentMeaning = computed(() => {
+  const event = currentEvent.value
+  if (!event) return ''
+  if (event.type === 'trap_enter') {
+    return event.cause === 'user_ecall'
+      ? '用户程序通过 ecall 进入内核，内核将处理对应的系统调用。'
+      : `CPU 因 ${event.cause || '未知原因'} 从当前任务进入内核。`
+  }
+  return `调度器让任务 ${event.pid} 从 ${event.from || '未知状态'} 进入 ${event.to || 'Running'}。`
+})
 
 async function fetchTrace(runId: string) {
   loading.value = true
@@ -152,29 +168,6 @@ function onJumpSource() {
   emit('jump', sourceAnchorFor(event))
 }
 
-function onInsertReport() {
-  const event = currentEvent.value
-  if (!event) return
-  emit('insert-report', formatTraceEvidence(event))
-}
-
-function onAddToChat() {
-  const event = currentEvent.value
-  if (!event) return
-  const anchor = sourceAnchorFor(event)
-  emit('add-to-chat', {
-    source: 'trace',
-    title: `#${event.seq} · ${event.type}`,
-    body: formatTraceEvidence(event),
-    origin: {
-      runId: props.runId || undefined,
-      seq: event.seq,
-      path: anchor.path,
-      line: anchor.line,
-    },
-  })
-}
-
 watch(playheadIndex, async (index) => {
   await nextTick()
   const el = eventListRef.value?.querySelector<HTMLElement>(`[data-event-index="${index}"]`)
@@ -207,23 +200,23 @@ const emptyState = computed<{ kind: 'no-run' | 'loading' | 'unavailable' | 'empt
   if (!props.runId) {
     return {
       kind: 'no-run',
-      title: '尚未采集运行轨迹',
-      note: 'Trace 用来回放内核运行时事件（trap 进入、任务切换），帮助理解「代码跑起来之后发生了什么」。请先在底部「终端」跑完一次可信命令，再回到本页查看。',
+      title: '暂无 Trace',
+      note: '先运行一次可信验证。',
     }
   }
   if (loading.value) return { kind: 'loading', title: '正在加载轨迹…', note: '' }
   if (unavailable.value) {
     return {
       kind: 'unavailable',
-      title: '本次运行没有可展示的轨迹',
-      note: fetchError.value || '已关联运行，但轨迹查询接口尚未返回真实事件；这里不会播放预设动画。Trace 依赖内核/服务端上报的 trap_enter、task_switch，与 Problems（编译诊断）不是同一类产物。',
+      title: '本次运行没有 Trace',
+      note: fetchError.value || '请重新执行可信验证。',
     }
   }
   if (allEvents.value.length === 0) {
     return {
       kind: 'empty',
-      title: '本次运行尚未产生 trap_enter/task_switch',
-      note: '确认是否启用教学 trace（trace-edu feature）。若命令未触发 trap/调度埋点，这里会为空；可换可信验证命令重跑后再看。这里不会播放预设动画。',
+      title: '没有采集到运行事件',
+      note: '请使用当前实验的可信验证命令重新运行。',
     }
   }
   return { kind: 'empty', title: '', note: '' }
@@ -234,20 +227,17 @@ const hasEvents = computed(() => allEvents.value.length > 0)
 
 <template>
   <section class="ws-trace-viewer" aria-label="运行轨迹 Trace">
-    <header class="ws-trace-intro">
-      <strong>Trace · 运行时轨迹</strong>
-      <p>
-        回放最近一次运行的内核事件（Trap 时序 / 任务时间线），用于理解 trap、调度与进程切换。
-        与底部 <strong>Problems</strong>（编译错误列表）不同：Trace 看的是「跑起来之后」的时序，不是编译诊断。
-      </p>
+    <header class="ws-trace-overview">
+      <div>
+        <strong>Trace</strong>
+        <span v-if="runId">最近一次可信运行</span>
+      </div>
+      <dl v-if="hasEvents" class="ws-trace-stats">
+        <div><dt>进入内核</dt><dd>{{ trapCount }}</dd></div>
+        <div><dt>任务切换</dt><dd>{{ switchCount }}</dd></div>
+        <div><dt>任务数</dt><dd>{{ pids.length }}</dd></div>
+      </dl>
     </header>
-
-    <OpreBar
-      :view="view"
-      :has-events="hasEvents"
-      :lab-id="labId"
-      @insert-report="emit('insert-report', $event)"
-    />
 
     <div v-if="!hasEvents" class="ws-trace-empty" role="status">
       <GitBranch :size="20" aria-hidden="true" />
@@ -260,7 +250,7 @@ const hasEvents = computed(() => allEvents.value.length > 0)
       <header class="ws-trace-toolbar">
         <div class="ws-trace-toolbar-row">
           <div class="ws-trace-view-switch" role="tablist" aria-label="trace 视图">
-            <button type="button" role="tab" :aria-selected="view === 'trap'" :class="{ active: view === 'trap' }" @click="view = 'trap'">Trap 时序</button>
+            <button type="button" role="tab" :aria-selected="view === 'trap'" :class="{ active: view === 'trap' }" @click="view = 'trap'">事件顺序</button>
             <button type="button" role="tab" :aria-selected="view === 'timeline'" :class="{ active: view === 'timeline' }" @click="view = 'timeline'">任务时间线</button>
           </div>
           <span class="ws-trace-count">共 {{ allEvents.length }} 条 · 显示 {{ filteredEvents.length }}</span>
@@ -268,8 +258,8 @@ const hasEvents = computed(() => allEvents.value.length > 0)
 
         <div class="ws-trace-toolbar-row ws-trace-filters">
           <span class="ws-trace-filter-label">类型</span>
-          <button type="button" :class="['ws-trace-chip', { on: filterTypes.size === 0 || filterTypes.has('trap_enter') }]" @click="toggleType('trap_enter')">trap_enter</button>
-          <button type="button" :class="['ws-trace-chip', { on: filterTypes.size === 0 || filterTypes.has('task_switch') }]" @click="toggleType('task_switch')">task_switch</button>
+          <button type="button" :class="['ws-trace-chip', { on: filterTypes.size === 0 || filterTypes.has('trap_enter') }]" @click="toggleType('trap_enter')">进入内核</button>
+          <button type="button" :class="['ws-trace-chip', { on: filterTypes.size === 0 || filterTypes.has('task_switch') }]" @click="toggleType('task_switch')">任务切换</button>
           <template v-if="pids.length > 1">
             <span class="ws-trace-filter-label">pid</span>
             <button v-for="pid in pids" :key="pid" type="button" :class="['ws-trace-chip', { on: filterPids.size === 0 || filterPids.has(pid) }]" @click="togglePid(pid)">{{ pid }}</button>
@@ -307,11 +297,10 @@ const hasEvents = computed(() => allEvents.value.length > 0)
 
       <footer v-if="currentEvent" class="ws-trace-detail">
         <div class="ws-trace-detail-head">
-          <strong>#{{ currentEvent.seq }}</strong>
-          <span class="ws-trace-detail-type">{{ currentEvent.type }}</span>
-          <span class="ws-trace-detail-pid">pid {{ currentEvent.pid }}</span>
+          <strong>#{{ currentEvent.seq }} · {{ currentTitle }}</strong>
           <span class="ws-trace-detail-ts">ts {{ currentEvent.ts }}</span>
         </div>
+        <p class="ws-trace-detail-meaning">{{ currentMeaning }}</p>
         <dl class="ws-trace-detail-body">
           <template v-if="currentEvent.type === 'trap_enter'">
             <div><dt>cause</dt><dd>{{ currentEvent.cause || '?' }}</dd></div>
@@ -325,12 +314,6 @@ const hasEvents = computed(() => allEvents.value.length > 0)
         <div class="ws-trace-detail-actions">
           <button type="button" class="ws-trace-action" @click="onJumpSource">
             <Code2 :size="14" aria-hidden="true" /> 跳到源码
-          </button>
-          <button type="button" class="ws-trace-action" @click="onInsertReport">
-            <FileText :size="14" aria-hidden="true" /> 插入报告
-          </button>
-          <button type="button" class="ws-trace-action" title="把当前事件添加到 AI 导师对话" @click="onAddToChat">
-            <MessageSquarePlus :size="14" aria-hidden="true" /> 添加到对话
           </button>
         </div>
       </footer>
@@ -346,8 +329,8 @@ const hasEvents = computed(() => allEvents.value.length > 0)
           >
             <button type="button" @click="onSelect(index)">
               <span class="ws-trace-list-seq">#{{ event.seq }}</span>
-              <span class="ws-trace-list-type">{{ event.type }}</span>
-              <span class="ws-trace-list-pid">pid {{ event.pid }}</span>
+              <span class="ws-trace-list-type">{{ eventTypeLabel(event) }}</span>
+              <span class="ws-trace-list-pid">任务 {{ event.pid }}</span>
               <span v-if="event.type === 'trap_enter'" class="ws-trace-list-field">{{ event.cause }}</span>
               <span v-else class="ws-trace-list-field">{{ event.from }}→{{ event.to }}</span>
               <span class="ws-trace-list-ts">ts {{ event.ts }}</span>
@@ -364,17 +347,29 @@ const hasEvents = computed(() => allEvents.value.length > 0)
 
 <style scoped>
 .ws-trace-viewer { display: flex; flex-direction: column; min-height: 0; height: 100%; font-size: var(--ws-text-xs); }
-.ws-trace-intro {
+.ws-trace-overview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ws-space-3);
   flex: 0 0 auto;
-  padding: var(--ws-space-2) var(--ws-space-3);
+  min-height: 52px;
+  padding: var(--ws-space-2) var(--ws-space-4);
   border-bottom: 1px solid var(--ws-line);
-  background: var(--ws-surface-alt);
+  background: var(--ws-surface-raised);
 }
-.ws-trace-intro strong { color: var(--ws-ink); font-size: var(--ws-text-sm); }
-.ws-trace-intro p {
-  margin: var(--ws-space-1) 0 0;
-  color: var(--ws-ink-muted);
-  line-height: var(--ws-leading-normal);
+.ws-trace-overview > div:first-child { display: grid; gap: 2px; }
+.ws-trace-overview strong { color: var(--ws-ink); font-size: var(--ws-text-lg); }
+.ws-trace-overview > div:first-child span { color: var(--ws-ink-faint); font-size: var(--ws-text-xs); }
+.ws-trace-stats { display: flex; gap: var(--ws-space-4); margin: 0; }
+.ws-trace-stats div { display: grid; justify-items: end; }
+.ws-trace-stats dt { color: var(--ws-ink-faint); font-size: var(--ws-text-xs); }
+.ws-trace-stats dd {
+  margin: 0;
+  color: var(--ws-ink);
+  font-family: var(--ws-font-mono);
+  font-size: var(--ws-text-base);
+  font-weight: var(--ws-weight-semibold);
 }
 .ws-trace-empty { display: flex; flex-direction: column; align-items: center; gap: var(--ws-space-2); margin: auto; max-width: 44ch; padding: var(--ws-space-3); color: var(--ws-ink-faint); text-align: center; line-height: var(--ws-leading-normal); }
 .ws-trace-empty strong { color: var(--ws-ink); font-size: var(--ws-text-sm); }
@@ -382,7 +377,7 @@ const hasEvents = computed(() => allEvents.value.length > 0)
 .ws-trace-note code { font-family: var(--ws-font-mono); }
 .ws-trace-toolbar { display: flex; flex-direction: column; gap: var(--ws-space-2); padding: var(--ws-space-2) var(--ws-space-3); border-bottom: 1px solid var(--ws-line); background: var(--ws-surface); }
 .ws-trace-toolbar-row { display: flex; align-items: center; gap: var(--ws-space-2); flex-wrap: wrap; }
-.ws-trace-view-switch { display: inline-flex; border: 1px solid var(--ws-line); border-radius: var(--ws-radius-md); overflow: hidden; }
+.ws-trace-view-switch { display: inline-flex; border: 1px solid var(--ws-line); border-radius: var(--ws-radius-sm); overflow: hidden; }
 .ws-trace-view-switch button { padding: var(--ws-space-1) var(--ws-space-2); background: transparent; color: var(--ws-ink-muted); border: 0; border-right: 1px solid var(--ws-line); font: inherit; font-size: var(--ws-text-xs); cursor: pointer; }
 .ws-trace-view-switch button:last-child { border-right: 0; }
 .ws-trace-view-switch button.active { background: var(--ws-accent-soft); color: var(--ws-accent); font-weight: var(--ws-weight-semibold); }
@@ -402,9 +397,8 @@ const hasEvents = computed(() => allEvents.value.length > 0)
 .ws-trace-detail { border-top: 1px solid var(--ws-line); padding: var(--ws-space-2) var(--ws-space-3); background: var(--ws-surface-alt); }
 .ws-trace-detail-head { display: flex; align-items: center; gap: var(--ws-space-2); flex-wrap: wrap; font-family: var(--ws-font-mono); }
 .ws-trace-detail-head strong { color: var(--ws-accent); }
-.ws-trace-detail-type { padding: 0 var(--ws-space-1); border: 1px solid var(--ws-line); border-radius: var(--ws-radius-sm); color: var(--ws-ink-muted); }
-.ws-trace-detail-pid { color: var(--ws-ink-muted); }
 .ws-trace-detail-ts { margin-left: auto; color: var(--ws-ink-faint); }
+.ws-trace-detail-meaning { margin: var(--ws-space-1) 0 0; color: var(--ws-ink); font-size: var(--ws-text-sm); line-height: var(--ws-leading-normal); }
 .ws-trace-detail-body { display: flex; flex-wrap: wrap; gap: var(--ws-space-3); margin: var(--ws-space-1) 0 0; }
 .ws-trace-detail-body div { display: flex; align-items: baseline; gap: var(--ws-space-1); }
 .ws-trace-detail-body dt { color: var(--ws-ink-faint); font-family: var(--ws-font-mono); }
@@ -425,6 +419,8 @@ const hasEvents = computed(() => allEvents.value.length > 0)
 .ws-trace-list-ts { color: var(--ws-ink-faint); }
 .ws-trace-list-trunc { margin: 0; padding: var(--ws-space-2); color: var(--ws-ink-faint); font-size: var(--ws-text-xs); }
 @media (max-width: 620px) {
+  .ws-trace-overview { align-items: flex-start; padding-inline: var(--ws-space-3); }
+  .ws-trace-stats { gap: var(--ws-space-2); }
   .ws-trace-controls { gap: var(--ws-space-1); }
   .ws-trace-pos { margin-left: 0; width: 100%; }
   .ws-trace-list button { grid-template-columns: auto auto 1fr; }

@@ -1,5 +1,21 @@
 # os-lab 项目进度总览
 
+## 2026-08-07 - Task: 净化终端输出并精简 Trace 分析界面
+
+### What was done
+- 新增流式 `TRACE_V1` 显示过滤器，支持事件帧跨 SSE 分片、连续出现以及与用户输出粘连的情况；终端和前端运行摘要默认只显示程序输出，服务端原始 `output.log`、`trace.jsonl`、事件提取与可信断言保持不变。
+- 移除终端结束时的 Trace 采集提示，机器事件只在学习支持区的 Trace 查看器中展示。
+- 重整 Trace 查看器为“关键统计 / 事件顺序或任务时间线 / 当前事件解释 / 事件列表”，将 `trap_enter`、`task_switch` 和 pid 等字段转换为学生可直接判断的中文语义，同时保留原始字段与源码跳转。
+- 删除 Trace 顶部教程段、`OpreBar.vue`、OPRE 流程、插入报告、添加到对话及相关事件接线和死代码；时间线不再显示冗长的未观测状态说明。
+- 更新工作台与 Trace 可视化文档，并为终端过滤器补充 4 组流式边界回归测试。
+
+### Testing
+- `npm test`：59/59 通过；新增 4 项覆盖普通输出、粘连 Trace、跨分片 Trace 和连续 Trace。
+- `npm run build`：通过，VitePress 客户端/服务端 bundle 与页面渲染完成。
+- `git diff --check`：通过；仅有工作区既有的 LF/CRLF 提示。
+
+---
+
 ## 2026-08-07 - Task: 重整学生端 AI 导师对话 UI
 
 ### What was done

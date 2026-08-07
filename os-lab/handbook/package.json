@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "sync": "node scripts/sync-content.mjs",
-    "test": "node --test llm-response.test.mjs lab2-contract.test.mjs lab-factory.test.mjs ../tutor/contracts.test.mjs ../tutor/cargo-diagnostics.test.mjs ../tutor/baseline.test.mjs ../tutor/trace-store.test.mjs ../tutor/harness.test.mjs ../tutor/rag-harness.test.mjs ../tutor/state-machine.test.mjs ../learning/access.test.mjs ../learning/db.test.mjs ../learning/rubric-v2.test.mjs ../learning/review-gates.test.mjs ../learning/trial-operations.test.mjs ../learning/knowledge/knowledge-store.test.mjs",
+    "test": "node --test trace-output-filter.test.mjs llm-response.test.mjs lab2-contract.test.mjs lab-factory.test.mjs ../tutor/contracts.test.mjs ../tutor/cargo-diagnostics.test.mjs ../tutor/baseline.test.mjs ../tutor/trace-store.test.mjs ../tutor/harness.test.mjs ../tutor/rag-harness.test.mjs ../tutor/state-machine.test.mjs ../learning/access.test.mjs ../learning/db.test.mjs ../learning/rubric-v2.test.mjs ../learning/review-gates.test.mjs ../learning/trial-operations.test.mjs ../learning/knowledge/knowledge-store.test.mjs",
     "test:rag-harness": "node --test ../tutor/rag-harness.test.mjs",
     "test:rag-harness:cli": "node ../tutor/rag-harness-cli.mjs",
     "knowledge:build": "python ../learning/knowledge/build_lab_chunks.py",
