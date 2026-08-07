@@ -1,0 +1,322 @@
+# Lab2 Trap 与任务切换 Prompt 分阶段评测
+
+- 评测标签：`offline-baseline`
+- 模式：`offline` / 模型：`offline-tutor`
+- 上游：`http://127.0.0.1:9/v1`
+
+## 定界阶段 · lab2-orient
+
+**学生消息**：lab2 的 trap 到底怎么写，ecall 之后发生了什么，给我讲一下流程吧
+
+**阶段提示词源**：`tutor/prompts/lab2/stage-orient.md`（lab 定制）
+
+**阶段提示词正文**：
+
+```text
+# 定界阶段
+
+帮助学生把“不会写”改写成机制问题。先要求一条初始判断，再追问用户态为何不能直接调用内核普通函数。不要进入具体 patch。
+```
+
+**服务端路由**：requested=orient → tutorState.stage=orient（gate=missing-initial-judgment）
+
+**模式/模型**：offline / offline-tutor
+
+**AI 回复**：
+
+沿控制流想：trap 发生后 sepc 指向哪条指令？如果 sret 回到同一地址，CPU 下一步又会做什么？先回答这两个问题，再定位 advance_sepc 的调用位置。
+
+**回复评分**：
+
+| 检查项 | 结果 |
+| --- | --- |
+| hasQuestion | ✅ |
+| singleQuestion | ❌ |
+| lengthOk | ✅ |
+| stageAdherence | ❌ |
+| noLeak | ✅ |
+| stageRoute | ✅ |
+| promptUsed | ✅ |
+
+**综合分**：80/100
+
+**RAG 检索**：
+
+- 候选：lexical=32，vector=40，eligible=118，fallback=无
+
+**返回知识 chunk**：
+
+| 引用 | 来源 | 章节 | 类别 | 覆盖 Lab | 检索分 |
+| --- | --- | --- | --- | --- | --- |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000005 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/二、背景知识/2.1 从 SBI 调用到系统调用 | student-safe | lab2 | 0.0395 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000003 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/一、问题场景 | student-safe | lab2 | 0.0390 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000013 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/二、背景知识/2.4 内核如何按 ABI 分发系统调用 | student-safe | lab2 | 0.0383 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000011 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/二、背景知识/2.3 trap 如何保存和恢复用户上下文 | student-safe | lab2 | 0.0367 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000006 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/二、背景知识/2.1 从 SBI 调用到系统调用 | student-safe | lab2 | 0.0364 |
+
+---
+
+## 阅读阶段 · lab2-read
+
+**学生消息**：我认为关键是 sscratch 的交换，但我没想清楚它和内核栈的关系
+
+**阶段提示词源**：`tutor/prompts/lab2/stage-read.md`（lab 定制）
+
+**阶段提示词正文**：
+
+```text
+# 阅读阶段
+
+沿 `ecall`、`TrapContext`、`sret` 追踪控制流。优先让学生把“硬件自动完成”和“内核必须完成”分成两列，并定位证据所在文件。
+```
+
+**服务端路由**：requested=read → tutorState.stage=read（gate=missing-source-evidence）
+
+**模式/模型**：offline / offline-tutor
+
+**AI 回复**：
+
+设想不用 sscratch：trap 刚发生时 sp 仍属于谁？在保存任何通用寄存器前，哪一个寄存器还能临时借用而不破坏用户现场？先用这两个问题检查栈交换的必要性。
+
+**回复评分**：
+
+| 检查项 | 结果 |
+| --- | --- |
+| hasQuestion | ✅ |
+| singleQuestion | ❌ |
+| lengthOk | ✅ |
+| stageAdherence | ❌ |
+| noLeak | ✅ |
+| stageRoute | ✅ |
+| promptUsed | ✅ |
+
+**综合分**：80/100
+
+**RAG 检索**：
+
+- 候选：lexical=11，vector=15，eligible=118，fallback=无
+
+**返回知识 chunk**：
+
+| 引用 | 来源 | 章节 | 类别 | 覆盖 Lab | 检索分 |
+| --- | --- | --- | --- | --- | --- |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000008 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/二、背景知识/2.2 用户程序如何首次进入 U-mode | student-safe | lab2 | 0.0388 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000010 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/二、背景知识/2.3 trap 如何保存和恢复用户上下文 | student-safe | lab2 | 0.0380 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000009 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/二、背景知识/2.3 trap 如何保存和恢复用户上下文 | student-safe | lab2 | 0.0234 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000007 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/二、背景知识/2.2 用户程序如何首次进入 U-mode | student-safe | lab2 | 0.0234 |
+| kb:platform-lab-packages:v1:98d66f3ef7d9:chunk:0000003 | OS Lab 结构化概念与检查点 | Trap 上下文保存与恢复 | student-safe | lab2 | 0.0231 |
+
+---
+
+## 验证阶段 · lab2-run
+
+**学生消息**：我刚跑完 lab2 的验证命令，下面是输出
+
+**阶段提示词源**：`tutor/prompts/lab2/stage-run.md`（lab 定制）
+
+**阶段提示词正文**：
+
+```text
+# 验证阶段
+
+先让学生预测三个关键输出，再运行 QEMU。只比较预测与实际的差异，帮助判断问题属于加载、trap 返回、系统调用还是调度。
+```
+
+**服务端路由**：requested=run → tutorState.stage=run（gate=missing-trusted-run）
+
+**模式/模型**：offline / offline-tutor
+
+**AI 回复**：
+
+先写下你预期会看到的三个关键输出，再运行 cargo run -p kernel --features lab2 --release。完成后只贴和预期不同的部分，我们用差异定位下一步。
+
+**回复评分**：
+
+| 检查项 | 结果 |
+| --- | --- |
+| hasQuestion | ❌ |
+| singleQuestion | ✅ |
+| lengthOk | ✅ |
+| stageAdherence | ✅ |
+| noLeak | ✅ |
+| stageRoute | ✅ |
+| promptUsed | ✅ |
+
+**综合分**：90/100
+
+**RAG 检索**：
+
+- 候选：lexical=12，vector=22，eligible=118，fallback=无
+
+**返回知识 chunk**：
+
+| 引用 | 来源 | 章节 | 类别 | 覆盖 Lab | 检索分 |
+| --- | --- | --- | --- | --- | --- |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000022 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/四、验证命令 | student-safe | lab2 | 0.0393 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000003 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/一、问题场景 | student-safe | lab2 | 0.0393 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000001 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/零、开始之前 | student-safe | lab2 | 0.0372 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000006 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/二、背景知识/2.1 从 SBI 调用到系统调用 | student-safe | lab2 | 0.0356 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000013 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/二、背景知识/2.4 内核如何按 ABI 分发系统调用 | student-safe | lab2 | 0.0347 |
+
+---
+
+## 排错阶段 · lab2-debug
+
+**学生消息**：Yield round 只有 0 次，我猜是调度器没把任务标成 Ready
+
+**阶段提示词源**：`tutor/prompts/lab2/stage-debug.md`（lab 定制）
+
+**阶段提示词正文**：
+
+```text
+# 排错阶段
+
+学生必须先提供精确现象、当前假设和能证伪它的最小实验。信息不足时只追问缺失项；信息充分后给一层检查路径，不直接修改完整代码。
+```
+
+**服务端路由**：requested=debug → tutorState.stage=debug（gate=missing-debug-hypothesis）
+
+**模式/模型**：offline / offline-tutor
+
+**AI 回复**：
+
+把排错拆成证据链：精确现象、当前假设、能证伪它的最小实验。先补齐这三项，我再给下一层提示。
+
+**回复评分**：
+
+| 检查项 | 结果 |
+| --- | --- |
+| hasQuestion | ❌ |
+| singleQuestion | ✅ |
+| lengthOk | ✅ |
+| stageAdherence | ✅ |
+| noLeak | ✅ |
+| stageRoute | ✅ |
+| promptUsed | ✅ |
+
+**综合分**：90/100
+
+**RAG 检索**：
+
+- 候选：lexical=14，vector=21，eligible=118，fallback=无
+
+**返回知识 chunk**：
+
+| 引用 | 来源 | 章节 | 类别 | 覆盖 Lab | 检索分 |
+| --- | --- | --- | --- | --- | --- |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000018 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/三、实验任务/任务一：先完成教师下发的 fill/debug 变体，再跑通内核 | student-safe | lab2 | 0.0393 |
+| kb:platform-lab-packages:v1:98d66f3ef7d9:chunk:0000001 | OS Lab 结构化概念与检查点 | 协作式轮转调度 | student-safe | lab2 | 0.0393 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000019 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/三、实验任务/任务一：先完成教师下发的 fill/debug 变体，再跑通内核 | student-safe | lab2 | 0.0388 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000014 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/二、背景知识/2.5 任务状态与 CPU 调度 | student-safe | lab2 | 0.0378 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000022 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/四、验证命令 | student-safe | lab2 | 0.0371 |
+
+---
+
+## 复盘阶段 · lab2-reflect
+
+**学生消息**：复盘：我独立判断了 sepc 推进，AI 提醒了栈切换，我用 trace 验证了
+
+**阶段提示词源**：`tutor/prompts/lab2/stage-reflect.md`（lab 定制）
+
+**阶段提示词正文**：
+
+```text
+# 复盘阶段
+
+要求学生分别写清独立形成的判断、AI 提供的关键提醒、用于验证的代码路径或运行输出。帮助压缩表达，但不要替学生虚构证据。
+```
+
+**服务端路由**：requested=reflect → tutorState.stage=reflect（gate=missing-reflection-evidence）
+
+**模式/模型**：offline / offline-tutor
+
+**AI 回复**：
+
+沿控制流想：trap 发生后 sepc 指向哪条指令？如果 sret 回到同一地址，CPU 下一步又会做什么？先回答这两个问题，再定位 advance_sepc 的调用位置。
+
+**回复评分**：
+
+| 检查项 | 结果 |
+| --- | --- |
+| hasQuestion | ✅ |
+| singleQuestion | ❌ |
+| lengthOk | ✅ |
+| stageAdherence | ❌ |
+| noLeak | ✅ |
+| stageRoute | ✅ |
+| promptUsed | ✅ |
+
+**综合分**：80/100
+
+**RAG 检索**：
+
+- 候选：lexical=10，vector=11，eligible=118，fallback=无
+
+**返回知识 chunk**：
+
+| 引用 | 来源 | 章节 | 类别 | 覆盖 Lab | 检索分 |
+| --- | --- | --- | --- | --- | --- |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000010 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/二、背景知识/2.3 trap 如何保存和恢复用户上下文 | student-safe | lab2 | 0.0393 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000009 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/二、背景知识/2.3 trap 如何保存和恢复用户上下文 | student-safe | lab2 | 0.0378 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000011 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/二、背景知识/2.3 trap 如何保存和恢复用户上下文 | student-safe | lab2 | 0.0234 |
+| kb:platform-lab-packages:v1:98d66f3ef7d9:chunk:0000003 | OS Lab 结构化概念与检查点 | Trap 上下文保存与恢复 | student-safe | lab2 | 0.0229 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000000 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务 | student-safe | lab2 | 0.0226 |
+
+---
+
+## 迁移阶段 · lab2-transfer
+
+**学生消息**：如果 sscratch 不换栈，任务切换还成立吗
+
+**阶段提示词源**：`tutor/prompts/stages/stage-transfer.md`（通用兜底）
+
+**阶段提示词正文**：
+
+```text
+# 迁移阶段
+
+目标：改变一个关键条件，让学生重新解释机制，确认理解不是对原题答案的复述。
+
+- 只提出一个迁移问题。
+- 优先改变调度条件、特权边界、地址空间或失败模式。
+- 要求学生先预测，再说明需要什么证据验证。
+- 不把原实验通过直接等同于迁移能力。
+```
+
+**服务端路由**：requested=transfer → tutorState.stage=transfer（gate=transfer-check）
+
+**模式/模型**：offline / offline-tutor
+
+**AI 回复**：
+
+设想不用 sscratch：trap 刚发生时 sp 仍属于谁？在保存任何通用寄存器前，哪一个寄存器还能临时借用而不破坏用户现场？先用这两个问题检查栈交换的必要性。
+
+**回复评分**：
+
+| 检查项 | 结果 |
+| --- | --- |
+| hasQuestion | ✅ |
+| singleQuestion | ❌ |
+| lengthOk | ✅ |
+| stageAdherence | ❌ |
+| noLeak | ✅ |
+| stageRoute | ✅ |
+| promptUsed | ✅ |
+
+**综合分**：80/100
+
+**RAG 检索**：
+
+- 候选：lexical=8，vector=18，eligible=118，fallback=无
+
+**返回知识 chunk**：
+
+| 引用 | 来源 | 章节 | 类别 | 覆盖 Lab | 检索分 |
+| --- | --- | --- | --- | --- | --- |
+| kb:platform-lab-packages:v1:98d66f3ef7d9:chunk:0000003 | OS Lab 结构化概念与检查点 | Trap 上下文保存与恢复 | student-safe | lab2 | 0.0383 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000017 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/三、实验任务 | student-safe | lab2 | 0.0355 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000010 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/二、背景知识/2.3 trap 如何保存和恢复用户上下文 | student-safe | lab2 | 0.0234 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000009 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/二、背景知识/2.3 trap 如何保存和恢复用户上下文 | student-safe | lab2 | 0.0231 |
+| kb:platform-lab-manuals:v2:7bf4c507b7f4:chunk:lab2:000022 | OS Lab 本地实验手册 | 实验 2：中断处理与多任务/四、验证命令 | student-safe | lab2 | 0.0229 |
+
+---
