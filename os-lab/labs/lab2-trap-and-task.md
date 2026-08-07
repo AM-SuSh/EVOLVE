@@ -562,14 +562,14 @@ Lab2 复用了初赛阶段留下的 `kernel/src/task.rs` 作业。老师可能�
 
 **第二步（fill）：补全调度器**
 
-需要修改的位置：`kernel/src/task.rs` 中的 `TaskManager::find_next_task`，当前是 `todo!("Lab2：在这里实现你的调度器（见上方提示）")`。
+需要修改的位置：`kernel/src/task.rs` 中的 `TaskManager::find_next_task`，当前是 `todo!("Lab2：实现从 current+1 起的轮转调度（见上方提示）")`。
 
-补全要求：
+补全要求（本变体按**轮转**实现，从 `current + 1` 起扫描）：
 
 - 只从 `task_status == TaskStatus::Ready` 的任务里选择；
 - 选中后更新 `self.current` 为选中下标；
 - 没有可运行任务时返回 `None`；
-- 可以从 0 号槽扫描，也可以从 `self.current + 1` 循环扫描；本实验默认输出不一定能直接看出两种写法的差别，建议在报告中从代码逻辑说明，或临时构造多个同时 Ready 的任务来观察。
+- 从 `(self.current + 1) % num_app` 起绕一圈扫描（不要只从 0 扫到尾）；默认 hello/power/yield 顺序 batch 下输出不一定能直接看出与「从 0 扫」的差别，报告里应用循环边界说明，或临时构造多 Ready 场景观察；
 - 只补 `find_next_task` 的函数体；不要改动 `run_next_task`、`all_exited` 或用户程序来绕过调度。
 
 未补全时 `cargo run` 会在调用 `find_next_task` 时 panic；补全后才能看到三个用户程序依次完成。

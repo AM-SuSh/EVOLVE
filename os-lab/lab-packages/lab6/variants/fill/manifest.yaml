@@ -1,0 +1,43 @@
+# lab6 fill 变体（加强版）
+
+id: lab6-fill
+lab: lab6
+variant: fill
+version: 1.1.0
+
+learning_goal: |
+  学生实现硬链接元数据校验（基于链接前 nlink 推算）。
+
+target_concepts:
+  - os.fs.hard-link
+
+student_file: user/src/bin/link_test.rs
+source_template: ../../../scaffold/exercises/lab6/fill/user/src/bin/link_test.rs
+
+what_is_blank:
+  - symbol: check_after_link / check_after_unlink_alias
+    hint_in_source: true
+
+success_criteria:
+  recipe: lab6.verify.v1
+  assertions: [link-pass]
+
+negative_tests:
+  - id: leave-todo
+    description: 未实现（仍 todo!）则编译或运行失败
+    expect_fail: true
+
+hint_ladder:
+  - level: 0
+    when: 尚未描述协议/循环
+    say: 先用自己的话写出要补的步骤，再对照函数注释。
+  - level: 1
+    when: 方向正确但仍卡住
+    say: 对照手册背景知识，用最小改动验证每一步假设。
+  - level: 2
+    when: 能编译但断言失败
+    say: 对照预期输出与边界（关闭哪一端、nlink 推算、是否持锁）。
+
+report_prompts:
+  - 你实现的关键步骤是什么？用测例输出证明正确。
+  - 若某一步顺序反了（例如先关错管道端、未持锁），会发生什么？

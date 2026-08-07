@@ -28,9 +28,13 @@ starter_files:
     - user/src/bin/signal_child.rs
     - user/src/bin/signal_mask_test.rs
   editable_by_variant:
+    fill: [user/src/bin/signal_mask_test.rs]
     debug: [user/src/bin/signal_mask_test.rs]
   generated: [Cargo.toml, kernel/Cargo.toml, user/Cargo.toml]
 variants:
+  fill:
+    manifest: variants/fill/manifest.yaml
+    source: ../../scaffold/exercises/lab7/fill/user/src/bin/signal_mask_test.rs
   debug:
     manifest: variants/debug/manifest.yaml
     source: ../../scaffold/exercises/lab7/debug/user/src/bin/signal_mask_test.rs

@@ -38,6 +38,16 @@
         "observable_trace": []
       },
       "variants": {
+        "fill": {
+          "label": "学生遍历用户区并 remap 补回 U 位，理解用户页权限与 U-mode 访存。",
+          "files": [
+            "kernel/src/mm.rs"
+          ],
+          "sources": {
+            "kernel/src/mm.rs": "scaffold/exercises/lab3/fill/kernel/src/mm.rs"
+          },
+          "manifest": "lab-packages/lab3/variants/fill/manifest.yaml"
+        },
         "debug": {
           "label": "学生按现象→假设→最小实验排查：用户程序无法正确取指/访存。",
           "files": [
@@ -116,7 +126,7 @@
       },
       "variants": {
         "fill": {
-          "label": "学生独立实现 `TaskManager::find_next_task`，理解 Ready 集合选取与",
+          "label": "学生按轮转实现 find_next_task：从 current+1 扫描 Ready，并更新 current。",
           "files": [
             "kernel/src/task.rs"
           ],
@@ -193,6 +203,16 @@
         "observable_trace": []
       },
       "variants": {
+        "fill": {
+          "label": "学生实现双子进程 wait 回收，区分 waitpid 返回值与 exit_code。",
+          "files": [
+            "user/src/bin/fork_test.rs"
+          ],
+          "sources": {
+            "user/src/bin/fork_test.rs": "scaffold/exercises/lab4/fill/user/src/bin/fork_test.rs"
+          },
+          "manifest": "lab-packages/lab4/variants/fill/manifest.yaml"
+        },
         "debug": {
           "label": "区分 waitpid 返回的子进程 pid 与独立写回的 exit code，修复错误的通过条件。",
           "files": [
@@ -251,13 +271,23 @@
         "observable_trace": []
       },
       "variants": {
-        "debug": {
-          "label": "用 open/read 的分层证据定位文件名查找失败，而不是把问题误归因于 fd 或管道。",
+        "fill": {
+          "label": "学生补全管道两端关闭与读写协议，理解 pipe + fork 协作。",
           "files": [
-            "user/src/bin/fs_test.rs"
+            "user/src/bin/pipe_test.rs"
           ],
           "sources": {
-            "user/src/bin/fs_test.rs": "scaffold/exercises/lab5/debug/user/src/bin/fs_test.rs"
+            "user/src/bin/pipe_test.rs": "scaffold/exercises/lab5/fill/user/src/bin/pipe_test.rs"
+          },
+          "manifest": "lab-packages/lab5/variants/fill/manifest.yaml"
+        },
+        "debug": {
+          "label": "学生排查 fork 后管道关错端：子进程应关写端再读，而不是关掉读端。",
+          "files": [
+            "user/src/bin/pipe_test.rs"
+          ],
+          "sources": {
+            "user/src/bin/pipe_test.rs": "scaffold/exercises/lab5/debug/user/src/bin/pipe_test.rs"
           },
           "manifest": "lab-packages/lab5/variants/debug/manifest.yaml"
         }
@@ -326,6 +356,16 @@
         "observable_trace": []
       },
       "variants": {
+        "fill": {
+          "label": "学生实现硬链接元数据校验（用链接前 nlink 推算期望值）。",
+          "files": [
+            "user/src/bin/link_test.rs"
+          ],
+          "sources": {
+            "user/src/bin/link_test.rs": "scaffold/exercises/lab6/fill/user/src/bin/link_test.rs"
+          },
+          "manifest": "lab-packages/lab6/variants/fill/manifest.yaml"
+        },
         "debug": {
           "label": "用 fstat 证据解释硬链接共享 inode 与 nlink 计数，而不是把 linkat 当成文件复制。",
           "files": [
@@ -384,6 +424,16 @@
         "observable_trace": []
       },
       "variants": {
+        "fill": {
+          "label": "学生实现屏蔽/投递/解除屏蔽完整信号协议。",
+          "files": [
+            "user/src/bin/signal_mask_test.rs"
+          ],
+          "sources": {
+            "user/src/bin/signal_mask_test.rs": "scaffold/exercises/lab7/fill/user/src/bin/signal_mask_test.rs"
+          },
+          "manifest": "lab-packages/lab7/variants/fill/manifest.yaml"
+        },
         "debug": {
           "label": "区分信号 pending 与 delivery，修复未真正屏蔽 SIGUSR1 的掩码设置。",
           "files": [
@@ -462,6 +512,16 @@
         "observable_trace": []
       },
       "variants": {
+        "fill": {
+          "label": "学生实现互斥临界区，并创建两个 worker 累加共享计数到 50。",
+          "files": [
+            "user/src/bin/lab8_integration_test.rs"
+          ],
+          "sources": {
+            "user/src/bin/lab8_integration_test.rs": "scaffold/exercises/lab8/fill/user/src/bin/lab8_integration_test.rs"
+          },
+          "manifest": "lab-packages/lab8/variants/fill/manifest.yaml"
+        },
         "debug": {
           "label": "用最终共享计数不变量区分互斥失效与每线程工作量的 off-by-one 错误。",
           "files": [

@@ -1,3 +1,4 @@
+//! 【Lab4 任务：排错】父进程把 wait 结果与 exit_code 搞混了。
 //! Lab4 debug variant: the parent confuses the wait result with the exit code.
 //!
 //! 【Lab4 任务：排错】`fork_test` 缺少 `fork_test pass`。
