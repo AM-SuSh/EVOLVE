@@ -27,7 +27,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readFileSync } from 'node:fs'
-import { cp, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 
 const OS_LAB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const REPO_ROOT = path.resolve(OS_LAB_ROOT, '..')
@@ -332,7 +332,7 @@ export async function listStudents() {
   }
   const students = []
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue
     const state = await readState(path.join(STUDENTS_ROOT, entry.name))
     students.push({
       user: entry.name,
@@ -368,6 +368,46 @@ function resolveStudentFilePath(studentRoot, relative) {
   const rootWithSep = studentRoot.endsWith(path.sep) ? studentRoot : `${studentRoot}${path.sep}`
   if (!full.startsWith(rootWithSep)) throw new Error(`拒绝越界路径: ${relative}`)
   return full
+}
+
+function labSnapshotDir(studentRoot, labId) {
+  return path.join(path.dirname(studentRoot), '.snapshots', path.basename(studentRoot), labId)
+}
+
+async function collectRelativeFiles(root, current = root, prefix = '', result = []) {
+  for (const entry of await readdir(current, { withFileTypes: true })) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name
+    const full = path.join(current, entry.name)
+    if (entry.isDirectory()) {
+      await collectRelativeFiles(root, full, relative, result)
+    } else if (entry.isFile()) {
+      result.push(relative)
+    }
+  }
+  return result
+}
+
+async function saveLabSnapshot(studentRoot, labId) {
+  const target = labSnapshotDir(studentRoot, labId)
+  await rm(target, { recursive: true, force: true })
+  await mkdir(path.dirname(target), { recursive: true })
+  await cp(studentRoot, target, {
+    recursive: true,
+    filter: (source) => {
+      const relative = path.relative(studentRoot, source)
+      const parts = relative.split(path.sep)
+      return !parts.includes('target') && !parts.includes('.git') && !parts.includes('.snapshots')
+    },
+  })
+}
+
+async function restoreLabSnapshot(studentRoot, labId) {
+  const source = labSnapshotDir(studentRoot, labId)
+  const files = await collectRelativeFiles(source)
+  await rm(studentRoot, { recursive: true, force: true })
+  await mkdir(studentRoot, { recursive: true })
+  await cp(source, studentRoot, { recursive: true })
+  return files
 }
 
 /** 递归复制目录，跳过已存在的文件（学生的修改优先）。 */
@@ -601,6 +641,15 @@ export async function resetLab(user, labId) {
   }
 
   const log = []
+  const snapshotDir = labSnapshotDir(studentRoot, labId)
+  const snapshotFiles = (await exists(snapshotDir)) ? await collectRelativeFiles(snapshotDir) : []
+  if (snapshotFiles.length) {
+    const restored = await restoreLabSnapshot(studentRoot, labId)
+    log.push(`${labId} 已恢复到下发时的完整工作区快照`)
+    return { ok: true, labId, count: restored.length, files: restored, snapshot: true, log }
+  }
+
+  log.push(`${labId} 没有历史完整快照，回退为基线文件恢复`)
   const restored = []
   for (const baseline of await workspaceBaselines(safe)) {
     if (baseline.labId !== labId) continue
@@ -618,7 +667,7 @@ export async function resetLab(user, labId) {
   if (!restored.length) return { ok: false, log: [`${labId} 没有可恢复的文件`] }
 
   log.push(`${labId} 已恢复到刚刚下发状态`)
-  return { ok: true, labId, count: restored.length, files: restored, log }
+  return { ok: true, labId, count: restored.length, files: restored, snapshot: false, log }
 }
 
 /* -- 应用一个 Lab ------------------------------------------------------------ */
@@ -672,6 +721,8 @@ async function applyLab(studentRoot, labId, state, log, explicitVariant, effecti
   state.applied.push(labId)
   await regenerateManifests(studentRoot, state, log)
   await writeState(studentRoot, state)
+  await saveLabSnapshot(studentRoot, labId)
+  log.push(`已保存 ${labId} 下发时的完整工作区快照`)
   log.push(`✔ ${labId} 已就位：${lab.summary}`)
 }
 

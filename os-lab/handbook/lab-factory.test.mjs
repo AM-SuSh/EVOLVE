@@ -5,7 +5,7 @@ import path from 'node:path'
 import test, { after } from 'node:test'
 
 import { inspectLabPackage, listPublishedLabs, publishLabPackage, scaffoldDryRun, testLabPackage } from './lab-factory.mjs'
-import { applyNext, getExerciseCatalog } from '../scripts/scaffold.mjs'
+import { applyNext, getExerciseCatalog, resetLab } from '../scripts/scaffold.mjs'
 
 const repositoryRoot = path.resolve(new URL('../', import.meta.url).pathname.slice(process.platform === 'win32' ? 1 : 0))
 const temporary = await mkdtemp(path.join(os.tmpdir(), 'os-lab-factory-contract-'))
@@ -58,6 +58,94 @@ test('C6 issues the published Lab2 remedial variant through the normal scaffold 
   } finally {
     if (previousStudentsRoot === undefined) delete process.env.OS_LAB_STUDENTS_ROOT
     else process.env.OS_LAB_STUDENTS_ROOT = previousStudentsRoot
+  }
+})
+
+test('C6 reset restores the full workspace snapshot taken at issue time', async () => {
+  const previousStudentsRoot = process.env.OS_LAB_STUDENTS_ROOT
+  const previousCatalogPath = process.env.OS_LAB_FACTORY_CATALOG_PATH
+  const studentsRoot = path.join(temporary, 'reset-students')
+  process.env.OS_LAB_STUDENTS_ROOT = studentsRoot
+  process.env.OS_LAB_FACTORY_CATALOG_PATH = path.join(repositoryRoot, 'lab-packages', 'published.json')
+  try {
+    const teacher = {
+      openLab: 'lab3',
+      assignments: { lab2: 'fill', lab3: 'debug' },
+    }
+    assert.equal((await applyNext('reset-student', undefined, teacher)).lab, 'lab1')
+    assert.equal((await applyNext('reset-student', undefined, teacher)).lab, 'lab2')
+    assert.equal((await applyNext('reset-student', undefined, teacher)).lab, 'lab3')
+
+    const studentRoot = path.join(studentsRoot, 'reset-student')
+    const taskPath = path.join(studentRoot, 'kernel', 'src', 'task.rs')
+    const mmPath = path.join(studentRoot, 'kernel', 'src', 'mm.rs')
+    const cargoPath = path.join(studentRoot, 'Cargo.toml')
+    const taskBaseline = await readFile(taskPath, 'utf8')
+    const mmBaseline = await readFile(mmPath, 'utf8')
+    const cargoBaseline = await readFile(cargoPath, 'utf8')
+    const extraPath = path.join(studentRoot, 'user', 'src', 'bin', 'after_lab3_extra.rs')
+    await writeFile(taskPath, `${taskBaseline}\n// lab2 user edit\n`, 'utf8')
+    await writeFile(mmPath, `${mmBaseline}\n// lab3 user edit\n`, 'utf8')
+    await writeFile(cargoPath, cargoBaseline.replace('[workspace]', '# user edit\n[workspace]'), 'utf8')
+    await writeFile(extraPath, '// added after lab3 was issued\n', 'utf8')
+
+    const lab3Reset = await resetLab('reset-student', 'lab3')
+    assert.equal(lab3Reset.ok, true, lab3Reset.log?.join('\n'))
+    assert.equal(lab3Reset.snapshot, true)
+    assert.equal(await readFile(taskPath, 'utf8'), taskBaseline)
+    assert.equal(await readFile(mmPath, 'utf8'), mmBaseline)
+    assert.equal(await readFile(cargoPath, 'utf8'), cargoBaseline)
+    await assert.rejects(readFile(extraPath, 'utf8'))
+    const stateAfterLab3Reset = JSON.parse(await readFile(path.join(studentRoot, '.scaffold-state.json'), 'utf8'))
+    assert.deepEqual(stateAfterLab3Reset.applied, ['lab1', 'lab2', 'lab3'])
+
+    await writeFile(taskPath, `${taskBaseline}\n// lab2 edit after lab3 reset\n`, 'utf8')
+    const lab2Reset = await resetLab('reset-student', 'lab2')
+    assert.equal(lab2Reset.ok, true, lab2Reset.log?.join('\n'))
+    assert.equal(lab2Reset.snapshot, true)
+    assert.equal(await readFile(taskPath, 'utf8'), taskBaseline)
+    await assert.rejects(readFile(mmPath, 'utf8'))
+    const stateAfterLab2Reset = JSON.parse(await readFile(path.join(studentRoot, '.scaffold-state.json'), 'utf8'))
+    assert.deepEqual(stateAfterLab2Reset.applied, ['lab1', 'lab2'])
+  } finally {
+    if (previousStudentsRoot === undefined) delete process.env.OS_LAB_STUDENTS_ROOT
+    else process.env.OS_LAB_STUDENTS_ROOT = previousStudentsRoot
+    if (previousCatalogPath === undefined) delete process.env.OS_LAB_FACTORY_CATALOG_PATH
+    else process.env.OS_LAB_FACTORY_CATALOG_PATH = previousCatalogPath
+  }
+})
+
+test('C6 reset falls back to baseline restore when snapshot is missing', async () => {
+  const previousStudentsRoot = process.env.OS_LAB_STUDENTS_ROOT
+  const previousCatalogPath = process.env.OS_LAB_FACTORY_CATALOG_PATH
+  const studentsRoot = path.join(temporary, 'fallback-reset-students')
+  process.env.OS_LAB_STUDENTS_ROOT = studentsRoot
+  process.env.OS_LAB_FACTORY_CATALOG_PATH = path.join(repositoryRoot, 'lab-packages', 'published.json')
+  try {
+    const teacher = { openLab: 'lab2', assignments: { lab2: 'fill' } }
+    assert.equal((await applyNext('fallback-student', undefined, teacher)).lab, 'lab1')
+    assert.equal((await applyNext('fallback-student', undefined, teacher)).lab, 'lab2')
+
+    const studentRoot = path.join(studentsRoot, 'fallback-student')
+    const taskPath = path.join(studentRoot, 'kernel', 'src', 'task.rs')
+    const taskBaseline = await readFile(taskPath, 'utf8')
+    await rm(path.join(studentsRoot, '.snapshots', 'fallback-student', 'lab2'), {
+      recursive: true,
+      force: true,
+    })
+    await writeFile(taskPath, `${taskBaseline}\n// should be reset\n`, 'utf8')
+
+    const reset = await resetLab('fallback-student', 'lab2')
+    assert.equal(reset.ok, true, reset.log?.join('\n'))
+    assert.equal(reset.snapshot, false)
+    assert.equal(await readFile(taskPath, 'utf8'), taskBaseline)
+    const state = JSON.parse(await readFile(path.join(studentRoot, '.scaffold-state.json'), 'utf8'))
+    assert.deepEqual(state.applied, ['lab1', 'lab2'])
+  } finally {
+    if (previousStudentsRoot === undefined) delete process.env.OS_LAB_STUDENTS_ROOT
+    else process.env.OS_LAB_STUDENTS_ROOT = previousStudentsRoot
+    if (previousCatalogPath === undefined) delete process.env.OS_LAB_FACTORY_CATALOG_PATH
+    else process.env.OS_LAB_FACTORY_CATALOG_PATH = previousCatalogPath
   }
 })
 
