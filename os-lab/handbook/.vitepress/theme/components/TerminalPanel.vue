@@ -12,7 +12,14 @@ defineProps<{
   dark?: boolean
 }>()
 
-type RunAssertion = { id: string; label: string; passed: boolean; expected: string; observed: string }
+type RunAssertion = {
+  id: string
+  label: string
+  passed: boolean
+  expected: string
+  observed: string
+  hint?: string
+}
 
 const emit = defineEmits<{
   (event: 'run-finished', payload: {

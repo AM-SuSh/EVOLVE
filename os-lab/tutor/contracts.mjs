@@ -47,7 +47,9 @@ export function validateAssertion(assertion) {
       typeof assertion.expected === 'string' &&
       assertion.expected.length <= 2000 &&
       typeof assertion.observed === 'string' &&
-      assertion.observed.length <= 2000,
+      assertion.observed.length <= 2000 &&
+      (typeof assertion.hint === 'undefined' ||
+        (typeof assertion.hint === 'string' && assertion.hint.length > 0 && assertion.hint.length <= 2000)),
   )
 }
 

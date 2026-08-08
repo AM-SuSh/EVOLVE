@@ -3,7 +3,6 @@ import { computed, onMounted, ref, watch } from 'vue'
 import {
   ArrowDown,
   ArrowUp,
-  Factory,
   FileText,
   Megaphone,
   Plus,
@@ -32,8 +31,8 @@ import {
  * 以「班级」为主视角发布当前 Lab 的作业：
  *  - 任务类型可插拔：来自 scaffold/exercises/<lab>/ 的变体（补代码 fill、排错 debug…），
  *    新变体放进目录即自动出现在下拉里；
- *  - 每个班级独立一行：A 班留 fill、B 班留 debug 互不影响，也可跟随全局默认；
- *  - 附带开放进度、个别学生调整、作业公告与报告版式布置。
+ *  - 班级用下拉选择：老师先在这里创建班级，学生注册时只能从这些班级中选择；
+ *  - 附带按范围分发进度、个别学生调整、作业公告与报告版式布置。
  */
 const props = defineProps<{ lab: TutorLab; endpoint: string; variantHint?: string }>()
 const emit = defineEmits<{ (event: 'notice', text: string): void }>()
@@ -52,6 +51,7 @@ interface Overview {
     classes: Record<string, ScopeConfig>
     students: Record<string, ScopeConfig>
   }
+  classNames: string[]
   students: Array<{ user: string; className: string }>
   labs: string[]
   exercises: Record<string, { default: string; variants: Array<{ name: string; label: string }> }>
@@ -65,6 +65,8 @@ const noteOk = ref(false)
 /* 每个作用域一份任务类型草稿：'' = 全局默认，其余为班级名 / student:用户名。 */
 const variantDrafts = ref<Record<string, string>>({})
 const studentSel = ref('')
+const selectedClass = ref('')
+const newClassName = ref('')
 const noticeScope = ref('')
 const noticeDraft = ref('')
 
@@ -99,10 +101,21 @@ const reportPreview = computed(() => {
   return lines.join('\n')
 })
 
-const classList = computed(() =>
-  [...new Set((overview.value?.students || []).map((s) => s.className).filter(Boolean))],
-)
-const studentList = computed(() => (overview.value?.students || []).map((s) => s.user))
+const classList = computed(() => {
+  const serverClasses = overview.value?.classNames
+  if (Array.isArray(serverClasses) && serverClasses.length) return serverClasses
+  const names = new Set(Object.keys(overview.value?.config.classes || {}))
+  for (const student of overview.value?.students || []) {
+    const className = String(student.className || '').trim()
+    if (className) names.add(className)
+  }
+  return [...names].sort((a, b) => a.localeCompare(b, 'zh-CN'))
+})
+const studentList = computed(() => {
+  const students = overview.value?.students || []
+  if (!selectedClass.value) return students.map((s) => s.user)
+  return students.filter((s) => s.className === selectedClass.value).map((s) => s.user)
+})
 const defaultVariant = computed(() => overview.value?.exercises?.[props.lab.id]?.default || '')
 const variants = computed(() =>
   (overview.value?.exercises?.[props.lab.id]?.variants || []).map((v) => ({
@@ -110,16 +123,6 @@ const variants = computed(() =>
     label: v.name === defaultVariant.value ? `${v.label}（默认）` : v.label,
   })),
 )
-const factoryHint = computed(() => {
-  const hint = props.variantHint?.trim() || ''
-  if (!hint || !overview.value || !variants.value.some((v) => v.name === hint)) return ''
-  return hint
-})
-const factoryHintResolved = computed(() => {
-  const hint = factoryHint.value
-  if (!hint) return false
-  return isOpen(undefined) && assignedVariant(undefined)[0] === hint
-})
 const targetCount = computed(() => classList.value.length + 1)
 const openTargetCount = computed(() => {
   const entries: Array<ScopeConfig | undefined> = [
@@ -133,12 +136,12 @@ function labIndex(labId: string) {
   return (overview.value?.labs || []).indexOf(labId)
 }
 
-/** 该作用域实际生效的开放进度（覆盖 > 全局）。 */
+/** 该作用域实际生效的分发进度（覆盖 > 全局）。 */
 function effectiveOpenLab(entry?: ScopeConfig) {
   return entry?.openLab || overview.value?.config.openLab || ''
 }
 
-/** 本实验对该作用域是否已开放。 */
+/** 本实验对该作用域是否已分发。 */
 function isOpen(entry?: ScopeConfig) {
   return labIndex(effectiveOpenLab(entry)) >= labIndex(props.lab.id)
 }
@@ -186,6 +189,7 @@ async function load() {
     const response = await fetch(`${props.endpoint}/teacher/overview`, { headers: authHeaders() })
     if (response.ok) {
       overview.value = await response.json()
+      if (selectedClass.value && !classList.value.includes(selectedClass.value)) selectedClass.value = ''
       seedVariantHint()
       if (!noticeScope.value) noticeDraft.value = overview.value?.config.notice || ''
       await loadReportTemplate()
@@ -211,9 +215,10 @@ async function publish(
   extra: Record<string, unknown>,
   okText: string,
 ) {
-  if (busy.value) return
+  if (busy.value) return false
   busy.value = true
   note.value = ''
+  let ok = false
   try {
     const response = await fetch(`${props.endpoint}/teacher/config`, {
       method: 'POST',
@@ -222,6 +227,7 @@ async function publish(
     })
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(payload?.error || `服务返回 ${response.status}`)
+    ok = true
     note.value = okText
     noteOk.value = true
     emit('notice', okText)
@@ -231,6 +237,26 @@ async function publish(
     noteOk.value = false
   } finally {
     busy.value = false
+  }
+  return ok
+}
+
+async function createClass() {
+  const name = newClassName.value.trim()
+  if (!name) return
+  if (classList.value.includes(name)) {
+    note.value = `班级 ${name} 已存在。`
+    noteOk.value = false
+    return
+  }
+  const ok = await publish(
+    { type: 'class', id: name },
+    { createClass: true },
+    `已创建班级：${name}。`,
+  )
+  if (ok) {
+    newClassName.value = ''
+    selectedClass.value = name
   }
 }
 
@@ -257,31 +283,16 @@ async function assignTo(key: string) {
   )
 }
 
-/** 开放本实验：把阶段代码下发到当前 Lab。 */
+/** 分发本实验：把阶段代码分发到当前 Lab。 */
 async function openTo(key: string) {
-  await publish(scopeOf(key), { openLab: props.lab.id }, `${scopeName(key)}：已开放到 ${props.lab.id}。`)
+  await publish(scopeOf(key), { openLab: props.lab.id }, `${scopeName(key)}：已分发到 ${props.lab.id}。`)
 }
 
 async function openAndDistributeVariant() {
   const hint = variantDrafts.value['']
   if (!hint || busy.value) return
   await openTo('')
-  if (noteOk.value && variantDrafts.value['']) {
-    await assignTo('')
-    if (noteOk.value) clearSavedFactoryPublish()
-  }
-}
-
-function clearSavedFactoryPublish() {
-  if (typeof localStorage === 'undefined') return
-  try {
-    const saved = JSON.parse(localStorage.getItem('os-lab-factory-publish-saved-v1') || 'null')
-    if (saved?.labId === props.lab.id && saved?.variant === props.variantHint?.trim()) {
-      localStorage.removeItem('os-lab-factory-publish-saved-v1')
-    }
-  } catch {
-    /* ignore malformed local record */
-  }
+  if (noteOk.value && variantDrafts.value['']) await assignTo('')
 }
 
 async function publishNotice() {
@@ -378,6 +389,10 @@ watch(noticeScope, (scope) => {
     : overview.value.config.notice || ''
 })
 
+watch(selectedClass, () => {
+  if (studentSel.value && !studentList.value.includes(studentSel.value)) studentSel.value = ''
+})
+
 watch(
   () => props.lab.id,
   () => {
@@ -402,26 +417,9 @@ onMounted(load)
 
     <p v-if="note" class="ws-pub-note" :class="{ ok: noteOk }">{{ note }}</p>
 
-    <div v-if="false" class="ws-pub-factory-hint">
-      <Factory :size="16" aria-hidden="true" />
-      <div>
-        <strong>工厂发布待下发</strong>
-        <span>
-          上次发布 <code>{{ factoryHint }}</code>，已预填为全局默认任务类型。点击后会同时开放本实验并下发任务。
-        </span>
-      </div>
-      <button
-        type="button"
-        :disabled="busy || !variantDrafts['']"
-        @click="openAndDistributeVariant"
-      >
-        <Unlock :size="14" aria-hidden="true" />开放并下发
-      </button>
-    </div>
-
     <div v-if="overview" class="ws-pub-scroll">
       <div class="ws-pub-summary" aria-label="发布概况">
-        <span><strong>{{ openTargetCount }}/{{ targetCount }}</strong>目标已开放</span>
+        <span><strong>{{ openTargetCount }}/{{ targetCount }}</strong>目标已分发</span>
         <span><strong>{{ classList.length }}</strong>个班级</span>
         <span><strong>{{ studentList.length }}</strong>名学生</span>
       </div>
@@ -431,14 +429,14 @@ onMounted(load)
           <span>快速</span>
           <div>
             <h3>快速下发</h3>
-            <p>选择全局默认任务后，一个按钮同时开放并下发当前 Lab。</p>
+            <p>选择全局默认任务后，一个按钮同时按范围分发并下发当前 Lab。</p>
           </div>
         </div>
         <div class="ws-pub-target ws-pub-target-global">
           <div class="ws-pub-target-info">
             <strong><Users :size="15" aria-hidden="true" />全局默认</strong>
             <span class="ws-pub-badge" :class="isOpen(undefined) ? 'open' : 'closed'">
-              {{ isOpen(undefined) ? '本实验已开放' : `当前开放到 ${effectiveOpenLab(undefined) || '—'}` }}
+              {{ isOpen(undefined) ? '本实验已分发' : `当前分发到 ${effectiveOpenLab(undefined) || '—'}` }}
             </span>
             <small>当前任务：{{ assignedVariant(undefined)[0] }}<template v-if="variantLabel(assignedVariant(undefined)[0])"> · {{ variantLabel(assignedVariant(undefined)[0]) }}</template></small>
           </div>
@@ -453,15 +451,12 @@ onMounted(load)
                 :disabled="busy || !variantDrafts['']"
                 @click="openAndDistributeVariant"
               >
-                <Unlock :size="14" aria-hidden="true" />开放并下发
+                <Unlock :size="14" aria-hidden="true" />分发并下发
               </button>
             </template>
             <span v-else class="ws-pub-no-variants">暂无任务变体</span>
           </div>
         </div>
-        <p v-if="factoryHint" class="ws-pub-quick-note">
-          已预选工厂发布变体 <code>{{ factoryHint }}</code>。
-        </p>
         <p v-if="defaultVariant" class="ws-pub-quick-note">
           本实验默认任务：<code>{{ defaultVariant }}</code>
         </p>
@@ -470,52 +465,54 @@ onMounted(load)
       <section class="ws-pub-block">
         <div class="ws-pub-section-title">
           <span>01</span>
-          <div><h3>按班级安排</h3><p>班级设置会覆盖全局默认，只影响当前实验。</p></div>
+          <div><h3>按班级安排</h3><p>先选择班级再设置；学生注册时只能从这些班级中选择。</p></div>
         </div>
 
-        <div class="ws-pub-target ws-pub-target-global">
+        <div class="ws-pub-class-picker">
+          <label class="ws-pub-class-select">
+            <span>选择班级</span>
+            <select v-model="selectedClass" aria-label="选择班级">
+              <option value="" disabled>选择班级</option>
+              <option v-for="c in classList" :key="c" :value="c">{{ c }}</option>
+            </select>
+          </label>
+          <div class="ws-pub-create-class">
+            <input
+              v-model="newClassName"
+              type="text"
+              maxlength="32"
+              placeholder="新班级名称，如 计科2302"
+              @keydown.enter.prevent="createClass"
+            />
+            <button type="button" :disabled="busy || !newClassName.trim()" @click="createClass">
+              <Plus :size="14" aria-hidden="true" />创建班级
+            </button>
+          </div>
+        </div>
+
+        <div v-if="selectedClass" class="ws-pub-target">
           <div class="ws-pub-target-info">
-            <strong><Users :size="15" aria-hidden="true" />全局默认</strong>
-            <span class="ws-pub-badge" :class="isOpen(undefined) ? 'open' : 'closed'">
-              {{ isOpen(undefined) ? '本实验已开放' : `当前开放到 ${effectiveOpenLab(undefined) || '—'}` }}
+            <strong><Users :size="15" aria-hidden="true" />{{ selectedClass }}</strong>
+            <span class="ws-pub-badge" :class="isOpen(classEntry(selectedClass)) ? 'open' : 'closed'">
+              {{ isOpen(classEntry(selectedClass)) ? '本实验已分发' : `当前分发到 ${effectiveOpenLab(classEntry(selectedClass)) || '—'}` }}
             </span>
-            <small>当前任务：{{ assignedVariant(undefined)[0] }}<template v-if="variantLabel(assignedVariant(undefined)[0])"> · {{ variantLabel(assignedVariant(undefined)[0]) }}</template></small>
+            <small>当前任务：{{ assignedVariant(classEntry(selectedClass))[0] }} · {{ assignedVariant(classEntry(selectedClass))[1] ? '本班设置' : '跟随默认' }}</small>
           </div>
           <div class="ws-pub-target-actions">
             <template v-if="variants.length">
-              <select v-model="variantDrafts['']" aria-label="全局默认任务类型">
+              <select v-model="variantDrafts[selectedClass]" :aria-label="`${selectedClass}任务类型`">
                 <option value="" disabled>选择任务类型</option>
                 <option v-for="v in variants" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
               </select>
-              <button type="button" :disabled="busy || !variantDrafts['']" title="下发任务" @click="assignTo('')"><Send :size="14" aria-hidden="true" />下发</button>
+              <button type="button" :disabled="busy || !variantDrafts[selectedClass]" title="下发任务" @click="assignTo(selectedClass)"><Send :size="14" aria-hidden="true" />下发</button>
             </template>
             <span v-else class="ws-pub-no-variants">暂无任务变体</span>
-            <button v-if="!isOpen(undefined)" type="button" class="ghost" :disabled="busy" title="开放本实验" @click="openTo('')"><Unlock :size="14" aria-hidden="true" /></button>
+            <button v-if="!isOpen(classEntry(selectedClass))" type="button" class="ghost" :disabled="busy" title="分发本实验" @click="openTo(selectedClass)"><Unlock :size="14" aria-hidden="true" /></button>
           </div>
         </div>
 
-        <div v-for="c in classList" :key="c" class="ws-pub-target">
-          <div class="ws-pub-target-info">
-            <strong><Users :size="15" aria-hidden="true" />{{ c }}</strong>
-            <span class="ws-pub-badge" :class="isOpen(classEntry(c)) ? 'open' : 'closed'">
-              {{ isOpen(classEntry(c)) ? '本实验已开放' : `当前开放到 ${effectiveOpenLab(classEntry(c)) || '—'}` }}
-            </span>
-            <small>当前任务：{{ assignedVariant(classEntry(c))[0] }} · {{ assignedVariant(classEntry(c))[1] ? '本班设置' : '跟随默认' }}</small>
-          </div>
-          <div class="ws-pub-target-actions">
-            <template v-if="variants.length">
-              <select v-model="variantDrafts[c]" :aria-label="`${c}任务类型`">
-                <option value="" disabled>选择任务类型</option>
-                <option v-for="v in variants" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
-              </select>
-              <button type="button" :disabled="busy || !variantDrafts[c]" title="下发任务" @click="assignTo(c)"><Send :size="14" aria-hidden="true" />下发</button>
-            </template>
-            <span v-else class="ws-pub-no-variants">暂无任务变体</span>
-            <button v-if="!isOpen(classEntry(c))" type="button" class="ghost" :disabled="busy" title="开放本实验" @click="openTo(c)"><Unlock :size="14" aria-hidden="true" /></button>
-          </div>
-        </div>
-
-        <p v-if="!classList.length" class="ws-pub-empty">学生注册并填写班级后，班级会自动出现在这里。</p>
+        <p v-if="!classList.length" class="ws-pub-empty">还没有班级，先在上方创建班级；学生注册后会自动归入所选班级。</p>
+        <p v-else-if="!selectedClass" class="ws-pub-empty">从上方选择一个班级进行安排。</p>
 
         <details class="ws-pub-variant-help">
           <summary>查看本实验可用的 {{ variants.length }} 种任务类型</summary>
@@ -527,7 +524,7 @@ onMounted(load)
       <section class="ws-pub-block">
         <div class="ws-pub-section-title">
           <span>02</span>
-          <div><h3>个别调整</h3><p>仅在学生需要不同任务或额外开放时使用。</p></div>
+          <div><h3>个别调整</h3><p>仅在学生需要不同任务或额外分发时使用；上方已选班级时，这里只显示该班学生。</p></div>
         </div>
         <div class="ws-pub-student-row">
           <select v-model="studentSel" aria-label="选择学生">
@@ -556,11 +553,11 @@ onMounted(load)
               :disabled="busy"
               @click="openTo(`student:${studentSel}`)"
             >
-              <Unlock :size="14" aria-hidden="true" />开放
+              <Unlock :size="14" aria-hidden="true" />分发
             </button>
           </template>
         </div>
-        <p v-if="!studentList.length" class="ws-pub-empty">还没有学生注册。</p>
+        <p v-if="!studentList.length" class="ws-pub-empty">{{ selectedClass ? `该班级还没有学生。` : '还没有学生注册。' }}</p>
       </section>
 
       <section class="ws-pub-block">
@@ -708,7 +705,7 @@ onMounted(load)
               <header>
                 <strong>系统固定 · {{ FIXED_REFLECTION.title }}</strong>
               </header>
-              <p>每位学生报告末尾都会有这一节，用于复盘与解锁下一层；老师无需配置。</p>
+              <p>每位学生报告末尾都会有这一节，用于复盘；下一层由老师在对应范围手动分发后解锁。</p>
             </div>
 
             <details class="ws-pub-report-preview" open>
@@ -788,68 +785,6 @@ onMounted(load)
   flex: 0 0 auto;
 }
 
-.ws-pub-factory-hint {
-  display: flex;
-  flex: 0 0 auto;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--ws-space-2) var(--ws-space-3);
-  margin: 0 var(--ws-space-4) var(--ws-space-3);
-  padding: var(--ws-space-3);
-  border: 1px solid var(--ws-accent);
-  border-radius: var(--ws-radius-md);
-  background: var(--ws-accent-soft);
-}
-
-.ws-pub-factory-hint > svg {
-  flex: 0 0 auto;
-  color: var(--ws-accent);
-}
-
-.ws-pub-factory-hint > div {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.ws-pub-factory-hint strong {
-  display: block;
-  color: var(--ws-ink);
-  font-size: var(--ws-text-sm);
-}
-
-.ws-pub-factory-hint span {
-  display: block;
-  margin-top: 2px;
-  color: var(--ws-ink-muted);
-  font-size: var(--ws-text-xs);
-  line-height: 1.5;
-}
-
-.ws-pub-factory-hint code {
-  color: var(--ws-accent);
-}
-
-.ws-pub-factory-hint button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: var(--ws-control-sm);
-  padding: 6px 10px;
-  color: var(--ws-accent-contrast);
-  border: 1px solid var(--ws-accent);
-  border-radius: var(--ws-radius-md);
-  background: var(--ws-accent);
-  font: inherit;
-  font-size: var(--ws-text-xs);
-  font-weight: var(--ws-weight-semibold);
-  cursor: pointer;
-}
-
-.ws-pub-factory-hint button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
 .ws-pub-scroll {
   flex: 1 1 auto;
   min-height: 0;
@@ -908,6 +843,43 @@ onMounted(load)
   margin-top: 2px;
   color: var(--ws-ink-faint);
   font-size: var(--ws-text-xs);
+}
+
+.ws-pub-class-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--ws-space-3);
+  padding: var(--ws-space-3) 0;
+}
+
+.ws-pub-class-select {
+  display: grid;
+  gap: var(--ws-space-1);
+}
+
+.ws-pub-class-select span {
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-pub-class-select select,
+.ws-pub-create-class input {
+  width: 100%;
+  min-height: var(--ws-control-sm);
+  padding: var(--ws-space-1) var(--ws-space-2);
+  color: var(--ws-ink);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+  font: inherit;
+  font-size: var(--ws-text-xs);
+}
+
+.ws-pub-create-class {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--ws-space-2);
 }
 
 .ws-pub-target {
@@ -1382,6 +1354,10 @@ onMounted(load)
 }
 
 @media (max-width: 1180px) {
+  .ws-pub-class-picker {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .ws-pub-target {
     grid-template-columns: minmax(0, 1fr);
   }

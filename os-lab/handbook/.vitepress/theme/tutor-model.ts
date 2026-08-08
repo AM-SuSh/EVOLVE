@@ -887,7 +887,7 @@ export function buildLabJourney(
   let previousCompleted = true
   return stats.map((item, index) => {
     const trusted = serverAccess.find((access) => access.labId === item.lab.id)
-    const unlocked = trusted ? trusted.unlocked : index === 0 || previousCompleted
+    const unlocked = trusted ? trusted.unlocked : index === 0
     const passedVerification = trusted ? trusted.verified : item.passedVerification
     const reflected = trusted ? trusted.reflected : item.reflected
     const completed = trusted ? trusted.completed : unlocked && passedVerification && reflected
@@ -906,17 +906,19 @@ export function buildLabJourney(
         : trusted?.state === 'review'
           ? '已发放 · 可回看'
           : trusted?.state === 'waiting_teacher'
-            ? '待教师开放'
+            ? '待教师分发'
             : trusted?.state === 'waiting_prerequisite'
               ? '待完成前置'
         : item.started && unlocked
           ? '学习中'
           : unlocked
             ? '当前可学习'
-            : item.started
-              ? '有记录 · 待解锁'
-              : '待解锁',
-      lockReason: unlocked ? '' : trusted?.reason || `完成 ${previousLab.label} 的一次通过验证和一次学习复盘后解锁`,
+            : index === 0
+              ? '待解锁'
+              : '待教师分发',
+      lockReason: unlocked
+        ? ''
+        : trusted?.reason || (index === 0 ? '尚未开始' : `等待老师按范围手动分发 ${item.lab.label}`),
     }
   })
 }
@@ -927,7 +929,7 @@ export function recommendedLabId(events: LearningEvent[]): TutorLabId {
   const inProgress = journey.find((item) => item.started && item.unlocked && !item.completed)
   if (inProgress) return inProgress.lab.id
   return journey.find((item) => item.unlocked && !item.completed)?.lab.id
-    || tutorLabs[tutorLabs.length - 1].id
+    || tutorLabs[0].id
 }
 
 /** 学习记录导出为 JSONL。scope=growth 导全部 Lab，scope=session 只导当前会话。 */

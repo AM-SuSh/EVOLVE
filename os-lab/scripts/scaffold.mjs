@@ -6,7 +6,7 @@
  * 设计原则：
  *  1. 账号制：每个学生以学号/昵称标识，各自维护一个独立的小系统；进度、任务
  *     变体、个性化程序互不干扰。
- *  2. 学生初始只拿到能构建最小系统的 Lab1 代码；教师在控制台「开放」到第几个
+ *  2. 学生初始只拿到能构建最小系统的 Lab1 代码；教师在控制台「分发」到第几个
  *     Lab，学生才能升级到那一层——升级只补必需的新文件，永不覆盖学生已有文件，
  *     学生的补全、修改与自建程序（bonus）全部保留。
  *  3. 核心学习点不发参考实现，而发 scaffold/exercises/ 里的任务版（补全/排错等
@@ -17,6 +17,7 @@
  *   { "openLab": "lab3", "assignments": { "lab2": "debug" },
  *     "llm": { "baseUrl": "...", "model": "...", "apiKey": "..." },
  *     "allowStudentLlm": true }
+ * 教师未配置时默认只分发 Lab1；学生完成当前层后，仍需老师按范围手动开放后续 Lab。
  * 推荐用工作台的教师控制台页面编辑；本脚本命令行是备用手段：
  *   node scripts/scaffold.mjs status <学号>
  *   node scripts/scaffold.mjs init <学号> | upgrade <学号> [变体]
@@ -26,7 +27,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readFileSync } from 'node:fs'
-import { cp, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 
 const OS_LAB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const REPO_ROOT = path.resolve(OS_LAB_ROOT, '..')
@@ -245,7 +246,7 @@ export async function readTeacherConfig() {
       ? Object.fromEntries(Object.entries(value).map(([key, v]) => [key, scope(v)]))
       : {}
   return {
-    openLab: LAB_ORDER.includes(raw.openLab) ? raw.openLab : 'lab8',
+    openLab: LAB_ORDER.includes(raw.openLab) ? raw.openLab : 'lab1',
     assignments: validAssignments(raw.assignments),
     llm: raw.llm && typeof raw.llm === 'object' ? raw.llm : {},
     allowStudentLlm: raw.allowStudentLlm !== false,
@@ -390,7 +391,7 @@ export async function listStudents() {
   }
   const students = []
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue
     const state = await readState(path.join(STUDENTS_ROOT, entry.name))
     students.push({
       user: entry.name,
@@ -413,6 +414,59 @@ async function exists(p) {
   } catch {
     return false
   }
+}
+
+async function copyFileOverwrite(src, dst) {
+  await mkdir(path.dirname(dst), { recursive: true })
+  await cp(src, dst)
+}
+
+function resolveStudentFilePath(studentRoot, relative) {
+  const normalized = String(relative || '').replace(/\\/g, '/')
+  const full = path.resolve(studentRoot, normalized)
+  const rootWithSep = studentRoot.endsWith(path.sep) ? studentRoot : `${studentRoot}${path.sep}`
+  if (!full.startsWith(rootWithSep)) throw new Error(`拒绝越界路径: ${relative}`)
+  return full
+}
+
+function labSnapshotDir(studentRoot, labId) {
+  return path.join(path.dirname(studentRoot), '.snapshots', path.basename(studentRoot), labId)
+}
+
+async function collectRelativeFiles(root, current = root, prefix = '', result = []) {
+  for (const entry of await readdir(current, { withFileTypes: true })) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name
+    const full = path.join(current, entry.name)
+    if (entry.isDirectory()) {
+      await collectRelativeFiles(root, full, relative, result)
+    } else if (entry.isFile()) {
+      result.push(relative)
+    }
+  }
+  return result
+}
+
+async function saveLabSnapshot(studentRoot, labId) {
+  const target = labSnapshotDir(studentRoot, labId)
+  await rm(target, { recursive: true, force: true })
+  await mkdir(path.dirname(target), { recursive: true })
+  await cp(studentRoot, target, {
+    recursive: true,
+    filter: (source) => {
+      const relative = path.relative(studentRoot, source)
+      const parts = relative.split(path.sep)
+      return !parts.includes('target') && !parts.includes('.git') && !parts.includes('.snapshots')
+    },
+  })
+}
+
+async function restoreLabSnapshot(studentRoot, labId) {
+  const source = labSnapshotDir(studentRoot, labId)
+  const files = await collectRelativeFiles(source)
+  await rm(studentRoot, { recursive: true, force: true })
+  await mkdir(studentRoot, { recursive: true })
+  await cp(source, studentRoot, { recursive: true })
+  return files
 }
 
 /** 递归复制目录，跳过已存在的文件（学生的修改优先）。 */
@@ -629,6 +683,52 @@ export async function workspaceBaselines(user) {
   return [...files.values()].sort((left, right) => left.path.localeCompare(right.path))
 }
 
+/**
+ * 把某个 Lab 新发放的基线文件恢复为刚下发状态；其他 Lab 的基线文件不动。
+ * generated 清单按学生当前进度重新生成，避免恢复旧 Lab 时破坏后续 Lab。
+ */
+export async function resetLab(user, labId) {
+  const safe = sanitizeUser(user)
+  if (!safe) return { ok: false, log: ['需要先填写学号/昵称'] }
+  if (!LAB_ORDER.includes(labId)) {
+    return { ok: false, log: [`labId 必须是 ${LAB_ORDER.join(' / ')} 之一`] }
+  }
+  const studentRoot = studentRootFor(safe)
+  const state = await readState(studentRoot)
+  if (!state.applied.includes(labId)) {
+    return { ok: false, log: [`${labId} 还没有发放，无法重置`] }
+  }
+
+  const log = []
+  const snapshotDir = labSnapshotDir(studentRoot, labId)
+  const snapshotFiles = (await exists(snapshotDir)) ? await collectRelativeFiles(snapshotDir) : []
+  if (snapshotFiles.length) {
+    const restored = await restoreLabSnapshot(studentRoot, labId)
+    log.push(`${labId} 已恢复到下发时的完整工作区快照`)
+    return { ok: true, labId, count: restored.length, files: restored, snapshot: true, log }
+  }
+
+  log.push(`${labId} 没有历史完整快照，回退为基线文件恢复`)
+  const restored = []
+  for (const baseline of await workspaceBaselines(safe)) {
+    if (baseline.labId !== labId) continue
+    const target = resolveStudentFilePath(studentRoot, baseline.path)
+    await mkdir(path.dirname(target), { recursive: true })
+    if (baseline.kind === 'generated' && typeof baseline.content === 'string') {
+      await writeFile(target, baseline.content, 'utf8')
+    } else {
+      if (!(await exists(baseline.source))) throw new Error(`基线文件缺失: ${baseline.source}`)
+      await copyFileOverwrite(baseline.source, target)
+    }
+    restored.push(baseline.path)
+    log.push(`恢复 ${baseline.path}`)
+  }
+  if (!restored.length) return { ok: false, log: [`${labId} 没有可恢复的文件`] }
+
+  log.push(`${labId} 已恢复到刚刚下发状态`)
+  return { ok: true, labId, count: restored.length, files: restored, snapshot: false, log }
+}
+
 /* -- 应用一个 Lab ------------------------------------------------------------ */
 
 async function applyLab(studentRoot, labId, state, log, explicitVariant, effectiveAssignments) {
@@ -680,6 +780,8 @@ async function applyLab(studentRoot, labId, state, log, explicitVariant, effecti
   state.applied.push(labId)
   await regenerateManifests(studentRoot, state, log)
   await writeState(studentRoot, state)
+  await saveLabSnapshot(studentRoot, labId)
+  log.push(`已保存 ${labId} 下发时的完整工作区快照`)
   log.push(`✔ ${labId} 已就位：${lab.summary}`)
 }
 
@@ -693,7 +795,7 @@ export async function applyNext(user, explicitVariant, effective) {
   const next = LAB_ORDER[state.applied.length]
   if (!next) return { ok: false, log: ['八个 Lab 已全部发放，剩下的完善由你自由发挥。'] }
 
-  // 教师开放进度门控（生效配置 = 学生覆盖 > 班级覆盖 > 全局默认）。
+  // 教师分发进度门控（生效配置 = 学生覆盖 > 班级覆盖 > 全局默认）。
   const teacher = effective || (await readTeacherConfig())
   const exercise = getExerciseCatalog()[next]
   if (explicitVariant && (!exercise || !exercise.variants[explicitVariant])) {
@@ -705,7 +807,7 @@ export async function applyNext(user, explicitVariant, effective) {
   if (LAB_ORDER.indexOf(next) > LAB_ORDER.indexOf(teacher.openLab)) {
     return {
       ok: false,
-      log: [`${next} 还没有开放（老师当前给你开放到 ${teacher.openLab}），先把已有的做扎实。`],
+      log: [`${next} 还没有分发（老师当前给你分发到 ${teacher.openLab}），先把已有的做扎实。`],
     }
   }
 
@@ -782,13 +884,15 @@ if (invokedDirectly) {
     else
       console.log(
         status.exists
-          ? `${status.user} 进度：${status.applied.join(' → ')}${status.next ? `（下一步：${status.next}${status.nextAllowed ? '' : '，未开放'}）` : '（已全部发放）'}`
+          ? `${status.user} 进度：${status.applied.join(' → ')}${status.next ? `（下一步：${status.next}${status.nextAllowed ? '' : '，未分发'}）` : '（已全部发放）'}`
           : `${status.user} 尚未初始化。`,
       )
   } else if (command === 'init' || command === 'upgrade') {
     print(await applyNext(arg1, arg2))
   } else if (command === 'add-bin') {
     print(await addUserBin(arg1, arg2))
+  } else if (command === 'reset') {
+    print(await resetLab(arg1, arg2))
   } else if (command === 'assign') {
     print(await writeAssignment(String(arg1 || ''), String(arg2 || '')))
   } else if (command === 'open') {
@@ -797,7 +901,7 @@ if (invokedDirectly) {
       process.exitCode = 1
     } else {
       await writeTeacherConfig({ openLab: arg1 })
-      console.log(`已开放到 ${arg1}`)
+      console.log(`已分发到 ${arg1}`)
     }
   } else if (command === 'list') {
     for (const s of await listStudents()) {

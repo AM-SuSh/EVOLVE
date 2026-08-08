@@ -3,7 +3,7 @@
  * 文件：os-lab/learning/os-lab.db（gitignore）。
  *
  * 角色模型：首次启动自动预置管理员账号 admin / admin123（教师，请尽快改密码）；
- * 注册入口只产生学生账号，注册时必须填写班级——教师端按班级管理。
+ * 注册入口只产生学生账号，注册时必须选择老师创建的班级——教师端按班级管理。
  */
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS run_assertions (
   passed INTEGER NOT NULL,
   expected TEXT NOT NULL,
   observed TEXT NOT NULL,
+  hint TEXT,
   PRIMARY KEY(run_id, assertion_id)
 );
 
@@ -247,6 +248,11 @@ try {
 } catch {
   /* 列已存在 */
 }
+try {
+  db.exec('ALTER TABLE run_assertions ADD COLUMN hint TEXT')
+} catch {
+  /* 列已存在 */
+}
 
 try {
   db.exec("ALTER TABLE reports ADD COLUMN content_path TEXT NOT NULL DEFAULT ''")
@@ -266,7 +272,7 @@ if (!db.prepare("SELECT id FROM users WHERE username = 'admin'").get()) {
   insertUser('admin', 'admin123', 'teacher', '')
 }
 
-export function register(username, password, className) {
+export function register(username, password, className, allowedClassNames) {
   const name = String(username || '').trim()
   const cls = String(className || '').trim()
   if (!USERNAME_RE.test(name)) {
@@ -277,6 +283,12 @@ export function register(username, password, className) {
   }
   if (!/^[A-Za-z0-9_一-龥-]{1,32}$/.test(cls)) {
     return { ok: false, error: '请填写班级（1-32 位，如 计科2301）' }
+  }
+  const allowed = Array.isArray(allowedClassNames)
+    ? new Set(allowedClassNames.map((item) => String(item || '').trim()))
+    : null
+  if (allowed && !allowed.has(cls)) {
+    return { ok: false, error: allowed.size ? '请从老师创建的班级中选择' : '老师尚未创建班级' }
   }
   const exists = db.prepare('SELECT id FROM users WHERE username = ?').get(name)
   if (exists) return { ok: false, error: '用户名已被注册' }
@@ -541,7 +553,7 @@ export function getAssessmentInput(userId, sessionId, labId) {
       verified: Boolean(run.verified),
       assertions: db
         .prepare(
-          `SELECT assertion_id AS id, label, passed, expected, observed
+          `SELECT assertion_id AS id, label, passed, expected, observed, hint
            FROM run_assertions WHERE run_id = ? ORDER BY assertion_id`,
         )
         .all(run.runId)
@@ -881,8 +893,8 @@ export function finishRun(userId, result, diagnostics = []) {
     )
     if (!changed.changes) throw new Error('运行记录不存在或不属于当前用户')
     const insertAssertion = db.prepare(
-      `INSERT INTO run_assertions (run_id, assertion_id, label, passed, expected, observed)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO run_assertions (run_id, assertion_id, label, passed, expected, observed, hint)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
     db.prepare('DELETE FROM run_assertions WHERE run_id = ?').run(result.runId)
     for (const assertion of result.assertions) {
@@ -893,6 +905,7 @@ export function finishRun(userId, result, diagnostics = []) {
         assertion.passed ? 1 : 0,
         assertion.expected,
         assertion.observed,
+        assertion.hint || null,
       )
     }
     const insertDiagnostic = db.prepare(
@@ -929,7 +942,7 @@ export function getRun(userId, runId) {
   if (!row) return null
   const assertions = db
     .prepare(
-      `SELECT assertion_id AS id, label, passed, expected, observed
+      `SELECT assertion_id AS id, label, passed, expected, observed, hint
        FROM run_assertions WHERE run_id = ? ORDER BY assertion_id`,
     )
     .all(runId)
@@ -951,6 +964,37 @@ export function getRun(userId, runId) {
     verified: Boolean(row.verified),
     status: row.status,
   }
+}
+
+export function listRunHistory(userId, labId, limit = 100) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 200)
+  const rows = db
+    .prepare(
+      `SELECT id, lab_id AS labId, recipe_id AS recipeId, trusted, status,
+              started_at AS startedAt, finished_at AS finishedAt, exit_code AS exitCode, verified
+       FROM runs
+       WHERE user_id = ? AND lab_id = ?
+         AND status != 'running'
+       ORDER BY started_at DESC, id DESC
+       LIMIT ?`,
+    )
+    .all(userId, String(labId), safeLimit)
+  const assertionStmt = db.prepare(
+    `SELECT assertion_id AS id, label, passed, expected, observed, hint
+     FROM run_assertions WHERE run_id = ? ORDER BY assertion_id`,
+  )
+  return rows.map((row) => ({
+    runId: row.id,
+    labId: row.labId,
+    recipeId: row.recipeId,
+    trusted: Boolean(row.trusted),
+    verified: Boolean(row.verified),
+    status: row.status,
+    startedAt: row.startedAt,
+    finishedAt: row.finishedAt,
+    exitCode: row.exitCode,
+    assertions: assertionStmt.all(row.id).map((item) => ({ ...item, passed: Boolean(item.passed) })),
+  }))
 }
 
 export function getRunDiagnostics(userId, runId) {

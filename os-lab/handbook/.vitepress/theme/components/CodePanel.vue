@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { FileCode2, FolderTree, MessageSquarePlus, RefreshCw, SquareTerminal, X } from 'lucide-vue-next'
+import { FileCode2, FolderTree, MessageSquarePlus, RefreshCw, RotateCcw, SquareTerminal, X } from 'lucide-vue-next'
 import { authHeaders, type TutorLab } from '../tutor-model'
 import { monacoLanguageForPath, type FileStatusKind } from '../file-status'
 import { resolveFileStatus, useFileStatus } from '../composables/useFileStatus'
@@ -58,6 +58,9 @@ const error = ref('')
 const openTabs = ref<OpenTab[]>([])
 const activePath = ref('')
 const saving = ref(false)
+const resetting = ref(false)
+const resetFlash = ref('')
+const resetOk = ref(false)
 const clientReady = ref(false)
 const codeRoot = ref<HTMLElement | null>(null)
 /** 桌面端是常驻侧栏，窄屏下由同一状态控制抽屉。 */
@@ -255,6 +258,70 @@ async function saveEdit() {
   }
 }
 
+async function reloadOpenTabs(paths: string[]) {
+  const wanted = new Set(paths)
+  await Promise.all(
+    openTabs.value
+      .filter((tab) => wanted.has(tab.path))
+      .map(async (view) => {
+        try {
+          const response = await fetch(apiUrl(`/fs/file?path=${encodeURIComponent(view.path)}`), {
+            headers: authHeaders(),
+          })
+          const payload = await response.json()
+          if (!response.ok) throw new Error(payload?.error || `导师服务返回 ${response.status}`)
+          view.content = payload.content || ''
+          view.draft = view.content
+          view.truncated = Boolean(payload.truncated)
+          view.error = ''
+          view.loading = false
+        } catch (err) {
+          view.error = err instanceof Error ? err.message : '读取文件失败'
+        }
+      }),
+  )
+}
+
+async function resetCurrentLab() {
+  if (!isStudent.value || resetting.value) return
+  const labTitle = String(props.lab.id).toUpperCase()
+  if (
+    !window.confirm(
+      `重置 ${labTitle} 会把工作区恢复到该 Lab 刚下发时的完整快照；该 Lab 之后的所有修改和自建文件也会被回退。确定继续吗？`,
+    )
+  ) {
+    return
+  }
+  resetting.value = true
+  resetFlash.value = ''
+  resetOk.value = false
+  try {
+    const response = await fetch(apiUrl('/fs/reset'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ labId: props.lab.id }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload?.error || `导师服务返回 ${response.status}`)
+    const restored = new Set(
+      (Array.isArray(payload.files) ? payload.files : []).map((file: string) =>
+        String(file).replace(/\\/g, '/'),
+      ),
+    )
+    await reloadOpenTabs([...restored])
+    await Promise.all([refreshFileStatus(), loadTree()])
+    resetFlash.value =
+      payload.snapshot === false
+        ? `${labTitle} 没有历史快照，已按基线文件恢复。`
+        : `${labTitle} 已恢复到下发时的完整工作区快照。`
+    resetOk.value = true
+  } catch (err) {
+    resetFlash.value = err instanceof Error ? err.message : '重置失败'
+  } finally {
+    resetting.value = false
+  }
+}
+
 function onEditorSave() {
   void saveEdit()
 }
@@ -364,7 +431,7 @@ defineExpose({ openAtLine, refreshFileStatus })
           v-if="canEdit && activePath"
           type="button"
           class="ws-code-save"
-          :disabled="saving || !hasUnsavedChanges"
+          :disabled="saving || resetting || !hasUnsavedChanges"
           title="保存当前文件（Ctrl+S）"
           aria-keyshortcuts="Control+s Meta+s"
           @click="saveEdit"
@@ -380,6 +447,18 @@ defineExpose({ openAtLine, refreshFileStatus })
           @click="addCodeToChat"
         >
           <MessageSquarePlus :size="14" aria-hidden="true" />
+        </button>
+        <button
+          v-if="isStudent"
+          type="button"
+          class="ws-code-icon-btn"
+          :class="{ 'ws-code-icon-btn--busy': resetting }"
+          :disabled="resetting || saving"
+          title="重置本 Lab：恢复到该 Lab 下发时的完整工作区快照"
+          aria-label="恢复到该 Lab 下发时的完整工作区快照"
+          @click="resetCurrentLab"
+        >
+          <RotateCcw :size="14" aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -432,6 +511,8 @@ defineExpose({ openAtLine, refreshFileStatus })
       class="ws-code-flash"
       :class="{ ok: activeTab.saveNote.startsWith('已保存') }"
     >{{ activeTab.saveNote }}</p>
+
+    <p v-if="resetFlash" class="ws-code-flash" :class="{ ok: resetOk }">{{ resetFlash }}</p>
 
     <!-- 文件栏只与编辑器同列，不与终端通栏；终端由工作区下方底栏承接。 -->
     <div class="ws-code-main">
@@ -746,6 +827,21 @@ export default { components: { CodeTreeNode } }
   color: var(--ws-accent);
   border-color: var(--ws-accent);
   background: var(--ws-surface-alt, var(--ws-surface));
+}
+
+.ws-code-icon-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.ws-code-icon-btn--busy svg {
+  animation: ws-code-reset-spin 0.9s linear infinite;
+}
+
+@keyframes ws-code-reset-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .ws-code-flash {

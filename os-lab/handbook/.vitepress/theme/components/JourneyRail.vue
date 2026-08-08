@@ -87,7 +87,7 @@ function actionLabel(item: LabJourneyItem) {
           <div>
             <span><Waypoints :size="16" aria-hidden="true" />你的系统构建路径</span>
             <h2 id="ws-journey-title">从启动代码，逐层构建一个完整小系统</h2>
-            <p>每一层都要留下提问、验证和复盘证据。完成验证与复盘后，下一层才会解锁。</p>
+            <p>每一层都要留下提问、验证和复盘证据。完成当前层后，仍需老师按范围手动分发下一层才会解锁。</p>
           </div>
           <button type="button" aria-label="关闭系统构建路径" @click="open = false">
             <X :size="19" aria-hidden="true" />

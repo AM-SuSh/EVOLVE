@@ -14,7 +14,7 @@
 ## 站点顶栏账号
 
 - 默认文档主题右上角 `UserNav`：显示当前用户名；点击展开「退出登录」，退出后刷新回到登录门。
-- 教师额外仍有 `TeacherNav`（评分复核 / 实验验收 / Lab 工厂）。
+- 教师额外仍有 `TeacherNav`（评分复核 / 实验验收 / 知识库）。
 - Lab 工作台自有顶栏账号入口，行为不变。
 
 ## 布局
@@ -30,7 +30,7 @@
 - **拖动**：手册与实践区之间的竖条调整左右宽度；工作区与学习支持之间的横条调整上下高度；编辑器与终端之间的横条调整工作区内上下高度
 - **开关**：顶栏「手册 / 工作区 / 学习支持」控制三区显示；收起后**不**留展开占位条，靠顶栏开关恢复。各区标题栏仍有收起/铺满控件
 - **滚动**：各分区内容区独立滚动（手册、代码、终端输出、导师、报告、Trace）
-- **我的系统 ↔ 系统构建路径**：学习侧解锁下一层后，须在「系统构建路径」点击该层「领取并开始」才会 `scaffold/upgrade`；顶栏「我的系统 · labN」与已发放层同步。弹窗内不再单独提供「升级到下一层」按钮（仅保留首次初始化 Lab1）。
+- **我的系统 ↔ 系统构建路径**：老师按范围分发下一层后，学生须在「系统构建路径」点击该层「领取并开始」才会 `scaffold/upgrade`；顶栏「我的系统 · labN」与已发放层同步。弹窗内不再单独提供「升级到下一层」按钮（仅保留首次初始化 Lab1）。
 
 > 无独立 `BottomDock.vue`：底部页签由 `LabWorkspace` 内联实现；文件栏仅与编辑器同列，不与终端通栏。
 
@@ -45,6 +45,8 @@
 | ! | 冲突/过期 | 基线升级无法合并 |
 
 工作区通过 `GET /fs/status?labId=...` 获取服务端基线哈希与当前哈希；前端不再维护文件状态 mock 或重复的 Lab 文件清单。请求失败时不显示徽章（`source='none'`），不回落假状态。
+
+- **一键重置**：每个 Lab 下发完成时会持久保存一份完整工作区快照到 `student-labs/.snapshots/<学号>/<labId>/`；重置按钮会整份恢复该快照，回到该 Lab 刚下发、学生尚未修改时的状态。尚未产生快照的旧 Lab 会暂时回退为基线文件恢复。接口为 `POST /fs/reset`。
 
 ## AI 导师 · 证据条（TutorEvidenceBar）
 
@@ -157,25 +159,14 @@
 - **引用**：教师页无学生工作台；点击 evidenceRefs 复制引用并提示，不假装跳进 IDE。
 - **改分留痕（Day5）**：`pending` 项可提交 `POST /teacher/review`（`confirmed` / `corrected` / `dismissed` + 必填 `rationale` + 合法 `evidenceRefs`；`corrected` 时带维度总分 `correctedResult`）。`automaticResult` 只读不变；`decisions[]` 作审计时间线。导航「评分复核」指向本页。
 
-## Lab 工厂向导（Day6）
+## 教学安排直接下发（Lab 工厂已从前端移除）
 
-挂载：`/guide/lab-factory`（`LabCreateWizard`）。导航「Lab 工厂」仅教师可见。
+Lab 工厂页面与入口已从前端移除，教师只通过工作台右栏「教学安排」（`TeacherPublishPanel`）完成班级创建、按班级/学生/全局范围分发与任务变体下发，不再需要先走包校验/发布流程。学生注册时只能从老师已创建的班级下拉中选择，不能自行填写班级。
 
-与工作台右栏「教学安排」（`TeacherPublishPanel`：班级开放 / 任务变体下发）分工不同：本页只做 **包校验与版本发布**，不在线新建或改写 `lab.yaml`。
-
-| 步骤 | 动作 | API |
-| --- | --- | --- |
-| 1 元数据 | 选 `labId` + `variant`；只读展示 inspect（title/version/status/recipe/已发布） | `GET /teacher/lab-factory?labId=` |
-| 2 校验 | schema lint + 临时目录 dry-run | `POST /teacher/lab-factory/validate` |
-| 3 隔离测试 | 取得通过的 `testRunId` | `POST /teacher/lab-factory/test` |
-| 4 批准发布 | 勾选明确批准 + 审批说明 | `POST /teacher/lab-factory/publish` |
-
-- **门控**：未通过前一步不可跳到后续；测试未通过不能发布；错误展示服务端 `error`/`errors`，不伪造通过态。
-- **发布后**：提示到对应 Lab 工作台「教学安排」下发变体（学生领取仍走 access/scaffold）。
-- **保存待下发**：发布成功会自动保存最近一次发布记录；下次打开 Lab 工厂时顶部会显示「打开工作台并下发变体」入口，不必重跑发布向导。
-- **直达教学安排**：发布 CTA 跳转到 `/learn/labN?view=teaching&variant=...`，工作台会自动切到「教学」视图并预选工厂发布的变体，可一键「开放并下发」。
-- **自然入口**：教师导航、教师工作台顶栏、Lab 工厂页都提供「教学安排」入口；存在已保存发布记录时会自动带上对应 Lab 和变体。
-- **空态**：非教师 / 未登录显示「需要教师账号」；连不上 tutor 时说明原因。
+- **变体来源**：`GET /teacher/overview` 直接读取 `scaffold/exercises/<lab>/<variant>/` 与 `lab-packages/published.json` 目录；目录里存在的变体自动出现在任务类型下拉框。
+- **下发动作**：选择变体后点「分发并下发」，面板先 `POST /teacher/config` 写入 `openLab`，再写入 `assignments[labId] = variant`；学生刷新后，只有在老师已分发的范围内才能经 `/scaffold/upgrade` 领取对应代码。
+- **文件要求**：变体任务文件（如 `kernel/src/mm.rs`、`user/src/bin/fork_test.rs`）必须存在于 `scaffold/exercises/` 对应路径；当前 Lab2–8 的 fill/debug/remedial 变体文件均已核对齐全。
+- **门控**：非教师 / 未登录显示「需要教师账号」；连不上 tutor 时说明原因。
 
 ## 终端（xterm）
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeMount, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import { useData, useRouter, withBase } from 'vitepress'
-import { BookOpen, ChevronDown, ChevronUp, Code2, GripVertical, LockKeyhole, Maximize2, MessageSquarePlus, MessagesSquare, Minimize2, PanelLeftClose, Play, TableOfContents, X } from 'lucide-vue-next'
+import { BookOpen, CheckCircle2, ChevronDown, ChevronUp, CircleSlash, Clock, Code2, GripVertical, LockKeyhole, Maximize2, MessageSquarePlus, MessagesSquare, Minimize2, PanelLeftClose, Play, TableOfContents, X, XCircle } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
 import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
@@ -96,12 +96,34 @@ const teacherEditing = ref(false)
 const showIdentity = ref(false)
 const authMode = ref<'login' | 'register'>('login')
 const authForm = ref({ username: '', password: '', className: '' })
+const classNames = ref<string[]>([])
+const classNamesLoading = ref(false)
 const authBusy = ref(false)
 const authError = ref('')
 const manualKey = ref(0)
 
 function apiUrl(pathname: string) {
   return `${endpoint}${pathname}`
+}
+
+async function loadClassNames() {
+  classNamesLoading.value = true
+  try {
+    const response = await fetch(apiUrl('/auth/classes'))
+    const payload = await response.json().catch(() => ({}))
+    classNames.value = response.ok && Array.isArray(payload.classes) ? payload.classes : []
+  } catch {
+    classNames.value = []
+  } finally {
+    classNamesLoading.value = false
+  }
+}
+
+function switchAuthMode() {
+  authMode.value = authMode.value === 'login' ? 'register' : 'login'
+  authError.value = ''
+  authForm.value.className = ''
+  if (authMode.value === 'register') void loadClassNames()
 }
 
 async function submitAuth() {
@@ -171,8 +193,8 @@ async function doLogout() {
   scaffold.value = null
   learningAccess.value = []
   manualKey.value += 1
-  showIdentity.value = false
-  toast('已退出登录（游客只读）。')
+  showIdentity.value = true
+  toast('已退出登录，请重新登录后再使用工作台。')
 }
 
 const { isDark } = useData()
@@ -214,7 +236,7 @@ interface StoredTutorConversation {
 }
 
 function tutorConversationKey() {
-  const user = studentId.value || 'guest'
+  const user = studentId.value || 'local'
   return `${user}:${props.labId}`
 }
 
@@ -316,6 +338,7 @@ type RunAssertionItem = {
   passed: boolean
   expected: string
   observed: string
+  hint?: string
 }
 type StoredRunResult = {
   runId: string
@@ -323,6 +346,19 @@ type StoredRunResult = {
   trusted: boolean
   stopped?: string
   at: string
+  assertions: RunAssertionItem[]
+}
+
+interface ServerRunHistoryItem {
+  runId: string
+  labId: string
+  recipeId: string | null
+  trusted: boolean
+  verified: boolean
+  status: string
+  startedAt: string
+  finishedAt: string | null
+  exitCode: number | null
   assertions: RunAssertionItem[]
 }
 
@@ -445,6 +481,40 @@ function restoreRunResultsForScope() {
   runResultHistory.value = loaded.history
   if (workspaceContext && loaded.lastRunId) {
     workspaceContext.lastRunId = loaded.lastRunId
+  }
+  void loadServerRunHistory()
+}
+
+async function loadServerRunHistory() {
+  if (!studentId.value) return
+  try {
+    const response = await fetch(
+      `${endpoint}/runs/history?labId=${encodeURIComponent(props.labId)}&limit=100`,
+      { headers: authHeaders() },
+    )
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok || !Array.isArray(payload.runs)) return
+    const history: StoredRunResult[] = payload.runs.map((run: ServerRunHistoryItem) => ({
+      runId: run.runId,
+      verified: run.verified,
+      trusted: run.trusted,
+      stopped: run.status === 'stopped' ? 'stopped' : undefined,
+      at: run.finishedAt || run.startedAt,
+      assertions: run.assertions || [],
+    }))
+    const latestWithAssertions = history.find((item) => item.assertions.length)
+    runResultHistory.value = history
+    if (history.length) lastRunId.value = history[0].runId
+    if (latestWithAssertions) {
+      lastAssertions.value = latestWithAssertions.assertions
+      lastAssertionsRunId.value = latestWithAssertions.runId
+    } else {
+      lastAssertions.value = []
+      lastAssertionsRunId.value = ''
+    }
+    saveCurrentRunResults()
+  } catch {
+    // keep the local cache when the server is temporarily unavailable
   }
 }
 
@@ -1576,8 +1646,133 @@ const keyAssertionPassed = computed(() => {
   const item = lastAssertions.value.find((assertion) => assertion.id === key.id)
   return item ? item.passed : null
 })
-function isKeyAssertion(id: string) {
-  return keyAssertion.value?.id === id
+const failedCurrentCount = computed(() => lastAssertions.value.filter((item) => !item.passed).length)
+function orderedAssertions(assertions: RunAssertionItem[]) {
+  const key = keyAssertion.value
+  if (!key) return assertions
+  return [...assertions].sort((left, right) => Number(left.id !== key.id) - Number(right.id !== key.id))
+}
+const passedHistoryCount = computed(
+  () => runResultHistory.value.filter((entry) => entry.verified && !entry.stopped && entry.assertions.length).length,
+)
+const failedHistoryCount = computed(
+  () => runResultHistory.value.filter((entry) => !entry.verified && !entry.stopped && entry.assertions.length).length,
+)
+const stoppedHistoryCount = computed(
+  () => runResultHistory.value.filter((entry) => entry.stopped).length,
+)
+const emptyHistoryCount = computed(
+  () => runResultHistory.value.filter((entry) => !entry.assertions.length && !entry.stopped).length,
+)
+
+type TestResultsView = 'time' | 'tag'
+const testsView = ref<TestResultsView>('time')
+const expandedRunId = ref('')
+
+const runStateLabels: Record<'ok' | 'fail' | 'stopped' | 'empty', string> = {
+  ok: '已通过',
+  fail: '未通过',
+  stopped: '已停止',
+  empty: '未验证',
+}
+
+function runStateKey(entry: StoredRunResult): 'ok' | 'fail' | 'stopped' | 'empty' {
+  if (entry.stopped) return 'stopped'
+  if (entry.verified) return 'ok'
+  return entry.assertions.length ? 'fail' : 'empty'
+}
+
+function runTimeMs(entry: StoredRunResult) {
+  const ms = entry.at ? Date.parse(entry.at) : NaN
+  return Number.isFinite(ms) ? ms : 0
+}
+
+/** 按时间倒序展示全部运行；时间缺失或无效时保留原插入顺序。 */
+const orderedRunResults = computed(() => {
+  const indexed = runResultHistory.value.map((entry, index) => ({ entry, index }))
+  indexed.sort((left, right) => {
+    const diff = runTimeMs(right.entry) - runTimeMs(left.entry)
+    return diff !== 0 ? diff : left.index - right.index
+  })
+  return indexed.map((item) => item.entry)
+})
+
+const taggedRunGroups = computed(() => {
+  const order: Array<'fail' | 'ok' | 'stopped' | 'empty'> = ['fail', 'ok', 'stopped', 'empty']
+  return order
+    .map((key) => ({
+      key,
+      label: runStateLabels[key],
+      entries: orderedRunResults.value.filter((entry) => runStateKey(entry) === key),
+    }))
+    .filter((group) => group.entries.length)
+})
+
+function onRunToggle(runId: string, event: Event) {
+  const details = event.target as HTMLDetailsElement | null
+  expandedRunId.value = details?.open ? runId : ''
+}
+
+function groupPassSummary(entries: StoredRunResult[]) {
+  const total = entries.reduce((sum, entry) => sum + entry.assertions.length, 0)
+  const passed = entries.reduce((sum, entry) => sum + entry.assertions.filter((a) => a.passed).length, 0)
+  return total ? `${passed}/${total} 通过` : '无断言'
+}
+
+const testsConclusion = computed(() => {
+  if (!lastAssertionsRunId.value && !runResultHistory.value.length) {
+    return {
+      state: 'idle',
+      title: '等待可信验证',
+      note: '运行工作台里的可信验证命令后，这里会显示通过结论与断言明细。',
+    }
+  }
+  if (lastAssertions.value.length) {
+    const total = lastAssertions.value.length
+    const passed = lastAssertions.value.filter((item) => item.passed).length
+    const ok = passed === total
+    const current = runResultHistory.value.find((entry) => entry.runId === lastAssertionsRunId.value)
+    return {
+      state: ok ? 'ok' : 'fail',
+      title: ok ? '可信验证通过' : `未通过 ${total - passed} 项`,
+      note: ok
+        ? '断言全部通过，本次运行可作为实验通过证据。'
+        : `仍有 ${total - passed} 条断言未通过：按修改建议修复后重新运行可信验证。`,
+      passed,
+      total,
+      runId: lastAssertionsRunId.value,
+      at: current?.at || '',
+      keyPassed: keyAssertionPassed.value,
+    }
+  }
+  const current = runResultHistory.value.find((entry) => entry.runId === lastAssertionsRunId.value)
+  if (current) {
+    return {
+      state: current.stopped ? 'stopped' : 'empty',
+      title: current.stopped ? '验证已停止' : '未返回可展示断言',
+      note: current.stopped
+        ? '运行被停止，尚未得出可信结论。'
+        : '运行未返回可展示断言，不表示验证已通过。',
+      runId: current.runId,
+      at: current.at,
+    }
+  }
+  return {
+    state: 'idle',
+    title: '等待可信验证',
+    note: '运行工作台里的可信验证命令后，这里会显示通过结论与断言明细。',
+  }
+})
+
+function formatRunTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleString([], {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 watch(activeStage, (stage) => {
@@ -1952,16 +2147,20 @@ async function openChatAttachment(item: {
     mobileView.value = 'practice'
     bottomTab.value = 'tests'
     terminalDockOpen.value = true
+    const targetEntry = origin.runId
+      ? runResultHistory.value.find(
+          (row) => row.runId === origin.runId || row.runId.startsWith(String(origin.runId)),
+        )
+      : null
     if (origin.runId) {
       lastRunId.value = origin.runId
-      const entry = runResultHistory.value.find(
-        (row) => row.runId === origin.runId || row.runId.startsWith(String(origin.runId)),
-      )
-      if (entry?.assertions.length) {
-        lastAssertions.value = entry.assertions
-        lastAssertionsRunId.value = entry.runId
+      if (targetEntry?.assertions.length) {
+        lastAssertions.value = targetEntry.assertions
+        lastAssertionsRunId.value = targetEntry.runId
       }
     }
+    testsView.value = 'time'
+    expandedRunId.value = targetEntry?.runId || ''
     toast(
       origin.assertionId
         ? `已打开测试结果 · ${origin.assertionId}`
@@ -2006,9 +2205,13 @@ function formatAssertionsForChat(
         ? `状态：${meta.verified ? '已通过' : '未通过'}`
         : '',
   ].filter(Boolean)
-  const lines = assertions.map(
-    (item) =>
-      `${item.passed ? '✓' : '✗'} ${item.label || item.id}\n  期望：${item.expected}\n  实际：${item.observed}`,
+  const lines = assertions.map((item) =>
+    [
+      `${item.passed ? '✓' : '✗'} ${item.label || item.id}`,
+      `  期望：${item.expected}`,
+      `  实际：${item.observed}`,
+      ...(!item.passed && item.hint ? [`  修改建议：${item.hint}`] : []),
+    ].join('\n'),
   )
   return [...head, '', ...lines].join('\n').trim()
 }
@@ -2019,6 +2222,7 @@ function formatOneAssertionForChat(item: RunAssertionItem, runId?: string) {
     `${item.passed ? '✓' : '✗'} ${item.label || item.id}`,
     `期望：${item.expected}`,
     `实际：${item.observed}`,
+    ...(!item.passed && item.hint ? [`修改建议：${item.hint}`] : []),
   ]
     .filter(Boolean)
     .join('\n')
@@ -2217,9 +2421,11 @@ function announceUnlock(wasCompleted: boolean) {
   if (wasCompleted || !journeyItem.value?.completed) return
   const next = journey.value[journeyItem.value.index + 1]
   toast(
-    next
-      ? `${lab.value.systemLayer}已构建，${next.lab.label} · ${next.lab.systemLayer} 已解锁。`
-      : '全部系统层已经构建完成。',
+    !next
+      ? '全部系统层已经构建完成。'
+      : next.unlocked
+        ? `${lab.value.systemLayer}已构建，${next.lab.label} · ${next.lab.systemLayer} 已解锁。`
+        : `${lab.value.systemLayer}已构建，等待老师按范围分发 ${next.lab.label} · ${next.lab.systemLayer}。`,
     5000,
   )
 }
@@ -2288,7 +2494,12 @@ function onRunExit(runId: string) {
 /** Problems 诊断加载完成：有条目时自动展开底部面板并切到 Problems。 */
 function onDiagnosticsLoaded(payload: { runId: string; count: number }) {
   lastDiagnosticCount.value = payload.count
-  if (payload.count <= 0 || !payload.runId) return
+  if (payload.count <= 0 || !payload.runId) {
+    if (bottomTab.value === 'problems') {
+      bottomTab.value = lastAssertions.value.length ? 'tests' : 'terminal'
+    }
+    return
+  }
   terminalDockOpen.value = true
   bottomTab.value = 'problems'
 }
@@ -2297,7 +2508,12 @@ function onDiagnosticsLoaded(payload: { runId: string; count: number }) {
 function onRunDiagnostics(payload: { runId: string; diagnostics: unknown[] }) {
   if (payload.runId) lastRunId.value = payload.runId
   lastDiagnosticCount.value = payload.diagnostics.length
-  if (payload.diagnostics.length <= 0) return
+  if (payload.diagnostics.length <= 0) {
+    if (bottomTab.value === 'problems') {
+      bottomTab.value = lastAssertions.value.length ? 'tests' : 'terminal'
+    }
+    return
+  }
   terminalDockOpen.value = true
   bottomTab.value = 'problems'
 }
@@ -2530,6 +2746,7 @@ onMounted(async () => {
   clampTutorFabToViewport()
   events.value = loadEvents()
   if (!studentId.value) showIdentity.value = true
+  void loadClassNames()
   await checkConnection()
   await refreshLearningAccess()
   if (!(await loadServerTutorConversation()) && !loadTutorConversation()) startSession()
@@ -2718,7 +2935,7 @@ onBeforeUnmount(() => {
       >
         <LockKeyhole :size="28" aria-hidden="true" />
         <strong>{{ accessLoading ? '正在确认学习进度' : '当前实验尚未解锁' }}</strong>
-        <p>{{ currentAccess?.reason || (auth ? '请从学习路径确认教师开放范围和前置任务。' : '登录后才能进入实验工作台。') }}</p>
+        <p>{{ currentAccess?.reason || (auth ? '请从学习路径确认教师分发范围和前置任务。' : '登录后才能进入实验工作台。') }}</p>
         <a :href="withBase('/guide/ai-tutor')">返回学习路径</a>
       </div>
 
@@ -2816,6 +3033,7 @@ onBeforeUnmount(() => {
                         @click="bottomTab = 'terminal'"
                       >终端</button>
                       <button
+                        v-if="lastDiagnosticCount > 0"
                         type="button"
                         role="tab"
                         :aria-selected="bottomTab === 'problems'"
@@ -2873,7 +3091,7 @@ onBeforeUnmount(() => {
                     <div v-show="bottomTab === 'tests'" class="ws-tests-panel">
                       <header class="ws-tests-intro">
                         <div class="ws-tests-intro-row">
-                          <strong>测试结果 · 可信断言</strong>
+                          <strong>测试结果</strong>
                           <button
                             v-if="lastAssertions.length"
                             type="button"
@@ -2884,116 +3102,188 @@ onBeforeUnmount(() => {
                             <MessageSquarePlus :size="13" aria-hidden="true" />添加到对话
                           </button>
                         </div>
-                        <p>
-                          汇总<strong>可信验证命令</strong>的断言（期望 vs 实际）；停止或无断言的运行不会冲掉上一份结果。
-                          结果按 Lab/账号缓存在本机约 24 小时，刷新页面后仍可查看。
-                          与 Problems（编译诊断）、Trace（运行时事件回放）互补。
-                        </p>
+                        <div v-if="runResultHistory.length" class="ws-tests-view" role="group" aria-label="测试结果视图">
+                          <button
+                            type="button"
+                            :class="{ active: testsView === 'time' }"
+                            :aria-pressed="testsView === 'time'"
+                            @click="testsView = 'time'"
+                          >按时间</button>
+                          <button
+                            type="button"
+                            :class="{ active: testsView === 'tag' }"
+                            :aria-pressed="testsView === 'tag'"
+                            @click="testsView = 'tag'"
+                          >按标签</button>
+                        </div>
                       </header>
                       <div class="ws-tests-body">
-                        <div
-                          v-if="keyAssertion"
-                          class="ws-tests-focus"
-                          :data-state="keyAssertionPassed === null ? 'unknown' : keyAssertionPassed ? 'ok' : 'fail'"
-                        >
-                          <strong>{{ keyAssertion.label }}</strong>
-                          <span>{{ keyAssertion.note }}</span>
-                          <span class="ws-tests-focus-state" v-if="keyAssertionPassed === null">
-                            尚未看到该断言；请运行可信验证。
+                        <div class="ws-tests-conclusion" :data-state="testsConclusion.state">
+                          <span class="ws-tests-conclusion-icon" aria-hidden="true">
+                            <CheckCircle2 v-if="testsConclusion.state === 'ok'" :size="18" />
+                            <XCircle v-else-if="testsConclusion.state === 'fail'" :size="18" />
+                            <CircleSlash v-else-if="testsConclusion.state === 'stopped'" :size="18" />
+                            <Clock v-else :size="18" />
                           </span>
-                          <span class="ws-tests-focus-state" v-else-if="keyAssertionPassed">已观察到。</span>
-                          <span class="ws-tests-focus-state" v-else>当前结果中未通过。</span>
+                          <div class="ws-tests-conclusion-main">
+                            <div class="ws-tests-conclusion-head">
+                              <strong>{{ testsConclusion.title }}</strong>
+                              <span v-if="typeof testsConclusion.passed === 'number'" class="ws-tests-conclusion-count">
+                                {{ testsConclusion.passed }}/{{ testsConclusion.total }} 断言通过
+                              </span>
+                            </div>
+                            <p>{{ testsConclusion.note }}</p>
+                            <div v-if="keyAssertion && lastAssertions.length" class="ws-tests-conclusion-key">
+                              <span class="ws-tests-conclusion-key-label">关键断言</span>
+                              <span>{{ keyAssertion.label }} · {{ keyAssertionPassed === null ? '尚未验证' : keyAssertionPassed ? '已通过' : '未通过' }}</span>
+                            </div>
+                            <div v-if="testsConclusion.runId || runResultHistory.length" class="ws-tests-conclusion-meta">
+                              <code v-if="testsConclusion.runId" class="ws-tests-run-id">run:{{ testsConclusion.runId.slice(0, 8) }}…</code>
+                              <time v-if="testsConclusion.at" class="ws-tests-history-time">{{ formatRunTime(testsConclusion.at) }}</time>
+                              <span class="ws-tests-conclusion-stats">
+                                共 {{ runResultHistory.length }} 次 · 通过 {{ passedHistoryCount }} · 未通过 {{ failedHistoryCount }} · 停止 {{ stoppedHistoryCount }} · 未验证 {{ emptyHistoryCount }}
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                        <p v-if="!lastAssertionsRunId && !runResultHistory.length">
-                          在「终端」页签运行可信验证命令后，断言结果将汇总在此。
-                        </p>
-                        <template v-else>
-                          <section v-if="lastAssertions.length" class="ws-tests-current" aria-label="当前断言结果">
-                            <header class="ws-tests-run-head">
-                              <strong>当前结果</strong>
-                              <code v-if="lastAssertionsRunId">run:{{ lastAssertionsRunId.slice(0, 8) }}…</code>
-                            </header>
-                            <ul class="ws-tests-assertions">
-                              <li
-                                v-for="item in lastAssertions"
-                                :key="item.id"
-                                :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed, focus: isKeyAssertion(item.id) }]"
+                        <template v-if="runResultHistory.length">
+                          <header class="ws-tests-list-head">
+                            <strong>运行记录</strong>
+                            <span>{{ testsView === 'time' ? '按时间' : '按标签' }} · {{ testsView === 'time' ? orderedRunResults.length : taggedRunGroups.length }} 项</span>
+                          </header>
+
+                          <section v-if="testsView === 'time'" class="ws-tests-history" aria-label="按时间查看测试结果">
+                            <template v-for="entry in orderedRunResults" :key="entry.runId">
+                              <details
+                                v-if="entry.assertions.length"
+                                class="ws-tests-history-item"
+                                :class="{ current: entry.runId === lastAssertionsRunId }"
+                                :open="expandedRunId === entry.runId"
+                                @toggle="onRunToggle(entry.runId, $event)"
                               >
-                                <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
-                                <span class="ws-test-label">{{ item.label || item.id }}</span>
-                                <span class="ws-test-expected">期望：{{ item.expected }}</span>
-                                <span class="ws-test-observed">实际：{{ item.observed }}</span>
-                                <button
-                                  type="button"
-                                  class="ws-tests-add-chat ws-test-assertion-add"
-                                  title="只把这一条断言添加到对话"
-                                  @click="addOneAssertionToChat(item, lastAssertionsRunId)"
-                                >
-                                  <MessageSquarePlus :size="12" aria-hidden="true" />
-                                </button>
-                              </li>
-                            </ul>
-                          </section>
-                          <p v-else-if="lastRunId" class="ws-tests-note">
-                            最近一次运行 <code>{{ lastRunId }}</code> 未返回可展示断言
-                            <template v-if="lastAssertionsRunId">；仍保留上一份
-                              <code>run:{{ lastAssertionsRunId.slice(0, 8) }}…</code>
-                              的结果如下方历史。</template>
-                            <strong> 不表示验证已通过。</strong>
-                          </p>
-                          <section v-if="runResultHistory.length" class="ws-tests-history" aria-label="近期运行历史">
-                            <header class="ws-tests-run-head">
-                              <strong>近期历史</strong>
-                              <span>{{ runResultHistory.length }} 次</span>
-                            </header>
-                            <details
-                              v-for="entry in runResultHistory"
-                              :key="entry.runId"
-                              class="ws-tests-history-item"
-                              :open="entry.runId === lastAssertionsRunId"
-                            >
-                              <summary>
-                                <code>run:{{ entry.runId.slice(0, 8) }}…</code>
-                                <span
-                                  class="ws-tests-history-badge"
-                                  :data-state="entry.stopped ? 'stopped' : entry.verified ? 'ok' : 'fail'"
-                                >
-                                  {{ entry.stopped ? '已停止' : entry.verified ? '已通过' : '未通过' }}
-                                </span>
-                                <span v-if="entry.assertions.length" class="ws-tests-history-count">
-                                  {{ entry.assertions.filter((a) => a.passed).length }}/{{ entry.assertions.length }}
-                                </span>
-                                <button
-                                  v-if="entry.assertions.length"
-                                  type="button"
-                                  class="ws-tests-add-chat ws-tests-history-add"
-                                  title="添加到对话"
-                                  @click.prevent.stop="addHistoryTestsToChat(entry)"
-                                >
-                                  <MessageSquarePlus :size="12" aria-hidden="true" />
-                                </button>
-                              </summary>
-                              <ul v-if="entry.assertions.length" class="ws-tests-assertions">
-                                <li
-                                  v-for="item in entry.assertions"
-                                  :key="`${entry.runId}:${item.id}`"
-                                  :class="['ws-test-assertion', { passed: item.passed, failed: !item.passed, focus: isKeyAssertion(item.id) }]"
-                                >
-                                  <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
-                                  <span class="ws-test-label">{{ item.label || item.id }}</span>
-                                  <span class="ws-test-expected">期望：{{ item.expected }}</span>
-                                  <span class="ws-test-observed">实际：{{ item.observed }}</span>
+                                <summary>
+                                  <code class="ws-tests-run-id">run:{{ entry.runId.slice(0, 8) }}…</code>
+                                  <span class="ws-tests-history-badge" :data-state="runStateKey(entry)">
+                                    {{ runStateLabels[runStateKey(entry)] }}
+                                  </span>
+                                  <span v-if="entry.runId === lastAssertionsRunId" class="ws-tests-current-tag">当前</span>
+                                  <span class="ws-tests-history-count">
+                                    {{ entry.assertions.filter((a) => a.passed).length }}/{{ entry.assertions.length }}
+                                  </span>
+                                  <time v-if="entry.at" class="ws-tests-history-time">{{ formatRunTime(entry.at) }}</time>
                                   <button
                                     type="button"
-                                    class="ws-tests-add-chat ws-test-assertion-add"
-                                    title="只把这一条断言添加到对话"
-                                    @click="addOneAssertionToChat(item, entry.runId)"
+                                    class="ws-tests-add-chat ws-tests-history-add"
+                                    title="添加到对话"
+                                    @click.prevent.stop="addHistoryTestsToChat(entry)"
                                   >
                                     <MessageSquarePlus :size="12" aria-hidden="true" />
                                   </button>
-                                </li>
-                              </ul>
-                              <p v-else class="ws-tests-note">本次无断言列表（可能被停止或未走可信 recipe）。</p>
+                                </summary>
+                                <ul class="ws-tests-assertions">
+                                  <li
+                                    v-for="item in orderedAssertions(entry.assertions)"
+                                    :key="`${entry.runId}:${item.id}`"
+                                    :class="[
+                                      'ws-test-assertion',
+                                      { passed: item.passed, failed: !item.passed, 'has-hint': !item.passed && item.hint },
+                                    ]"
+                                  >
+                                    <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
+                                    <span class="ws-test-label">{{ item.label || item.id }}</span>
+                                    <span class="ws-test-expected">期望：{{ item.expected }}</span>
+                                    <span class="ws-test-observed">实际：{{ item.observed }}</span>
+                                    <span v-if="!item.passed && item.hint" class="ws-test-hint">修改建议：{{ item.hint }}</span>
+                                    <button
+                                      type="button"
+                                      class="ws-tests-add-chat ws-test-assertion-add"
+                                      title="只把这一条断言添加到对话"
+                                      @click="addOneAssertionToChat(item, entry.runId)"
+                                    >
+                                      <MessageSquarePlus :size="12" aria-hidden="true" />
+                                    </button>
+                                  </li>
+                                </ul>
+                              </details>
+                              <div v-else class="ws-tests-history-item ws-tests-history-plain">
+                                <code class="ws-tests-run-id">run:{{ entry.runId.slice(0, 8) }}…</code>
+                                <span class="ws-tests-history-badge" :data-state="runStateKey(entry)">
+                                  {{ runStateLabels[runStateKey(entry)] }}
+                                </span>
+                                <time v-if="entry.at" class="ws-tests-history-time">{{ formatRunTime(entry.at) }}</time>
+                              </div>
+                            </template>
+                          </section>
+
+                          <section v-else class="ws-tests-history" aria-label="按标签分类查看测试结果">
+                            <details v-for="group in taggedRunGroups" :key="group.key" class="ws-tests-tag-group">
+                              <summary>
+                                <span class="ws-tests-tag-badge" :data-state="group.key">{{ group.label }}</span>
+                                <span class="ws-tests-history-count">{{ group.entries.length }} 次</span>
+                                <span class="ws-tests-group-stats">{{ groupPassSummary(group.entries) }}</span>
+                              </summary>
+                              <div class="ws-tests-group-body">
+                                <template v-for="entry in group.entries" :key="entry.runId">
+                                  <details
+                                    v-if="entry.assertions.length"
+                                    class="ws-tests-history-item"
+                                    :class="{ current: entry.runId === lastAssertionsRunId }"
+                                    :open="expandedRunId === entry.runId"
+                                    @toggle="onRunToggle(entry.runId, $event)"
+                                  >
+                                    <summary>
+                                      <code class="ws-tests-run-id">run:{{ entry.runId.slice(0, 8) }}…</code>
+                                      <span class="ws-tests-history-badge" :data-state="runStateKey(entry)">
+                                        {{ runStateLabels[runStateKey(entry)] }}
+                                      </span>
+                                      <span v-if="entry.runId === lastAssertionsRunId" class="ws-tests-current-tag">当前</span>
+                                      <span class="ws-tests-history-count">
+                                        {{ entry.assertions.filter((a) => a.passed).length }}/{{ entry.assertions.length }}
+                                      </span>
+                                      <time v-if="entry.at" class="ws-tests-history-time">{{ formatRunTime(entry.at) }}</time>
+                                      <button
+                                        type="button"
+                                        class="ws-tests-add-chat ws-tests-history-add"
+                                        title="添加到对话"
+                                        @click.prevent.stop="addHistoryTestsToChat(entry)"
+                                      >
+                                        <MessageSquarePlus :size="12" aria-hidden="true" />
+                                      </button>
+                                    </summary>
+                                    <ul class="ws-tests-assertions">
+                                      <li
+                                        v-for="item in orderedAssertions(entry.assertions)"
+                                        :key="`${entry.runId}:${item.id}`"
+                                        :class="[
+                                          'ws-test-assertion',
+                                          { passed: item.passed, failed: !item.passed, 'has-hint': !item.passed && item.hint },
+                                        ]"
+                                      >
+                                        <span class="ws-test-mark" :aria-label="item.passed ? '通过' : '未通过'">{{ item.passed ? '✓' : '✗' }}</span>
+                                        <span class="ws-test-label">{{ item.label || item.id }}</span>
+                                        <span class="ws-test-expected">期望：{{ item.expected }}</span>
+                                        <span class="ws-test-observed">实际：{{ item.observed }}</span>
+                                        <span v-if="!item.passed && item.hint" class="ws-test-hint">修改建议：{{ item.hint }}</span>
+                                        <button
+                                          type="button"
+                                          class="ws-tests-add-chat ws-test-assertion-add"
+                                          title="只把这一条断言添加到对话"
+                                          @click="addOneAssertionToChat(item, entry.runId)"
+                                        >
+                                          <MessageSquarePlus :size="12" aria-hidden="true" />
+                                        </button>
+                                      </li>
+                                    </ul>
+                                  </details>
+                                  <div v-else class="ws-tests-history-item ws-tests-history-plain">
+                                    <code class="ws-tests-run-id">run:{{ entry.runId.slice(0, 8) }}…</code>
+                                    <span class="ws-tests-history-badge" :data-state="runStateKey(entry)">
+                                      {{ runStateLabels[runStateKey(entry)] }}
+                                    </span>
+                                    <time v-if="entry.at" class="ws-tests-history-time">{{ formatRunTime(entry.at) }}</time>
+                                  </div>
+                                </template>
+                              </div>
                             </details>
                           </section>
                         </template>
@@ -3256,7 +3546,7 @@ onBeforeUnmount(() => {
       role="dialog"
       aria-modal="true"
       aria-label="账号"
-      @click.self="showIdentity = false"
+      @click.self="auth ? showIdentity = false : undefined"
     >
       <div class="ws-modal">
         <template v-if="auth">
@@ -3291,8 +3581,7 @@ onBeforeUnmount(() => {
         <template v-else>
           <h2>{{ authMode === 'login' ? '登录' : '注册' }}</h2>
           <p class="ws-modal-hint">
-            账号保存在本机导师服务的数据库里；你的系统、进度与报告都绑定账号。
-            只想看参考实现可以直接关闭（游客只读）。
+            账号保存在本机导师服务的数据库里；你的系统、进度与报告都绑定账号，登录后才能使用工作台。
           </p>
           <label class="ws-modal-field">
             <span>用户名（学号或昵称）</span>
@@ -3308,21 +3597,31 @@ onBeforeUnmount(() => {
             />
           </label>
           <label v-if="authMode === 'register'" class="ws-modal-field">
-            <span>班级（如 计科2301）</span>
-            <input v-model="authForm.className" type="text" spellcheck="false" autocomplete="off" />
+            <span>班级</span>
+            <select v-model="authForm.className" required :disabled="!classNames.length">
+              <option value="" disabled>{{ classNamesLoading ? '正在加载班级…' : classNames.length ? '请选择班级' : '老师尚未创建班级' }}</option>
+              <option v-for="c in classNames" :key="c" :value="c">{{ c }}</option>
+            </select>
           </label>
+          <p v-if="authMode === 'register' && !classNamesLoading && !classNames.length" class="ws-modal-status" data-state="offline">
+            请先联系老师创建班级后再注册。
+          </p>
           <p v-if="authError" class="ws-modal-status" data-state="offline">{{ authError }}</p>
           <div class="ws-modal-actions">
             <button
               type="button"
               class="ws-modal-secondary"
-              @click="authMode = authMode === 'login' ? 'register' : 'login'; authError = ''"
+              @click="switchAuthMode"
             >
               {{ authMode === 'login' ? '没有账号？注册' : '已有账号？登录' }}
             </button>
             <span class="ws-modal-spacer" aria-hidden="true"></span>
-            <button type="button" class="ws-modal-secondary" @click="showIdentity = false">游客浏览</button>
-            <button type="button" class="ws-modal-primary" :disabled="authBusy" @click="submitAuth">
+            <button
+              type="button"
+              class="ws-modal-primary"
+              :disabled="authBusy || (authMode === 'register' && !authForm.className)"
+              @click="submitAuth"
+            >
               {{ authBusy ? '请稍候…' : authMode === 'login' ? '登录' : '注册并进入' }}
             </button>
           </div>
@@ -3356,7 +3655,7 @@ onBeforeUnmount(() => {
             <template v-if="!scaffold.exists">{{ scaffold.user }}，尚未初始化。点击下方按钮领取 Lab1 起步代码。</template>
             <template v-else-if="scaffold.next">
               当前进度：{{ scaffold.applied.join(' → ') }}；下一步 {{ scaffold.next }}（{{ scaffold.nextSummary }}）
-              <template v-if="!scaffold.nextAllowed">——老师当前开放到 {{ scaffold.openLab }}，{{ scaffold.next }} 尚未开放。</template>
+              <template v-if="!scaffold.nextAllowed">——老师当前分发到 {{ scaffold.openLab }}，{{ scaffold.next }} 尚未分发。</template>
               <template v-else>——请到顶栏「系统构建路径」中点击 {{ scaffold.next }} 的「领取并开始」，代码才会发到本机，「我的系统」也会同步显示。</template>
             </template>
             <template v-else>八个 Lab 已全部发放，继续自由完善你的系统吧。</template>
@@ -3849,6 +4148,20 @@ onBeforeUnmount(() => {
   font-size: var(--ws-text-sm);
 }
 
+.ws-tests-title-block {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--ws-space-2);
+  min-width: 0;
+}
+
+.ws-tests-summary {
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
 .ws-tests-add-chat {
   display: inline-flex;
   align-items: center;
@@ -3870,6 +4183,20 @@ onBeforeUnmount(() => {
   color: var(--ws-ink);
   border-color: var(--ws-accent, #3b82f6);
   background: var(--ws-surface-alt);
+}
+
+.ws-tests-key-note {
+  margin: var(--ws-space-1) 0 0;
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+  line-height: var(--ws-leading-normal);
+}
+
+.ws-tests-fail-note {
+  margin: var(--ws-space-2) 0 0 !important;
+  color: var(--ws-danger, #c0392b);
+  font-size: var(--ws-text-xs);
+  line-height: var(--ws-leading-normal);
 }
 
 .ws-tests-focus {
@@ -3924,6 +4251,177 @@ onBeforeUnmount(() => {
   line-height: var(--ws-leading-normal);
 }
 
+.ws-tests-view {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: var(--ws-space-2);
+  padding: 2px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-surface);
+}
+
+.ws-tests-view button {
+  min-height: 24px;
+  padding: 2px 10px;
+  border: 0;
+  border-radius: var(--ws-radius-sm);
+  background: transparent;
+  color: var(--ws-ink-muted);
+  font: inherit;
+  font-size: var(--ws-text-xs);
+  cursor: pointer;
+}
+
+.ws-tests-view button:hover,
+.ws-tests-view button:focus-visible {
+  color: var(--ws-ink);
+}
+
+.ws-tests-view button.active {
+  background: var(--ws-surface-alt);
+  color: var(--ws-ink);
+  box-shadow: inset 0 0 0 1px var(--ws-line);
+}
+
+.ws-tests-conclusion {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px 12px;
+  margin-bottom: var(--ws-space-3);
+  padding: 12px 14px;
+  border: 1px solid var(--ws-line);
+  border-left: 3px solid var(--ws-ink-muted);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+  color: var(--ws-ink);
+}
+
+.ws-tests-conclusion[data-state='ok'] {
+  border-left-color: var(--ws-ok, #1a7f37);
+  background: var(--ws-ok-soft, color-mix(in srgb, var(--ws-ok, #1a7f37) 10%, transparent));
+}
+
+.ws-tests-conclusion[data-state='fail'] {
+  border-left-color: var(--ws-danger, #c0392b);
+  background: var(--ws-danger-soft, color-mix(in srgb, var(--ws-danger, #c0392b) 10%, transparent));
+}
+
+.ws-tests-conclusion[data-state='stopped'] {
+  border-left-color: var(--ws-warn, #b7791f);
+  background: var(--ws-warn-soft, color-mix(in srgb, var(--ws-warn, #b7791f) 10%, transparent));
+}
+
+.ws-tests-conclusion-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--ws-line);
+  border-radius: 50%;
+  background: var(--ws-surface);
+  color: var(--ws-ink-muted);
+}
+
+.ws-tests-conclusion[data-state='ok'] .ws-tests-conclusion-icon {
+  color: var(--ws-ok, #1a7f37);
+  border-color: color-mix(in srgb, var(--ws-ok, #1a7f37) 40%, var(--ws-line));
+}
+
+.ws-tests-conclusion[data-state='fail'] .ws-tests-conclusion-icon {
+  color: var(--ws-danger, #c0392b);
+  border-color: color-mix(in srgb, var(--ws-danger, #c0392b) 40%, var(--ws-line));
+}
+
+.ws-tests-conclusion[data-state='stopped'] .ws-tests-conclusion-icon {
+  color: var(--ws-warn, #b7791f);
+  border-color: color-mix(in srgb, var(--ws-warn, #b7791f) 40%, var(--ws-line));
+}
+
+.ws-tests-conclusion-main {
+  min-width: 0;
+}
+
+.ws-tests-conclusion-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.ws-tests-conclusion-head strong {
+  color: var(--ws-ink);
+  font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-tests-conclusion-count {
+  margin-left: auto;
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.ws-tests-conclusion p {
+  margin: 4px 0 0;
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+  line-height: var(--ws-leading-normal);
+}
+
+.ws-tests-conclusion-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: 1px dashed var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-tests-conclusion-key-label {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--ws-accent-soft);
+  color: var(--ws-accent);
+  font-size: 11px;
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-tests-conclusion-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 8px;
+  color: var(--ws-ink-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ws-tests-conclusion-stats {
+  margin-left: auto;
+}
+
+.ws-tests-list-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ws-space-2);
+  margin: var(--ws-space-1) 0 var(--ws-space-2);
+  color: var(--ws-ink);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-tests-list-head span {
+  color: var(--ws-ink-faint);
+}
+
 .ws-tests-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -3944,7 +4442,6 @@ onBeforeUnmount(() => {
   font-family: var(--ws-font-mono);
 }
 
-.ws-tests-current,
 .ws-tests-history {
   display: flex;
   flex-direction: column;
@@ -3965,6 +4462,23 @@ onBeforeUnmount(() => {
   color: var(--ws-ink-faint);
 }
 
+.ws-tests-run-id {
+  color: var(--ws-ink-muted);
+  font-family: var(--ws-font-mono);
+}
+
+.ws-tests-pass-summary {
+  margin-left: auto;
+  color: var(--ws-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ws-tests-history-time {
+  color: var(--ws-ink-faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
 .ws-tests-note {
   margin: 0 0 var(--ws-space-3) !important;
   color: var(--ws-ink-muted);
@@ -3975,15 +4489,20 @@ onBeforeUnmount(() => {
   border: 1px solid var(--ws-line);
   border-radius: var(--ws-radius-md);
   background: var(--ws-surface-alt);
-  padding: 0 var(--ws-space-2) var(--ws-space-2);
+  padding: 0 var(--ws-space-1) var(--ws-space-1);
+}
+
+.ws-tests-history-item.current {
+  border-color: var(--ws-accent, #3b82f6);
+  box-shadow: inset 2px 0 0 var(--ws-accent, #3b82f6);
 }
 
 .ws-tests-history-item summary {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--ws-space-2);
-  min-height: 32px;
+  gap: 4px 8px;
+  min-height: 28px;
   cursor: pointer;
   list-style: none;
   color: var(--ws-ink);
@@ -3991,6 +4510,22 @@ onBeforeUnmount(() => {
 
 .ws-tests-history-item summary::-webkit-details-marker {
   display: none;
+}
+
+.ws-tests-history-item summary::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  opacity: 0.55;
+  transition: transform 0.15s ease;
+}
+
+.ws-tests-history-item[open] summary::before {
+  transform: rotate(45deg);
 }
 
 .ws-tests-history-badge {
@@ -4015,9 +4550,94 @@ onBeforeUnmount(() => {
   background: var(--ws-warn-soft);
 }
 
+.ws-tests-history-badge[data-state='empty'] {
+  color: var(--ws-ink-muted);
+  background: var(--ws-surface);
+}
+
+.ws-tests-current-tag {
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--ws-accent);
+  background: var(--ws-accent-soft);
+  font-size: 11px;
+  font-weight: var(--ws-weight-semibold);
+}
+
 .ws-tests-history-count {
   color: var(--ws-ink-faint);
   font-variant-numeric: tabular-nums;
+}
+
+.ws-tests-history-plain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-height: 28px;
+  color: var(--ws-ink-muted);
+}
+
+.ws-tests-tag-group {
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
+}
+
+.ws-tests-tag-group > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-height: 30px;
+  padding: 0 var(--ws-space-2);
+  cursor: pointer;
+  list-style: none;
+  color: var(--ws-ink);
+}
+
+.ws-tests-tag-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ws-tests-tag-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-tests-tag-badge[data-state='fail'] {
+  color: var(--ws-danger);
+  background: var(--ws-danger-soft);
+}
+
+.ws-tests-tag-badge[data-state='ok'] {
+  color: var(--ws-ok);
+  background: var(--ws-ok-soft);
+}
+
+.ws-tests-tag-badge[data-state='stopped'] {
+  color: var(--ws-warn);
+  background: var(--ws-warn-soft);
+}
+
+.ws-tests-tag-badge[data-state='empty'] {
+  color: var(--ws-ink-muted);
+  background: var(--ws-surface-alt);
+}
+
+.ws-tests-group-stats {
+  margin-left: auto;
+  color: var(--ws-ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.ws-tests-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ws-space-1);
+  padding: 0 var(--ws-space-2) var(--ws-space-2);
 }
 
 .ws-zone-assistant .ws-zone-body {
@@ -4434,6 +5054,14 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
+.ws-test-assertion.has-hint {
+  grid-template-areas:
+    'mark label add'
+    'mark expected add'
+    'mark observed add'
+    'mark hint add';
+}
+
 .ws-test-assertion-add {
   grid-area: add;
   align-self: center;
@@ -4486,6 +5114,20 @@ onBeforeUnmount(() => {
   font-family: var(--ws-font-mono);
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.ws-test-hint {
+  grid-area: hint;
+  min-width: 0;
+  margin-top: 4px;
+  padding: 6px 8px;
+  color: var(--ws-danger, #c0392b);
+  background: var(--ws-danger-soft, color-mix(in srgb, var(--ws-danger, #c0392b) 12%, transparent));
+  border: 1px solid color-mix(in srgb, var(--ws-danger, #c0392b) 28%, var(--ws-line));
+  border-radius: var(--ws-radius-sm);
+  font-size: var(--ws-text-xs);
+  line-height: var(--ws-leading-normal);
+  overflow-wrap: anywhere;
 }
 
 /* 教师右栏：整栏一个作业发布面板。 */
@@ -4680,7 +5322,8 @@ onBeforeUnmount(() => {
   font-weight: var(--ws-weight-medium);
 }
 
-.ws-modal-field input {
+.ws-modal-field input,
+.ws-modal-field select {
   width: 100%;
   min-height: var(--ws-control-md);
   padding: var(--ws-space-1) var(--ws-space-3);
@@ -4692,7 +5335,8 @@ onBeforeUnmount(() => {
   font-size: var(--ws-text-sm);
 }
 
-.ws-modal-field input:focus {
+.ws-modal-field input:focus,
+.ws-modal-field select:focus {
   border-color: var(--ws-accent);
   outline: none;
 }
