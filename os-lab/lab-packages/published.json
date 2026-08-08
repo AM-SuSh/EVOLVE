@@ -262,22 +262,22 @@
       },
       "variants": {
         "fill": {
-          "label": "学生补全管道两端关闭与读写协议，理解 pipe + fork 协作。",
+          "label": "学生补全 fork 后管道引用计数（clone_fd_table），理解 fd 继承与 pipe 寿命。",
           "files": [
-            "user/src/bin/pipe_test.rs"
+            "kernel/src/fs/embedded.rs"
           ],
           "sources": {
-            "user/src/bin/pipe_test.rs": "scaffold/exercises/lab5/fill/user/src/bin/pipe_test.rs"
+            "kernel/src/fs/embedded.rs": "scaffold/exercises/lab5/fill/kernel/src/fs/embedded.rs"
           },
           "manifest": "lab-packages/lab5/variants/fill/manifest.yaml"
         },
         "debug": {
-          "label": "学生排查 fork 后管道关错端：子进程应关写端再读，而不是关掉读端。",
+          "label": "学生排查 clone_fd_table 漏掉管道引用计数，导致 fork 后 pipe_test 失败。",
           "files": [
-            "user/src/bin/pipe_test.rs"
+            "kernel/src/fs/embedded.rs"
           ],
           "sources": {
-            "user/src/bin/pipe_test.rs": "scaffold/exercises/lab5/debug/user/src/bin/pipe_test.rs"
+            "kernel/src/fs/embedded.rs": "scaffold/exercises/lab5/debug/kernel/src/fs/embedded.rs"
           },
           "manifest": "lab-packages/lab5/variants/debug/manifest.yaml"
         }

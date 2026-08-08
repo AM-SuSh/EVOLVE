@@ -1,5 +1,64 @@
 # os-lab 项目进度总览
 
+## 2026-08-08 - Task: 重写 Lab5 手册「三、实验任务」对齐内核 fill/debug
+
+### What was done
+- 按当前任务重写 `lab5-fs-and-sync.md` 第三节：任务一明确 fill/debug 在 `embedded.rs` 补/修管道 refs；任务二第 6–7 题改为考 `clone_fd_table` 与用户关端分层；任务三改为关错端对照、去锁、yield、可选加内嵌文件。
+- 同步更新 `lab5-answers.md` 第 6–7 题与任务三现象参考；实验目标一句点明内核动手点。
+
+### Testing
+- 人工通读第三节与答案编号一致；网站需 `npm run sync` 或刷新 VitePress 后可见。
+
+### Notes
+- 改动：`os-lab/labs/lab5-fs-and-sync.md`；`os-lab/labs/answers/lab5-answers.md`；`progress.md`
+- 回滚：还原上述文件
+
+---
+
+## 2026-08-08 - Task: Lab5 网站阶段推荐改用 fs/ 目录
+
+### What was done
+- 将手册站点 Lab5 各阶段推荐路径从旧的 `kernel/src/fs.rs` 改为 `kernel/src/fs/mod.rs` 与 `kernel/src/fs/embedded.rs`，与当前内核布局及 fill/debug 动手点一致。
+
+### Testing
+- 核对 `tutor-model.ts` 中 lab5 的 orient/read/debug 路径已无 `fs.rs`；需刷新 VitePress 页面后在阶段推荐中可见。
+
+### Notes
+- 改动：`os-lab/handbook/.vitepress/theme/tutor-model.ts`；`progress.md`
+- 回滚：还原上述文件中 lab5 `resources.paths` 为 `kernel/src/fs.rs`
+
+---
+
+## 2026-08-08 - Task: 移除收获与反思的默认填写提示
+
+### What was done
+- 删除学生端「收获与反思」下方的「填写提示」文案和输入框占位提示，仅保留章节标题与填写区域。
+- 固定 `reflection` 字段的提示为空；服务端和前端规范化逻辑忽略旧模板中的历史提示，已有学生草稿刷新后也不会重新显示旧句子。
+- 教师端报告格式编辑器移除反思节的填写提示编辑框，仍保留「收获与反思」标题和输入行数设置；其他报告章节的教师提示不变。
+- 更新本地 `os-lab/scaffold/teacher.json` 默认报告模板，反思节只保留 `reflection` ID、标题和行数。该文件按设计被 `.gitignore` 忽略，不提交教师账号配置。
+
+### Testing
+- `node --test os-lab/learning/report-template.test.mjs`：4/4 通过。
+- `npm test`（`os-lab/handbook`）：69/69 通过。
+- `npm run test:smoke`（`os-lab/handbook`）：通过。
+- `npm run build`（`os-lab/handbook`）：通过。
+- `teacher.json` JSON 解析通过；`git diff --check` 通过。
+## 2026-08-08 - Task: Lab5 fill/debug 改到内核 embedded.rs
+
+### What was done
+- 将 Lab5 fill/debug 从用户态 `pipe_test.rs` 改为内核 `kernel/src/fs/embedded.rs`：fill 补全 `bump_inherited_pipe_refs`；debug 埋点为 `clone_fd_table` 漏掉 `pipe_add_refs`。
+- 同步 scaffold、published.json、lab.yaml、manifest、concepts、tutor context、手册 §2.6/任务一与 factory 测试路径。
+
+### Testing
+- 人工核对 fill 为 `todo!`、debug 未调用 `pipe_add_refs`；catalog 指向新 sources。未在本机重跑完整 QEMU（需学生工作区领取后验证）。
+
+### Notes
+- 改动：scaffold/exercises/lab5/{fill,debug}/kernel/src/fs/embedded.rs；删除旧 user 题面目录；lab-packages/lab5/{lab.yaml,checkpoints.yaml,concepts,variants/*}；scripts/scaffold.mjs；published.json；labs/lab5-fs-and-sync.md；labs/answers/lab5-answers.md；tutor/prompts/lab5/{context,stage-debug}.md；handbook/lab-factory.test.mjs；progress.md
+- 回滚：还原上述文件并恢复旧 user 题面路径
+- 已领取旧 Lab5 工作区的学生需重新下发/重置才能拿到新题
+
+---
+
 ## 2026-08-08 - Task: 统一反思编辑区并按解锁初始化实验报告
 
 ### What was done
@@ -84,6 +143,46 @@
 
 ### Notes
 - 对应提交：`2c4d794`（`TRACE的一点优化`）。
+## 2026-08-08 - Task: 加详 Lab5 手册背景知识（面向学生）
+
+### What was done
+- 加详 lab5-fs-and-sync.md 第二节：补充新手问题、fd 表示意表、FdType 用错后果、fork 前后打开表对照、关端正误表、单核为何也要锁的说明，以及读完自测 6 问，降低概念门槛。
+
+### Testing
+- 人工通读第二节与 fill/debug 题面一致；未改实验断言与任务结构。
+
+### Notes
+- 改动：os-lab/labs/lab5-fs-and-sync.md；progress.md（本条）
+- 回滚：还原该手册第二节相关扩写
+
+---
+
+## 2026-08-08 - Task: 按 Lab2/Lab3 格式重写 Lab5 手册
+
+### What was done
+- 对照 lab2/lab3 手册结构重写 lab5-fs-and-sync.md：补知识路径、阅读顺序表、代码锚点（fd / 内嵌文件 / 管道 / 自旋锁）、fill/debug 关端考点与时间线；任务一与 `pipe_test.rs` 变体对齐，阅读理解与验证断言表收口。
+
+### Testing
+- 人工对照 lab2/lab3 章节骨架与 lab5 fill/debug 题面；手册不给出完整解法。
+
+### Notes
+- 改动：os-lab/labs/lab5-fs-and-sync.md；progress.md（本条）
+- 回滚：还原 lab5-fs-and-sync.md 本轮内容
+
+---
+
+## 2026-08-08 - Task: Lab5 fill/debug 注释对齐 Lab2/Lab3 风格
+
+### What was done
+- 按 Lab2/Lab3 题面风格改写 Lab5 fill/debug 的 `pipe_test.rs`：文件头用 `【Lab5 任务：fill/debug】`；fill 两函数用「思路提示」分条引导；debug 写清现象与排查步骤，埋点旁用中文对照引导。
+- 手册任务一变体识别说明改为对照 `pipe_test.rs` 的 fill/debug 标记。
+
+### Testing
+- 人工对照 Lab2/Lab3 文件头与函数提示结构；fill 仍为 `todo!`，debug 埋点（子进程误关读端）未改逻辑。
+
+### Notes
+- 改动：scaffold/exercises/lab5/fill|debug/user/src/bin/pipe_test.rs；labs/lab5-fs-and-sync.md；progress.md（本条）
+- 回滚：还原上述文件
 
 ---
 
@@ -4810,3 +4909,36 @@ ariants/fill/manifest.yaml、published.json 与 scripts/scaffold.mjs LEGACY 表�
 
 - 新数据不再写入全局 `learning/sessions/` 或旧报告附件目录；这些路径仅作为已有数据的兼容来源。
 - 清理学生数据时应根据 SQLite 中的 `users.id` 删除对应 `learning/student-data/<userId>/`，不要仅按用户名目录猜测归属。
+
+## 2026-08-08 - Task: improve report reflection layout and image attachment cleanup
+
+### What was done
+
+- 调整学生端实验报告的“收获与反思”区域为标题行加文本框两行布局，标题字号略微增大，文本框使用稳定的宽度、边框盒模型和内外边距，避免提示删除后留下空网格导致位置错开。
+- 为报告编辑增加图片引用基线：覆盖 Markdown 正文和所有报告分段，只有曾经被引用且当前完全没有引用的图片才会触发清理，仍被其他位置引用或仅上传未插入的图片不会被误删。
+- 复用现有 `/reports/draft/attachments` DELETE 接口，自动删除成功后同步清理缩略图 URL、附件元数据和报告草稿；批量清理完成后只保存一次草稿，保留手动删除附件的原有行为。
+- 修复草稿元数据短暂缺失时附件 DELETE 返回 404 的问题：前端同时提交经服务端路径校验的 `storedName`，服务端将删除改为幂等操作，不再让失效元数据阻塞“报告文件”列表清理。
+- 保存草稿时增加一次短延迟重试：网络短暂断开或服务端 5xx 时自动恢复，401/403/400 等业务错误则显示明确原因，避免学生只看到笼统的“报告保存失败”。
+- 保存地址增加本机回退：当前配置地址连接失败时依次尝试 `localhost` 和当前页面主机，兼容不同本地开发端口与主机名解析方式。
+
+### Testing
+
+- `npm test`：通过，69 项测试全绿。
+- `npm run test:smoke`：通过；新增“草稿附件元数据已缺失但文件仍存在”的删除回归场景，运行/Trace、账号隔离、报告草稿、会话恢复和 Lab Factory 链路均正常。
+- `npm run build`：通过；VitePress 客户端/服务端 bundle、页面渲染和链接检查通过。
+- 真实学生会话保存探测：`GET /reports/draft` 与原样 `PUT /reports/draft` 均返回 200。
+- `git diff --check`：通过。
+
+## 2026-08-08 - Task: fix browser report save CORS failure
+
+### What was done
+
+- 修复导师服务 CORS 配置遗漏 `PUT` 的问题；浏览器现在可以通过预检并保存 `PUT /reports/draft` 请求。
+- 新增报告草稿保存的 CORS 预检冒烟测试，校验 `localhost:5173` 来源、204 响应及 `PUT` 允许方法。
+
+### Testing
+
+- `npm test`：通过，69 项测试全绿。
+- `npm run test:smoke`：通过；报告草稿的 `PUT` CORS 预检断言通过，原有导师服务链路正常。
+- `npm run build`：通过；VitePress 客户端/服务端 bundle 和页面渲染通过。
+- `git diff --check`：通过。

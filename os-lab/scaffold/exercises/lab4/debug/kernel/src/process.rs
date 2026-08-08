@@ -1,4 +1,4 @@
-//! 【Lab4 任务：排错】`fork_test` 缺少 `I am parent` 与 `fork_test pass`。
+//! 【Lab4 任务：debug】`fork_test` 缺少 `I am parent` 与 `fork_test pass`。
 //!
 //! 现象：运行 `cargo run -p kernel --features lab4 --release` 时只看到两次
 //! `I am child`，父进程分支没有输出，`waitpid` 也没有执行。

@@ -2,7 +2,7 @@ schema_version: 1
 lab_id: lab5
 checkpoints:
   - { id: C5-1, stage: orient, required_evidence: [manual], prompt: 说明 fd 与具体文件对象的区别。 }
-  - { id: C5-2, stage: read, required_evidence: [code], prompt: 找到 open 名字解析和 fd 安装的边界。 }
+  - { id: C5-2, stage: read, required_evidence: [code], prompt: 找到 open 名字解析、fd 安装，以及 fork 时 clone_fd_table 的边界。 }
   - { id: C5-3, stage: run, required_evidence: [run], prompt: 保存文件内容与管道四条可信断言。 }
-  - { id: C5-4, stage: debug, required_evidence: [run, code], prompt: 用现象判断失败是管道关错端还是写端未关闭导致读不到数据。 }
-  - { id: C5-5, stage: reflect, required_evidence: [report], prompt: 解释为何最小实验能排除「open 文件名」而锁定管道两端协议。 }
+  - { id: C5-4, stage: debug, required_evidence: [run, code], prompt: 用现象判断失败是内核漏 bump 管道 refs，还是用户测例关错端。 }
+  - { id: C5-5, stage: reflect, required_evidence: [report], prompt: 解释为何 fs_test 仍过、pipe_test 失败，能帮助锁定 clone_fd_table。 }

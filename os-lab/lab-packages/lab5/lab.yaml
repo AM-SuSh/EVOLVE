@@ -6,7 +6,7 @@ feature: lab5
 prerequisites: [lab1, lab2, lab3, lab4]
 textbook: [OSTEP Ch.39 Files and Directories, OSTEP Ch.30 Condition Variables]
 status: stable
-manual_revision: lab5-pipe-fill-debug-v1.1
+manual_revision: lab5-kernel-pipe-refs-v2.0
 manual: ../../labs/lab5-fs-and-sync.md
 answers: ../../labs/answers/lab5-answers.md
 tutor_context: ../../tutor/prompts/lab5/context.md
@@ -15,10 +15,10 @@ knowledge:
   - { id: os.ipc.pipe, level: mechanism, concept_ref: concepts/fs.yaml#os.ipc.pipe }
 tasks:
   - { id: orient, stage: orient, goal: 解释 fd 如何统一表示内嵌文件和管道端点 }
-  - { id: read, stage: read, goal: 沿 open/read/close 与 pipe/fork 路径追踪对象生命周期 }
+  - { id: read, stage: read, goal: 沿 open/read/close 与 pipe/fork/clone_fd_table 路径追踪对象生命周期 }
   - { id: run, stage: run, goal: 跑通文件内容、fs_test、pipe_test 和全部退出断言 }
-  - { id: debug, stage: debug, goal: 定位 fork 后管道关错端导致读不到数据 }
-  - { id: reflect, stage: reflect, goal: 用最小证据说明失败在读端关闭还是写端关闭 }
+  - { id: debug, stage: debug, goal: 定位 clone_fd_table 漏掉管道引用计数导致 pipe_test 失败 }
+  - { id: reflect, stage: reflect, goal: 用最小证据说明失败在用户关端还是内核漏 bump refs }
 starter_files:
   added:
     - kernel/src/sync.rs
@@ -28,16 +28,16 @@ starter_files:
     - user/src/bin/fs_test.rs
     - user/src/bin/pipe_test.rs
   editable_by_variant:
-    fill: [user/src/bin/pipe_test.rs]
-    debug: [user/src/bin/pipe_test.rs]
+    fill: [kernel/src/fs/embedded.rs]
+    debug: [kernel/src/fs/embedded.rs]
   generated: [Cargo.toml, kernel/Cargo.toml, user/Cargo.toml]
 variants:
   fill:
     manifest: variants/fill/manifest.yaml
-    source: ../../scaffold/exercises/lab5/fill/user/src/bin/pipe_test.rs
+    source: ../../scaffold/exercises/lab5/fill/kernel/src/fs/embedded.rs
   debug:
     manifest: variants/debug/manifest.yaml
-    source: ../../scaffold/exercises/lab5/debug/user/src/bin/pipe_test.rs
+    source: ../../scaffold/exercises/lab5/debug/kernel/src/fs/embedded.rs
 verification:
   recipe: lab5.verify.v1
   command: cargo run -p kernel --features lab5 --release
@@ -49,5 +49,5 @@ verification:
   observable_trace: []
 misconceptions:
   - { id: fd-is-file, statement: fd 本身就是文件内容, counter: fd 只是进程表中的索引，背后对象决定读写语义 }
-  - { id: missing-name-is-empty-file, statement: 文件名不存在时 read 会返回空内容, counter: open 在命名查找阶段直接失败并返回负值 }
+  - { id: copy-table-equals-refs, statement: fork 复制 fd 表后管道引用计数会自动正确, counter: 必须显式 pipe_add_refs，否则子进程 close 会误伤仍被父进程持有的那一端 }
 rubric_ref: ../../learning/rubric-v2-frozen.md

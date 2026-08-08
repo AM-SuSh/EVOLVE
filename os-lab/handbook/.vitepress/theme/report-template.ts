@@ -15,11 +15,11 @@ export interface ReportTemplate {
   reflection: ReportSectionSpec
 }
 
-/** 系统固定的复盘字段 ID 与默认文案。 */
+/** 系统固定的复盘字段；学生端不显示填写提示。 */
 export const FIXED_REFLECTION: ReportSectionSpec = {
   id: 'reflection',
   title: '收获与反思',
-  prompt: '试着写三句：现在能独立讲清楚什么？导师/AI 提醒了哪一点？哪条运行结果证明了它？',
+  prompt: '',
   rows: 4,
 }
 
@@ -60,7 +60,7 @@ export function cloneTemplate(template: ReportTemplate = DEFAULT_REPORT_TEMPLATE
     intro: template.intro,
     includePromptsInMarkdown: template.includePromptsInMarkdown !== false,
     sections: template.sections.map((section) => ({ ...section })),
-    reflection: { ...(template.reflection || FIXED_REFLECTION), id: FIXED_REFLECTION.id },
+    reflection: { ...(template.reflection || FIXED_REFLECTION), id: FIXED_REFLECTION.id, prompt: '' },
   }
 }
 
@@ -72,7 +72,7 @@ function isReflectionLike(id: string, title: string) {
 /** 学生端完整节列表 = 老师正文节 + 固定 ID 的复盘节。 */
 export function studentSections(template: ReportTemplate): ReportSectionSpec[] {
   const body = template.sections.filter((s) => !isReflectionLike(s.id, s.title))
-  return [...body, { ...(template.reflection || FIXED_REFLECTION), id: FIXED_REFLECTION.id }]
+  return [...body, { ...(template.reflection || FIXED_REFLECTION), id: FIXED_REFLECTION.id, prompt: '' }]
 }
 
 /** 生成带老师提示的 Markdown 骨架（布置预览 / 学生提交稿共用结构）。 */

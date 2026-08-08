@@ -359,7 +359,7 @@ function json(response, status, payload, origin) {
     // Authorization 必须在预检白名单里，否则浏览器直接拦截带登录态的请求。
     'Access-Control-Allow-Headers':
       'Content-Type, Authorization, X-Auth-Token, X-Material-Filename, X-Material-Title, X-Knowledge-Filename, X-Knowledge-Title, X-Knowledge-Source-Id',
-    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Cache-Control': 'no-store',
     Vary: 'Origin',
   })
@@ -2251,8 +2251,8 @@ const server = http.createServer(async (request, response) => {
       }
       const labId = String(requestUrl.searchParams.get('labId') || '')
       const id = String(requestUrl.searchParams.get('id') || '')
-      if (!labIds.has(labId)) {
-        json(response, 400, { error: '未知实验' }, origin)
+      if (!labIds.has(labId) || !/^[A-Za-z0-9_-]{1,160}$/.test(id)) {
+        json(response, 400, { error: '附件参数无效' }, origin)
         return
       }
       const labAccess = await reportAccessFor(session, labId)
@@ -2262,11 +2262,12 @@ const server = http.createServer(async (request, response) => {
       }
       const draft = await readReportDraftFile(session.id, labId)
       const attachment = draft?.attachments?.find((item) => item?.id === id && item?.storedName)
-      if (!attachment) {
+      const storedName = String(attachment?.storedName || requestUrl.searchParams.get('storedName') || '')
+      if (!storedName) {
         json(response, 404, { error: '草稿附件不存在' }, origin)
         return
       }
-      await removeReportDraftAttachment(session.id, labId, id, attachment.storedName)
+      await removeReportDraftAttachment(session.id, labId, id, storedName)
       json(response, 200, { ok: true }, origin)
       return
     }

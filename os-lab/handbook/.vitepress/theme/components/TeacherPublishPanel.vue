@@ -705,19 +705,10 @@ onMounted(load)
               <header>
                 <strong>固定复盘字段</strong>
               </header>
-              <p>每位学生报告末尾都会有这一节。系统固定其记录标识，标题和填写提示由本版式决定。</p>
+              <p>每位学生报告末尾都会有“收获与反思”这一节。系统固定其记录标识，不生成额外填写提示。</p>
               <label>
                 <span>标题</span>
                 <input v-model="reportDraft.reflection.title" type="text" maxlength="80" />
-              </label>
-              <label>
-                <span>填写提示（学生可见，也会写进提交稿）</span>
-                <textarea
-                  v-model="reportDraft.reflection.prompt"
-                  rows="2"
-                  maxlength="800"
-                  placeholder="告诉学生如何完成本次复盘。"
-                />
               </label>
               <label>
                 <span>输入行数</span>

@@ -81,6 +81,11 @@ pub fn clone_fd_table(parent_slot, child_slot) {
 
 管道要计数，普通文件不用——因为管道的缓冲区是动态资源，要等所有引用关闭才释放；普通文件是静态字节切片，没有"释放"概念。
 
+> **fill / debug 任务一**：工作区动手点在 `kernel/src/fs/embedded.rs`。  
+> - **fill**：把上面循环抽成 `bump_inherited_pipe_refs(child_slot)`，学生补全；`clone_fd_table` 在复制表后调用它。  
+> - **debug**：循环还在，但漏掉了 `pipe_add_refs` 调用（PLANTED BUG）。  
+> 用户侧 `pipe_test.rs` 已是正确关端协议，一般不必改。
+
 ### 1.5 自旋锁（`kernel/src/sync.rs`）
 
 ```rust
@@ -252,8 +257,26 @@ fork 复制 fd 表时，管道读写端的引用 +1（`pipe_add_refs`）。多�
 
 > 一句话：继承 fd = shell 管道的前提；管道引用计数 = 多进程共享时的安全回收。
 
+### 第 6 题：漏掉 bump refs 为何常是 pipe_test 坏、fs_test 仍过？
+
+`clone_fd_table` 复制表后还必须对 `PipeRead` / `PipeWrite` 调用 `pipe_add_refs`（fill 抽成 `bump_inherited_pipe_refs`）。
+
+- **`fs_test`**：只做 `open` / `read` 普通内嵌文件，不走 `pipe` + `fork` 继承管道端，因此不依赖这次 bump。
+- **`pipe_test`**：`pipe` → `fork` → 子进程 `close` 写端再读。若 fork 时没 bump，子进程 close 写端会把 `write_refs` 减到 0，父进程还握着写端就会坏——常见现象是看不到 `pipe says hi` / `pipe_test pass`。
+
+> 一句话：漏 bump 伤的是「fork 后共享的管道寿命」；只测文件的 `fs_test` 碰不到这条路径。
+
+### 第 7 题：用户关端与内核 bump 各解决哪一层？低号 fd 占位？
+
+- **用户关端**（`pipe_test`）：子关写端再读、父关读端再写——解决「谁用哪一端」的协议，让读端能等到 EOF、避免自己写自己读卡死。
+- **内核 bump refs**：解决「父子各握一份 fd 时，引用计数账本是否正确」——关端时才能正确减计数、释放缓冲。
+- **先 open 占低号 fd**：本内核把 `write(1, …)` 接到控制台，不走 fd 表。先占掉 0/1，再 `pipe`，读写端才不会落在 1 上被误当成控制台。
+
+> 一句话：关端是用户协议；bump 是内核账本；占位是避开控制台 fd 1。
+
 ## 三、任务三动手修改的现象参考
 
-- **修改 1（新增内嵌文件）**：在 `os-fs` 的 `DEFAULT_FILES` 加一项，用户程序 openat+read 能读到，走通"加文件→open→read"闭环。
-- **修改 2（去掉管道锁）**：数据竞争有随机性，可能偶尔正常偶尔数据错乱/count 计数错误。验证锁的必要性——无锁时并发操作共享缓冲区会出错。
-- **修改 3（写满等待）**：结合 lab2 yield，写满时让出 CPU 等读端消费。体会"阻塞式 I/O"的实现——比自旋/直接返回更高效，但要处理"何时唤醒"的同步问题。
+- **修改 1（用户关错端）**：子进程关读端而非写端 → 管道失败；用来对照任务一「用户协议错」vs「内核漏 bump」。
+- **修改 2（去掉管道锁）**：数据竞争有随机性，可能偶尔正常偶尔数据错乱/count 计数错误。验证锁的必要性。
+- **修改 3（写满等待）**：结合 yield，写满时让出 CPU 等读端消费，体会阻塞式 I/O 雏形。
+- **修改 4（可选，新增内嵌文件）**：在 `DEFAULT_FILES` 加一项，用户 open+read 能读到。

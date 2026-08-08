@@ -116,6 +116,7 @@ const selectedImageIds = ref<string[]>([])
 /** 大图浏览。 */
 const lightboxId = ref<string | null>(null)
 const libraryCollapsed = ref(true)
+let previouslyReferencedImageIds = new Set<string>()
 
 const canSyncServer = computed(() => Boolean(props.authenticated && props.endpoint))
 
@@ -316,6 +317,7 @@ function resetDraftFromTemplate() {
   draftTemplate.value = cloneTemplate(props.reportTemplate || DEFAULT_REPORT_TEMPLATE)
   draft.value = emptyDraft()
   attachments.value = []
+  previouslyReferencedImageIds = new Set<string>()
   savedAt.value = ''
   ensureUnifiedMarkdown()
 }
@@ -357,6 +359,7 @@ function applyServerDraft(value: Record<string, unknown>) {
       draft.value.sections[sectionId] || '',
     )
   }
+  setReferencedImageBaseline()
   void hydrateAttachmentUrls(props.lab.id, attachments.value)
 }
 
@@ -396,15 +399,30 @@ watch(
 )
 
 let autosaveTimer = 0
+let orphanCleanupTimer = 0
+let orphanCleanupRunning = false
+let orphanCleanupPending = false
+
+function scheduleOrphanAttachmentCleanup() {
+  if (typeof window === 'undefined') return
+  if (orphanCleanupRunning) orphanCleanupPending = true
+  window.clearTimeout(orphanCleanupTimer)
+  orphanCleanupTimer = window.setTimeout(() => {
+    orphanCleanupTimer = 0
+    void cleanupOrphanedAttachments()
+  }, 800)
+}
 
 function schedulePersist() {
   if (typeof window === 'undefined') return
   window.clearTimeout(autosaveTimer)
   autosaveTimer = window.setTimeout(() => persist(false), 500)
+  scheduleOrphanAttachmentCleanup()
 }
 
 onBeforeUnmount(() => {
   if (typeof window !== 'undefined') window.clearTimeout(autosaveTimer)
+  if (typeof window !== 'undefined') window.clearTimeout(orphanCleanupTimer)
   revokeUrls()
 })
 
@@ -432,14 +450,40 @@ watch(
 
 let persistChain: Promise<boolean> = Promise.resolve(true)
 
+function reportSaveFailure(status: number, serverError: string) {
+  if (status === 401) return '登录状态已失效，请刷新页面后重新登录。'
+  if (status === 403) return serverError || '当前实验尚未解锁，无法保存报告。'
+  if (status === 400 || status === 413) return serverError || '报告内容无效或过大。'
+  return serverError || `服务返回 ${status}`
+}
+
+function reportSaveEndpoints(endpoint: string) {
+  const candidates = [endpoint]
+  try {
+    const url = new URL(endpoint)
+    if (url.hostname === '127.0.0.1') {
+      candidates.push(endpoint.replace('127.0.0.1', 'localhost'))
+    } else if (url.hostname === 'localhost') {
+      candidates.push(endpoint.replace('localhost', '127.0.0.1'))
+    }
+    if (typeof window !== 'undefined' && window.location.hostname) {
+      candidates.push(`${url.protocol}//${window.location.hostname}:${url.port}${url.pathname}`.replace(/\/$/, ''))
+    }
+  } catch {
+    /* use the configured endpoint as-is */
+  }
+  return [...new Set(candidates)]
+}
+
 function persist(announce = true): Promise<boolean> {
   if (!draftReady.value) return Promise.resolve(false)
   if (!canSyncServer.value) {
     if (announce) emit('notice', '请先登录，实验报告会保存到当前账号的数据目录。')
     return Promise.resolve(false)
   }
-  const endpoint = props.endpoint
+  const endpoint = String(props.endpoint || '')
   const headers = { 'Content-Type': 'application/json', ...authHeaders() }
+  const saveEndpoints = reportSaveEndpoints(endpoint)
   const body = JSON.stringify({
     labId: props.lab.id,
     draft: {
@@ -452,8 +496,38 @@ function persist(announce = true): Promise<boolean> {
   })
   const next = persistChain.then(async () => {
     try {
-      const response = await fetch(`${endpoint}/reports/draft`, { method: 'PUT', headers, body })
-      if (!response.ok) throw new Error(`服务返回 ${response.status}`)
+      let response: Response | null = null
+      let lastError: unknown = null
+      for (const saveEndpoint of saveEndpoints) {
+        response = null
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            response = await fetch(`${saveEndpoint}/reports/draft`, { method: 'PUT', headers, body })
+            if (!response.ok) {
+              const payload = await response.json().catch(() => ({}))
+              const error = new Error(reportSaveFailure(response.status, String(payload?.error || ''))) as Error & {
+                retryable?: boolean
+              }
+              error.retryable = response.status >= 500
+              throw error
+            }
+            break
+          } catch (error) {
+            lastError = error
+            const retryable = error instanceof TypeError || Boolean((error as { retryable?: boolean })?.retryable)
+            if (!retryable || attempt === 1) {
+              if (error instanceof TypeError) break
+              throw error
+            }
+            await new Promise((resolve) => setTimeout(resolve, 600))
+          }
+        }
+        if (response?.ok) break
+      }
+      if (!response?.ok) {
+        if (lastError instanceof TypeError || !lastError) throw new Error('无法连接导师服务，请稍后重试。')
+        throw lastError
+      }
       const payload = await response.json()
       const updatedAt = Date.parse(String(payload.updatedAt || ''))
       savedAt.value = Number.isFinite(updatedAt)
@@ -500,6 +574,34 @@ function referencedAttachmentKeys(source: string) {
     }
   }
   return keys
+}
+
+function currentReferencedImageIds() {
+  const ids = new Set<string>()
+  const sources = [draft.value.markdownBody, ...Object.values(draft.value.sections)]
+  for (const source of sources) {
+    for (const raw of referencedAttachmentKeys(source)) {
+      let decoded = raw
+      try {
+        decoded = decodeURIComponent(raw)
+      } catch {
+        /* keep the raw reference */
+      }
+      const meta = imageLibrary.value.find(
+        (item) => item.id === raw || item.id === decoded || item.name === raw || item.name === decoded,
+      )
+      if (meta) ids.add(meta.id)
+    }
+  }
+  return ids
+}
+
+function setReferencedImageBaseline() {
+  previouslyReferencedImageIds = currentReferencedImageIds()
+}
+
+function rememberReferencedImages() {
+  for (const id of currentReferencedImageIds()) previouslyReferencedImageIds.add(id)
 }
 
 /** 始终按当前下拉选中的格式组装，提交/预览/导出同一份。 */
@@ -892,6 +994,7 @@ async function addImages(fileList: FileList | File[], insertAt?: number) {
         emit('notice', err instanceof Error ? `「${file.name}」上传失败：${err.message}` : '有一张图片上传失败。')
       }
     }
+    rememberReferencedImages()
     if (!(await persist(false))) {
       emit('notice', '图片已上传，但报告正文保存失败，请重试保存。')
       return
@@ -905,6 +1008,7 @@ async function addImages(fileList: FileList | File[], insertAt?: number) {
     emit('notice', err instanceof Error ? err.message : '上传失败，请稍后重试。')
   } finally {
     busyAttach.value = false
+    scheduleOrphanAttachmentCleanup()
   }
 }
 
@@ -933,6 +1037,7 @@ async function addDocuments(fileList: FileList | File[], insertAt?: number) {
       cursor = placeDocMarkdown(meta, cursor) ?? cursor
       count += 1
     }
+    rememberReferencedImages()
     if (!(await persist(false))) {
       emit('notice', '附件已上传，但报告正文保存失败，请重试保存。')
       return
@@ -942,6 +1047,7 @@ async function addDocuments(fileList: FileList | File[], insertAt?: number) {
     emit('notice', err instanceof Error ? err.message : '上传失败，请稍后重试。')
   } finally {
     busyAttach.value = false
+    scheduleOrphanAttachmentCleanup()
   }
 }
 
@@ -1019,6 +1125,7 @@ function insertSelectedImages() {
     return
   }
   for (const meta of items) placeImageMarkdown(meta)
+  rememberReferencedImages()
   persist(false)
   const where =
     draft.value.mode === 'markdown'
@@ -1030,6 +1137,7 @@ function insertSelectedImages() {
 
 function insertOneImage(meta: ReportAttachmentMeta) {
   placeImageMarkdown(meta)
+  rememberReferencedImages()
   persist(false)
   emit(
     'notice',
@@ -1047,23 +1155,28 @@ function closeLightbox() {
   lightboxId.value = null
 }
 
-async function removeAttachment(id: string) {
-  const meta = attachments.value.find((item) => item.id === id)
-  if (!meta) return
+async function deleteAttachmentFile(meta: ReportAttachmentMeta, announce = true) {
   if (!canSyncServer.value || !meta.storedName) {
-    emit('notice', '当前账号附件未就绪，请刷新后重试。')
-    return
+    if (announce) emit('notice', '当前账号附件未就绪，请刷新后重试。')
+    return false
   }
   try {
     const response = await fetch(
-      `${props.endpoint}/reports/draft/attachments?labId=${encodeURIComponent(props.lab.id)}&id=${encodeURIComponent(id)}`,
+      `${props.endpoint}/reports/draft/attachments?labId=${encodeURIComponent(props.lab.id)}&id=${encodeURIComponent(meta.id)}&storedName=${encodeURIComponent(meta.storedName)}`,
       { method: 'DELETE', headers: authHeaders() },
     )
     if (!response.ok) throw new Error(`服务返回 ${response.status}`)
   } catch (error) {
-    emit('notice', error instanceof Error ? `附件删除失败：${error.message}` : '附件删除失败。')
-    return
+    if (announce) {
+      emit('notice', error instanceof Error ? `附件删除失败：${error.message}` : '附件删除失败。')
+    }
+    return false
   }
+  return true
+}
+
+function forgetAttachment(meta: ReportAttachmentMeta) {
+  const id = meta.id
   if (attachmentUrls.value[id]) {
     const url = attachmentUrls.value[id]
     if (url.startsWith('blob:')) URL.revokeObjectURL(url)
@@ -1075,6 +1188,9 @@ async function removeAttachment(id: string) {
   if (lightboxId.value === id) lightboxId.value = null
   const { [id]: _name, ...restNames } = renameDrafts.value
   renameDrafts.value = restNames
+}
+
+function stripAttachmentReferences(meta: ReportAttachmentMeta) {
   const refs = [meta.id, meta.name, encodeURIComponent(meta.name)]
   const strip = (text: string) => {
     let next = text
@@ -1090,6 +1206,58 @@ async function removeAttachment(id: string) {
   for (const sectionId of Object.keys(draft.value.sections)) {
     draft.value.sections[sectionId] = strip(draft.value.sections[sectionId] || '')
   }
+}
+
+async function cleanupOrphanedAttachments() {
+  if (!draftReady.value || !canSyncServer.value) return
+  if (busyAttach.value) {
+    scheduleOrphanAttachmentCleanup()
+    return
+  }
+  if (orphanCleanupRunning) return
+
+  const currentIds = currentReferencedImageIds()
+  const candidates = imageLibrary.value.filter(
+    (item) => previouslyReferencedImageIds.has(item.id) && !currentIds.has(item.id),
+  )
+  if (!candidates.length) {
+    previouslyReferencedImageIds = currentIds
+    return
+  }
+
+  orphanCleanupRunning = true
+  const failedIds = new Set<string>()
+  let removed = 0
+  try {
+    for (const meta of candidates) {
+      if (currentReferencedImageIds().has(meta.id)) continue
+      if (!(await deleteAttachmentFile(meta, false))) {
+        failedIds.add(meta.id)
+        continue
+      }
+      forgetAttachment(meta)
+      removed += 1
+    }
+
+    setReferencedImageBaseline()
+    for (const id of failedIds) previouslyReferencedImageIds.add(id)
+    if (removed) await persist(false)
+    if (failedIds.size) emit('notice', '有图片附件未能自动清理，请稍后重试。')
+  } finally {
+    orphanCleanupRunning = false
+    if (orphanCleanupPending) {
+      orphanCleanupPending = false
+      scheduleOrphanAttachmentCleanup()
+    }
+  }
+}
+
+async function removeAttachment(id: string) {
+  const meta = attachments.value.find((item) => item.id === id)
+  if (!meta || !(await deleteAttachmentFile(meta))) return
+  forgetAttachment(meta)
+  stripAttachmentReferences(meta)
+  previouslyReferencedImageIds.delete(meta.id)
   await persist(false)
 }
 
@@ -1123,6 +1291,7 @@ async function onImportMarkdown(event: Event) {
   draft.value.markdownBody = text
   editorView.value = 'edit'
   persist(false)
+  scheduleOrphanAttachmentCleanup()
   emit('notice', `已导入「${file.name}」到 Markdown；提交将按 Markdown 格式。`)
 }
 
@@ -1208,6 +1377,7 @@ function onComposerDrop(event: DragEvent) {
 function insertExisting(meta: ReportAttachmentMeta) {
   if (meta.mime.startsWith('image/')) placeImageMarkdown(meta)
   else placeDocMarkdown(meta)
+  rememberReferencedImages()
   persist(false)
   emit('notice', `已插入「${meta.name}」。`)
 }
@@ -1380,17 +1550,14 @@ const modeLabel = computed(() =>
 
         <section class="ws-report-reflection-block" aria-label="收获与反思">
           <header>
-          <div>
-            <strong>{{ reflectionSection.title }}</strong>
-              <small>本次学习复盘</small>
-          </div>
+            <div>
+              <strong>{{ reflectionSection.title }}</strong>
+            </div>
           </header>
-          <p class="ws-report-prompt">填写提示：{{ reflectionSection.prompt }}</p>
           <textarea
             :ref="(el) => setSectionEditor(FIXED_REFLECTION.id, el)"
             v-model="draft.sections[FIXED_REFLECTION.id]"
             :rows="reflectionSection.rows"
-            :placeholder="reflectionSection.prompt"
             spellcheck="false"
             @focus="activeSection = FIXED_REFLECTION.id"
             @input="schedulePersist"
@@ -2674,7 +2841,7 @@ const modeLabel = computed(() =>
 .ws-report-reflection-block {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-rows: 32px auto minmax(112px, auto);
+  grid-template-rows: 36px minmax(112px, auto);
   min-width: 0;
   border-top: 1px solid var(--ws-line);
   background: var(--ws-surface);
@@ -2701,7 +2868,7 @@ const modeLabel = computed(() =>
 
 .ws-report-reflection-block strong {
   color: var(--ws-ink);
-  font-size: 11px;
+  font-size: var(--ws-text-sm);
 }
 
 .ws-report-reflection-block small {
@@ -2716,9 +2883,10 @@ const modeLabel = computed(() =>
 }
 
 .ws-report-reflection-block textarea {
-  width: auto;
+  width: calc(100% - 28px);
+  box-sizing: border-box;
   min-height: 112px;
-  margin: 0 14px 14px;
+  margin: 12px 14px 14px;
   padding: 10px 12px;
   color: var(--ws-ink);
   border: 1px solid var(--ws-line);

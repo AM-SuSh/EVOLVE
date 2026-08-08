@@ -1,13 +1,13 @@
 /**
  * 实验报告版式：默认模板 + 规范化（教师布置 / 学生端共用）。
- * 老师配置正文各节和复盘文案；复盘字段 ID 由系统固定。
+ * 老师配置正文各节和复盘标题；复盘字段 ID 与提示可见性由系统固定。
  */
 
-/** 系统固定的复盘字段 ID；教师可覆盖显示文案，不能改变其标识。 */
+/** 系统固定的复盘字段；只保留稳定 ID、标题和输入行数，不生成填写提示。 */
 export const FIXED_REFLECTION = {
   id: 'reflection',
   title: '收获与反思',
-  prompt: '试着写三句：现在能独立讲清楚什么？导师/AI 提醒了哪一点？哪条运行结果证明了它？',
+  prompt: '',
   rows: 4,
 }
 
@@ -66,8 +66,7 @@ function normalizeReflection(raw) {
     id: FIXED_REFLECTION.id,
     title:
       String(source.title || FIXED_REFLECTION.title).trim().slice(0, 80) || FIXED_REFLECTION.title,
-    prompt:
-      String(source.prompt || FIXED_REFLECTION.prompt).trim().slice(0, 800) || FIXED_REFLECTION.prompt,
+    prompt: '',
     rows: Math.min(20, Math.max(2, Number(source.rows) || FIXED_REFLECTION.rows)),
   }
 }

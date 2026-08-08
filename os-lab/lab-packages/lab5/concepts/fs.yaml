@@ -9,7 +9,7 @@ observable_evidence: [Hello from testfile!, fs_test pass]
 id: os.ipc.pipe
 title: 管道端点与跨进程 IPC
 level: mechanism
-summary: pipe 创建成对端点，fork 后父子关闭不用的一端并通过共享缓冲传递字节。
-source_anchors: [kernel/src/sync.rs, user/src/bin/pipe_test.rs]
-invariants: [读写端方向不可颠倒, 关闭规则影响 EOF 与资源回收]
+summary: pipe 创建成对端点；fork 复制 fd 表后必须为管道端增加引用计数，再配合用户关闭不用的一端传递字节。
+source_anchors: [kernel/src/fs/embedded.rs, kernel/src/sync.rs, user/src/bin/pipe_test.rs]
+invariants: [fork 后管道 refs 必须 bump, 读写端方向不可颠倒, 关闭规则影响 EOF 与资源回收]
 observable_evidence: [pipe says hi, pipe_test pass]
