@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import http from 'node:http'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -173,6 +173,11 @@ try {
     className: '计科2301',
   }).then((response) => response.json())
   assert.equal(otherRegistration.ok, true)
+  for (const userId of ['2', '3']) {
+    for (const directory of ['events', 'conversations', 'reports', 'runs']) {
+      assert.equal(existsSync(path.join(dataDir, userId, directory)), true)
+    }
+  }
 
   const unauthenticatedManual = await fetch(`${endpoint}/manual?labId=lab1`)
   assert.equal(unauthenticatedManual.status, 401)

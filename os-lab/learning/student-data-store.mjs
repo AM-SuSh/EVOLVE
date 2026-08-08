@@ -63,6 +63,16 @@ export function studentRootForData(userId) {
   return path.join(studentDataRoot, userKey(userId))
 }
 
+export async function ensureStudentDataLayout(userId) {
+  const root = studentRootForData(userId)
+  await Promise.all(
+    ['events', 'conversations', 'reports', 'runs'].map((name) =>
+      mkdir(path.join(root, name), { recursive: true }),
+    ),
+  )
+  return root
+}
+
 export function reportRootForData(userId, labId) {
   return path.join(studentRootForData(userId), 'reports', labKey(labId))
 }

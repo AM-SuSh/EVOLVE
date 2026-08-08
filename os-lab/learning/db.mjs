@@ -448,6 +448,13 @@ export function listUsers() {
     .all()
 }
 
+export function listStudentUserIds() {
+  return db
+    .prepare("SELECT id FROM users WHERE role = 'student' ORDER BY id")
+    .all()
+    .map((row) => Number(row.id))
+}
+
 /** 读取服务端可信学习证据，供手册解锁与脚手架发放共同判定。 */
 export function getLearningEvidence(userId) {
   const verified = new Set(

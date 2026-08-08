@@ -29,6 +29,7 @@ import { accessForLab, buildLearningAccess } from '../learning/access.mjs'
 import { getReportTemplate, normalizeReportTemplate } from '../learning/report-template.mjs'
 import {
   appendLearningEventsFile,
+  ensureStudentDataLayout,
   readConversationSnapshot,
   readReportDraftAttachment,
   readReportDraftFile,
@@ -85,6 +86,7 @@ import {
   listMastery,
   listMyReports,
   listRunHistory,
+  listStudentUserIds,
   listUsers,
   login,
   logout,
@@ -230,6 +232,7 @@ const defaultApiKey = process.env.OS_LAB_LLM_API_KEY || ''
 // 学习事件默认落在仓库内（gitignore），而不是系统临时目录——临时目录会被清理，
 // 真实学生实验的数据不能放在那里。
 const dataDir = studentDataRoot
+await Promise.all(listStudentUserIds().map((userId) => ensureStudentDataLayout(userId)))
 const legacyDataDir = path.resolve(
   process.env.OS_LAB_TUTOR_LEGACY_DATA_DIR ||
     process.env.OS_LAB_TUTOR_DATA_DIR ||
@@ -1849,6 +1852,10 @@ const server = http.createServer(async (request, response) => {
         return
       }
       const result = register(body.username, body.password, className, classNames)
+      if (result.ok) {
+        const registeredSession = resolveSession(result.token)
+        if (registeredSession?.role === 'student') await ensureStudentDataLayout(registeredSession.id)
+      }
       json(response, result.ok ? 200 : 400, result, origin)
       return
     }
@@ -1867,6 +1874,10 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'POST' && pathname === '/auth/login') {
       const body = await readBody(request)
       const result = login(body.username, body.password)
+      if (result.ok) {
+        const loginSession = resolveSession(result.token)
+        if (loginSession?.role === 'student') await ensureStudentDataLayout(loginSession.id)
+      }
       json(response, result.ok ? 200 : 401, result, origin)
       return
     }

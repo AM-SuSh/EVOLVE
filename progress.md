@@ -1,5 +1,44 @@
 # os-lab 项目进度总览
 
+## 2026-08-08 - Task: 将 Trace 播放改为内核运行架构流动图并压缩界面
+
+### What was done
+- 新增 `TraceArchitectureView.vue`，把原先以文字为主的事件播放改为用户态/内核态架构流动图，直观展示任务池、trap 入口、trap handler、调度器与 CPU 之间的控制流。
+- 根据当前 `trap_enter` 或 `task_switch` 事件高亮对应路径、任务与架构节点，并使用动态流动点表现事件在系统中的传递；播放速度会同步调整事件推进和图中动画速度。
+- 将“架构流动”设为默认视图，保留事件轨道、事件类型与 PID 过滤、播放/暂停、单步、速度调节和源码跳转，学生仍可定位到具体事件及实现位置。
+- 删除占用较大空间的当前事件详情与底部事件列表；将标题、视图选择、筛选、播放和速度控制压缩到同一行，减少顶部占用。
+- 调整架构图的容器尺寸和缩放规则，使整张图在 Trace 面板内完整显示，并移除图内滚动条。
+
+### Testing
+- `npm run build`：通过，VitePress 客户端/服务端 bundle 与页面渲染完成。
+- `npm test`：65/65 通过，Trace 播放、事件筛选与既有学习流程回归正常。
+
+### Notes
+- 对应提交：`2c4d794`（`TRACE的一点优化`）。
+
+---
+
+## 2026-08-08 - Task: 注册和登录时初始化学生数据存储目录
+
+### What was done
+- 定位到新建用户后没有立即出现数据目录的原因：注册流程此前只写入 SQLite，`student-data/<userId>/` 要等到首次写入事件、对话、报告或运行记录时才会懒创建。
+- 新增 `ensureStudentDataLayout(userId)`，统一创建学生根目录及 `events/`、`conversations/`、`reports/`、`runs/` 四个子目录。
+- 学生注册成功后立即初始化目录，学生登录时补齐缺失目录；Tutor Server 启动时扫描 SQLite 中已有的学生用户并批量补齐目录。
+- 新增 `listStudentUserIds()` 作为启动扫描的数据入口，并在 Tutor Server smoke 测试中加入注册完成后四类目录均存在的断言。
+- 已为当前 SQLite 中的学生 ID `2` 至 `9` 补齐目录。目录使用数据库数字 `user_id` 命名，不使用登录用户名。
+
+### Testing
+- `npm run test:smoke`：通过，注册完成后学生目录布局会立即生成。
+- `node --test db.test.mjs access.test.mjs`：6/6 通过。
+- `git diff --check`：通过；仅有工作区既有的 LF/CRLF 提示。
+- Tutor Server 已重启并通过 `127.0.0.1:8787/health` 健康检查，进程 PID 为 `6732`。
+
+### Notes
+- 主要文件：`student-data-store.mjs`、`db.mjs`、`tutor-server.mjs`、`tutor-server.smoke.mjs`。
+- 该修复当前仍在工作区，尚未提交。
+
+---
+
 ## 2026-08-07 - Task: 净化终端输出并精简 Trace 分析界面
 
 ### What was done
