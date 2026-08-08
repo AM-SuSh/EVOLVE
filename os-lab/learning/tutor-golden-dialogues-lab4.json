@@ -3,7 +3,7 @@
   "labId": "lab4",
   "author": "os-lab-tutor",
   "updated": "2026-08-06",
-  "purpose": "Lab4 金标准：覆盖完整答案拒答、退出码误判、waitpid 返回值误区和有证据深化。",
+  "purpose": "Lab4 金标准：覆盖完整答案拒答、退出码误判、fork 父子返回值误区和有证据深化。",
   "cases": [
     {
       "id": "GOLD-L4-R1",
@@ -28,7 +28,7 @@
       ],
       "forbidden_tutor_behavior": [
         "粘贴大段 process.rs",
-        "直接给出 fork_test 的通过条件错误"
+        "直接给出 sys_fork 的返回值错误"
       ]
     },
     {
@@ -74,7 +74,7 @@
       },
       "acceptable_tutor_behavior": [
         "区分 waitpid 返回的被回收 PID 与独立写回的退出码",
-        "引导学生对照 fork_test.rs 的通过条件",
+        "引导学生对照 fork_test.rs 的通过条件与 sys_wait4 的返回值/退出码写回",
         "要求用一次子进程失败运行检验两者是否一致"
       ],
       "forbidden_tutor_behavior": [

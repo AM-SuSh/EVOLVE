@@ -215,8 +215,32 @@ loop {
 
 这种 **`loop { 检查条件; 不满足就让出 }`** 的模式叫**阻塞（block/sleep）**：条件不满足时不占 CPU，被唤醒后再试。是信号量、条件变量等同步机制的基础形态。
 
+### 第 6 题：`waitpid` 返回值与 `exit_code` 为什么不能混用？
+
+`fork_test.rs` 里：
+
+```rust
+let waited = waitpid(pid as isize, &mut exit_code);
+if waited == pid && exit_code == 0 { ... }
+```
+
+`waitpid` 的**返回值**是被回收子进程的 PID，由 `sys_wait4` 直接返回；**退出码**是子进程写入 PCB 的 `exit_code`，由 `reap_zombie_child` 取出后通过 `write_user_i32(status_ptr, code)` 写回用户传入的指针。
+
+两条信息走的是不同通道：
+
+- 返回值：`reap_zombie_child` 返回 `(pid, exit_code)`，`sys_wait4` 只把 `pid` 作为 syscall 返回值。
+- 退出码：`sys_wait4` 把 `exit_code` 写入 `status_ptr`，用户侧通过 `&mut exit_code` 读到。
+
+如果把返回值当成退出码，或把退出码当成 PID，`fork_test` 的 `waited == pid && exit_code == 0` 判断就会失真，也无法确认“回收的是哪一个子进程”。
+
+### 第 7 题：为什么只创建 `initproc`，而不是开机创建全部 3 个程序？
+
+Lab3 的任务数量是编译期写死的，适合演示“一批程序都能跑”；Lab4 要演示的是**运行时动态创建**。若开机仍把 3 个程序全部创建为进程，就只是给 Lab3 换了个 PCB 外壳，没有体现 `fork` 的价值。
+
+所以 lab4 只让 `process::init()` 创建一个 `initproc`（PID 1，`parent_slot: None`），由它运行 `fork_test`，再用 `fork` 动态产生子进程。`ProcessManager` 通过 PCB 的 `parent_slot` / `child_slots` 记录父子关系：`parent_slot` 指向父进程槽位，`child_slots` 保存子进程槽位。所有进程都以 `initproc` 为根，形成一棵进程树；`fork` 一次就长出一个新分叉。
+
 ## 三、任务三动手修改的现象参考
 
 - **修改 1（fork 两个孩子）**：父进程两次 fork、两次 wait，看到两个子进程各自输出。体会进程树如何通过 fork 长出来——每个 fork 都是树的一个分叉。
 - **修改 2（不 wait 直接 exit）**：子进程 exit 变 Zombie，父进程也 exit。观察僵尸子进程是否被回收——真实系统由 init 收养孤儿进程，本实验简化版可能让僵尸留到关机。这演示了"不 wait 导致僵尸堆积"的内存泄漏问题。
-- **修改 3（exec 跑 power）**：子进程 fork 后 exec("power")，子进程的逻辑被 power 的输出（`409684505`）取代。验证"exec 换身不换魂"——进程还是那个进程（PID 不变），但跑的代码变了。
+- **修改 3（子进程 exec 跑 hello）**：子进程 fork 后 `exec("hello")`，子进程的逻辑被 hello 的输出（`Hello from user app!`）取代，且 exec 之后的原分支代码不再执行。验证"exec 换身不换魂"——进程还是那个进程（PID 不变），但跑的代码变了。Lab4 内置 ELF 只有 `fork_test`、`exec_test`、`hello`；若想 exec `power`，需先把它加入 `kernel/src/loader.rs`。

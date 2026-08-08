@@ -167,7 +167,7 @@ Lab 工厂页面与入口已从前端移除，教师只通过工作台右栏「�
 
 - **变体来源**：`GET /teacher/overview` 直接读取 `scaffold/exercises/<lab>/<variant>/` 与 `lab-packages/published.json` 目录；目录里存在的变体自动出现在任务类型下拉框。
 - **下发动作**：选择变体后点「分发并下发」，面板先 `POST /teacher/config` 写入 `openLab`，再写入 `assignments[labId] = variant`；学生刷新后，只有在老师已分发的范围内才能经 `/scaffold/upgrade` 领取对应代码。
-- **文件要求**：变体任务文件（如 `kernel/src/mm.rs`、`user/src/bin/fork_test.rs`）必须存在于 `scaffold/exercises/` 对应路径；当前 Lab2–8 的 fill/debug/remedial 变体文件均已核对齐全。
+- **文件要求**：变体任务文件（如 `kernel/src/mm.rs`、`kernel/src/process.rs`）必须存在于 `scaffold/exercises/` 对应路径；当前 Lab2–8 的 fill/debug/remedial 变体文件均已核对齐全。
 - **门控**：非教师 / 未登录显示「需要教师账号」；连不上 tutor 时说明原因。
 
 ## 终端（xterm）

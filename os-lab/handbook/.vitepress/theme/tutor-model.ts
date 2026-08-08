@@ -670,7 +670,7 @@ export const tutorLabs: TutorLab[] = [
       read: { paths: ['kernel/src/process.rs', 'kernel/src/task.rs', 'kernel/src/loader.rs'], docs: [{ title: 'Lab4 机制说明', description: '沿创建、装载、切换和回收阅读实现', href: '/labs/lab4-process' }, { title: '系统架构', description: '理解进程模块与其他子系统的边界', href: '/project/architecture' }] },
       run: { paths: ['user/src/bin/fork_test.rs', 'user/src/bin/exec_test.rs'], docs: [{ title: '快速验证', description: '运行 fork/exec 测试并记录进程行为', href: '/guide/ai-tutor' }, { title: 'Lab4 阅读理解（任务二）', description: '用实验文档【任务二】自测机制理解', href: '/labs/lab4-process' }] },
       debug: { paths: ['kernel/src/process.rs', 'kernel/src/task.rs', 'kernel/src/trap.rs'], docs: [{ title: 'Lab4 常见问题', description: '从状态转换、上下文和资源回收定位异常', href: '/labs/lab4-process' }, { title: '验证方法', description: '用最小进程测试区分故障环节', href: '/guide/ai-tutor' }] },
-      reflect: { paths: ['project/ai-collaboration.md', 'answers/lab4-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理进程行为与代码证据', href: '/project/ai-collaboration' }, { title: 'Lab4 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab4-answers' }] },
+      reflect: { paths: ['project/ai-collaboration.md'], docs: [{ title: 'AI 协作记录', description: '整理进程行为与代码证据', href: '/project/ai-collaboration' }] },
     },
   },
   {

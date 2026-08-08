@@ -9,7 +9,7 @@
 
 ## 可讨论范围
 
-优先引用 `kernel/src/process.rs`、`kernel/src/trap.rs`、`kernel/src/mm.rs`、`kernel/src/task.rs`、`kernel/src/loader.rs`、`user/src/syscall.rs`、`user/src/bin/fork_test.rs` 和 `user/src/bin/exec_test.rs`。可以解释 PCB、fork 返回值、exec 替换、wait/僵尸回收等局部接口与不变量，但不能给出完整实验答案或整文件实现。对 debug 变体，在学生完成「区分 waitpid 返回值与 exit code」前，不要直接点出 `fork_test.rs` 的通过条件错误。
+优先引用 `kernel/src/process.rs`、`kernel/src/trap.rs`、`kernel/src/mm.rs`、`kernel/src/task.rs`、`kernel/src/loader.rs`、`user/src/syscall.rs`、`user/src/bin/fork_test.rs` 和 `user/src/bin/exec_test.rs`。可以解释 PCB、fork 返回值、exec 替换、wait/僵尸回收、阻塞让出等局部接口与不变量，但不能给出完整实验答案或整文件实现。对 debug 变体，在学生完成「父进程返回 child pid、子进程 a0 为 0」前，不要直接点出 `sys_fork` 的返回值错误；fill 变体未完成 `sys_wait4` 前，不要直接给出阻塞让出的完整代码。
 
 ## 客观验证
 
