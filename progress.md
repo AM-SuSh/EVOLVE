@@ -1,5 +1,19 @@
 # os-lab 项目进度总览
 
+## 2026-08-08 - Task: 屏蔽 current_task_id 未使用告警
+
+### What was done
+- 为 `current_task_id` 增加 `#[allow(dead_code)]`，避免 Lab3 等未启用 `trace-edu` 时终端出现 dead_code 警告，减少学生误判为实验失败。
+
+### Testing
+- 触发重编后 `cargo check -p kernel --features lab3 --release`：无 `current_task_id` 相关 warning。
+
+### Notes
+- 改动：os-lab/kernel/src/task.rs；os-lab/scaffold/exercises/lab2/fill|debug/kernel/src/task.rs
+- 回滚：去掉上述 `#[allow(dead_code)]` 即可
+
+---
+
 ## 2026-08-07 - Task: 净化终端输出并精简 Trace 分析界面
 
 ### What was done

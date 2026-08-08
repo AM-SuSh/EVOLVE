@@ -128,6 +128,7 @@ pub fn current_app_id() -> usize {
     TASK_MANAGER.with(|tm| tm.current)
 }
 
+#[allow(dead_code)]
 pub fn current_task_id() -> usize {
     TASK_MANAGER.with(|tm| tm.current)
 }
