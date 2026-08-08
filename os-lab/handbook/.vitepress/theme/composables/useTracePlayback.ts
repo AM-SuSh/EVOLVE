@@ -17,7 +17,7 @@ export interface TraceEvent {
   reason?: string
 }
 
-export type TraceView = 'trap' | 'timeline'
+export type TraceView = 'architecture' | 'trap' | 'timeline'
 
 export interface TraceFilter {
   types: Set<'trap_enter' | 'task_switch'>

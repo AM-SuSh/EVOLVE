@@ -5,13 +5,13 @@
  * - 按 runId 调 `GET /runs/:id/trace` 拉取真实 trace 事件；404/异常保持可信空态，不 mock。
  * - 视图切换：Trap 时序图 / 任务状态时间线（默认 Trap，Lab2 主视图）。
  * - 播放控制：播放/暂停、单步、速度、类型/pid 过滤、重置。
- * - 事件列表：>200 条时只渲染窗口，避免大数据卡顿。
- * - 选中事件详情：用学生可理解的语义解释，并可跳到对应源码。
+ * - 架构流动图内置当前事件说明和可点击事件轨道，避免重复堆叠文字列表。
+ * - 当前事件可跳到对应源码。
  * - 上报 `trace_inspected` 事件（切换视图或移动 playhead 时）。
  *
  * 与成员 C 契约：接口未就绪时 unavailable=true，文案明确「查询接口尚未返回真实事件」。
  */
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { GitBranch, Play, Pause, SkipForward, SkipBack, RotateCcw, Code2 } from 'lucide-vue-next'
 import { authHeaders } from '../tutor-model'
 import {
@@ -26,6 +26,7 @@ import {
 } from '../composables/useTracePlayback'
 import TraceTrapView from './TraceTrapView.vue'
 import TraceTimelineView from './TraceTimelineView.vue'
+import TraceArchitectureView from './TraceArchitectureView.vue'
 
 const props = defineProps<{
   runId?: string
@@ -42,9 +43,8 @@ const loading = ref(false)
 const loaded = ref(false)
 const unavailable = ref(false)
 const fetchError = ref('')
-const eventListRef = ref<HTMLOListElement | null>(null)
 
-const view = ref<TraceView>('trap')
+const view = ref<TraceView>('architecture')
 const filterTypes = ref(new Set<'trap_enter' | 'task_switch'>())
 const filterPids = ref(new Set<number>())
 
@@ -58,36 +58,9 @@ const playheadIndex = computed(() => playback.playhead.value)
 const isPlaying = computed(() => playback.playing.value)
 const pids = computed(() => collectPids(allEvents.value))
 
-const EVENT_LIST_CAP = 200
-const listEvents = computed(() => filteredEvents.value.slice(0, EVENT_LIST_CAP))
-const listTruncated = computed(() => filteredEvents.value.length > EVENT_LIST_CAP)
 const currentEvent = computed<TraceEvent | null>(() => playback.current.value)
 const trapCount = computed(() => allEvents.value.filter((event) => event.type === 'trap_enter').length)
 const switchCount = computed(() => allEvents.value.filter((event) => event.type === 'task_switch').length)
-
-function eventTypeLabel(event: TraceEvent) {
-  return event.type === 'trap_enter' ? '进入内核' : '任务切换'
-}
-
-const currentTitle = computed(() => {
-  const event = currentEvent.value
-  if (!event) return ''
-  if (event.type === 'trap_enter') {
-    return event.cause === 'user_ecall' ? `任务 ${event.pid} 发起系统调用` : `任务 ${event.pid} 触发 Trap`
-  }
-  return `任务 ${event.pid} 被调度运行`
-})
-
-const currentMeaning = computed(() => {
-  const event = currentEvent.value
-  if (!event) return ''
-  if (event.type === 'trap_enter') {
-    return event.cause === 'user_ecall'
-      ? '用户程序通过 ecall 进入内核，内核将处理对应的系统调用。'
-      : `CPU 因 ${event.cause || '未知原因'} 从当前任务进入内核。`
-  }
-  return `调度器让任务 ${event.pid} 从 ${event.from || '未知状态'} 进入 ${event.to || 'Running'}。`
-})
 
 async function fetchTrace(runId: string) {
   loading.value = true
@@ -168,12 +141,6 @@ function onJumpSource() {
   emit('jump', sourceAnchorFor(event))
 }
 
-watch(playheadIndex, async (index) => {
-  await nextTick()
-  const el = eventListRef.value?.querySelector<HTMLElement>(`[data-event-index="${index}"]`)
-  el?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
-})
-
 function toggleType(type: 'trap_enter' | 'task_switch') {
   const next = new Set(filterTypes.value)
   if (next.has(type)) next.delete(type)
@@ -248,15 +215,13 @@ const hasEvents = computed(() => allEvents.value.length > 0)
 
     <template v-else>
       <header class="ws-trace-toolbar">
-        <div class="ws-trace-toolbar-row">
+        <div class="ws-trace-toolbar-row ws-trace-toolbar-main">
           <div class="ws-trace-view-switch" role="tablist" aria-label="trace 视图">
+            <button type="button" role="tab" :aria-selected="view === 'architecture'" :class="{ active: view === 'architecture' }" @click="view = 'architecture'">架构流动</button>
             <button type="button" role="tab" :aria-selected="view === 'trap'" :class="{ active: view === 'trap' }" @click="view = 'trap'">事件顺序</button>
             <button type="button" role="tab" :aria-selected="view === 'timeline'" :class="{ active: view === 'timeline' }" @click="view = 'timeline'">任务时间线</button>
           </div>
-          <span class="ws-trace-count">共 {{ allEvents.length }} 条 · 显示 {{ filteredEvents.length }}</span>
-        </div>
-
-        <div class="ws-trace-toolbar-row ws-trace-filters">
+          <span class="ws-trace-count">{{ filteredEvents.length }}/{{ allEvents.length }}</span>
           <span class="ws-trace-filter-label">类型</span>
           <button type="button" :class="['ws-trace-chip', { on: filterTypes.size === 0 || filterTypes.has('trap_enter') }]" @click="toggleType('trap_enter')">进入内核</button>
           <button type="button" :class="['ws-trace-chip', { on: filterTypes.size === 0 || filterTypes.has('task_switch') }]" @click="toggleType('task_switch')">任务切换</button>
@@ -267,17 +232,13 @@ const hasEvents = computed(() => allEvents.value.length > 0)
           <button type="button" class="ws-trace-chip ws-trace-reset" @click="resetFilter">
             <RotateCcw :size="12" aria-hidden="true" /> 重置
           </button>
-        </div>
-
-        <div class="ws-trace-toolbar-row ws-trace-controls">
-          <button type="button" class="ws-trace-ctrl" :disabled="playback.atEnd.value && !isPlaying" @click="playback.toggle()">
+          <button type="button" class="ws-trace-ctrl ws-trace-icon-ctrl" :disabled="playback.atEnd.value && !isPlaying" :title="isPlaying ? '暂停' : '播放'" :aria-label="isPlaying ? '暂停' : '播放'" @click="playback.toggle()">
             <component :is="isPlaying ? Pause : Play" :size="14" aria-hidden="true" />
-            <span>{{ isPlaying ? '暂停' : '播放' }}</span>
           </button>
-          <button type="button" class="ws-trace-ctrl" :disabled="playheadIndex === 0" @click="playback.stepBack()">
+          <button type="button" class="ws-trace-ctrl ws-trace-icon-ctrl" :disabled="playheadIndex === 0" title="上一步" aria-label="上一步" @click="playback.stepBack()">
             <SkipBack :size="14" aria-hidden="true" />
           </button>
-          <button type="button" class="ws-trace-ctrl" :disabled="playback.atEnd.value" @click="playback.stepForward()">
+          <button type="button" class="ws-trace-ctrl ws-trace-icon-ctrl" :disabled="playback.atEnd.value" title="下一步" aria-label="下一步" @click="playback.stepForward()">
             <SkipForward :size="14" aria-hidden="true" />
           </button>
           <label class="ws-trace-speed">
@@ -287,60 +248,25 @@ const hasEvents = computed(() => allEvents.value.length > 0)
             </select>
           </label>
           <span class="ws-trace-pos">#{{ playheadIndex }} / {{ Math.max(0, filteredEvents.length - 1) }}</span>
+          <button
+            v-if="currentEvent"
+            type="button"
+            class="ws-trace-icon-ctrl"
+            title="跳到源码"
+            aria-label="跳到源码"
+            @click="onJumpSource"
+          >
+            <Code2 :size="14" aria-hidden="true" />
+          </button>
         </div>
       </header>
 
       <div class="ws-trace-body">
-        <TraceTrapView v-if="view === 'trap'" :events="filteredEvents" :playhead="playheadIndex" @select="onSelect" />
+        <TraceArchitectureView v-if="view === 'architecture'" :events="filteredEvents" :playhead="playheadIndex" :speed="playback.speed.value" @select="onSelect" />
+        <TraceTrapView v-else-if="view === 'trap'" :events="filteredEvents" :playhead="playheadIndex" @select="onSelect" />
         <TraceTimelineView v-else :events="filteredEvents" :playhead="playheadIndex" @select="onSelect" />
       </div>
 
-      <footer v-if="currentEvent" class="ws-trace-detail">
-        <div class="ws-trace-detail-head">
-          <strong>#{{ currentEvent.seq }} · {{ currentTitle }}</strong>
-          <span class="ws-trace-detail-ts">ts {{ currentEvent.ts }}</span>
-        </div>
-        <p class="ws-trace-detail-meaning">{{ currentMeaning }}</p>
-        <dl class="ws-trace-detail-body">
-          <template v-if="currentEvent.type === 'trap_enter'">
-            <div><dt>cause</dt><dd>{{ currentEvent.cause || '?' }}</dd></div>
-          </template>
-          <template v-else>
-            <div><dt>from</dt><dd>{{ currentEvent.from || '?' }}</dd></div>
-            <div><dt>to</dt><dd>{{ currentEvent.to || '?' }}</dd></div>
-            <div><dt>reason</dt><dd>{{ currentEvent.reason || '?' }}</dd></div>
-          </template>
-        </dl>
-        <div class="ws-trace-detail-actions">
-          <button type="button" class="ws-trace-action" @click="onJumpSource">
-            <Code2 :size="14" aria-hidden="true" /> 跳到源码
-          </button>
-        </div>
-      </footer>
-
-      <details class="ws-trace-list-wrap" open>
-        <summary>事件列表（{{ filteredEvents.length }}）</summary>
-        <ol ref="eventListRef" class="ws-trace-list">
-          <li
-            v-for="(event, index) in listEvents"
-            :key="event.seq"
-            :data-event-index="index"
-            :class="{ active: index === playheadIndex }"
-          >
-            <button type="button" @click="onSelect(index)">
-              <span class="ws-trace-list-seq">#{{ event.seq }}</span>
-              <span class="ws-trace-list-type">{{ eventTypeLabel(event) }}</span>
-              <span class="ws-trace-list-pid">任务 {{ event.pid }}</span>
-              <span v-if="event.type === 'trap_enter'" class="ws-trace-list-field">{{ event.cause }}</span>
-              <span v-else class="ws-trace-list-field">{{ event.from }}→{{ event.to }}</span>
-              <span class="ws-trace-list-ts">ts {{ event.ts }}</span>
-            </button>
-          </li>
-        </ol>
-        <p v-if="listTruncated" class="ws-trace-list-trunc">
-          事件过多，仅渲染前 {{ EVENT_LIST_CAP }} 条；用过滤或播放控制查看其余。
-        </p>
-      </details>
     </template>
   </section>
 </template>
@@ -351,79 +277,62 @@ const hasEvents = computed(() => allEvents.value.length > 0)
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--ws-space-3);
+  gap: var(--ws-space-2);
   flex: 0 0 auto;
-  min-height: 52px;
-  padding: var(--ws-space-2) var(--ws-space-4);
+  min-height: 36px;
+  padding: var(--ws-space-1) var(--ws-space-3);
   border-bottom: 1px solid var(--ws-line);
   background: var(--ws-surface-raised);
 }
-.ws-trace-overview > div:first-child { display: grid; gap: 2px; }
-.ws-trace-overview strong { color: var(--ws-ink); font-size: var(--ws-text-lg); }
+.ws-trace-overview > div:first-child { display: flex; align-items: baseline; gap: var(--ws-space-2); }
+.ws-trace-overview strong { color: var(--ws-ink); font-size: var(--ws-text-base); }
 .ws-trace-overview > div:first-child span { color: var(--ws-ink-faint); font-size: var(--ws-text-xs); }
-.ws-trace-stats { display: flex; gap: var(--ws-space-4); margin: 0; }
-.ws-trace-stats div { display: grid; justify-items: end; }
-.ws-trace-stats dt { color: var(--ws-ink-faint); font-size: var(--ws-text-xs); }
+.ws-trace-stats { display: flex; gap: var(--ws-space-3); margin: 0; }
+.ws-trace-stats div { display: flex; align-items: baseline; gap: 4px; }
+.ws-trace-stats dt { color: var(--ws-ink-faint); font-size: 10px; }
 .ws-trace-stats dd {
   margin: 0;
   color: var(--ws-ink);
   font-family: var(--ws-font-mono);
-  font-size: var(--ws-text-base);
+  font-size: var(--ws-text-xs);
   font-weight: var(--ws-weight-semibold);
 }
 .ws-trace-empty { display: flex; flex-direction: column; align-items: center; gap: var(--ws-space-2); margin: auto; max-width: 44ch; padding: var(--ws-space-3); color: var(--ws-ink-faint); text-align: center; line-height: var(--ws-leading-normal); }
 .ws-trace-empty strong { color: var(--ws-ink); font-size: var(--ws-text-sm); }
 .ws-trace-note { margin: 0; color: var(--ws-ink-muted); }
 .ws-trace-note code { font-family: var(--ws-font-mono); }
-.ws-trace-toolbar { display: flex; flex-direction: column; gap: var(--ws-space-2); padding: var(--ws-space-2) var(--ws-space-3); border-bottom: 1px solid var(--ws-line); background: var(--ws-surface); }
-.ws-trace-toolbar-row { display: flex; align-items: center; gap: var(--ws-space-2); flex-wrap: wrap; }
+.ws-trace-toolbar { flex: 0 0 auto; padding: var(--ws-space-1) var(--ws-space-2); border-bottom: 1px solid var(--ws-line); background: var(--ws-surface); }
+.ws-trace-toolbar-row { display: flex; align-items: center; gap: var(--ws-space-1); }
+.ws-trace-toolbar-main { flex-wrap: nowrap; min-width: 0; }
 .ws-trace-view-switch { display: inline-flex; border: 1px solid var(--ws-line); border-radius: var(--ws-radius-sm); overflow: hidden; }
-.ws-trace-view-switch button { padding: var(--ws-space-1) var(--ws-space-2); background: transparent; color: var(--ws-ink-muted); border: 0; border-right: 1px solid var(--ws-line); font: inherit; font-size: var(--ws-text-xs); cursor: pointer; }
+.ws-trace-view-switch button { min-height: 28px; padding: 3px var(--ws-space-2); background: transparent; color: var(--ws-ink-muted); border: 0; border-right: 1px solid var(--ws-line); font: inherit; font-size: var(--ws-text-xs); white-space: nowrap; cursor: pointer; }
 .ws-trace-view-switch button:last-child { border-right: 0; }
 .ws-trace-view-switch button.active { background: var(--ws-accent-soft); color: var(--ws-accent); font-weight: var(--ws-weight-semibold); }
-.ws-trace-count { color: var(--ws-ink-faint); font-family: var(--ws-font-mono); }
+.ws-trace-count { color: var(--ws-ink-faint); font-family: var(--ws-font-mono); white-space: nowrap; }
 .ws-trace-filter-label { color: var(--ws-ink-muted); font-size: var(--ws-text-xs); }
-.ws-trace-chip { display: inline-flex; align-items: center; gap: var(--ws-space-1); padding: var(--ws-space-1) var(--ws-space-2); border: 1px solid var(--ws-line); border-radius: var(--ws-radius-sm); background: var(--ws-surface); color: var(--ws-ink-muted); font: inherit; font-size: var(--ws-text-xs); cursor: pointer; }
+.ws-trace-chip { display: inline-flex; align-items: center; gap: 3px; min-height: 28px; padding: 3px 7px; border: 1px solid var(--ws-line); border-radius: var(--ws-radius-sm); background: var(--ws-surface); color: var(--ws-ink-muted); font: inherit; font-size: var(--ws-text-xs); white-space: nowrap; cursor: pointer; }
 .ws-trace-chip.on { border-color: var(--ws-accent); color: var(--ws-accent); background: var(--ws-accent-soft); }
 .ws-trace-reset { color: var(--ws-ink-faint); }
-.ws-trace-controls { gap: var(--ws-space-2); }
-.ws-trace-ctrl { display: inline-flex; align-items: center; gap: var(--ws-space-1); padding: var(--ws-space-1) var(--ws-space-2); border: 1px solid var(--ws-line); border-radius: var(--ws-radius-sm); background: var(--ws-surface); color: var(--ws-ink); font: inherit; font-size: var(--ws-text-xs); cursor: pointer; }
+.ws-trace-ctrl { display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--ws-line); border-radius: var(--ws-radius-sm); background: var(--ws-surface); color: var(--ws-ink); font: inherit; cursor: pointer; }
 .ws-trace-ctrl:disabled { opacity: 0.45; cursor: not-allowed; }
 .ws-trace-ctrl:hover:not(:disabled) { border-color: var(--ws-accent); color: var(--ws-accent); }
-.ws-trace-speed { display: inline-flex; align-items: center; gap: var(--ws-space-1); color: var(--ws-ink-muted); font-size: var(--ws-text-xs); }
-.ws-trace-speed select { padding: var(--ws-space-1) var(--ws-space-1); border: 1px solid var(--ws-line); border-radius: var(--ws-radius-sm); background: var(--ws-surface); color: var(--ws-ink); font: inherit; font-size: var(--ws-text-xs); }
-.ws-trace-pos { margin-left: auto; color: var(--ws-ink-faint); font-family: var(--ws-font-mono); }
+.ws-trace-speed { display: inline-flex; align-items: center; gap: 3px; color: var(--ws-ink-muted); font-size: var(--ws-text-xs); white-space: nowrap; }
+.ws-trace-speed select { height: 28px; padding: 2px 3px; border: 1px solid var(--ws-line); border-radius: var(--ws-radius-sm); background: var(--ws-surface); color: var(--ws-ink); font: inherit; font-size: var(--ws-text-xs); }
+.ws-trace-pos { margin-left: auto; color: var(--ws-ink-faint); font-family: var(--ws-font-mono); white-space: nowrap; }
+.ws-trace-icon-ctrl { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--ws-line); border-radius: var(--ws-radius-sm); background: var(--ws-surface); color: var(--ws-ink-muted); cursor: pointer; }
+.ws-trace-icon-ctrl:hover { border-color: var(--ws-accent); color: var(--ws-accent); }
 .ws-trace-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
-.ws-trace-detail { border-top: 1px solid var(--ws-line); padding: var(--ws-space-2) var(--ws-space-3); background: var(--ws-surface-alt); }
-.ws-trace-detail-head { display: flex; align-items: center; gap: var(--ws-space-2); flex-wrap: wrap; font-family: var(--ws-font-mono); }
-.ws-trace-detail-head strong { color: var(--ws-accent); }
-.ws-trace-detail-ts { margin-left: auto; color: var(--ws-ink-faint); }
-.ws-trace-detail-meaning { margin: var(--ws-space-1) 0 0; color: var(--ws-ink); font-size: var(--ws-text-sm); line-height: var(--ws-leading-normal); }
-.ws-trace-detail-body { display: flex; flex-wrap: wrap; gap: var(--ws-space-3); margin: var(--ws-space-1) 0 0; }
-.ws-trace-detail-body div { display: flex; align-items: baseline; gap: var(--ws-space-1); }
-.ws-trace-detail-body dt { color: var(--ws-ink-faint); font-family: var(--ws-font-mono); }
-.ws-trace-detail-body dd { margin: 0; color: var(--ws-ink); font-family: var(--ws-font-mono); }
-.ws-trace-detail-actions { display: flex; gap: var(--ws-space-2); margin-top: var(--ws-space-2); }
-.ws-trace-action { display: inline-flex; align-items: center; gap: var(--ws-space-1); padding: var(--ws-space-1) var(--ws-space-2); border: 1px solid var(--ws-accent); border-radius: var(--ws-radius-sm); background: var(--ws-accent-soft); color: var(--ws-accent); font: inherit; font-size: var(--ws-text-xs); cursor: pointer; }
-.ws-trace-action:hover { background: var(--ws-accent); color: var(--ws-accent-contrast); }
-.ws-trace-list-wrap { border-top: 1px solid var(--ws-line); }
-.ws-trace-list-wrap summary { padding: var(--ws-space-1) var(--ws-space-3); cursor: pointer; color: var(--ws-ink-muted); font-size: var(--ws-text-xs); }
-.ws-trace-list { list-style: none; margin: 0; max-height: 180px; overflow: auto; padding: 0 var(--ws-space-2); font-family: var(--ws-font-mono); }
-.ws-trace-list li { border-bottom: 1px solid var(--ws-line); }
-.ws-trace-list li.active { background: var(--ws-accent-soft); }
-.ws-trace-list button { display: grid; grid-template-columns: auto auto auto 1fr auto; gap: var(--ws-space-2); width: 100%; padding: var(--ws-space-1) var(--ws-space-2); background: transparent; border: 0; color: var(--ws-ink); font: inherit; font-size: var(--ws-text-xs); text-align: left; cursor: pointer; }
-.ws-trace-list-seq { color: var(--ws-ink-faint); }
-.ws-trace-list-type { color: var(--ws-accent); }
-.ws-trace-list-pid { color: var(--ws-ink-muted); }
-.ws-trace-list-field { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ws-trace-list-ts { color: var(--ws-ink-faint); }
-.ws-trace-list-trunc { margin: 0; padding: var(--ws-space-2); color: var(--ws-ink-faint); font-size: var(--ws-text-xs); }
+@media (max-width: 900px) {
+  .ws-trace-toolbar-main { flex-wrap: wrap; }
+  .ws-trace-pos { margin-left: 0; }
+}
 @media (max-width: 620px) {
-  .ws-trace-overview { align-items: flex-start; padding-inline: var(--ws-space-3); }
+  .ws-trace-overview { padding-inline: var(--ws-space-2); }
+  .ws-trace-overview > div:first-child span, .ws-trace-stats dt, .ws-trace-count, .ws-trace-filter-label { display: none; }
   .ws-trace-stats { gap: var(--ws-space-2); }
-  .ws-trace-controls { gap: var(--ws-space-1); }
-  .ws-trace-pos { margin-left: 0; width: 100%; }
-  .ws-trace-list button { grid-template-columns: auto auto 1fr; }
-  .ws-trace-list-pid, .ws-trace-list-ts { grid-column: span 1; }
+  .ws-trace-toolbar { overflow: hidden; }
+  .ws-trace-view-switch button { padding-inline: 5px; }
+  .ws-trace-chip { padding-inline: 5px; }
+  .ws-trace-pos { display: none; }
 }
 </style>

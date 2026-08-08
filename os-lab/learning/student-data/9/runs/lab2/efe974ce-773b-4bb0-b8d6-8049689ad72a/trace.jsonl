@@ -1,0 +1,16 @@
+{"v":1,"seq":0,"ts":339899,"cpu":0,"pid":0,"tid":0,"type":"task_switch","from":"Ready","to":"Running","reason":"initial"}
+{"v":1,"seq":1,"ts":348005,"cpu":0,"pid":0,"tid":0,"type":"trap_enter","cause":"user_ecall"}
+{"v":1,"seq":2,"ts":362681,"cpu":0,"pid":0,"tid":0,"type":"trap_enter","cause":"user_ecall"}
+{"v":1,"seq":3,"ts":366841,"cpu":0,"pid":0,"tid":0,"type":"trap_enter","cause":"user_ecall"}
+{"v":1,"seq":4,"ts":381946,"cpu":0,"pid":1,"tid":1,"type":"trap_enter","cause":"user_ecall"}
+{"v":1,"seq":5,"ts":389856,"cpu":0,"pid":1,"tid":1,"type":"trap_enter","cause":"user_ecall"}
+{"v":1,"seq":6,"ts":394836,"cpu":0,"pid":1,"tid":1,"type":"trap_enter","cause":"user_ecall"}
+{"v":1,"seq":7,"ts":400551,"cpu":0,"pid":1,"tid":1,"type":"trap_enter","cause":"user_ecall"}
+{"v":1,"seq":8,"ts":405765,"cpu":0,"pid":1,"tid":1,"type":"trap_enter","cause":"user_ecall"}
+{"v":1,"seq":9,"ts":413590,"cpu":0,"pid":1,"tid":1,"type":"trap_enter","cause":"user_ecall"}
+{"v":1,"seq":10,"ts":418478,"cpu":0,"pid":1,"tid":1,"type":"trap_enter","cause":"user_ecall"}
+{"v":1,"seq":11,"ts":427049,"cpu":0,"pid":2,"tid":2,"type":"trap_enter","cause":"user_ecall"}
+{"v":1,"seq":12,"ts":431716,"cpu":0,"pid":2,"tid":2,"type":"trap_enter","cause":"user_ecall"}
+{"v":1,"seq":13,"ts":435815,"cpu":0,"pid":2,"tid":2,"type":"trap_enter","cause":"user_ecall"}
+{"v":1,"seq":14,"ts":440185,"cpu":0,"pid":2,"tid":2,"type":"trap_enter","cause":"user_ecall"}
+{"v":1,"seq":15,"ts":445283,"cpu":0,"pid":2,"tid":2,"type":"trap_enter","cause":"user_ecall"}

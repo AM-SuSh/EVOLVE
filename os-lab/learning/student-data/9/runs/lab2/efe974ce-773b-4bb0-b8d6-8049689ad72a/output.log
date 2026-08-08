@@ -1,0 +1,96 @@
+[工具] 使用 D:\AppGallery\Rust\cargo\bin\cargo.exe
+    Updating crates.io index
+     Locking 5 packages to latest compatible versions
+   Compiling scopeguard v1.2.0
+   Compiling bitflags v1.3.2
+   Compiling os-context v0.1.0 (D:\rrproject\OS\project3136859-389070\student-labs\11\os-context)
+   Compiling os-sbi v0.1.0 (D:\rrproject\OS\project3136859-389070\student-labs\11\os-sbi)
+   Compiling os-syscall v0.1.0 (D:\rrproject\OS\project3136859-389070\student-labs\11\os-syscall)
+   Compiling lock_api v0.4.14
+   Compiling spin v0.9.9
+   Compiling tg-rcore-tutorial-easy-fs v0.4.8
+   Compiling kernel v0.1.0 (D:\rrproject\OS\project3136859-389070\student-labs\11\kernel)
+    Finished `release` profile [optimized] target(s) in 3.98s
+     Running `qemu-system-riscv64 -machine virt -nographic -bios default -kernel target\riscv64gc-unknown-none-elf\release\kernel`
+OpenSBI v1.7
+   ____                    _____ ____ _____
+  / __ \                  / ____|  _ \_   _|
+ | |  | |_ __   ___ _ __ | (___ | |_) || |
+ | |  | | '_ \ / _ \ '_ \ \___ \|  _ < | |
+ | |__| | |_) |  __/ | | |____) | |_) || |_
+  \____/| .__/ \___|_| |_|_____/|____/_____|
+        | |
+        |_|
+Platform Name               : riscv-virtio,qemu
+Platform Features           : medeleg
+Platform HART Count         : 1
+Platform IPI Device         : aclint-mswi
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform HSM Device         : ---
+Platform PMU Device         : ---
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+Platform Suspend Device     : ---
+Platform CPPC Device        : ---
+Firmware Base               : 0x80000000
+Firmware Size               : 317 KB
+Firmware RW Offset          : 0x40000
+Firmware RW Size            : 61 KB
+Firmware Heap Offset        : 0x46000
+Firmware Heap Size          : 37 KB (total), 2 KB (reserved), 11 KB (used), 23 KB (free)
+Firmware Scratch Size       : 4096 B (total), 1400 B (used), 2696 B (free)
+Runtime SBI Version         : 3.0
+Standard SBI Extensions     : time,rfnc,ipi,base,hsm,srst,pmu,dbcn,fwft,legacy,dbtr,sse
+Experimental SBI Extensions : none
+Domain0 Name                : root
+Domain0 Boot HART           : 0
+Domain0 HARTs               : 0*
+Domain0 Region00            : 0x0000000000100000-0x0000000000100fff M: (I,R,W) S/U: (R,W)
+Domain0 Region01            : 0x0000000010000000-0x0000000010000fff M: (I,R,W) S/U: (R,W)
+Domain0 Region02            : 0x0000000002000000-0x000000000200ffff M: (I,R,W) S/U: ()
+Domain0 Region03            : 0x0000000080040000-0x000000008004ffff M: (R,W) S/U: ()
+Domain0 Region04            : 0x0000000080000000-0x000000008003ffff M: (R,X) S/U: ()
+Domain0 Region05            : 0x000000000c400000-0x000000000c5fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region06            : 0x000000000c000000-0x000000000c3fffff M: (I,R,W) S/U: (R,W)
+Domain0 Region07            : 0x0000000000000000-0xffffffffffffffff M: () S/U: (R,W,X)
+Domain0 Next Address        : 0x0000000080200000
+Domain0 Next Arg1           : 0x0000000087e00000
+Domain0 Next Mode           : S-mode
+Domain0 SysReset            : yes
+Domain0 SysSuspend          : yes
+Boot HART ID                : 0
+Boot HART Domain            : root
+Boot HART Priv Version      : v1.12
+Boot HART Base ISA          : rv64imafdch
+Boot HART ISA Extensions    : sstc,zicntr,zihpm,zicboz,zicbom,sdtrig,svadu
+Boot HART PMP Count         : 16
+Boot HART PMP Granularity   : 2 bits
+Boot HART PMP Address Bits  : 54
+Boot HART MHPM Info         : 16 (0x0007fff8)
+Boot HART Debug Triggers    : 2 triggers
+Boot HART MIDELEG           : 0x0000000000001666
+Boot HART MEDELEG           : 0x0000000000f4b509
+Loading 3 user apps (batch slot at 0x80400000)...
+  app 0: 81 bytes -> 0x80400000
+TRACE_V1 {"v":1,"seq":0,"ts":339899,"cpu":0,"pid":0,"tid":0,"type":"task_switch","from":"Ready","to":"Running","reason":"initial"}
+TRACE_V1 {"v":1,"seq":1,"ts":348005,"cpu":0,"pid":0,"tid":0,"type":"trap_enter","cause":"user_ecall"}
+Hello from user app!TRACE_V1 {"v":1,"seq":2,"ts":362681,"cpu":0,"pid":0,"tid":0,"type":"trap_enter","cause":"user_ecall"}
+TRACE_V1 {"v":1,"seq":3,"ts":366841,"cpu":0,"pid":0,"tid":0,"type":"trap_enter","cause":"user_ecall"}
+App 0 exited with code 0
+  app 1: 199 bytes -> 0x80400000
+TRACE_V1 {"v":1,"seq":4,"ts":381946,"cpu":0,"pid":1,"tid":1,"type":"trap_enter","cause":"user_ecall"}
+Power test startTRACE_V1 {"v":1,"seq":5,"ts":389856,"cpu":0,"pid":1,"tid":1,"type":"trap_enter","cause":"user_ecall"}
+TRACE_V1 {"v":1,"seq":6,"ts":394836,"cpu":0,"pid":1,"tid":1,"type":"trap_enter","cause":"user_ecall"}
+2^1000000002 % 998244353 = 409684505TRACE_V1 {"v":1,"seq":7,"ts":400551,"cpu":0,"pid":1,"tid":1,"type":"trap_enter","cause":"user_ecall"}
+TRACE_V1 {"v":1,"seq":8,"ts":405765,"cpu":0,"pid":1,"tid":1,"type":"trap_enter","cause":"user_ecall"}
+Power check okTRACE_V1 {"v":1,"seq":9,"ts":413590,"cpu":0,"pid":1,"tid":1,"type":"trap_enter","cause":"user_ecall"}
+TRACE_V1 {"v":1,"seq":10,"ts":418478,"cpu":0,"pid":1,"tid":1,"type":"trap_enter","cause":"user_ecall"}
+App 1 exited with code 0
+  app 2: 278 bytes -> 0x80400000
+TRACE_V1 {"v":1,"seq":11,"ts":427049,"cpu":0,"pid":2,"tid":2,"type":"trap_enter","cause":"user_ecall"}
+Yield test startTRACE_V1 {"v":1,"seq":12,"ts":431716,"cpu":0,"pid":2,"tid":2,"type":"trap_enter","cause":"user_ecall"}
+TRACE_V1 {"v":1,"seq":13,"ts":435815,"cpu":0,"pid":2,"tid":2,"type":"trap_enter","cause":"user_ecall"}
+Yield roundTRACE_V1 {"v":1,"seq":14,"ts":440185,"cpu":0,"pid":2,"tid":2,"type":"trap_enter","cause":"user_ecall"}
+TRACE_V1 {"v":1,"seq":15,"ts":445283,"cpu":0,"pid":2,"tid":2,"type":"trap_enter","cause":"user_ecall"}
+All user apps exited.
