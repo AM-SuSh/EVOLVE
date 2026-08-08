@@ -7,7 +7,7 @@ prerequisites: [lab1, lab2, lab3]
 textbook:
   - OSTEP Ch.5 Process API
 status: stable
-manual_revision: lab4-waitpid-debug-stable-v1
+manual_revision: lab4-kernel-process-variants-v2
 manual: ../../labs/lab4-process.md
 answers: ../../labs/answers/lab4-answers.md
 tutor_context: ../../tutor/prompts/lab4/context.md
@@ -19,6 +19,9 @@ knowledge:
   - id: os.process.exec
     level: mechanism
     concept_ref: concepts/process.yaml#os.process.exec
+  - id: os.process.zombie-wait
+    level: mechanism
+    concept_ref: concepts/process.yaml#os.process.zombie-wait
 
 tasks:
   - id: orient
@@ -32,7 +35,7 @@ tasks:
     goal: 跑通父子分支、退出码回收与进程全部退出断言
   - id: debug
     stage: debug
-    goal: 区分 fork 返回值、wait 返回 pid 与子进程 exit code
+    goal: 修复 sys_fork 父子返回值与 sys_wait4 阻塞/僵尸回收错误
   - id: reflect
     stage: reflect
     goal: 用运行证据解释僵尸进程为何必须由父进程回收
@@ -43,17 +46,17 @@ starter_files:
     - user/src/bin/fork_test.rs
     - user/src/bin/exec_test.rs
   editable_by_variant:
-    fill: [user/src/bin/fork_test.rs]
-    debug: [user/src/bin/fork_test.rs]
+    fill: [kernel/src/process.rs]
+    debug: [kernel/src/process.rs]
   generated: [Cargo.toml, kernel/Cargo.toml, user/Cargo.toml]
 
 variants:
   fill:
     manifest: variants/fill/manifest.yaml
-    source: ../../scaffold/exercises/lab4/fill/user/src/bin/fork_test.rs
+    source: ../../scaffold/exercises/lab4/fill/kernel/src/process.rs
   debug:
     manifest: variants/debug/manifest.yaml
-    source: ../../scaffold/exercises/lab4/debug/user/src/bin/fork_test.rs
+    source: ../../scaffold/exercises/lab4/debug/kernel/src/process.rs
 
 verification:
   recipe: lab4.verify.v1
@@ -70,10 +73,11 @@ verification:
     - id: fork-pass
       kind: output-contains
       text: "fork_test pass"
-      assesses: [os.process.fork-wait]
+      assesses: [os.process.fork-wait, os.process.zombie-wait]
     - id: all-processes-exited
       kind: output-contains
       text: "All processes exited."
+      assesses: [os.process.zombie-wait]
   observable_trace: []
 
 misconceptions:
@@ -83,5 +87,11 @@ misconceptions:
   - id: wait-result-is-exit-code
     statement: 把 waitpid 的返回 pid 当成子进程退出码
     counter: 返回值标识被回收进程，退出码通过独立指针写回
+  - id: fork-parent-return-zero
+    statement: 把父进程的 fork 返回值也写成 0，父子都走子分支
+    counter: sys_fork 应返回 child_pid；只有子进程 TrapContext 的 a0 是 0
+  - id: wait-no-block
+    statement: wait 没有僵尸子进程时立即返回 -1，而不是阻塞等待
+    counter: 还有活子进程时应回退 sepc、让出 CPU，唤醒后重入 sys_wait4 再检查
 
 rubric_ref: ../../learning/rubric-v2-frozen.md

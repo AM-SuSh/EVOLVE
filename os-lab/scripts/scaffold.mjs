@@ -160,8 +160,8 @@ const LEGACY_EXERCISES = {
   lab4: {
     default: 'debug',
     variants: {
-      fill: { label: '补全：双子进程 wait 回收', files: ['user/src/bin/fork_test.rs'] },
-      debug: { label: '排错：wait 通过条件写错，先复现再修复', files: ['user/src/bin/fork_test.rs'] },
+      fill: { label: '补全：sys_wait4 阻塞等待与僵尸回收', files: ['kernel/src/process.rs'] },
+      debug: { label: '排错：sys_fork 父子返回值错误，先复现再修复', files: ['kernel/src/process.rs'] },
     },
   },
   lab5: {

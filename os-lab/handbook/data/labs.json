@@ -55,14 +55,13 @@
       "title": "进程管理",
       "subtitle": "fork、exec、wait、进程树",
       "guide": "/labs/lab4-process",
-      "answers": "/answers/lab4-answers",
       "verifyCmd": "cargo run -p kernel --features lab4 --release",
       "expected": ["I am parent", "I am child", "waited pid done", "fork_test pass", "All processes exited."],
       "checklist": [
         { "id": "read", "label": "理解 fork/exec/wait 语义" },
         { "id": "run", "label": "跑通 fork_test" },
         { "id": "exercise", "label": "完成【任务二】阅读理解" },
-        { "id": "review", "label": "对照参考答案自查" }
+        { "id": "review", "label": "复盘：用运行输出解释 fork/exec/wait 不变量" }
       ]
     },
     {

@@ -1,4 +1,4 @@
-# lab4 fill 变体（加强版）
+# lab4 fill 变体：补全 sys_wait4（阻塞等待与僵尸回收）
 
 id: lab4-fill
 lab: lab4
@@ -6,17 +6,25 @@ variant: fill
 version: 1.1.0
 
 learning_goal: |
-  学生实现双子进程 wait 回收，区分 waitpid 返回值与 exit_code。
+  学生在 `kernel/src/process.rs` 中实现 `sys_wait4`：先回收 Zombie 子进程并把退出码写回，
+  无僵尸但仍有活子进程时阻塞让出 CPU，区分 wait 返回的 pid 与独立写回的 exit_code。
 
 target_concepts:
   - os.process.fork-wait
+  - os.process.zombie-wait
 
-student_file: user/src/bin/fork_test.rs
-source_template: ../../../scaffold/exercises/lab4/fill/user/src/bin/fork_test.rs
+student_file: kernel/src/process.rs
+source_template: ../../../scaffold/exercises/lab4/fill/kernel/src/process.rs
+manual_anchor: labs/lab4-process.md#任务一跑通-lab4
 
 what_is_blank:
-  - symbol: reap_two_children
+  - symbol: sys_wait4
     hint_in_source: true
+    required_behavior:
+      - 先尝试 reap_zombie_child(current_slot(), want_pid)，找到 Zombie 子进程
+      - 找到僵尸：用 write_user_i32 写回退出码，返回被回收子进程的 pid
+      - want_pid >= 0 且没有活子进程时返回 -1
+      - 子进程未退出：回退 sepc、保存 TrapContext、标记 Ready、让出 CPU，唤醒后重入检查
 
 success_criteria:
   recipe: lab4.verify.v1
@@ -24,20 +32,28 @@ success_criteria:
 
 negative_tests:
   - id: leave-todo
-    description: 未实现（仍 todo!）则编译或运行失败
+    description: 未实现（仍 todo!）则父进程 wait 路径失败，缺 fork_test pass
     expect_fail: true
+  - id: busy-wait-return
+    description: 无僵尸时直接返回而非阻塞让出 CPU，父进程提前失败
+    expect_fail_assertions: [fork-pass]
+    anti_pattern: 禁止用忙等或立即返回 -1 代替阻塞
 
 hint_ladder:
   - level: 0
     when: 尚未描述协议/循环
-    say: 先用自己的话写出要补的步骤，再对照函数注释。
+    say: 先用自己的话写出「wait 每次要检查什么、不满足时干什么」，再对照函数注释。
   - level: 1
     when: 方向正确但仍卡住
-    say: 对照手册背景知识，用最小改动验证每一步假设。
+    say: 对照手册 2.5：Zombie 子进程由 reap_zombie_child 回收；返回 pid，退出码用指针写回。
   - level: 2
     when: 能编译但断言失败
-    say: 对照预期输出与边界（关闭哪一端、nlink 推算、是否持锁）。
+    say: 检查父进程 wait 时子进程是否已经 exit：没有僵尸且有活子进程，必须让出 CPU 而不是返回。
+  - level: 3
+    when: 仍无法通过
+    say: 阻塞要让被唤醒后重新走 syscall：回退 sepc → 保存现场 → 标记 Ready → run_next_process，核对顺序。
 
 report_prompts:
-  - 你实现的关键步骤是什么？用测例输出证明正确。
-  - 若某一步顺序反了（例如先关错管道端、未持锁），会发生什么？
+  - 你实现的 sys_wait4 关键步骤是什么？用测例输出证明回收成功。
+  - 若把返回值写成 exit_code、或子进程未退出时直接返回 -1，会发生什么？
+  - 阻塞等待与忙等（busy loop）在 CPU 占用上有什么区别？

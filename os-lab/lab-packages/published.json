@@ -194,22 +194,22 @@
       },
       "variants": {
         "fill": {
-          "label": "学生实现双子进程 wait 回收，区分 waitpid 返回值与 exit_code。",
+          "label": "学生在内核实现 sys_wait4：Zombie 回收、退出码写回与阻塞让出 CPU。",
           "files": [
-            "user/src/bin/fork_test.rs"
+            "kernel/src/process.rs"
           ],
           "sources": {
-            "user/src/bin/fork_test.rs": "scaffold/exercises/lab4/fill/user/src/bin/fork_test.rs"
+            "kernel/src/process.rs": "scaffold/exercises/lab4/fill/kernel/src/process.rs"
           },
           "manifest": "lab-packages/lab4/variants/fill/manifest.yaml"
         },
         "debug": {
-          "label": "区分 waitpid 返回的子进程 pid 与独立写回的 exit code，修复错误的通过条件。",
+          "label": "学生按现象→假设排查 sys_fork 返回值：父进程必须返回子 PID，子进程 a0 才是 0。",
           "files": [
-            "user/src/bin/fork_test.rs"
+            "kernel/src/process.rs"
           ],
           "sources": {
-            "user/src/bin/fork_test.rs": "scaffold/exercises/lab4/debug/user/src/bin/fork_test.rs"
+            "kernel/src/process.rs": "scaffold/exercises/lab4/debug/kernel/src/process.rs"
           },
           "manifest": "lab-packages/lab4/variants/debug/manifest.yaml"
         }

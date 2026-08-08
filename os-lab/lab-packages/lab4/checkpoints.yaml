@@ -4,5 +4,5 @@ checkpoints:
   - { id: C4-1, stage: orient, required_evidence: [manual], prompt: 区分任务与进程拥有的状态。 }
   - { id: C4-2, stage: read, required_evidence: [code], prompt: 标出 fork 父子返回值和 waitpid 退出码写回位置。 }
   - { id: C4-3, stage: run, required_evidence: [run], prompt: 保存父、子、回收和全部退出四组输出。 }
-  - { id: C4-4, stage: debug, required_evidence: [run, code], prompt: 解释为何退出码判断错误会丢失 fork_test pass。 }
-  - { id: C4-5, stage: reflect, required_evidence: [report], prompt: 用证据说明僵尸态与回收的关系。 }
+  - { id: C4-4, stage: debug, required_evidence: [run, code], prompt: 解释 sys_fork 父子返回值或 sys_wait4 阻塞/回收错误如何丢失 fork_test pass。 }
+  - { id: C4-5, stage: reflect, required_evidence: [report], prompt: 用证据说明 Zombie 态、阻塞等待与父进程回收的关系。 }

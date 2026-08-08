@@ -8,6 +8,17 @@ invariants:
   - waitpid 返回值与写回的 exit code 不可混用
 observable_evidence: [I am parent, I am child, fork_test pass]
 ---
+id: os.process.zombie-wait
+title: Zombie 状态与阻塞等待
+level: mechanism
+summary: 子进程 exit 后先变 Zombie 保留退出码，父进程 wait 时回收 PCB 与地址空间；子进程未退出时父进程阻塞让出 CPU。
+source_anchors: [kernel/src/process.rs]
+invariants:
+  - exit 只标记 Zombie 并保留退出码，不立刻释放 PCB
+  - wait 找到 Zombie 后返回 pid，退出码独立写回用户空间
+  - 无 Zombie 但仍有活子进程时，父进程让出 CPU，唤醒后重入检查
+observable_evidence: [waited pid done, fork_test pass, All processes exited.]
+---
 id: os.process.exec
 title: exec 地址空间替换
 level: mechanism
