@@ -977,9 +977,20 @@ export function tutorPromptsFor(lab: TutorLab, stage: TutorStageId): TutorPrompt
   }))
 }
 
-const STORAGE_KEY = 'os-lab-tutor-events-v3'
+const STORAGE_KEY = 'os-lab-tutor-events-v4'
 const LLM_CONFIG_KEY = 'os-lab-llm-config-v1'
-const AUTH_KEY = 'os-lab-auth-v1'
+const AUTH_KEY = 'os-lab-auth-v2'
+const RESET_STUDENT_STORAGE_KEYS = [
+  'os-lab-auth-v1',
+  'os-lab-tutor-events-v3',
+  'os-lab-tutor-conversations-v1',
+  'os-lab-run-results-v1',
+]
+
+function clearPreviousStudentStorage() {
+  if (typeof localStorage === 'undefined') return
+  for (const key of RESET_STUDENT_STORAGE_KEYS) localStorage.removeItem(key)
+}
 
 /** 登录会话：注册/登录后由 tutor-server 签发，工作区/报告/教师端都凭它鉴权。 */
 export interface AuthSession {
@@ -990,6 +1001,7 @@ export interface AuthSession {
 
 export function loadAuth(): AuthSession | null {
   if (typeof localStorage === 'undefined') return null
+  clearPreviousStudentStorage()
   try {
     const value = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null')
     if (value && typeof value.token === 'string' && typeof value.username === 'string') {

@@ -18,7 +18,6 @@ import {
 import { authHeaders, type TutorLab } from '../tutor-model'
 import {
   DEFAULT_REPORT_TEMPLATE,
-  FIXED_REFLECTION,
   cloneTemplate,
   formatSectionMarkdown,
   parseReportTemplateFromMarkdown,
@@ -92,9 +91,9 @@ const reportPreview = computed(() => {
   }
   lines.push(
     formatSectionMarkdown(
-      FIXED_REFLECTION.title,
-      FIXED_REFLECTION.prompt,
-      '（学生填写，系统固定）',
+      tpl.reflection.title,
+      tpl.reflection.prompt,
+      '（学生填写）',
       tpl.includePromptsInMarkdown,
     ),
   )
@@ -375,6 +374,7 @@ async function saveReportTemplate() {
         intro: reportDraft.value.intro,
         includePromptsInMarkdown: reportDraft.value.includePromptsInMarkdown,
         sections: reportDraft.value.sections,
+        reflection: reportDraft.value.reflection,
       },
     },
     `${props.lab.label} 报告版式已发布，学生刷新后生效。`,
@@ -644,7 +644,7 @@ onMounted(load)
             />
 
             <p class="ws-pub-report-import-hint">
-              只需布置正文各节；「收获与反思」由系统固定，学生端始终出现。导入时用
+              导入 Markdown 时读取正文各节；复盘节保留固定字段标识，标题和填写提示可在下方调整。导入时用
               <code>## 节标题</code> 分节，节后的 <code>&gt; 提示</code> 作为填写提示。
             </p>
 
@@ -703,9 +703,26 @@ onMounted(load)
 
             <div class="ws-pub-report-section ws-pub-report-fixed">
               <header>
-                <strong>系统固定 · {{ FIXED_REFLECTION.title }}</strong>
+                <strong>固定复盘字段</strong>
               </header>
-              <p>每位学生报告末尾都会有这一节，用于复盘；下一层由老师在对应范围手动分发后解锁。</p>
+              <p>每位学生报告末尾都会有这一节。系统固定其记录标识，标题和填写提示由本版式决定。</p>
+              <label>
+                <span>标题</span>
+                <input v-model="reportDraft.reflection.title" type="text" maxlength="80" />
+              </label>
+              <label>
+                <span>填写提示（学生可见，也会写进提交稿）</span>
+                <textarea
+                  v-model="reportDraft.reflection.prompt"
+                  rows="2"
+                  maxlength="800"
+                  placeholder="告诉学生如何完成本次复盘。"
+                />
+              </label>
+              <label>
+                <span>输入行数</span>
+                <input v-model.number="reportDraft.reflection.rows" type="number" min="2" max="20" />
+              </label>
             </div>
 
             <details class="ws-pub-report-preview" open>

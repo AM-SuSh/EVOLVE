@@ -38,17 +38,15 @@ import {
   MAX_ATTACHMENTS,
   type ReportAttachmentMeta,
   blobToBase64,
+  clearLegacyReportAttachmentCache,
   compressImageFile,
   createAttachmentId,
-  deleteAttachmentBlob,
-  getAttachmentBlob,
   isAllowedAttachment,
-  putAttachmentBlob,
 } from '../report-attachments'
 
 /**
  * 实验报告面板：单一 Markdown 文档 + 同步预览。
- * 图片通过选择、粘贴或拖放直接插入光标位置，二进制仍由 IndexedDB 管理。
+ * 图片通过选择、粘贴或拖放直接插入光标位置，正文和附件均保存到学生账号目录。
  */
 const props = defineProps<{
   lab: TutorLab
@@ -78,9 +76,13 @@ interface ReportDraft {
   markdownBody: string
 }
 
-const template = computed(() => cloneTemplate(props.reportTemplate || DEFAULT_REPORT_TEMPLATE))
+const draftTemplate = ref<ReportTemplate>(cloneTemplate(props.reportTemplate || DEFAULT_REPORT_TEMPLATE))
+const template = computed(() => cloneTemplate(draftTemplate.value))
 const allSections = computed(() => studentSections(template.value))
 const bodySections = computed(() => allSections.value.filter((s) => s.id !== FIXED_REFLECTION.id))
+const reflectionSection = computed(
+  () => allSections.value.find((section) => section.id === FIXED_REFLECTION.id) || FIXED_REFLECTION,
+)
 
 function emptySections(): Record<string, string> {
   return Object.fromEntries(allSections.value.map((section) => [section.id, '']))
@@ -94,6 +96,7 @@ const draft = ref<ReportDraft>(emptyDraft())
 const isMarkdownMode = computed(() => draft.value.mode === 'markdown')
 
 const savedAt = ref('')
+const draftReady = ref(false)
 const editorView = ref<EditorView>('split')
 const attachments = ref<ReportAttachmentMeta[]>([])
 const attachmentUrls = ref<Record<string, string>>({})
@@ -114,8 +117,6 @@ const selectedImageIds = ref<string[]>([])
 const lightboxId = ref<string | null>(null)
 const libraryCollapsed = ref(true)
 
-const storageKey = computed(() => `os-lab-report-${props.lab.id}-v2`)
-const legacyKey = computed(() => `os-lab-report-${props.lab.id}-v1`)
 const canSyncServer = computed(() => Boolean(props.authenticated && props.endpoint))
 
 const imageLibrary = computed(() =>
@@ -244,10 +245,16 @@ function revokeUrls() {
   attachmentUrls.value = {}
 }
 
-/**
- * 从 IndexedDB 补齐预览 URL。
- * 必须合并已有 URL：刚上传的图若被整表覆盖，会表现为「上传不成功」。
- */
+async function fetchAttachmentBlob(labId: string, meta: ReportAttachmentMeta) {
+  if (!canSyncServer.value || !meta.storedName) return null
+  const response = await fetch(
+    `${props.endpoint}/reports/draft/attachments?labId=${encodeURIComponent(labId)}&id=${encodeURIComponent(meta.id)}`,
+    { headers: authHeaders() },
+  )
+  return response.ok ? response.blob() : null
+}
+
+/** 从当前账号的服务端草稿附件目录补齐预览 URL。 */
 async function hydrateAttachmentUrls(labId: string, metas: ReportAttachmentMeta[]) {
   const gen = ++hydrateGeneration
   const next: Record<string, string> = {}
@@ -259,19 +266,8 @@ async function hydrateAttachmentUrls(labId: string, metas: ReportAttachmentMeta[
       continue
     }
     try {
-      let blob = await getAttachmentBlob(labId, meta.id)
-      if (!blob && canSyncServer.value && meta.storedName) {
-        const response = await fetch(
-          `${props.endpoint}/reports/draft/attachments?labId=${encodeURIComponent(labId)}&id=${encodeURIComponent(meta.id)}`,
-          { headers: authHeaders() },
-        )
-        if (response.ok) {
-          blob = await response.blob()
-          await putAttachmentBlob(labId, meta.id, blob)
-        }
-      }
+      const blob = await fetchAttachmentBlob(labId, meta)
       if (!blob) continue
-      // 预览用 blob URL 即可（renderReportHtml 已不依赖 Markdown 解析 URL）。
       next[meta.id] = URL.createObjectURL(blob)
     } catch {
       /* 单附件损坏时跳过 */
@@ -304,66 +300,73 @@ function ensureUnifiedMarkdown() {
   draft.value.mode = 'markdown'
 }
 
-function load() {
-  if (typeof localStorage === 'undefined') return
-  // 取消进行中的 hydrate，避免旧请求覆盖新上传的 URL
+function clearLegacyBrowserReportData() {
+  if (typeof localStorage !== 'undefined') {
+    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+      const key = localStorage.key(index)
+      if (key?.startsWith('os-lab-report-')) localStorage.removeItem(key)
+    }
+  }
+  clearLegacyReportAttachmentCache()
+}
+
+function resetDraftFromTemplate() {
   hydrateGeneration += 1
   revokeUrls()
-  try {
-    let raw = localStorage.getItem(storageKey.value)
-    if (!raw) {
-      const legacy = localStorage.getItem(legacyKey.value)
-      if (legacy) raw = legacy
+  draftTemplate.value = cloneTemplate(props.reportTemplate || DEFAULT_REPORT_TEMPLATE)
+  draft.value = emptyDraft()
+  attachments.value = []
+  savedAt.value = ''
+  ensureUnifiedMarkdown()
+}
+
+function applyServerDraft(value: Record<string, unknown>) {
+  hydrateGeneration += 1
+  revokeUrls()
+  draftTemplate.value = cloneTemplate(
+    (value.template as ReportTemplate | undefined) || props.reportTemplate || DEFAULT_REPORT_TEMPLATE,
+  )
+  const next = emptyDraft()
+  if (value.mode === 'template' || value.mode === 'markdown') next.mode = value.mode
+  if (typeof value.markdownBody === 'string') next.markdownBody = value.markdownBody
+  if (value.sections && typeof value.sections === 'object' && !Array.isArray(value.sections)) {
+    for (const [id, text] of Object.entries(value.sections)) {
+      if (typeof text === 'string') next.sections[id] = text
     }
-    const value = JSON.parse(raw || '{}')
-    const next = emptyDraft()
-    if (value?.mode === 'template' || value?.mode === 'markdown') {
-      next.mode = value.mode
-    } else if (value?.mode === 'free' || value?.mode === 'word') {
-      next.mode = 'markdown'
-    }
-    if (typeof value?.markdownBody === 'string') next.markdownBody = value.markdownBody
-    else if (typeof value?.freeBody === 'string') next.markdownBody = value.freeBody
-    // 旧 Word 正文并入 Markdown（若 Markdown 为空）
-    if (!next.markdownBody.trim() && typeof value?.wordBody === 'string' && value.wordBody.trim()) {
-      next.markdownBody = value.wordBody
-    }
-    if (value?.sections && typeof value.sections === 'object') {
-      for (const [id, text] of Object.entries(value.sections)) {
-        if (typeof text === 'string') next.sections[id] = text
-      }
-    } else {
-      for (const id of ['goal', 'process', 'problems', 'findings', 'reflection']) {
-        if (typeof value?.[id] === 'string') next.sections[id] = value[id]
-      }
-    }
-    draft.value = next
-    ensureSectionValues()
-    ensureUnifiedMarkdown()
-    activeSection.value = bodySections.value[0]?.id || FIXED_REFLECTION.id
-    savedAt.value = typeof value?.savedAt === 'string' ? value.savedAt : ''
-    attachments.value = Array.isArray(value?.attachments)
-      ? value.attachments.filter(
-          (item: ReportAttachmentMeta) =>
-            item && typeof item.id === 'string' && typeof item.name === 'string',
-        )
-      : []
-    draft.value.markdownBody = rewriteLegacyAttachmentRefs(draft.value.markdownBody)
-    for (const sectionId of Object.keys(draft.value.sections)) {
-      draft.value.sections[sectionId] = rewriteLegacyAttachmentRefs(
-        draft.value.sections[sectionId] || '',
-      )
-    }
-    void hydrateAttachmentUrls(props.lab.id, attachments.value)
-  } catch {
-    draft.value = emptyDraft()
-    attachments.value = []
-    ensureUnifiedMarkdown()
   }
+  draft.value = next
+  ensureSectionValues()
+  ensureUnifiedMarkdown()
+  activeSection.value = bodySections.value[0]?.id || FIXED_REFLECTION.id
+  const updatedAt = Date.parse(String(value.updatedAt || ''))
+  savedAt.value = Number.isFinite(updatedAt)
+    ? new Date(updatedAt).toLocaleString('zh-CN', { hour12: false })
+    : ''
+  attachments.value = Array.isArray(value.attachments)
+    ? value.attachments.filter(
+        (item: ReportAttachmentMeta) =>
+          item &&
+          typeof item.id === 'string' &&
+          typeof item.name === 'string' &&
+          typeof item.storedName === 'string',
+      )
+    : []
+  draft.value.markdownBody = rewriteLegacyAttachmentRefs(draft.value.markdownBody)
+  for (const sectionId of Object.keys(draft.value.sections)) {
+    draft.value.sections[sectionId] = rewriteLegacyAttachmentRefs(
+      draft.value.sections[sectionId] || '',
+    )
+  }
+  void hydrateAttachmentUrls(props.lab.id, attachments.value)
 }
 
 async function loadServerDraft() {
-  if (!canSyncServer.value) return false
+  draftReady.value = false
+  resetDraftFromTemplate()
+  if (!canSyncServer.value) {
+    draftReady.value = true
+    return false
+  }
   try {
     const response = await fetch(`${props.endpoint}/reports/draft?labId=${encodeURIComponent(props.lab.id)}`, {
       headers: authHeaders(),
@@ -371,32 +374,24 @@ async function loadServerDraft() {
     if (!response.ok) return false
     const payload = await response.json()
     if (!payload?.draft) return false
-    const draftValue = payload.draft
-    const localRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(storageKey.value) : null
-    const localValue = localRaw ? JSON.parse(localRaw) : null
-    const localTime = Date.parse(String(localValue?.updatedAt || localValue?.savedAt || ''))
-    const serverTime = Date.parse(String(draftValue.updatedAt || ''))
-    if (Number.isFinite(localTime) && Number.isFinite(serverTime) && localTime > serverTime) {
-      return false
-    }
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(storageKey.value, JSON.stringify({ ...draftValue, savedAt: draftValue.updatedAt || '' }))
-    }
-    load()
+    applyServerDraft(payload.draft)
     return true
   } catch {
     return false
+  } finally {
+    draftReady.value = true
   }
 }
 
-watch(() => [props.lab.id, props.authenticated] as const, () => {
-  load()
+clearLegacyBrowserReportData()
+
+watch(() => [props.lab.id, props.authenticated, props.endpoint] as const, () => {
   void loadServerDraft()
 }, { immediate: true })
 watch(
   () => props.reportTemplate,
   () => {
-    ensureSectionValues()
+    if (!canSyncServer.value) resetDraftFromTemplate()
   },
 )
 
@@ -410,7 +405,6 @@ function schedulePersist() {
 
 onBeforeUnmount(() => {
   if (typeof window !== 'undefined') window.clearTimeout(autosaveTimer)
-  persist(false)
   revokeUrls()
 })
 
@@ -436,62 +430,59 @@ watch(
   },
 )
 
-function persist(announce = true) {
-  const updatedAt = new Date().toISOString()
-  savedAt.value = new Date().toLocaleString('zh-CN', { hour12: false })
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(
-        storageKey.value,
-        JSON.stringify({
-          mode: draft.value.mode,
-          sections: draft.value.sections,
-          markdownBody: draft.value.markdownBody,
-          attachments: attachments.value,
-          savedAt: savedAt.value,
-          updatedAt,
-        }),
-      )
-    }
-  } catch (err) {
-    // 配额满不应导致「上传失败」；附件二进制已在 IndexedDB。
-    console.warn('[ReportPanel] persist failed', err)
-    if (announce) {
-      emit('notice', '本机草稿缓存已满，图片仍在图片库；可删掉旧附件后再保存。')
-    }
-    return
+let persistChain: Promise<boolean> = Promise.resolve(true)
+
+function persist(announce = true): Promise<boolean> {
+  if (!draftReady.value) return Promise.resolve(false)
+  if (!canSyncServer.value) {
+    if (announce) emit('notice', '请先登录，实验报告会保存到当前账号的数据目录。')
+    return Promise.resolve(false)
   }
-  if (canSyncServer.value) {
-    void fetch(`${props.endpoint}/reports/draft`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({
-        labId: props.lab.id,
-        draft: {
-          mode: draft.value.mode,
-          sections: draft.value.sections,
-          markdownBody: draft.value.markdownBody,
-          attachments: attachments.value,
-        },
-      }),
-    }).catch(() => {
-      /* The browser copy remains available as an offline buffer. */
-    })
-  }
-  if (announce) emit('notice', canSyncServer.value ? '草稿已同步到账号数据。' : '已保存到本机。')
+  const endpoint = props.endpoint
+  const headers = { 'Content-Type': 'application/json', ...authHeaders() }
+  const body = JSON.stringify({
+    labId: props.lab.id,
+    draft: {
+      mode: draft.value.mode,
+      sections: draft.value.sections,
+      markdownBody: draft.value.markdownBody,
+      attachments: attachments.value,
+      template: template.value,
+    },
+  })
+  const next = persistChain.then(async () => {
+    try {
+      const response = await fetch(`${endpoint}/reports/draft`, { method: 'PUT', headers, body })
+      if (!response.ok) throw new Error(`服务返回 ${response.status}`)
+      const payload = await response.json()
+      const updatedAt = Date.parse(String(payload.updatedAt || ''))
+      savedAt.value = Number.isFinite(updatedAt)
+        ? new Date(updatedAt).toLocaleString('zh-CN', { hour12: false })
+        : new Date().toLocaleString('zh-CN', { hour12: false })
+      if (announce) emit('notice', '草稿已保存到当前账号的数据目录。')
+      return true
+    } catch (error) {
+      if (announce) {
+        emit('notice', error instanceof Error ? `报告保存失败：${error.message}` : '报告保存失败。')
+      }
+      return false
+    }
+  })
+  persistChain = next
+  return next
 }
 
 function reflectionText() {
   return (draft.value.sections[FIXED_REFLECTION.id] || '').trim()
 }
 
-function save() {
-  persist(false)
+async function save() {
+  if (!(await persist(true))) return
   const reflection = reflectionText()
   if (reflection) {
     emit('reflect', reflection)
   } else {
-    emit('notice', `已保存。补上「${FIXED_REFLECTION.title}」后再点保存，才能完成本层复盘。`)
+    emit('notice', `已保存。补上「${reflectionSection.value.title}」后再点保存，才能完成本层复盘。`)
   }
 }
 
@@ -524,8 +515,8 @@ function buildBodyMarkdown() {
     lines.push(draft.value.markdownBody.trim() || '（正文未填写）', '')
     lines.push(
       formatSectionMarkdown(
-        FIXED_REFLECTION.title,
-        FIXED_REFLECTION.prompt,
+        reflectionSection.value.title,
+        reflectionSection.value.prompt,
         reflectionText(),
         withPrompt,
       ),
@@ -601,23 +592,33 @@ function exportMarkdown() {
   emit('notice', '已导出当前格式下的报告。')
 }
 
-function askReview() {
-  persist(false)
+async function askReview() {
+  if (!(await persist(false))) {
+    emit('notice', '草稿尚未保存成功，暂不能请求点评。')
+    return
+  }
   const content = rewriteAttachmentRefsForExport(assembleMarkdown())
   emit('review', content.length > 3200 ? `${content.slice(0, 3200)}\n…（已截断）` : content)
 }
 
 async function submitToTeacher() {
+  if (!canSyncServer.value) {
+    emit('notice', '请先登录再提交实验报告。')
+    return
+  }
   const ok = window.confirm(
     '确认把当前实验报告提交给老师吗？\n\n重复提交会覆盖本实验上一份提交；提交后老师可在验收页查看。',
   )
   if (!ok) return
-  persist(false)
+  if (!(await persist(false))) {
+    emit('notice', '草稿尚未保存成功，暂不能提交。')
+    return
+  }
   busyAttach.value = true
   try {
     const files: Array<{ name: string; mime: string; dataBase64: string }> = []
     for (const meta of attachments.value) {
-      const blob = await getAttachmentBlob(props.lab.id, meta.id)
+      const blob = await fetchAttachmentBlob(props.lab.id, meta)
       if (!blob) continue
       files.push({
         name: meta.name,
@@ -826,10 +827,8 @@ async function storeFile(file: File, options?: { asImage?: boolean }) {
 
   const finalName = uniqueName(name)
   const id = createAttachmentId()
-  try {
-    await putAttachmentBlob(props.lab.id, id, blob)
-  } catch (err) {
-    emit('notice', err instanceof Error ? `保存图片失败：${err.message}` : '保存图片失败，请重试。')
+  if (!canSyncServer.value) {
+    emit('notice', '请先登录，附件会保存到当前账号的报告目录。')
     return null
   }
 
@@ -840,22 +839,23 @@ async function storeFile(file: File, options?: { asImage?: boolean }) {
     size: blob.size,
     addedAt: new Date().toISOString(),
   }
-  if (canSyncServer.value) {
-    try {
-      const response = await fetch(`${props.endpoint}/reports/draft/attachments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
-        body: JSON.stringify({
-          labId: props.lab.id,
-          attachment: { ...meta, dataBase64: await blobToBase64(blob) },
-        }),
-      })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok || !payload?.attachment?.storedName) throw new Error('server attachment sync failed')
-      meta.storedName = payload.attachment.storedName
-    } catch {
-      // The IndexedDB copy stays available and the next draft save retries metadata sync.
+  try {
+    const response = await fetch(`${props.endpoint}/reports/draft/attachments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({
+        labId: props.lab.id,
+        attachment: { ...meta, dataBase64: await blobToBase64(blob) },
+      }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok || !payload?.attachment?.storedName) {
+      throw new Error(payload?.error || `服务返回 ${response.status}`)
     }
+    meta.storedName = payload.attachment.storedName
+  } catch (error) {
+    emit('notice', error instanceof Error ? `附件上传失败：${error.message}` : '附件上传失败，请重试。')
+    return null
   }
   // 先挂 URL 再写 attachments，避免列表渲染时缩略图空白
   const url = URL.createObjectURL(blob)
@@ -892,7 +892,10 @@ async function addImages(fileList: FileList | File[], insertAt?: number) {
         emit('notice', err instanceof Error ? `「${file.name}」上传失败：${err.message}` : '有一张图片上传失败。')
       }
     }
-    persist(false)
+    if (!(await persist(false))) {
+      emit('notice', '图片已上传，但报告正文保存失败，请重试保存。')
+      return
+    }
     if (count) {
       emit('notice', `已在光标位置插入 ${count} 张图片。`)
     } else if (!batch.length) {
@@ -930,7 +933,10 @@ async function addDocuments(fileList: FileList | File[], insertAt?: number) {
       cursor = placeDocMarkdown(meta, cursor) ?? cursor
       count += 1
     }
-    persist(false)
+    if (!(await persist(false))) {
+      emit('notice', '附件已上传，但报告正文保存失败，请重试保存。')
+      return
+    }
     if (count) emit('notice', `已插入 ${count} 个文件。`)
   } catch (err) {
     emit('notice', err instanceof Error ? err.message : '上传失败，请稍后重试。')
@@ -1044,13 +1050,20 @@ function closeLightbox() {
 async function removeAttachment(id: string) {
   const meta = attachments.value.find((item) => item.id === id)
   if (!meta) return
-  if (canSyncServer.value && meta.storedName) {
-    void fetch(
+  if (!canSyncServer.value || !meta.storedName) {
+    emit('notice', '当前账号附件未就绪，请刷新后重试。')
+    return
+  }
+  try {
+    const response = await fetch(
       `${props.endpoint}/reports/draft/attachments?labId=${encodeURIComponent(props.lab.id)}&id=${encodeURIComponent(id)}`,
       { method: 'DELETE', headers: authHeaders() },
-    ).catch(() => {})
+    )
+    if (!response.ok) throw new Error(`服务返回 ${response.status}`)
+  } catch (error) {
+    emit('notice', error instanceof Error ? `附件删除失败：${error.message}` : '附件删除失败。')
+    return
   }
-  await deleteAttachmentBlob(props.lab.id, id)
   if (attachmentUrls.value[id]) {
     const url = attachmentUrls.value[id]
     if (url.startsWith('blob:')) URL.revokeObjectURL(url)
@@ -1077,11 +1090,11 @@ async function removeAttachment(id: string) {
   for (const sectionId of Object.keys(draft.value.sections)) {
     draft.value.sections[sectionId] = strip(draft.value.sections[sectionId] || '')
   }
-  persist(false)
+  await persist(false)
 }
 
 async function downloadAttachment(meta: ReportAttachmentMeta) {
-  const blob = await getAttachmentBlob(props.lab.id, meta.id)
+  const blob = await fetchAttachmentBlob(props.lab.id, meta)
   if (!blob) {
     emit('notice', '找不到这个文件了，可能需要重新上传。')
     return
@@ -1215,7 +1228,7 @@ const modeLabel = computed(() =>
       <div>
         <strong>{{ lab.label }} 实验报告</strong>
         <small v-if="savedAt">上次保存：{{ savedAt }} · 当前：{{ modeLabel }}</small>
-        <small v-else>写在本机浏览器里；提交以当前下拉格式为准</small>
+        <small v-else>{{ draftReady ? '保存在当前账号的独立报告文件中' : '正在加载账号报告…' }}</small>
       </div>
       <div class="ws-report-actions">
         <button
@@ -1364,25 +1377,27 @@ const modeLabel = computed(() =>
           </header>
           <div class="ws-report-preview ws-report-live-preview" v-html="previewHtml" />
         </article>
-      </div>
 
-      <section class="ws-report-reflection-block">
-        <header>
+        <section class="ws-report-reflection-block" aria-label="收获与反思">
+          <header>
           <div>
-            <strong>{{ FIXED_REFLECTION.title }}</strong>
-            <small>完成后保存，作为本次学习复盘</small>
+            <strong>{{ reflectionSection.title }}</strong>
+              <small>本次学习复盘</small>
           </div>
-        </header>
-        <textarea
-          :ref="(el) => setSectionEditor(FIXED_REFLECTION.id, el)"
-          v-model="draft.sections[FIXED_REFLECTION.id]"
-          :rows="FIXED_REFLECTION.rows"
-          :placeholder="FIXED_REFLECTION.prompt"
-          spellcheck="false"
-          @input="schedulePersist"
-          @blur="persist(false)"
-        />
-      </section>
+          </header>
+          <p class="ws-report-prompt">填写提示：{{ reflectionSection.prompt }}</p>
+          <textarea
+            :ref="(el) => setSectionEditor(FIXED_REFLECTION.id, el)"
+            v-model="draft.sections[FIXED_REFLECTION.id]"
+            :rows="reflectionSection.rows"
+            :placeholder="reflectionSection.prompt"
+            spellcheck="false"
+            @focus="activeSection = FIXED_REFLECTION.id"
+            @input="schedulePersist"
+            @blur="persist(false)"
+          />
+        </section>
+      </div>
 
       <section v-if="attachments.length" class="ws-report-file-strip" aria-label="报告文件">
         <header>
@@ -1624,15 +1639,15 @@ const modeLabel = computed(() =>
           :class="{ 'is-active-section': activeSection === FIXED_REFLECTION.id }"
         >
           <h3>
-            {{ FIXED_REFLECTION.title }}（写完再保存，下一层由老师分发后解锁）
+            {{ reflectionSection.title }}
             <small v-if="activeSection === FIXED_REFLECTION.id">（当前段 · 插入目标）</small>
           </h3>
-          <p class="ws-report-prompt">填写提示：{{ FIXED_REFLECTION.prompt }}</p>
+          <p class="ws-report-prompt">填写提示：{{ reflectionSection.prompt }}</p>
           <textarea
             :ref="(el) => setSectionEditor(FIXED_REFLECTION.id, el)"
             v-model="draft.sections[FIXED_REFLECTION.id]"
-            :rows="FIXED_REFLECTION.rows"
-            :placeholder="FIXED_REFLECTION.prompt"
+            :rows="reflectionSection.rows"
+            :placeholder="reflectionSection.prompt"
             spellcheck="false"
             @focus="activeSection = FIXED_REFLECTION.id"
             @blur="persist(false)"
@@ -1694,13 +1709,13 @@ const modeLabel = computed(() =>
         </div>
 
         <section class="ws-report-section ws-report-reflect">
-          <h3>{{ FIXED_REFLECTION.title }}（写完再保存，下一层由老师分发后解锁）</h3>
-          <p class="ws-report-prompt">填写提示：{{ FIXED_REFLECTION.prompt }}</p>
+          <h3>{{ reflectionSection.title }}</h3>
+          <p class="ws-report-prompt">填写提示：{{ reflectionSection.prompt }}</p>
           <textarea
             :ref="(el) => setSectionEditor(FIXED_REFLECTION.id, el)"
             v-model="draft.sections[FIXED_REFLECTION.id]"
-            :rows="FIXED_REFLECTION.rows"
-            :placeholder="FIXED_REFLECTION.prompt"
+            :rows="reflectionSection.rows"
+            :placeholder="reflectionSection.prompt"
             spellcheck="false"
             @focus="activeSection = FIXED_REFLECTION.id"
             @blur="persist(false)"
@@ -2657,14 +2672,25 @@ const modeLabel = computed(() =>
 }
 
 .ws-report-reflection-block {
+  grid-column: 1 / -1;
   display: grid;
-  gap: 8px;
-  margin-bottom: var(--ws-space-3);
-  padding: 12px;
-  border: 1px solid var(--ws-line);
-  border-left: 3px solid var(--ws-accent);
-  border-radius: var(--ws-radius-md);
+  grid-template-rows: 32px auto minmax(112px, auto);
+  min-width: 0;
+  border-top: 1px solid var(--ws-line);
   background: var(--ws-surface);
+}
+
+.ws-report-reflection-block > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px;
+  color: var(--ws-ink-muted);
+  border-bottom: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
+  font-size: 11px;
+  font-weight: var(--ws-weight-semibold);
 }
 
 .ws-report-reflection-block header > div {
@@ -2675,23 +2701,30 @@ const modeLabel = computed(() =>
 
 .ws-report-reflection-block strong {
   color: var(--ws-ink);
-  font-size: var(--ws-text-sm);
+  font-size: 11px;
 }
 
 .ws-report-reflection-block small {
   color: var(--ws-ink-faint);
   font-size: 11px;
+  font-weight: var(--ws-weight-regular);
+}
+
+.ws-report-reflection-block .ws-report-prompt {
+  margin: 0;
+  padding: 10px 14px 4px;
 }
 
 .ws-report-reflection-block textarea {
-  width: 100%;
-  min-height: 92px;
+  width: auto;
+  min-height: 112px;
+  margin: 0 14px 14px;
   padding: 10px 12px;
   color: var(--ws-ink);
   border: 1px solid var(--ws-line);
   border-radius: var(--ws-radius-sm);
   outline: 0;
-  background: var(--ws-surface-alt);
+  background: var(--ws-surface);
   resize: vertical;
   font: inherit;
   font-size: var(--ws-text-sm);

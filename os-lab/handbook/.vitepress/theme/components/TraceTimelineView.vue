@@ -5,8 +5,7 @@
  * 每个出现过的 pid 一条横向泳道；x 轴为事件序号（不允许前端重排）。
  * task_switch 的 from→to 在对应 pid 泳道上画 Running 块，块延伸到下一条
  * task_switch（协作式调度同一时刻只有一个 Running）。trap_enter 在对应 pid
- * 泳道上画轻量竖线。两次 switch 之间的状态不伪造为 Ready/Exited，标注
- * 「未观测」，对应规格「禁止把协作式画成硬抢占」「禁止用动画掩盖空洞」。
+ * 泳道上画轻量竖线；没有采集到的中间状态保持空白，不做前端推断。
  * 点击 Running 块或 trap 标记 → emit('select', index)。
  */
 import { computed, nextTick, ref, watch } from 'vue'
@@ -126,7 +125,7 @@ watch(
 <template>
   <section class="ws-trace-timeline" aria-label="任务状态时间线">
     <div v-if="events.length === 0" class="ws-trace-timeline-empty">
-      本次运行没有 <code>task_switch</code> 事件。若未启用 <code>trace-edu</code> feature，重开 trace 后再查看。
+      当前筛选下没有事件。
     </div>
     <div v-else ref="scrollRef" class="ws-trace-timeline-scroll">
       <div class="ws-trace-timeline-canvas" :style="{ width: `${svgWidth}px`, height: `${svgHeight}px` }">
@@ -137,7 +136,7 @@ watch(
           class="ws-trace-lane-bg"
           :style="{ top: `${yForLane(laneIndex)}px`, height: `${LANE_HEIGHT}px` }"
         >
-          <span class="ws-trace-lane-label">pid {{ lane.pid }}</span>
+          <span class="ws-trace-lane-label">任务 {{ lane.pid }}</span>
         </div>
 
         <!-- trap_enter 标记 -->
@@ -147,7 +146,7 @@ watch(
           type="button"
           class="ws-trace-trap-mark"
           :style="trapStyle(mark.idx, mark.i)"
-          :title="`trap_enter @ #${events[mark.idx].seq}`"
+          :title="`进入内核 · 事件 #${events[mark.idx].seq}`"
           @click="onSelect(mark.idx)"
         />
 
@@ -159,22 +158,11 @@ watch(
           class="ws-trace-running-block"
           :class="{ active: block.bk.startIndex === playhead }"
           :style="blockStyle(block.bk, block.i)"
-          :title="`task_switch pid=${block.pid} → Running`"
+          :title="`任务 ${block.pid} 开始运行`"
           @click="onSelect(block.bk.startIndex)"
         >
-          <span class="ws-trace-running-label">Running</span>
+          <span class="ws-trace-running-label">运行中</span>
         </button>
-
-        <!-- 未观测区段提示（在两个 Running 块之间） -->
-        <template v-for="(lane, laneIndex) in lanes" :key="`gap-${lane.pid}`">
-          <div
-            v-if="lane.runningBlocks.length > 1"
-            class="ws-trace-gap-note"
-            :style="{ left: `${LEFT_PAD}px`, top: `${yForLane(laneIndex) + LANE_HEIGHT - 2}px`, width: `${innerWidth}px` }"
-          >
-            两次 Running 之间的 Ready/Exited 状态未在 trace 中显式记录，此处不伪造。
-          </div>
-        </template>
 
         <!-- 播放头竖线 -->
         <div class="ws-trace-playhead" :style="{ left: `${playheadX()}px`, top: `${TOP_PAD}px`, height: `${svgHeight - TOP_PAD - BOTTOM_PAD}px` }" />
@@ -287,15 +275,6 @@ watch(
   text-overflow: ellipsis;
 }
 
-.ws-trace-gap-note {
-  position: absolute;
-  color: var(--ws-ink-faint);
-  font-size: 10px;
-  font-family: var(--ws-font-base, inherit);
-  pointer-events: none;
-  padding-left: var(--ws-space-2);
-}
-
 .ws-trace-playhead {
   position: absolute;
   width: 2px;
@@ -313,9 +292,4 @@ watch(
   font-size: 10px;
 }
 
-@media (max-width: 620px) {
-  .ws-trace-gap-note {
-    display: none;
-  }
-}
 </style>

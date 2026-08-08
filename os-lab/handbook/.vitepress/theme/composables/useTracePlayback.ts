@@ -17,7 +17,7 @@ export interface TraceEvent {
   reason?: string
 }
 
-export type TraceView = 'trap' | 'timeline'
+export type TraceView = 'architecture' | 'trap' | 'timeline'
 
 export interface TraceFilter {
   types: Set<'trap_enter' | 'task_switch'>
@@ -173,20 +173,4 @@ export const TRACE_SOURCE_MAP: Record<TraceEvent['type'], { path: string; label:
 export function sourceAnchorFor(event: TraceEvent): { path: string; line: number } {
   const anchor = TRACE_SOURCE_MAP[event.type]
   return { path: anchor.path, line: 1 }
-}
-
-/**
- * 把一个事件或一段范围格式化为可插入实验报告的文本证据。
- */
-export function formatTraceEvidence(
-  event: TraceEvent,
-  range?: { start: number; end: number },
-): string {
-  if (range && range.end > range.start) {
-    return `[trace ${range.start}–${range.end}] 共 ${range.end - range.start + 1} 条事件，类型 ${event.type}，pid ${event.pid}`
-  }
-  if (event.type === 'trap_enter') {
-    return `[trace #${event.seq}] trap_enter pid=${event.pid} cause=${event.cause || '?'} ts=${event.ts}`
-  }
-  return `[trace #${event.seq}] task_switch pid=${event.pid} ${event.from || '?'}→${event.to || '?'} reason=${event.reason || '?'} ts=${event.ts}`
 }

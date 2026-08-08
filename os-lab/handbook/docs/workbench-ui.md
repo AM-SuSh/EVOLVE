@@ -79,10 +79,9 @@
 | Problems | 全部诊断或**单条** |
 | 测试结果 | 全部断言，或**单条断言** |
 | 手册 | **选中文字后**出现「就此询问导师」，只附当前选段 |
-| Trace | 当前选中事件（`formatTraceEvidence`） |
 
 - 附件以 chips 显示在输入框上方，可单独移除；最多 5 段、单段约 6000 字截断。
-- **点击 chip 可溯源**：跳回工作区行号 / 终端 / Problems / 测试结果 / 手册选段 / Trace 事件。
+- **点击 chip 可溯源**：跳回工作区行号 / 终端 / Problems / 测试结果 / 手册选段；历史 Trace 附件仍可跳到对应事件。
 - 发送后学生气泡保留可点附件 chips；完整拼装正文仍交给导师。
 - 发送时由 `formatChatWithAttachments` 拼进用户消息；新会话清空待发附件。
 
@@ -113,25 +112,25 @@
 1. 可信运行结束后，按 `runId` 调 `GET /runs/:id/trace` 拉取 trace JSONL（`trace-v1` schema）。
    - 404/网络/服务异常：保持可信空态，文案说明「轨迹查询尚未返回真实事件 / 不会播放预设动画」，不 mock。
    - 前端再校验一遍事件形态（`isValidTraceEvent`），异常 trace 不污染视图。
-2. 两个视图（Lab2 主视图）：
-   - **Trap 时序**（`TraceTrapView`）：纵向时间轴按事件顺序排列（不允许前端重排）；`trap_enter` 为主标记，`task_switch` 为上下文；连续 `trap_enter` 之间无 `task_switch` 时标注「单任务 syscall 密集」。
-   - **任务时间线**（`TraceTimelineView`）：每个 pid 一条横向泳道；`task_switch` 画 Running 块（延伸到下一条 switch）；`trap_enter` 画轻量竖线；两次 Running 之间的 Ready/Exited 不伪造，标注「未观测」。
-3. 播放控制：播放/暂停、单步前进/后退、速度（0.5/1/2/4x）、事件类型/pid 过滤、重置；播放头竖线在时间线视图中标出当前位置。
-4. 大数据：事件列表 >200 条时只渲染前 200 条并提示「用过滤或播放控制查看其余」；视图主体靠滚动承载。
-5. 源码跳转：选中事件后「跳到源码」按静态映射跳转（`trap_enter` → `kernel/src/trap.rs`，`task_switch` → `kernel/src/task.rs`），复用 `codePanelRef.openAtLine`。
-6. 关键帧插入报告：选中事件后「插入报告」把事件格式化为证据文本，复用 `LabWorkspace.onInsertReport` → `ReportPanel`（模板写入当前节；Markdown 追加到正文）。
-7. **OPRE 条**（`OpreBar`，Day5）：挂在 Trace intro 下；Lab2 Trap→T-OPRE-1、时间线→S-OPRE-1；每步「插入报告」走同一 `insert-report` 通道；无事件显示 `opre.empty_trace`，不锁死、不播假动画；Lab3 走 P-OPRE-1 降级模板（文案见 `visualization/opre-copy-final.md`）。
-8. 事件上报：切换视图或移动播放头时上报 `trace_inspected`（事件 v2，字段 `runId`/`view`/`eventRange:{start,end}`）。
-9. 空数据与异常 trace 显示明确空态，不展示预设动画；移动端控制条与视图纵向堆叠。
-10. Sv39 page walk 视图暂未实现：真实 trace 无 `page_walk` 事件，按 `visualization/README.md` 应显示降级空态而非伪造；OPRE 页表任务改为源码降级路径。
+2. 终端显示层默认过滤 `TRACE_V1` 机器帧，只展示程序输出；服务端仍保存完整 `output.log`、提取 `trace.jsonl` 并执行可信断言。
+3. 页面顶部直接汇总进入内核次数、任务切换次数和任务数，不显示教程段或 OPRE 流程。
+4. 两个视图（Lab2 主视图）：
+   - **事件顺序**（`TraceTrapView`）：按采集顺序展示“进入内核”和“任务切换”，保留事件序号、任务、原因和时间戳；连续进入内核之间没有切换时，用一句话说明仍是同一任务。
+   - **任务时间线**（`TraceTimelineView`）：每个任务一条横向泳道；任务切换显示“运行中”区块，进入内核显示竖线，不额外展示推测性状态说明。
+5. 播放控制：播放/暂停、单步前进/后退、速度（0.5/1/2/4x）、事件类型/任务过滤、重置；播放头竖线在时间线视图中标出当前位置。
+6. 大数据：事件列表 >200 条时只渲染前 200 条并提示使用过滤或播放控制；视图主体靠滚动承载。
+7. 当前事件用中文解释发生了什么，并保留原始 `cause/from/to/reason`；唯一外部操作是“跳到源码”（`trap_enter` → `kernel/src/trap.rs`，`task_switch` → `kernel/src/task.rs`）。
+8. 切换视图或移动播放头时继续上报 `trace_inspected`；空数据与异常 trace 使用短空态，不展示预设动画。
 
 ## 实验报告面板
 
 挂载位置：**学习支持**区页签。
 
+- **数据归属**：每个学生的每个 Lab 都有独立的 `learning/student-data/<userId>/reports/<labId>/draft.json`，正文与附件均以 Tutor Server 文件为准，不从浏览器草稿恢复。
+- **格式来源**：初始报告由教师端「报告格式」生成并保存模板快照；教师重新发布格式时，未填写报告更新为新骨架，已填写报告保留正文并更新模板要求。
 - **编写格式下拉**：**模板填写** / **Markdown 自由编写**。提交、预览、导出一律以当前下拉选项为准。已移除 Word 编辑页；Word/PDF 用「上传附件」。
 - **图片库**（始终可浏览）：上传 → 改名 → 勾选 → 插入；缩略图可放大预览。模板插入**当前段**末尾并在段下显示；Markdown 下方有「插入结果」；完整排版看「预览最终稿」。
-- 「收获与反思」系统固定。终端插入当前正在编辑的位置。
+- 「收获与反思」系统固定。
 - **预览最终稿**：与导出 / `POST /reports` 使用同一份 Markdown。
 - **教师布置 UI**：弹窗编辑；可导入 Markdown；无需配置「用途 / 行数」。
 

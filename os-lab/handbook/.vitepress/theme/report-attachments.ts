@@ -1,6 +1,4 @@
-/**
- * 实验报告附件：元数据进 localStorage，二进制进 IndexedDB，避免撑爆配额。
- */
+/** 实验报告附件的类型、校验与编码工具；持久化统一由 Tutor Server 负责。 */
 
 export interface ReportAttachmentMeta {
   id: string
@@ -11,9 +9,7 @@ export interface ReportAttachmentMeta {
   storedName?: string
 }
 
-const DB_NAME = 'os-lab-report-attachments'
-const STORE = 'blobs'
-const DB_VERSION = 1
+const LEGACY_DB_NAME = 'os-lab-report-attachments'
 
 const ALLOWED_MIME = new Set([
   'image/png',
@@ -44,28 +40,6 @@ const ALLOWED_EXT = new Set([
 export const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024
 export const MAX_ATTACHMENTS = 8
 
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    if (typeof indexedDB === 'undefined') {
-      reject(new Error('浏览器不支持 IndexedDB'))
-      return
-    }
-    const req = indexedDB.open(DB_NAME, DB_VERSION)
-    req.onupgradeneeded = () => {
-      const db = req.result
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE)
-      }
-    }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error || new Error('打开附件库失败'))
-  })
-}
-
-function blobKey(labId: string, id: string) {
-  return `${labId}:${id}`
-}
-
 export function isAllowedAttachment(file: File): boolean {
   const lower = (file.name || '').toLowerCase()
   const ext = lower.includes('.') ? lower.slice(lower.lastIndexOf('.')) : ''
@@ -79,38 +53,10 @@ export function createAttachmentId() {
   return `att-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-export async function putAttachmentBlob(labId: string, id: string, blob: Blob): Promise<void> {
-  const db = await openDb()
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite')
-    tx.objectStore(STORE).put(blob, blobKey(labId, id))
-    tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error || new Error('写入附件失败'))
-  })
-  db.close()
-}
-
-export async function getAttachmentBlob(labId: string, id: string): Promise<Blob | null> {
-  const db = await openDb()
-  const blob = await new Promise<Blob | null>((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readonly')
-    const req = tx.objectStore(STORE).get(blobKey(labId, id))
-    req.onsuccess = () => resolve((req.result as Blob) || null)
-    req.onerror = () => reject(req.error || new Error('读取附件失败'))
-  })
-  db.close()
-  return blob
-}
-
-export async function deleteAttachmentBlob(labId: string, id: string): Promise<void> {
-  const db = await openDb()
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, 'readwrite')
-    tx.objectStore(STORE).delete(blobKey(labId, id))
-    tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error || new Error('删除附件失败'))
-  })
-  db.close()
+/** 清理旧版遗留的浏览器附件库；新版本不会再创建或读取它。 */
+export function clearLegacyReportAttachmentCache() {
+  if (typeof indexedDB === 'undefined') return
+  indexedDB.deleteDatabase(LEGACY_DB_NAME)
 }
 
 export async function blobToBase64(blob: Blob): Promise<string> {
@@ -122,20 +68,6 @@ export async function blobToBase64(blob: Blob): Promise<string> {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
   }
   return btoa(binary)
-}
-
-/** 预览用 data URL：不依赖 blob: 生命周期，也不经过 Markdown 链接规范化。 */
-export function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    if (typeof FileReader === 'undefined') {
-      reject(new Error('浏览器不支持 FileReader'))
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result || ''))
-    reader.onerror = () => reject(reader.error || new Error('读取图片失败'))
-    reader.readAsDataURL(blob)
-  })
 }
 
 function looksLikeImage(file: File): boolean {

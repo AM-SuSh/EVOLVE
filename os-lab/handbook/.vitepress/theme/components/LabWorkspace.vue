@@ -224,7 +224,7 @@ const teachingVariantHint = computed(() => routeParam('variant'))
 /** 右栏学习支持页签（报告 / Trace）；AI 导师通过悬浮入口打开。 */
 const rightTab = ref<'report' | 'assessment' | 'trace'>('report')
 
-const TUTOR_CONVERSATION_STORAGE_KEY = 'os-lab-tutor-conversations-v1'
+const TUTOR_CONVERSATION_STORAGE_KEY = 'os-lab-tutor-conversations-v2'
 const MAX_STORED_TUTOR_MESSAGES = 120
 
 interface StoredTutorConversation {
@@ -363,7 +363,7 @@ interface ServerRunHistoryItem {
 }
 
 /** 测试结果本地缓存：按 lab + 学生隔离，默认保留 24 小时（刷新不丢）。 */
-const RUN_RESULTS_STORAGE_KEY = 'os-lab-run-results-v1'
+const RUN_RESULTS_STORAGE_KEY = 'os-lab-run-results-v2'
 const RUN_RESULTS_TTL_MS = 24 * 60 * 60 * 1000
 const RUN_RESULTS_HISTORY_CAP = 8
 
@@ -542,9 +542,6 @@ function toggleMaximized(target: 'workspace' | 'assistant' | 'dock') {
   if (target === 'dock') terminalDockOpen.value = true
   maximized.value = maximized.value === target ? 'none' : target
 }
-
-/** 终端 → 报告「过程记录」的插入载荷（id 递增触发）。 */
-const reportInsert = ref<{ id: number; text: string } | null>(null)
 
 /* -- 三栏开关与纵向比例（手册 / 工作区 / 学习支持） ------------------------ */
 
@@ -2647,16 +2644,6 @@ function onTraceInspected(payload: { runId: string; view: string; eventRange: { 
   })
 }
 
-/** 终端输出插入实验报告的「过程记录」。 */
-function onInsertReport(text: string) {
-  reportInsert.value = { id: (reportInsert.value?.id ?? 0) + 1, text }
-  rightTab.value = 'report'
-  mobileView.value = 'practice'
-  panelOpen.value.terminal = true
-  persistPanels()
-  toast('输出已插入实验报告。')
-}
-
 /** 报告面板请 AI 点评：打开对话并把报告作为提问发送。 */
 function reviewReport(content: string) {
   tutorOpen.value = true
@@ -3381,8 +3368,8 @@ onBeforeUnmount(() => {
           <div class="ws-zone-body ws-assistant-body">
             <ReportPanel
               v-show="rightTab === 'report'"
+              :key="`report-${studentId || 'anonymous'}-${lab.id}`"
               :lab="lab"
-              :insert-payload="reportInsert"
               :teacher-feedback="teacherFeedback"
               :report-template="reportTemplate"
               :endpoint="endpoint"
@@ -3405,12 +3392,9 @@ onBeforeUnmount(() => {
               ref="traceViewerRef"
               v-show="rightTab === 'trace'"
               :run-id="lastRunId"
-              :lab-id="lab.id"
               :endpoint="endpoint"
               @jump="onTraceJump"
-              @insert-report="onInsertReport"
               @trace-inspected="onTraceInspected"
-              @add-to-chat="addToChat"
             />
           </div>
         </section>

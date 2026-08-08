@@ -8,7 +8,7 @@
  * 点击事件 → emit('select', index) 由父组件 seek 并联动事件列表/源码跳转。
  */
 import { computed, nextTick, ref, watch } from 'vue'
-import { ArrowDownToLine, ArrowUpFromLine, Repeat } from 'lucide-vue-next'
+import { ArrowDownToLine, Info, Repeat } from 'lucide-vue-next'
 import type { TraceEvent } from '../composables/useTracePlayback'
 
 const props = defineProps<{
@@ -84,7 +84,7 @@ watch(
 <template>
   <section class="ws-trace-trap" aria-label="Trap 时序">
     <div v-if="rows.length === 0" class="ws-trace-trap-empty">
-      本次运行没有 <code>trap_enter</code> 事件。若未启用 <code>trace-edu</code> feature，重开 trace 后再查看。
+      当前筛选下没有事件。
     </div>
     <ol v-else ref="listRef" class="ws-trace-trap-list" role="list">
       <li
@@ -104,21 +104,21 @@ watch(
             <Repeat v-else :size="14" />
           </span>
           <span class="ws-trace-kind">
-            <template v-if="row.event.type === 'trap_enter'">trap_enter</template>
-            <template v-else>task_switch</template>
+            <template v-if="row.event.type === 'trap_enter'">进入内核</template>
+            <template v-else>任务切换</template>
           </span>
-          <span class="ws-trace-pid">pid {{ row.event.pid }}</span>
+          <span class="ws-trace-pid">任务 {{ row.event.pid }}</span>
           <span v-if="row.event.type === 'trap_enter'" class="ws-trace-cause" :class="{ syscall: isSyscall(row.event.cause) }">
-            {{ row.event.cause || '?' }}
+            {{ row.event.cause === 'user_ecall' ? '系统调用 · user_ecall' : (row.event.cause || '原因未知') }}
           </span>
           <span v-else class="ws-trace-switch">
-            {{ row.event.from }} → {{ row.event.to }} · {{ row.event.reason }}
+            {{ row.event.from }} → {{ row.event.to }} · {{ row.event.reason === 'scheduler' ? '调度器' : row.event.reason }}
           </span>
           <span class="ws-trace-ts">ts {{ row.event.ts }}</span>
         </button>
         <p v-if="denseTrapIndices.has(row.index)" class="ws-trace-dense-note">
-          <ArrowUpFromLine :size="12" aria-hidden="true" />
-          连续 trap_enter 之间无 task_switch：更像单任务 syscall 密集，而非调度切换。
+          <Info :size="12" aria-hidden="true" />
+          这两次进入内核之间没有任务切换，仍是同一个任务在运行。
         </p>
       </li>
     </ol>
@@ -252,7 +252,7 @@ watch(
   display: flex;
   align-items: center;
   gap: var(--ws-space-1);
-  color: var(--ws-warning, #a15c00);
+  color: var(--ws-warn);
   font-family: var(--ws-font-base, inherit);
   font-size: var(--ws-text-xs);
 }

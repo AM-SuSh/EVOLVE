@@ -1,5 +1,143 @@
 # os-lab 项目进度总览
 
+## 2026-08-08 - Task: 统一反思编辑区并按解锁初始化实验报告
+
+### What was done
+- 将学生端「收获与反思」从正文编辑器外的独立强调卡片改为同一份报告编辑器内的连续章节：标题栏、填写提示、输入区宽度和边框体系与正文保持一致，不再因左侧强调线和错开的容器看起来像默认锁定的内容。
+- 保留 `reflection` 固定字段、学生可编辑正文和保存时的 `reflection_submitted` 事件；它仍为学习复盘、可信证据和评分提供稳定接口。教师端「报告版式」现在可改复盘节的标题、填写提示和输入长度，但不能改变该稳定字段标识。
+- 注册、学生登录和 Tutor Server 启动现在只创建 `events/`、`conversations/`、`reports/`、`runs/` 四类基础目录，不再一次性创建 Lab1-Lab8 的报告草稿。
+- 报告草稿改为按访问权限懒创建：学生首次读取、保存、上传附件或提交已解锁 Lab 的报告时，系统用当时的教师模板初始化对应的 `reports/<labId>/draft.json`；未解锁 Lab 的所有报告和草稿附件接口返回 `403`，不会写入任何文件。
+- 成功通过「升级我的系统」发放一个新 Lab 时，服务器同步初始化该 Lab 的报告草稿；老师更新报告格式时只更新已经存在的草稿，不会给尚未解锁的 Lab 预建学生文件。
+- 教师端报告格式继续固定复盘字段的 `reflection` ID，但现在可以直接编辑「收获与反思」的标题、填写提示和输入行数，学生端和提交稿同步使用该配置。
+- Tutor Server 启动时会清理旧版本遗留的“未解锁且完全空白”未来 Lab 草稿；已有正文、附件或已解锁 Lab 均不删除。当前账号 `2` 的旧空白 Lab2-Lab8 已清理，只保留 Lab1、账号和学习事件。
+
+### Testing
+- `npm test`：69/69 通过，包含复盘文案可配置但字段 ID 不变的回归测试。
+- `npm run test:smoke`：通过，覆盖注册后没有 Lab 草稿、首次访问 Lab1 创建草稿、未解锁 Lab2 返回 `403` 且不创建文件，以及发放 Lab2 时分别为两名学生初始化 Lab2 草稿。
+- `npm run build`：通过，VitePress 客户端/服务端 bundle 与页面渲染完成。
+- Tutor Server 已重启为 PID `11800`；`127.0.0.1:8787/health` 返回正常，当前学生报告索引只包含账号 `2` 的 Lab1。
+
+---
+
+## 2026-08-08 - Task: 修正教师默认报告继承并重置全部学生数据
+
+### What was done
+- 定位到新注册用户仍看到旧报告版式的原因：`teacher.json` 中只存在 `reportTemplates.lab3`，而新学生首先进入 Lab1；报告模板原本按 Lab 精确匹配，Lab1 因此回退到代码默认模板。
+- 为报告模板增加 `reportTemplates.default` 全局回退规则，优先级为“当前 Lab 专用模板 > 教师全局默认模板 > 代码内置模板”，同时保留按 Lab 单独覆盖的能力。
+- 将当前 `teacher.json` 中已经修改的 Lab3 模板提升为全局 `default`，并清除旧学生用户名对应的教师级个别配置；现在 Lab1 至 Lab8 未单独配置时都会使用该版式。
+- 停止 Tutor Server 后删除并重建 `learning/os-lab.db`，清除全部学生账号、登录会话、运行记录、事件、报告、评价、掌握度和其他学习业务数据；新数据库只保留首次启动生成的教师账号 `admin`。
+- 删除 `learning/student-data/`、`learning/sessions/`、`student-labs/` 和旧 `student-lab/`，清空全部学生报告、附件、会话文件、运行制品、代码工作区及快照；一并移除此前误提交到仓库的学生运行样例。
+- 浏览器学生数据进入新的存储代次，并在页面加载时清除旧登录令牌、成长事件、AI 导师对话和运行结果；界面布局与本地模型配置不受影响。
+
+### Testing
+- `npm test`：68/68 通过；新增全局默认模板与 Lab 专用覆盖优先级测试。
+- `npm run test:smoke`：通过，注册、报告初始化、账号隔离、教师模板发布及既有学习流程正常。
+- `npm run build`：通过，VitePress 客户端/服务端 bundle 与页面渲染完成。
+- `GET /report-template?labId=lab1` 已返回修改后的“实验目标与准备 / 过程记录 / 遇到的问题与解决方法 / 阅读与思考”版式。
+- 重建后的 SQLite 只包含 `admin` 教师账号，其他业务表均为空；学生数据和工作区目录均不存在。
+- Tutor Server 已重启为 PID `17320`，`127.0.0.1:8787/health` 检查通过。
+
+### Notes
+- 数据库重建后管理员凭据恢复为 `admin / admin123`，应在教师端尽快修改密码。
+- `teacher.json`、班级列表、教师 LLM 配置和全局报告模板均保留。
+
+---
+
+## 2026-08-08 - Task: 将实验报告改为账号级独立文件并对接教师报告格式
+
+### What was done
+- 移除实验报告正文的 `localStorage` 恢复、时间比较和离线回退逻辑；旧版报告键会在页面加载时清理，前端只通过 `/reports/draft` 读写当前登录账号、当前 Lab 的草稿文件。
+- 移除报告附件的 IndexedDB 持久化；图片和文档只有在上传到当前学生的 `reports/<labId>/draft-attachments/` 成功后才进入报告，预览、下载、删除和提交均从服务端读取。
+- 新增由教师报告模板生成初始草稿的逻辑。每个学生的每个 Lab 都拥有独立的 `learning/student-data/<userId>/reports/<labId>/draft.json`，文件包含 Markdown 骨架、空白分节、附件元数据和教师模板快照。
+- 注册成功、学生登录、Tutor Server 启动及首次读取草稿时都会幂等补齐报告文件；已有报告正文不会被初始化流程覆盖。
+- 教师端「报告格式」仍是格式案例的唯一编辑入口。教师发布新格式后，未填写的学生报告会更新为新骨架；已经填写的报告保留正文，只更新教师模板要求。
+- 服务端保存时始终保留服务器持有的教师模板，不接受学生请求覆盖模板；前端保存请求串行执行，提交报告前会等待当前草稿保存完成，避免附件上传与草稿元数据之间的竞态。
+- 报告组件按“学生账号 + Lab”设置实例键，切换账号会重新加载对应服务端文件，不复用上一账号的组件状态。
+- 更新学生数据持久化和工作台文档，删除报告使用浏览器离线缓冲的旧说明。
+- 将 `os-lab/learning/student-data/` 加入 `.gitignore`，防止真实学生报告和附件被后续代码提交带入仓库；已经被 Git 跟踪的历史演示数据不受该规则影响。
+
+### Testing
+- `npm test`：67/67 通过；新增 2 项覆盖教师模板副本生成与提示显示规则。
+- `npm run test:smoke`：通过；覆盖注册后 8 个 Lab 草稿存在、教师格式进入初始报告、学生之间正文隔离，以及教师改版时保护已填写内容。
+- `npm run build`：通过，VitePress 客户端/服务端 bundle 与页面渲染完成。
+- 真实 Tutor Server 已重启为 PID `15024`，`127.0.0.1:8787/health` 检查正常；学生 ID `2` 至 `9` 均已有 8 份 Lab 草稿。
+- 浏览器自动化当前无可用实例，未执行页面截图验收。
+
+### Notes
+- 主要文件：`ReportPanel.vue`、`LabWorkspace.vue`、`report-attachments.ts`、`report-template.mjs`、`student-data-store.mjs`、`tutor-server.mjs`、`tutor-server.smoke.mjs`。
+- 学生报告目录仍使用 SQLite 数字 `user_id`，不使用登录用户名。
+
+---
+
+## 2026-08-08 - Task: 将 Trace 播放改为内核运行架构流动图并压缩界面
+
+### What was done
+- 新增 `TraceArchitectureView.vue`，把原先以文字为主的事件播放改为用户态/内核态架构流动图，直观展示任务池、trap 入口、trap handler、调度器与 CPU 之间的控制流。
+- 根据当前 `trap_enter` 或 `task_switch` 事件高亮对应路径、任务与架构节点，并使用动态流动点表现事件在系统中的传递；播放速度会同步调整事件推进和图中动画速度。
+- 将“架构流动”设为默认视图，保留事件轨道、事件类型与 PID 过滤、播放/暂停、单步、速度调节和源码跳转，学生仍可定位到具体事件及实现位置。
+- 删除占用较大空间的当前事件详情与底部事件列表；将标题、视图选择、筛选、播放和速度控制压缩到同一行，减少顶部占用。
+- 调整架构图的容器尺寸和缩放规则，使整张图在 Trace 面板内完整显示，并移除图内滚动条。
+
+### Testing
+- `npm run build`：通过，VitePress 客户端/服务端 bundle 与页面渲染完成。
+- `npm test`：65/65 通过，Trace 播放、事件筛选与既有学习流程回归正常。
+
+### Notes
+- 对应提交：`2c4d794`（`TRACE的一点优化`）。
+
+---
+
+## 2026-08-08 - Task: 屏蔽 current_task_id 未使用告警
+
+### What was done
+- 为 `current_task_id` 增加 `#[allow(dead_code)]`，避免 Lab3 等未启用 `trace-edu` 时终端出现 dead_code 警告，减少学生误判为实验失败。
+
+### Testing
+- 触发重编后 `cargo check -p kernel --features lab3 --release`：无 `current_task_id` 相关 warning。
+
+### Notes
+- 改动：os-lab/kernel/src/task.rs；os-lab/scaffold/exercises/lab2/fill|debug/kernel/src/task.rs
+- 回滚：去掉上述 `#[allow(dead_code)]` 即可
+
+---
+
+## 2026-08-08 - Task: 注册和登录时初始化学生数据存储目录
+
+### What was done
+- 定位到新建用户后没有立即出现数据目录的原因：注册流程此前只写入 SQLite，`student-data/<userId>/` 要等到首次写入事件、对话、报告或运行记录时才会懒创建。
+- 新增 `ensureStudentDataLayout(userId)`，统一创建学生根目录及 `events/`、`conversations/`、`reports/`、`runs/` 四个子目录。
+- 学生注册成功后立即初始化目录，学生登录时补齐缺失目录；Tutor Server 启动时扫描 SQLite 中已有的学生用户并批量补齐目录。
+- 新增 `listStudentUserIds()` 作为启动扫描的数据入口，并在 Tutor Server smoke 测试中加入注册完成后四类目录均存在的断言。
+- 已为当前 SQLite 中的学生 ID `2` 至 `9` 补齐目录。目录使用数据库数字 `user_id` 命名，不使用登录用户名。
+
+### Testing
+- `npm run test:smoke`：通过，注册完成后学生目录布局会立即生成。
+- `node --test db.test.mjs access.test.mjs`：6/6 通过。
+- `git diff --check`：通过；仅有工作区既有的 LF/CRLF 提示。
+- Tutor Server 已重启并通过 `127.0.0.1:8787/health` 健康检查，进程 PID 为 `6732`。
+
+### Notes
+- 主要文件：`student-data-store.mjs`、`db.mjs`、`tutor-server.mjs`、`tutor-server.smoke.mjs`。
+- 该修复当前仍在工作区，尚未提交。
+
+---
+
+## 2026-08-07 - Task: 净化终端输出并精简 Trace 分析界面
+
+### What was done
+- 新增流式 `TRACE_V1` 显示过滤器，支持事件帧跨 SSE 分片、连续出现以及与用户输出粘连的情况；终端和前端运行摘要默认只显示程序输出，服务端原始 `output.log`、`trace.jsonl`、事件提取与可信断言保持不变。
+- 移除终端结束时的 Trace 采集提示，机器事件只在学习支持区的 Trace 查看器中展示。
+- 重整 Trace 查看器为“关键统计 / 事件顺序或任务时间线 / 当前事件解释 / 事件列表”，将 `trap_enter`、`task_switch` 和 pid 等字段转换为学生可直接判断的中文语义，同时保留原始字段与源码跳转。
+- 删除 Trace 顶部教程段、`OpreBar.vue`、OPRE 流程、插入报告、添加到对话及相关事件接线和死代码；时间线不再显示冗长的未观测状态说明。
+- 更新工作台与 Trace 可视化文档，并为终端过滤器补充 4 组流式边界回归测试。
+
+### Testing
+- `npm test`：59/59 通过；新增 4 项覆盖普通输出、粘连 Trace、跨分片 Trace 和连续 Trace。
+- `npm run build`：通过，VitePress 客户端/服务端 bundle 与页面渲染完成。
+- `git diff --check`：通过；仅有工作区既有的 LF/CRLF 提示。
+
+---
+
 ## 2026-08-07 - Task: 重整学生端 AI 导师对话 UI
 
 ### What was done

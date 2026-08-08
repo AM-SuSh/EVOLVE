@@ -26,12 +26,18 @@ import { deriveMasteryUpdates } from '../learning/mastery.mjs'
 import { evaluateReviewGates } from '../learning/review-gates.mjs'
 import { createLearningBackup, generateAnonymousAnalysis } from '../learning/trial-operations.mjs'
 import { accessForLab, buildLearningAccess } from '../learning/access.mjs'
-import { getReportTemplate, normalizeReportTemplate } from '../learning/report-template.mjs'
+import {
+  createInitialReportDraft,
+  getReportTemplate,
+  normalizeReportTemplate,
+} from '../learning/report-template.mjs'
 import {
   appendLearningEventsFile,
+  ensureStudentDataLayout,
   readConversationSnapshot,
   readReportDraftAttachment,
   readReportDraftFile,
+  removeReportDraftData,
   relativeStudentDataPath,
   removeReportDraftAttachment,
   reportAttachmentRootForData,
@@ -85,6 +91,8 @@ import {
   listMastery,
   listMyReports,
   listRunHistory,
+  listStudentAccounts,
+  listStudentUserIds,
   listUsers,
   login,
   logout,
@@ -96,6 +104,7 @@ import {
   submitAssessmentReview,
   setReportFeedback,
   submitReport,
+  removeReportDraft,
 } from '../learning/db.mjs'
 
 const handbookRoot = path.dirname(fileURLToPath(import.meta.url))
@@ -420,7 +429,7 @@ function safeAttachmentName(name) {
   return base.slice(0, 120) || 'file'
 }
 
-function normalizeReportDraft(input, labId) {
+function normalizeReportDraft(input, labId, fallbackTemplate) {
   if (!input || typeof input !== 'object') return null
   const markdownBody = typeof input.markdownBody === 'string' ? input.markdownBody : ''
   if (markdownBody.length > 524_288) return null
@@ -452,8 +461,80 @@ function normalizeReportDraft(input, labId) {
     markdownBody,
     attachments,
     labId,
+    template: normalizeReportTemplate(fallbackTemplate || input.template),
   }
 }
+
+async function ensureStudentReportDraft(userId, labId, config) {
+  const existing = await readReportDraftFile(userId, labId)
+  if (existing?.template) return existing
+
+  const template = getReportTemplate(config || await readTeacherConfig(), labId)
+  const draft = existing
+    ? { ...existing, template }
+    : createInitialReportDraft(labId, template)
+  const saved = await saveReportDraftFile(userId, labId, draft)
+  saveReportDraft(userId, labId, saved.path, saved.updatedAt)
+  return saved.draft
+}
+
+async function reportAccessFor(session, labId) {
+  const { access } = await learningContextFor(session)
+  return accessForLab(access, labId)
+}
+
+function isPristineReportDraft(draft) {
+  if (!draft?.template || draft.mode !== 'markdown') return false
+  if (Array.isArray(draft.attachments) && draft.attachments.length) return false
+  if (Object.values(draft.sections || {}).some((value) => String(value || '').trim())) return false
+  const initial = createInitialReportDraft(draft.labId, draft.template)
+  return String(draft.markdownBody || '').trim() === initial.markdownBody.trim()
+}
+
+async function applyReportTemplateToStudentDrafts(labId, template) {
+  await Promise.all(
+    listStudentUserIds().map(async (userId) => {
+      const existing = await readReportDraftFile(userId, labId)
+      // 未解锁的 Lab 没有草稿；学生首次获得访问权时再按最新模板初始化。
+      if (!existing) return
+      const next = isPristineReportDraft(existing)
+        ? createInitialReportDraft(labId, template)
+        : { ...existing, template: normalizeReportTemplate(template) }
+      const saved = await saveReportDraftFile(userId, labId, next)
+      saveReportDraft(userId, labId, saved.path, saved.updatedAt)
+    }),
+  )
+}
+
+async function prunePristineLockedReportDrafts() {
+  const config = await readTeacherConfig()
+  await Promise.all(
+    listStudentAccounts().map(async (student) => {
+      const session = {
+        id: Number(student.id),
+        username: student.username,
+        role: 'student',
+        className: student.className || '',
+      }
+      const effective = effectiveConfigFor(config, session.username, session.className)
+      const { access } = await learningContextFor(session, effective)
+      await Promise.all(
+        [...labIds].map(async (labId) => {
+          if (accessForLab(access, labId)?.unlocked) return
+          const existing = await readReportDraftFile(session.id, labId)
+          if (!isPristineReportDraft(existing)) return
+          await removeReportDraftData(session.id, labId)
+          removeReportDraft(session.id, labId)
+        }),
+      )
+    }),
+  )
+}
+
+await Promise.all(
+  listStudentUserIds().map((userId) => ensureStudentDataLayout(userId)),
+)
+await prunePristineLockedReportDrafts()
 
 function normalizeConversationSnapshot(input) {
   if (!input || typeof input !== 'object') return null
@@ -1849,6 +1930,10 @@ const server = http.createServer(async (request, response) => {
         return
       }
       const result = register(body.username, body.password, className, classNames)
+      if (result.ok) {
+        const registeredSession = resolveSession(result.token)
+        if (registeredSession?.role === 'student') await ensureStudentDataLayout(registeredSession.id)
+      }
       json(response, result.ok ? 200 : 400, result, origin)
       return
     }
@@ -1867,6 +1952,10 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'POST' && pathname === '/auth/login') {
       const body = await readBody(request)
       const result = login(body.username, body.password)
+      if (result.ok) {
+        const loginSession = resolveSession(result.token)
+        if (loginSession?.role === 'student') await ensureStudentDataLayout(loginSession.id)
+      }
       json(response, result.ok ? 200 : 401, result, origin)
       return
     }
@@ -1988,6 +2077,12 @@ const server = http.createServer(async (request, response) => {
         json(response, 400, { error: '报告内容为空或过大（正文上限 512 KiB）' }, origin)
         return
       }
+      const labAccess = await reportAccessFor(session, labId)
+      if (!labAccess?.unlocked) {
+        json(response, 403, { error: labAccess?.reason || '该实验尚未解锁', access: labAccess }, origin)
+        return
+      }
+      await ensureStudentReportDraft(session.id, labId)
       const savedAttachments = await saveReportAttachments(session.id, labId, body.attachments)
       const submission = await saveReportSubmissionFile(session.id, labId, content)
       submitReport(session.id, labId, content, savedAttachments, submission.path)
@@ -2014,8 +2109,13 @@ const server = http.createServer(async (request, response) => {
         json(response, 400, { error: '未知实验' }, origin)
         return
       }
-      const draft = await readReportDraftFile(session.id, labId)
-      json(response, 200, { ok: true, labId, draft, meta: getReportDraftMeta(session.id, labId) }, origin)
+      const labAccess = await reportAccessFor(session, labId)
+      if (!labAccess?.unlocked) {
+        json(response, 403, { error: labAccess?.reason || '该实验尚未解锁', access: labAccess }, origin)
+        return
+      }
+      const draft = await ensureStudentReportDraft(session.id, labId)
+      json(response, 200, { ok: true, labId, draft, access: labAccess, meta: getReportDraftMeta(session.id, labId) }, origin)
       return
     }
 
@@ -2032,8 +2132,18 @@ const server = http.createServer(async (request, response) => {
         return
       }
       const labId = String(body.labId || '')
-      const draft = normalizeReportDraft(body.draft, labId)
-      if (!labIds.has(labId) || !draft) {
+      if (!labIds.has(labId)) {
+        json(response, 400, { error: '未知实验' }, origin)
+        return
+      }
+      const labAccess = await reportAccessFor(session, labId)
+      if (!labAccess?.unlocked) {
+        json(response, 403, { error: labAccess?.reason || '该实验尚未解锁', access: labAccess }, origin)
+        return
+      }
+      const currentDraft = await ensureStudentReportDraft(session.id, labId)
+      const draft = normalizeReportDraft(body.draft, labId, currentDraft?.template)
+      if (!draft) {
         json(response, 400, { error: '草稿内容无效或过大' }, origin)
         return
       }
@@ -2065,6 +2175,12 @@ const server = http.createServer(async (request, response) => {
         json(response, 400, { error: '附件元数据无效' }, origin)
         return
       }
+      const labAccess = await reportAccessFor(session, labId)
+      if (!labAccess?.unlocked) {
+        json(response, 403, { error: labAccess?.reason || '该实验尚未解锁', access: labAccess }, origin)
+        return
+      }
+      await ensureStudentReportDraft(session.id, labId)
       let data
       try {
         data = Buffer.from(raw, 'base64')
@@ -2097,7 +2213,16 @@ const server = http.createServer(async (request, response) => {
       }
       const labId = String(requestUrl.searchParams.get('labId') || '')
       const id = String(requestUrl.searchParams.get('id') || '')
-      const draft = labIds.has(labId) ? await readReportDraftFile(session.id, labId) : null
+      if (!labIds.has(labId)) {
+        json(response, 400, { error: '未知实验' }, origin)
+        return
+      }
+      const labAccess = await reportAccessFor(session, labId)
+      if (!labAccess?.unlocked) {
+        json(response, 403, { error: labAccess?.reason || '该实验尚未解锁', access: labAccess }, origin)
+        return
+      }
+      const draft = await readReportDraftFile(session.id, labId)
       const attachment = draft?.attachments?.find((item) => item?.id === id && item?.storedName)
       if (!attachment) {
         json(response, 404, { error: '草稿附件不存在' }, origin)
@@ -2126,7 +2251,16 @@ const server = http.createServer(async (request, response) => {
       }
       const labId = String(requestUrl.searchParams.get('labId') || '')
       const id = String(requestUrl.searchParams.get('id') || '')
-      const draft = labIds.has(labId) ? await readReportDraftFile(session.id, labId) : null
+      if (!labIds.has(labId)) {
+        json(response, 400, { error: '未知实验' }, origin)
+        return
+      }
+      const labAccess = await reportAccessFor(session, labId)
+      if (!labAccess?.unlocked) {
+        json(response, 403, { error: labAccess?.reason || '该实验尚未解锁', access: labAccess }, origin)
+        return
+      }
+      const draft = await readReportDraftFile(session.id, labId)
       const attachment = draft?.attachments?.find((item) => item?.id === id && item?.storedName)
       if (!attachment) {
         json(response, 404, { error: '草稿附件不存在' }, origin)
@@ -2391,6 +2525,7 @@ const server = http.createServer(async (request, response) => {
         return
       }
       const result = await applyNext(reqUser, body.variant, effective)
+      if (result.ok && result.lab) await ensureStudentReportDraft(session.id, result.lab)
       const after = await learningContextFor(session, effective)
       json(response, result.ok ? 200 : 400, { ...result, status: after.status }, origin)
       return
@@ -2887,6 +3022,7 @@ const server = http.createServer(async (request, response) => {
 
         if (scopeType === 'global') {
           const patch = {}
+          let publishedReportTemplate = null
           if (LAB_ORDER.includes(body.openLab)) patch.openLab = body.openLab
           if (typeof body.allowStudentLlm === 'boolean') patch.allowStudentLlm = body.allowStudentLlm
           if (typeof body.notice === 'string') patch.notice = body.notice.trim().slice(0, 2000)
@@ -2915,8 +3051,15 @@ const server = http.createServer(async (request, response) => {
             const reportTemplates = { ...(current.reportTemplates || {}) }
             reportTemplates[labId] = normalizeReportTemplate(body.reportTemplate)
             patch.reportTemplates = reportTemplates
+            publishedReportTemplate = { labId, template: reportTemplates[labId] }
           }
           const config = await writeTeacherConfig(patch)
+          if (publishedReportTemplate) {
+            await applyReportTemplateToStudentDrafts(
+              publishedReportTemplate.labId,
+              publishedReportTemplate.template,
+            )
+          }
           json(response, 200, { ok: true, config: { ...config, llm: { ...config.llm, apiKey: config.llm?.apiKey ? '（已设置）' : '' } } }, origin)
           return
         }

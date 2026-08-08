@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RotateCcw, Square } from 'lucide-vue-next'
 import { authHeaders, type TutorLab } from '../tutor-model'
+import { createTraceOutputFilter } from '../trace-output-filter.mjs'
 import XtermOutput from './XtermOutput.vue'
 
 const props = defineProps<{
@@ -63,6 +64,7 @@ const stepTitle = ref('')
 const errorText = ref('')
 const lastRunCommand = ref('')
 const xtermRef = ref<InstanceType<typeof XtermOutput> | null>(null)
+const traceOutputFilter = createTraceOutputFilter()
 
 /** 本 Lab 推荐的验证命令，作为终端输入行的 ghost text（虚写提示）。 */
 const recommendedCommand = computed(() => props.lab.verificationCommand)
@@ -157,10 +159,19 @@ watch(
   },
 )
 
-/** 把文本同时写入 xterm 与输出缓冲（输出缓冲用于复制/插入报告）。 */
-function writeTerm(text: string) {
+function appendVisibleTerm(text: string) {
+  if (!text) return
   output.value += text
   xtermRef.value?.write(text)
+}
+
+/** 终端默认隐藏 TRACE_V1 机器帧；服务端原始输出与 trace artifact 保持完整。 */
+function writeTerm(text: string) {
+  appendVisibleTerm(traceOutputFilter.push(text))
+}
+
+function flushTerm() {
+  appendVisibleTerm(traceOutputFilter.flush())
 }
 
 function handleData(data: string) {
@@ -232,6 +243,7 @@ function resetCommand() {
 }
 
 watch(() => props.lab.id, () => {
+  traceOutputFilter.reset()
   inputBuffer.value = ''
   command.value = ''
   output.value = ''
@@ -268,6 +280,7 @@ async function run() {
   const runCommand = command.value.trim()
   lastRunCommand.value = runCommand
   const runMarker = `\r\n\x1b[90m──── ${new Date().toLocaleTimeString()} · ${runCommand} ────\x1b[0m\r\n`
+  traceOutputFilter.reset()
   writeTerm(runMarker)
   // 本轮复制缓冲从分隔线起算，但 xterm 画面保留更早输出。
   output.value = runMarker
@@ -314,7 +327,6 @@ async function run() {
           assertions?: RunAssertion[]
           diagnostics?: unknown[]
           diagnosticCount?: number
-          traceCount?: number
         }
         try {
           frame = JSON.parse(line.slice(5).trim())
@@ -327,6 +339,7 @@ async function run() {
         }
         if (frame.type === 'output' && frame.text) writeTerm(frame.text)
         if (frame.type === 'exit') {
+          flushTerm()
           exitInfo.value = {
             code: frame.code ?? -1,
             ok: Boolean(frame.ok),
@@ -340,9 +353,6 @@ async function run() {
           if (frame.runId) emit('run-exit', frame.runId)
           if (frame.runId && Array.isArray(frame.diagnostics) && frame.diagnostics.length > 0) {
             emit('run-diagnostics', { runId: frame.runId, diagnostics: frame.diagnostics })
-          }
-          if (typeof frame.traceCount === 'number' && frame.traceCount > 0) {
-            writeTerm(`\r\n\x1b[36m[Trace] 采集到 ${frame.traceCount} 条事件，可在右侧学习支持 → Trace 查看\x1b[0m\n`)
           }
           if (typeof frame.diagnosticCount === 'number' && frame.diagnosticCount > 0) {
             writeTerm(`\r\n\x1b[33m[Problems] 采集到 ${frame.diagnosticCount} 条编译诊断，已切换到底部 Problems\x1b[0m\n`)
@@ -374,6 +384,7 @@ async function run() {
         : '无法连接导师服务：先在 os-lab/handbook 运行 npm run tutor'
     writeTerm(`\x1b[31m${errorText.value}\x1b[0m\n`)
   } finally {
+    flushTerm()
     running.value = false
     stepTitle.value = ''
     scrollToBottom()

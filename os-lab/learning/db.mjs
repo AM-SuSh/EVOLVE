@@ -413,6 +413,11 @@ export function saveReportDraft(userId, labId, filePath, updatedAt = now()) {
   return { ok: true, updatedAt }
 }
 
+export function removeReportDraft(userId, labId) {
+  db.prepare('DELETE FROM report_drafts WHERE user_id = ? AND lab_id = ?').run(userId, labId)
+  return { ok: true }
+}
+
 export function getReportDraftMeta(userId, labId) {
   return db.prepare(
     `SELECT lab_id AS labId, file_path AS filePath, updated_at AS updatedAt
@@ -445,6 +450,19 @@ export function setReportFeedback(username, labId, feedback) {
 export function listUsers() {
   return db
     .prepare('SELECT username, role, class_name AS className, created_at AS createdAt FROM users ORDER BY class_name, username')
+    .all()
+}
+
+export function listStudentUserIds() {
+  return db
+    .prepare("SELECT id FROM users WHERE role = 'student' ORDER BY id")
+    .all()
+    .map((row) => Number(row.id))
+}
+
+export function listStudentAccounts() {
+  return db
+    .prepare("SELECT id, username, role, class_name AS className FROM users WHERE role = 'student' ORDER BY id")
     .all()
 }
 
