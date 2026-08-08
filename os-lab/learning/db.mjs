@@ -413,6 +413,11 @@ export function saveReportDraft(userId, labId, filePath, updatedAt = now()) {
   return { ok: true, updatedAt }
 }
 
+export function removeReportDraft(userId, labId) {
+  db.prepare('DELETE FROM report_drafts WHERE user_id = ? AND lab_id = ?').run(userId, labId)
+  return { ok: true }
+}
+
 export function getReportDraftMeta(userId, labId) {
   return db.prepare(
     `SELECT lab_id AS labId, file_path AS filePath, updated_at AS updatedAt
@@ -453,6 +458,12 @@ export function listStudentUserIds() {
     .prepare("SELECT id FROM users WHERE role = 'student' ORDER BY id")
     .all()
     .map((row) => Number(row.id))
+}
+
+export function listStudentAccounts() {
+  return db
+    .prepare("SELECT id, username, role, class_name AS className FROM users WHERE role = 'student' ORDER BY id")
+    .all()
 }
 
 /** 读取服务端可信学习证据，供手册解锁与脚手架发放共同判定。 */

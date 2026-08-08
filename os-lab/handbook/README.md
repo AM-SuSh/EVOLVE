@@ -52,6 +52,7 @@ handbook/
 ```text
 learning/student-data/<userId>/
   reports/<labId>/draft.json
+  reports/<labId>/draft-attachments/
   reports/<labId>/submission.md
   reports/<labId>/attachments/
   conversations/<sessionId>.jsonl
@@ -61,7 +62,7 @@ learning/student-data/<userId>/
   runs/<labId>/<runId>/trace.jsonl
 ```
 
-SQLite `learning/os-lab.db` 保存权限、索引、运行状态、断言、评分和报告元数据；文件系统保存正文、会话原文和运行制品。浏览器的 localStorage/IndexedDB 只作为离线缓冲，登录后会通过 `/reports/draft` 和 `/conversations/mine` 同步。旧 `learning/sessions/`、旧报告附件目录只用于兼容读取，不再接收新数据。
+SQLite `learning/os-lab.db` 保存权限、索引、运行状态、断言、评分和报告元数据；文件系统保存正文、会话原文和运行制品。实验报告正文与附件不使用浏览器 `localStorage` / IndexedDB 持久化，前端只通过 `/reports/draft` 读写当前账号、当前 Lab 的文件；对话仍可使用本地副本并通过 `/conversations/mine` 同步。旧 `learning/sessions/`、旧报告附件目录只用于兼容读取，不再接收新数据。
 
 | --- | --- |
 | `/learn/labN` | 路由壳；正文由 `GET /manual` 按教师发布与学习证据返回 |

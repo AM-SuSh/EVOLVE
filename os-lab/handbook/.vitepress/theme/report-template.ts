@@ -10,11 +10,12 @@ export interface ReportSectionSpec {
 export interface ReportTemplate {
   intro: string
   includePromptsInMarkdown: boolean
-  /** 老师布置的正文各节（不含固定的「收获与反思」）。 */
+  /** 老师布置的正文各节（不含固定 ID 的复盘字段）。 */
   sections: ReportSectionSpec[]
+  reflection: ReportSectionSpec
 }
 
-/** 系统固定；学生端始终出现，老师不用配置。 */
+/** 系统固定的复盘字段 ID 与默认文案。 */
 export const FIXED_REFLECTION: ReportSectionSpec = {
   id: 'reflection',
   title: '收获与反思',
@@ -51,6 +52,7 @@ export const DEFAULT_REPORT_TEMPLATE: ReportTemplate = {
       rows: 5,
     },
   ],
+  reflection: { ...FIXED_REFLECTION },
 }
 
 export function cloneTemplate(template: ReportTemplate = DEFAULT_REPORT_TEMPLATE): ReportTemplate {
@@ -58,6 +60,7 @@ export function cloneTemplate(template: ReportTemplate = DEFAULT_REPORT_TEMPLATE
     intro: template.intro,
     includePromptsInMarkdown: template.includePromptsInMarkdown !== false,
     sections: template.sections.map((section) => ({ ...section })),
+    reflection: { ...(template.reflection || FIXED_REFLECTION), id: FIXED_REFLECTION.id },
   }
 }
 
@@ -66,10 +69,10 @@ function isReflectionLike(id: string, title: string) {
   return /收获与反思|反思|体会总结/.test(title)
 }
 
-/** 学生端完整节列表 = 老师正文节 + 固定反思。 */
+/** 学生端完整节列表 = 老师正文节 + 固定 ID 的复盘节。 */
 export function studentSections(template: ReportTemplate): ReportSectionSpec[] {
   const body = template.sections.filter((s) => !isReflectionLike(s.id, s.title))
-  return [...body, { ...FIXED_REFLECTION }]
+  return [...body, { ...(template.reflection || FIXED_REFLECTION), id: FIXED_REFLECTION.id }]
 }
 
 /** 生成带老师提示的 Markdown 骨架（布置预览 / 学生提交稿共用结构）。 */
@@ -97,7 +100,7 @@ function stripPromptPrefix(text: string) {
 }
 
 /**
- * 从 Markdown 导入报告版式（仅正文节；「收获与反思」始终由系统固定）。
+ * 从 Markdown 导入报告版式（仅正文节；复盘文案可在报告格式页继续调整）。
  */
 export function parseReportTemplateFromMarkdown(source: string): ReportTemplate {
   const text = String(source || '').replace(/\r\n/g, '\n').trim()
@@ -183,5 +186,6 @@ export function parseReportTemplateFromMarkdown(source: string): ReportTemplate 
     intro: intro || DEFAULT_REPORT_TEMPLATE.intro,
     includePromptsInMarkdown: true,
     sections,
+    reflection: { ...FIXED_REFLECTION },
   }
 }

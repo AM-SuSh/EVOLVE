@@ -1,2 +1,0 @@
-{"version":2,"id":"event-ab040ac3-2ffc-4a64-8978-f89c2ad42376","timestamp":"2026-08-08T01:06:42.323Z","sessionId":"lab3-f3ce2600-fcfa-47df-83b8-5dca874b1d33","labId":"lab3","stage":"orient","type":"session_start","metadata":{"mode":"remote","labTitle":"内存与虚拟内存","systemLayer":"地址空间"}}
-{"version":2,"id":"event-8d3dd968-0150-4777-8b3c-148f6c92def1","timestamp":"2026-08-08T01:06:42.331Z","sessionId":"lab3-f3ce2600-fcfa-47df-83b8-5dca874b1d33","labId":"lab3","stage":"orient","type":"stage_enter","metadata":{"title":"建立问题边界"}}

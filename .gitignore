@@ -37,6 +37,7 @@ papers/
 
 # AI 导师学习事件数据与账号数据库
 os-lab/learning/sessions/
+os-lab/learning/student-data/
 os-lab/learning/uploads/
 os-lab/learning/knowledge/build/
 os-lab/learning/knowledge/*.db

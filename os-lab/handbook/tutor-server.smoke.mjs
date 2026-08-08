@@ -147,6 +147,16 @@ try {
     createClass: true,
   })
   assert.equal(createClass.status, 200)
+  const publishReportTemplate = await postJson('/teacher/config', earlyTeacherHeaders, {
+    scope: { type: 'global', id: '' },
+    reportTemplate: {
+      labId: 'lab1',
+      intro: 'Lab1 smoke 报告要求',
+      includePromptsInMarkdown: true,
+      sections: [{ id: 'boot-result', title: '启动结果', prompt: '记录 SBI 输出。', rows: 5 }],
+    },
+  })
+  assert.equal(publishReportTemplate.status, 200)
 
   const noClassRegistration = await postJson('/auth/register', {}, {
     username: 'member-c-no-class',
@@ -177,6 +187,9 @@ try {
     for (const directory of ['events', 'conversations', 'reports', 'runs']) {
       assert.equal(existsSync(path.join(dataDir, userId, directory)), true)
     }
+    for (let lab = 1; lab <= 8; lab += 1) {
+      assert.equal(existsSync(path.join(dataDir, userId, 'reports', `lab${lab}`, 'draft.json')), false)
+    }
   }
 
   const unauthenticatedManual = await fetch(`${endpoint}/manual?labId=lab1`)
@@ -184,6 +197,49 @@ try {
 
   const studentHeaders = { Authorization: `Bearer ${registration.token}` }
   const otherStudentHeaders = { Authorization: `Bearer ${otherRegistration.token}` }
+  const initialDraftResponse = await fetch(`${endpoint}/reports/draft?labId=lab1`, { headers: studentHeaders })
+  assert.equal(initialDraftResponse.status, 200)
+  const initialReport = (await initialDraftResponse.json()).draft
+  assert.equal(initialReport.template.intro, 'Lab1 smoke 报告要求')
+  assert.match(initialReport.markdownBody, /## 启动结果/)
+  assert.equal(existsSync(path.join(dataDir, '2', 'reports', 'lab1', 'draft.json')), true)
+  assert.equal(existsSync(path.join(dataDir, '3', 'reports', 'lab1', 'draft.json')), false)
+  assert.equal((await fetch(`${endpoint}/reports/draft?labId=lab2`, { headers: studentHeaders })).status, 403)
+  assert.equal(existsSync(path.join(dataDir, '2', 'reports', 'lab2', 'draft.json')), false)
+  const firstStudentDraft = await fetch(`${endpoint}/reports/draft`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...studentHeaders },
+    body: JSON.stringify({
+      labId: 'lab1',
+      draft: { ...initialReport, markdownBody: '只属于第一个学生的内容' },
+    }),
+  })
+  assert.equal(firstStudentDraft.status, 200)
+  const isolatedDraft = await fetch(`${endpoint}/reports/draft?labId=lab1`, {
+    headers: otherStudentHeaders,
+  }).then((response) => response.json())
+  assert.match(isolatedDraft.draft.markdownBody, /## 启动结果/)
+  assert.doesNotMatch(isolatedDraft.draft.markdownBody, /只属于第一个学生/)
+  const updateReportTemplate = await postJson('/teacher/config', earlyTeacherHeaders, {
+    scope: { type: 'global', id: '' },
+    reportTemplate: {
+      labId: 'lab1',
+      intro: '更新后的 Lab1 报告要求',
+      includePromptsInMarkdown: true,
+      sections: [{ id: 'boot-proof', title: '启动证据', prompt: '记录更新后的要求。', rows: 6 }],
+    },
+  })
+  assert.equal(updateReportTemplate.status, 200)
+  const authoredDraft = await fetch(`${endpoint}/reports/draft?labId=lab1`, {
+    headers: studentHeaders,
+  }).then((response) => response.json())
+  assert.equal(authoredDraft.draft.markdownBody, '只属于第一个学生的内容')
+  assert.equal(authoredDraft.draft.template.intro, '更新后的 Lab1 报告要求')
+  const refreshedPristineDraft = await fetch(`${endpoint}/reports/draft?labId=lab1`, {
+    headers: otherStudentHeaders,
+  }).then((response) => response.json())
+  assert.match(refreshedPristineDraft.draft.markdownBody, /## 启动证据/)
+  assert.doesNotMatch(refreshedPristineDraft.draft.markdownBody, /## 启动结果/)
   const initialAccess = await fetch(`${endpoint}/learning/access`, { headers: studentHeaders })
     .then((response) => response.json())
   assert.equal(initialAccess.labs.find((lab) => lab.labId === 'lab1').unlocked, true)
@@ -372,9 +428,12 @@ try {
   const lab2Upgrade = await postJson('/scaffold/upgrade', studentHeaders, { variant: 'fill' })
   assert.equal(lab2Upgrade.status, 200)
   assert.equal((await lab2Upgrade.json()).lab, 'lab2')
+  assert.equal(existsSync(path.join(dataDir, '2', 'reports', 'lab2', 'draft.json')), true)
   const otherLab2Upgrade = await postJson('/scaffold/upgrade', otherStudentHeaders, { variant: 'fill' })
   assert.equal(otherLab2Upgrade.status, 200)
   assert.equal((await otherLab2Upgrade.json()).lab, 'lab2')
+  assert.equal(existsSync(path.join(dataDir, '3', 'reports', 'lab2', 'draft.json')), true)
+  assert.equal(existsSync(path.join(dataDir, '2', 'reports', 'lab3', 'draft.json')), false)
 
   const fsStatus = await fetch(`${endpoint}/fs/status?labId=lab2`, { headers: studentHeaders })
     .then((response) => response.json())

@@ -1,9 +1,9 @@
 /**
  * 实验报告版式：默认模板 + 规范化（教师布置 / 学生端共用）。
- * 老师只配正文各节；「收获与反思」由系统固定追加。
+ * 老师配置正文各节和复盘文案；复盘字段 ID 由系统固定。
  */
 
-/** 系统固定的「收获与反思」，不进教师布置列表。 */
+/** 系统固定的复盘字段 ID；教师可覆盖显示文案，不能改变其标识。 */
 export const FIXED_REFLECTION = {
   id: 'reflection',
   title: '收获与反思',
@@ -21,7 +21,7 @@ export const DEFAULT_REPORT_SECTIONS = [
   {
     id: 'process',
     title: '二、过程记录',
-    prompt: '记下你做了什么、看到了什么。终端跑完后，也可以点「把输出插入实验报告」。',
+    prompt: '记下你做了什么、看到了什么，并挑选关键运行结果作为证据。',
     rows: 6,
   },
   {
@@ -43,6 +43,7 @@ export function defaultReportTemplate() {
     intro: '请按下列小节完成本次实验报告。带「提示」的句子是老师布置的填写要求，请对照着写。',
     includePromptsInMarkdown: true,
     sections: DEFAULT_REPORT_SECTIONS.map((section) => ({ ...section })),
+    reflection: { ...FIXED_REFLECTION },
   }
 }
 
@@ -59,7 +60,19 @@ function isReflectionLike(id, title) {
   return /收获与反思|反思|体会总结/.test(String(title || ''))
 }
 
-/** 把教师保存的原始对象收成可用模板；缺省回落默认。不含固定反思节。 */
+function normalizeReflection(raw) {
+  const source = raw && typeof raw === 'object' ? raw : {}
+  return {
+    id: FIXED_REFLECTION.id,
+    title:
+      String(source.title || FIXED_REFLECTION.title).trim().slice(0, 80) || FIXED_REFLECTION.title,
+    prompt:
+      String(source.prompt || FIXED_REFLECTION.prompt).trim().slice(0, 800) || FIXED_REFLECTION.prompt,
+    rows: Math.min(20, Math.max(2, Number(source.rows) || FIXED_REFLECTION.rows)),
+  }
+}
+
+/** 把教师保存的原始对象收成可用模板；缺省回落默认。 */
 export function normalizeReportTemplate(raw) {
   const base = defaultReportTemplate()
   if (!raw || typeof raw !== 'object') return base
@@ -84,10 +97,36 @@ export function normalizeReportTemplate(raw) {
   }
 
   if (!sections.length) return base
-  return { intro, includePromptsInMarkdown, sections }
+  return { intro, includePromptsInMarkdown, sections, reflection: normalizeReflection(raw.reflection) }
 }
 
 export function getReportTemplate(config, labId) {
   const map = config?.reportTemplates && typeof config.reportTemplates === 'object' ? config.reportTemplates : {}
-  return normalizeReportTemplate(map[labId])
+  return normalizeReportTemplate(map[labId] || map.default)
+}
+
+/** 按教师版式生成一份归属于单个学生、单个 Lab 的初始报告副本。 */
+export function createInitialReportDraft(labId, rawTemplate) {
+  const template = normalizeReportTemplate(rawTemplate)
+  const sections = Object.fromEntries(
+    [...template.sections, template.reflection].map((section) => [section.id, '']),
+  )
+  const markdownBody = template.sections
+    .map((section) => {
+      const lines = [`## ${section.title}`, '']
+      if (template.includePromptsInMarkdown && section.prompt) {
+        lines.push(`> **填写提示：** ${section.prompt}`, '')
+      }
+      return lines.join('\n')
+    })
+    .join('\n')
+
+  return {
+    mode: 'markdown',
+    sections,
+    markdownBody,
+    attachments: [],
+    labId: String(labId || ''),
+    template,
+  }
 }

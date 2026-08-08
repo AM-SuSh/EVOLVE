@@ -224,7 +224,7 @@ const teachingVariantHint = computed(() => routeParam('variant'))
 /** 右栏学习支持页签（报告 / Trace）；AI 导师通过悬浮入口打开。 */
 const rightTab = ref<'report' | 'assessment' | 'trace'>('report')
 
-const TUTOR_CONVERSATION_STORAGE_KEY = 'os-lab-tutor-conversations-v1'
+const TUTOR_CONVERSATION_STORAGE_KEY = 'os-lab-tutor-conversations-v2'
 const MAX_STORED_TUTOR_MESSAGES = 120
 
 interface StoredTutorConversation {
@@ -363,7 +363,7 @@ interface ServerRunHistoryItem {
 }
 
 /** 测试结果本地缓存：按 lab + 学生隔离，默认保留 24 小时（刷新不丢）。 */
-const RUN_RESULTS_STORAGE_KEY = 'os-lab-run-results-v1'
+const RUN_RESULTS_STORAGE_KEY = 'os-lab-run-results-v2'
 const RUN_RESULTS_TTL_MS = 24 * 60 * 60 * 1000
 const RUN_RESULTS_HISTORY_CAP = 8
 
@@ -3368,6 +3368,7 @@ onBeforeUnmount(() => {
           <div class="ws-zone-body ws-assistant-body">
             <ReportPanel
               v-show="rightTab === 'report'"
+              :key="`report-${studentId || 'anonymous'}-${lab.id}`"
               :lab="lab"
               :teacher-feedback="teacherFeedback"
               :report-template="reportTemplate"

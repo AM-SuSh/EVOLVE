@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { appendFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -88,10 +88,10 @@ export function reportDraftAttachmentRootForData(userId, labId) {
 export async function saveReportDraftFile(userId, labId, draft) {
   const filePath = path.join(reportRootForData(userId, labId), 'draft.json')
   const record = {
+    ...draft,
     version: 1,
     labId: labKey(labId),
     updatedAt: new Date().toISOString(),
-    ...draft,
   }
   await writeAtomic(filePath, `${JSON.stringify(record, null, 2)}\n`)
   return { updatedAt: record.updatedAt, path: relativePath(filePath), draft: record }
@@ -99,6 +99,11 @@ export async function saveReportDraftFile(userId, labId, draft) {
 
 export async function readReportDraftFile(userId, labId) {
   return readJson(path.join(reportRootForData(userId, labId), 'draft.json'))
+}
+
+/** 只用于清理旧版生成的空白草稿目录；正文/附件判定在服务端调用方完成。 */
+export async function removeReportDraftData(userId, labId) {
+  await rm(reportRootForData(userId, labId), { recursive: true, force: true })
 }
 
 export async function saveReportSubmissionFile(userId, labId, content) {
