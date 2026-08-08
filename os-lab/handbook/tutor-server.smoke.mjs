@@ -668,6 +668,16 @@ try {
   assert.equal(eventSync.status, 202)
   assert.equal((await eventSync.json()).accepted, learningEvents.length)
 
+  const blockedLab3Upgrade = await postJson('/scaffold/upgrade', studentHeaders, { variant: 'debug' })
+  assert.equal(blockedLab3Upgrade.status, 403)
+
+  const distributeLab3 = await postJson('/teacher/config', teacherHeaders, {
+    scope: { type: 'global', id: '' },
+    openLab: 'lab3',
+    assignment: { labId: 'lab3', variant: 'debug' },
+  })
+  assert.equal(distributeLab3.status, 200)
+
   const lab3Upgrade = await postJson('/scaffold/upgrade', studentHeaders, { variant: 'debug' })
   assert.equal(lab3Upgrade.status, 200)
   const lab3UpgradePayload = await lab3Upgrade.json()
