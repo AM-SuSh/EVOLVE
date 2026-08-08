@@ -60,7 +60,7 @@
 - `npm test`：67/67 通过；新增 2 项覆盖教师模板副本生成与提示显示规则。
 - `npm run test:smoke`：通过；覆盖注册后 8 个 Lab 草稿存在、教师格式进入初始报告、学生之间正文隔离，以及教师改版时保护已填写内容。
 - `npm run build`：通过，VitePress 客户端/服务端 bundle 与页面渲染完成。
-- 真实 Tutor Server 已重启为 PID `15024`，`127.0.0.1:8787/health` 检查通过；学生 ID `2` 至 `9` 均已有 8 份 Lab 草稿。
+- 真实 Tutor Server 已重启为 PID `15024`，`127.0.0.1:8787/health` 检查正常；学生 ID `2` 至 `9` 均已有 8 份 Lab 草稿。
 - 浏览器自动化当前无可用实例，未执行页面截图验收。
 
 ### Notes
@@ -84,6 +84,20 @@
 
 ### Notes
 - 对应提交：`2c4d794`（`TRACE的一点优化`）。
+
+---
+
+## 2026-08-08 - Task: 屏蔽 current_task_id 未使用告警
+
+### What was done
+- 为 `current_task_id` 增加 `#[allow(dead_code)]`，避免 Lab3 等未启用 `trace-edu` 时终端出现 dead_code 警告，减少学生误判为实验失败。
+
+### Testing
+- 触发重编后 `cargo check -p kernel --features lab3 --release`：无 `current_task_id` 相关 warning。
+
+### Notes
+- 改动：os-lab/kernel/src/task.rs；os-lab/scaffold/exercises/lab2/fill|debug/kernel/src/task.rs
+- 回滚：去掉上述 `#[allow(dead_code)]` 即可
 
 ---
 
