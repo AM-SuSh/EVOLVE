@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ChevronDown, LogOut, Settings, UserRound } from 'lucide-vue-next'
 import { authHeaders, loadAuth, saveAuth, type AuthSession } from '../tutor-model'
 import { requestWorkspaceLlmSettings } from '../workspace-nav'
@@ -17,6 +17,8 @@ const auth = ref<AuthSession | null>(null)
 const open = ref(false)
 const busy = ref(false)
 const root = ref<HTMLElement | null>(null)
+const menuRef = ref<HTMLElement | null>(null)
+const menuStyle = ref({ top: '0px', right: '0px' })
 
 const label = computed(() => {
   if (!auth.value) return ''
@@ -32,6 +34,21 @@ function refresh() {
 function openWorkspaceSettings() {
   open.value = false
   requestWorkspaceLlmSettings()
+}
+
+function toggleMenu() {
+  open.value = !open.value
+  if (open.value) nextTick(updateMenuPosition)
+}
+
+function updateMenuPosition() {
+  const trigger = root.value?.querySelector<HTMLElement>('.un-trigger')
+  if (!trigger) return
+  const rect = trigger.getBoundingClientRect()
+  menuStyle.value = {
+    top: `${Math.round(rect.bottom + 8)}px`,
+    right: `${Math.max(8, Math.round(window.innerWidth - rect.right))}px`,
+  }
 }
 
 async function logout() {
@@ -51,7 +68,8 @@ async function logout() {
 
 function onDocClick(event: MouseEvent) {
   if (!open.value || !root.value) return
-  if (!root.value.contains(event.target as Node)) open.value = false
+  const target = event.target as Node
+  if (!root.value.contains(target) && !menuRef.value?.contains(target)) open.value = false
 }
 
 function onKey(event: KeyboardEvent) {
@@ -63,12 +81,16 @@ onMounted(() => {
   document.addEventListener('click', onDocClick)
   document.addEventListener('keydown', onKey)
   window.addEventListener('storage', refresh)
+  window.addEventListener('resize', updateMenuPosition)
+  window.addEventListener('scroll', updateMenuPosition, true)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', onDocClick)
   document.removeEventListener('keydown', onKey)
   window.removeEventListener('storage', refresh)
+  window.removeEventListener('resize', updateMenuPosition)
+  window.removeEventListener('scroll', updateMenuPosition, true)
 })
 </script>
 
@@ -80,13 +102,14 @@ onBeforeUnmount(() => {
       :aria-expanded="open"
       aria-haspopup="menu"
       :title="label"
-      @click.stop="open = !open"
+      @click.stop="toggleMenu"
     >
       <UserRound :size="15" aria-hidden="true" />
       <span class="un-name">{{ auth.username }}</span>
       <ChevronDown :size="14" class="un-chevron" :class="{ open }" aria-hidden="true" />
     </button>
-    <div v-if="open" class="un-menu" role="menu">
+    <Teleport to="body">
+    <div v-if="open" ref="menuRef" class="un-menu" role="menu" :style="menuStyle" @click.stop>
       <p class="un-meta">{{ label }}</p>
       <button v-if="showWorkspaceSettings" type="button" role="menuitem" class="un-item" @click="openWorkspaceSettings">
         <Settings :size="14" aria-hidden="true" />
@@ -96,7 +119,8 @@ onBeforeUnmount(() => {
         <LogOut :size="14" aria-hidden="true" />
         {{ busy ? '退出中…' : '退出登录' }}
       </button>
-    </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -146,10 +170,8 @@ onBeforeUnmount(() => {
 }
 
 .un-menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  z-index: 100;
+  position: fixed;
+  z-index: var(--ws-z-dialog);
   min-width: 180px;
   padding: 8px;
   border: 1px solid var(--vp-c-divider);

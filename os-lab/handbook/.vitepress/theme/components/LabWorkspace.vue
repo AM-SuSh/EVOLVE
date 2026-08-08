@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeMount, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import { useData, useRouter, withBase } from 'vitepress'
-import { BookOpen, CheckCircle2, ChevronDown, ChevronUp, CircleSlash, Clock, Code2, GripVertical, LockKeyhole, Maximize2, MessageSquarePlus, MessagesSquare, Minimize2, PanelLeftClose, Play, TableOfContents, X, XCircle } from 'lucide-vue-next'
+import { BookOpen, CheckCircle2, ChevronDown, ChevronUp, CircleSlash, Clock, Code2, LockKeyhole, Maximize2, MessageSquarePlus, MessagesSquare, Minimize2, PanelLeftClose, Play, RotateCcw, TableOfContents, XCircle } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
 import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
@@ -812,6 +812,19 @@ interface StoredTutorPanelPlacement extends TutorPosition {
   floating: boolean
 }
 
+interface TutorPanelResizeOrigin {
+  pointerX: number
+  pointerY: number
+  startX: number
+  startY: number
+  startWidth: number
+  startHeight: number
+  anchorRight: boolean
+  anchorBottom: boolean
+  resizeWidth: boolean
+  resizeHeight: boolean
+}
+
 function tutorPanelMaxWidth() {
   if (typeof window === 'undefined') return TUTOR_PANEL_MAX_WIDTH
   return Math.min(TUTOR_PANEL_MAX_WIDTH, window.innerWidth - TUTOR_PANEL_VIEWPORT_GUTTER)
@@ -876,7 +889,7 @@ const tutorFabDragging = ref(false)
 const tutorFabMoved = ref(false)
 let tutorPanelDragOrigin: (TutorPosition & { pointerX: number; pointerY: number }) | null = null
 let tutorFabDragOrigin: (TutorPosition & { pointerX: number; pointerY: number }) | null = null
-let tutorPanelHeightDragOrigin: { pointerY: number; height: number } | null = null
+let tutorPanelResizeOrigin: TutorPanelResizeOrigin | null = null
 
 function tutorTopbarHeight() {
   if (typeof window === 'undefined') return 56
@@ -1004,9 +1017,13 @@ function dockedTutorPanelLeft() {
 
 const tutorPanelStyle = computed<Record<string, string>>(() => ({
   '--ws-tutor-panel-width': `${tutorPanelWidth.value}px`,
+  '--ws-tutor-panel-min-width': `${Math.min(TUTOR_PANEL_MIN_WIDTH, tutorPanelMaxWidth())}px`,
+  '--ws-tutor-panel-max-width': `${tutorPanelMaxWidth()}px`,
   '--ws-tutor-panel-left': `${tutorPanelPosition.value.x}px`,
   '--ws-tutor-panel-top': `${tutorPanelPosition.value.y}px`,
   '--ws-tutor-panel-height': `${tutorPanelHeight.value}px`,
+  '--ws-tutor-panel-min-height': `${tutorPanelHeightMin()}px`,
+  '--ws-tutor-panel-max-height': `${tutorPanelHeightMax()}px`,
 }))
 
 const tutorFloatStyle = computed<Record<string, string>>(() => {
@@ -1031,58 +1048,10 @@ function setTutorPanelWidth(value: number, persist = false) {
   }
 }
 
-function updateTutorPanelWidth(clientX: number) {
-  if (typeof window === 'undefined' || isMobileLayout.value) return
-  if (tutorPanelFloating.value) {
-    const right = tutorPanelPosition.value.x + tutorPanelWidth.value
-    setTutorPanelWidth(right - clientX)
-    setTutorPanelPosition(right - tutorPanelWidth.value, tutorPanelPosition.value.y)
-    return
-  }
-  setTutorPanelWidth(window.innerWidth - clientX)
-}
-
-function startTutorResize(event: PointerEvent) {
-  if (event.button !== 0 || isMobileLayout.value) return
-  tutorResizing.value = true
-  const target = event.currentTarget as HTMLElement
-  target.setPointerCapture(event.pointerId)
-  document.documentElement.classList.add('ws-tutor-resizing')
-  updateTutorPanelWidth(event.clientX)
-}
-
-function moveTutorResize(event: PointerEvent) {
-  if (!tutorResizing.value) return
-  updateTutorPanelWidth(event.clientX)
-}
-
-function finishTutorResize(event?: PointerEvent) {
-  if (!tutorResizing.value) return
-  tutorResizing.value = false
-  document.documentElement.classList.remove('ws-tutor-resizing')
-  if (event) {
-    const target = event.currentTarget as HTMLElement
-    if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId)
-  }
-  setTutorPanelWidth(tutorPanelWidth.value, true)
-  if (tutorPanelFloating.value) persistTutorPanelPlacement()
-}
-
-function resetTutorPanelWidth() {
-  setTutorPanelWidth(TUTOR_PANEL_DEFAULT_WIDTH, true)
-  if (tutorPanelFloating.value) {
-    setTutorPanelPosition(tutorPanelPosition.value.x, tutorPanelPosition.value.y)
-    persistTutorPanelPlacement()
-  }
-}
-
-function updateTutorPanelHeight(clientY: number) {
-  if (!tutorPanelHeightDragOrigin || isMobileLayout.value) return
-  setTutorPanelHeight(tutorPanelHeightDragOrigin.height + clientY - tutorPanelHeightDragOrigin.pointerY)
-  setTutorPanelPosition(tutorPanelPosition.value.x, tutorPanelPosition.value.y)
-}
-
-function startTutorHeightResize(event: PointerEvent) {
+function startTutorPanelResize(
+  event: PointerEvent,
+  options: Pick<TutorPanelResizeOrigin, 'anchorRight' | 'anchorBottom' | 'resizeWidth' | 'resizeHeight'>,
+) {
   if (event.button !== 0 || isMobileLayout.value) return
   const target = event.currentTarget as HTMLElement
   const panel = target.closest('.ws-tutor-popover') as HTMLElement | null
@@ -1093,28 +1062,82 @@ function startTutorHeightResize(event: PointerEvent) {
     tutorPanelFloating.value = true
     setTutorPanelPosition(rect.left, rect.top)
   }
-  tutorHeightResizing.value = true
-  tutorPanelHeightDragOrigin = { pointerY: event.clientY, height: tutorPanelHeight.value }
+  tutorResizing.value = options.resizeWidth
+  tutorHeightResizing.value = options.resizeHeight
+  tutorPanelResizeOrigin = {
+    pointerX: event.clientX,
+    pointerY: event.clientY,
+    startX: tutorPanelPosition.value.x,
+    startY: tutorPanelPosition.value.y,
+    startWidth: tutorPanelWidth.value,
+    startHeight: tutorPanelHeight.value,
+    ...options,
+  }
   target.setPointerCapture(event.pointerId)
-  document.documentElement.classList.add('ws-tutor-height-resizing')
+  document.documentElement.classList.add('ws-tutor-resizing', 'ws-tutor-height-resizing')
 }
 
-function moveTutorHeightResize(event: PointerEvent) {
-  if (!tutorHeightResizing.value) return
-  updateTutorPanelHeight(event.clientY)
+function moveTutorPanelResize(event: PointerEvent) {
+  const origin = tutorPanelResizeOrigin
+  if (!origin || (!tutorResizing.value && !tutorHeightResizing.value)) return
+  const dx = event.clientX - origin.pointerX
+  const dy = event.clientY - origin.pointerY
+  if (origin.resizeWidth) {
+    const nextWidth = origin.anchorRight ? origin.startWidth - dx : origin.startWidth + dx
+    setTutorPanelWidth(nextWidth)
+  }
+  if (origin.resizeHeight) {
+    const nextHeight = origin.anchorBottom ? origin.startHeight - dy : origin.startHeight + dy
+    setTutorPanelHeight(nextHeight)
+  }
+  let nextX = tutorPanelPosition.value.x
+  let nextY = tutorPanelPosition.value.y
+  if (origin.resizeWidth && origin.anchorRight) nextX = origin.startX + dx
+  if (origin.resizeHeight && origin.anchorBottom) nextY = origin.startY + dy
+  setTutorPanelPosition(nextX, nextY)
 }
 
-function finishTutorHeightResize(event?: PointerEvent) {
-  if (!tutorHeightResizing.value) return
+function finishTutorPanelResize(event?: PointerEvent) {
+  if (!tutorResizing.value && !tutorHeightResizing.value) return
+  tutorResizing.value = false
   tutorHeightResizing.value = false
-  tutorPanelHeightDragOrigin = null
-  document.documentElement.classList.remove('ws-tutor-height-resizing')
+  tutorPanelResizeOrigin = null
+  document.documentElement.classList.remove('ws-tutor-resizing', 'ws-tutor-height-resizing')
   if (event) {
     const target = event.currentTarget as HTMLElement
     if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId)
   }
+  setTutorPanelWidth(tutorPanelWidth.value, true)
   setTutorPanelHeight(tutorPanelHeight.value, true)
   persistTutorPanelPlacement()
+}
+
+function startTutorLeftResize(event: PointerEvent) {
+  startTutorPanelResize(event, { anchorRight: true, anchorBottom: false, resizeWidth: true, resizeHeight: false })
+}
+
+function startTutorRightResize(event: PointerEvent) {
+  startTutorPanelResize(event, { anchorRight: false, anchorBottom: false, resizeWidth: true, resizeHeight: false })
+}
+
+function startTutorTopResize(event: PointerEvent) {
+  startTutorPanelResize(event, { anchorRight: false, anchorBottom: true, resizeWidth: false, resizeHeight: true })
+}
+
+function startTutorBottomResize(event: PointerEvent) {
+  startTutorPanelResize(event, { anchorRight: false, anchorBottom: false, resizeWidth: false, resizeHeight: true })
+}
+
+function startTutorCornerResize(event: PointerEvent) {
+  startTutorPanelResize(event, { anchorRight: true, anchorBottom: false, resizeWidth: true, resizeHeight: true })
+}
+
+function resetTutorPanelWidth() {
+  setTutorPanelWidth(TUTOR_PANEL_DEFAULT_WIDTH, true)
+  if (tutorPanelFloating.value) {
+    setTutorPanelPosition(tutorPanelPosition.value.x, tutorPanelPosition.value.y)
+    persistTutorPanelPlacement()
+  }
 }
 
 function resetTutorPanelHeight() {
@@ -1123,6 +1146,13 @@ function resetTutorPanelHeight() {
     setTutorPanelPosition(tutorPanelPosition.value.x, tutorPanelPosition.value.y)
     persistTutorPanelPlacement()
   }
+}
+
+function resetTutorPanelSize() {
+  setTutorPanelWidth(TUTOR_PANEL_DEFAULT_WIDTH, true)
+  setTutorPanelHeight(defaultTutorPanelHeight(), true)
+  tutorPanelFloating.value = false
+  persistTutorPanelPlacement()
 }
 
 function resizeTutorHeightByKeyboard(event: KeyboardEvent) {
@@ -1183,30 +1213,6 @@ function finishTutorPanelDrag(event?: PointerEvent) {
     if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId)
   }
   persistTutorPanelPlacement()
-}
-
-function dockTutorPanel() {
-  tutorPanelFloating.value = false
-  persistTutorPanelPlacement()
-}
-
-function moveTutorPanelByKeyboard(event: KeyboardEvent) {
-  const step = event.shiftKey ? 48 : 24
-  let deltaX = 0
-  let deltaY = 0
-  if (event.key === 'ArrowLeft') deltaX = -step
-  else if (event.key === 'ArrowRight') deltaX = step
-  else if (event.key === 'ArrowUp') deltaY = -step
-  else if (event.key === 'ArrowDown') deltaY = step
-  else return
-
-  if (!tutorPanelFloating.value) {
-    tutorPanelFloating.value = true
-    setTutorPanelPosition(dockedTutorPanelLeft(), tutorTopbarHeight())
-  }
-  setTutorPanelPosition(tutorPanelPosition.value.x + deltaX, tutorPanelPosition.value.y + deltaY)
-  persistTutorPanelPlacement()
-  event.preventDefault()
 }
 
 function startTutorFabDrag(event: PointerEvent) {
@@ -3423,32 +3429,23 @@ onBeforeUnmount(() => {
         @click.stop
       >
         <div
-          v-if="!isMobileLayout"
-          class="ws-tutor-drag-handle"
-          :class="{ active: tutorPanelDragging }"
-          role="button"
-          aria-label="移动 AI 导师窗口"
+          v-if="!isMobileLayout && tutorPanelFloating"
+          class="ws-tutor-top-resizer"
+          :class="{ active: tutorHeightResizing }"
+          role="separator"
+          aria-label="调整 AI 导师顶部高度"
+          aria-orientation="horizontal"
           tabindex="0"
-          title="拖动窗口；双击恢复右侧停靠"
-          @pointerdown="startTutorPanelDrag"
-          @pointermove="moveTutorPanel"
-          @pointerup="finishTutorPanelDrag"
-          @pointercancel="finishTutorPanelDrag"
-          @lostpointercapture="finishTutorPanelDrag"
-          @keydown="moveTutorPanelByKeyboard"
-          @dblclick="dockTutorPanel"
+          title="拖动顶部调整高度"
+          @pointerdown="startTutorTopResize"
+          @pointermove="moveTutorPanelResize"
+          @pointerup="finishTutorPanelResize"
+          @pointercancel="finishTutorPanelResize"
+          @lostpointercapture="finishTutorPanelResize"
+          @keydown="resizeTutorHeightByKeyboard"
         >
-          <GripVertical :size="17" aria-hidden="true" />
+          <span aria-hidden="true" />
         </div>
-        <button
-          type="button"
-          class="ws-tutor-close"
-          aria-label="关闭 AI 导师"
-          title="关闭 AI 导师"
-          @click="tutorOpen = false"
-        >
-          <X :size="18" aria-hidden="true" />
-        </button>
         <div
           v-if="!isMobileLayout"
           class="ws-tutor-resizer"
@@ -3461,13 +3458,31 @@ onBeforeUnmount(() => {
           :aria-valuenow="Math.round(tutorPanelWidth)"
           tabindex="0"
           title="拖动调整宽度；双击恢复默认宽度"
-          @pointerdown="startTutorResize"
-          @pointermove="moveTutorResize"
-          @pointerup="finishTutorResize"
-          @pointercancel="finishTutorResize"
-          @lostpointercapture="finishTutorResize"
+          @pointerdown="startTutorLeftResize"
+          @pointermove="moveTutorPanelResize"
+          @pointerup="finishTutorPanelResize"
+          @pointercancel="finishTutorPanelResize"
+          @lostpointercapture="finishTutorPanelResize"
           @keydown="resizeTutorByKeyboard"
           @dblclick="resetTutorPanelWidth"
+        >
+          <span aria-hidden="true" />
+        </div>
+        <div
+          v-if="!isMobileLayout && tutorPanelFloating"
+          class="ws-tutor-right-resizer"
+          :class="{ active: tutorResizing }"
+          role="separator"
+          aria-label="调整 AI 导师宽度"
+          aria-orientation="vertical"
+          tabindex="0"
+          title="拖动右侧调整宽度"
+          @pointerdown="startTutorRightResize"
+          @pointermove="moveTutorPanelResize"
+          @pointerup="finishTutorPanelResize"
+          @pointercancel="finishTutorPanelResize"
+          @lostpointercapture="finishTutorPanelResize"
+          @keydown="resizeTutorByKeyboard"
         >
           <span aria-hidden="true" />
         </div>
@@ -3483,13 +3498,29 @@ onBeforeUnmount(() => {
           :aria-valuenow="Math.round(tutorPanelHeight)"
           tabindex="0"
           title="上下拖动调整高度；双击恢复默认高度"
-          @pointerdown="startTutorHeightResize"
-          @pointermove="moveTutorHeightResize"
-          @pointerup="finishTutorHeightResize"
-          @pointercancel="finishTutorHeightResize"
-          @lostpointercapture="finishTutorHeightResize"
+          @pointerdown="startTutorBottomResize"
+          @pointermove="moveTutorPanelResize"
+          @pointerup="finishTutorPanelResize"
+          @pointercancel="finishTutorPanelResize"
+          @lostpointercapture="finishTutorPanelResize"
           @keydown="resizeTutorHeightByKeyboard"
           @dblclick="resetTutorPanelHeight"
+        >
+          <span aria-hidden="true" />
+        </div>
+        <div
+          v-if="!isMobileLayout"
+          class="ws-tutor-corner-resizer"
+          :class="{ active: tutorResizing || tutorHeightResizing }"
+          role="separator"
+          aria-label="同时调整 AI 导师宽度和高度"
+          tabindex="0"
+          title="拖动角落同时调整宽度和高度"
+          @pointerdown="startTutorCornerResize"
+          @pointermove="moveTutorPanelResize"
+          @pointerup="finishTutorPanelResize"
+          @pointercancel="finishTutorPanelResize"
+          @lostpointercapture="finishTutorPanelResize"
         >
           <span aria-hidden="true" />
         </div>
@@ -3505,6 +3536,7 @@ onBeforeUnmount(() => {
           @send="sendTutorMessage"
           @new-session="startSession"
           @check-connection="checkConnection"
+          @close="tutorOpen = false"
           @use-prompt="usePrompt"
           @open-evidence="navigateEvidenceRef"
           @remove-attachment="removeChatAttachment"
@@ -3512,7 +3544,20 @@ onBeforeUnmount(() => {
           @drag-start="startTutorPanelDrag"
           @drag-move="moveTutorPanel"
           @drag-end="finishTutorPanelDrag"
-        />
+        >
+          <template #reset>
+            <button
+              v-if="!isMobileLayout"
+              type="button"
+              class="ws-tutor-reset-size"
+              aria-label="重置 AI 导师大小"
+              title="恢复默认大小和位置"
+              @click="resetTutorPanelSize"
+            >
+              <RotateCcw :size="16" aria-hidden="true" />
+            </button>
+          </template>
+        </TutorPane>
       </aside>
       <button
         v-if="!tutorOpen"
@@ -3541,6 +3586,7 @@ onBeforeUnmount(() => {
       <button type="button" aria-label="关闭公告" @click="noticeDismissed = true">×</button>
     </div>
 
+    <Teleport to="body">
     <div
       v-if="showIdentity"
       class="ws-modal-overlay"
@@ -3629,7 +3675,9 @@ onBeforeUnmount(() => {
         </template>
       </div>
     </div>
+    </Teleport>
 
+    <Teleport to="body">
     <div
       v-if="showScaffold"
       class="ws-modal-overlay"
@@ -3699,7 +3747,9 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+    </Teleport>
 
+    <Teleport to="body">
     <div
       v-if="showLlmSettings"
       class="ws-modal-overlay"
@@ -3761,6 +3811,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+    </Teleport>
   </div>
 </template>
 
@@ -4650,7 +4701,7 @@ onBeforeUnmount(() => {
   position: fixed;
   right: var(--ws-space-5);
   bottom: var(--ws-space-5);
-  z-index: 80;
+  z-index: var(--ws-z-tutor);
   display: grid;
   justify-items: end;
   gap: var(--ws-space-2);
@@ -4715,11 +4766,11 @@ onBeforeUnmount(() => {
   top: var(--vp-nav-height);
   right: 0;
   bottom: 0;
-  z-index: 81;
+  z-index: calc(var(--ws-z-tutor) + 1);
   display: flex;
   width: var(--ws-tutor-panel-width, 520px);
-  max-width: calc(100vw - 24px);
-  min-width: 0;
+  max-width: var(--ws-tutor-panel-max-width, calc(100vw - 24px));
+  min-width: var(--ws-tutor-panel-min-width, 0);
   overflow: hidden;
   box-sizing: border-box;
   border: 1px solid var(--ws-line-strong, var(--ws-line));
@@ -4735,8 +4786,8 @@ onBeforeUnmount(() => {
   bottom: auto;
   left: var(--ws-tutor-panel-left);
   height: var(--ws-tutor-panel-height);
-  max-height: calc(100dvh - var(--ws-tutor-panel-top) - 8px);
-  min-height: 0;
+  max-height: min(var(--ws-tutor-panel-max-height, 720px), calc(100dvh - var(--ws-tutor-panel-top) - 8px));
+  min-height: var(--ws-tutor-panel-min-height, 0);
   border-right: 1px solid var(--ws-line-strong, var(--ws-line));
   border-radius: var(--ws-radius-md);
 }
@@ -4751,67 +4802,29 @@ onBeforeUnmount(() => {
 }
 
 .ws-tutor-popover :deep(.ws-tutor-head) {
-  padding-right: 44px;
-  padding-left: 44px;
+  padding-right: var(--ws-space-4);
+  padding-left: var(--ws-space-4);
 }
 
-.ws-tutor-drag-handle {
-  position: absolute;
-  top: 0;
-  left: 12px;
-  z-index: 3;
+.ws-tutor-reset-size {
   display: grid;
-  width: 32px;
-  height: 41px;
-  border-radius: var(--ws-radius-sm, 4px);
-  outline: 0;
-  place-items: center;
-  cursor: grab;
-  touch-action: none;
-}
-
-.ws-tutor-drag-handle svg {
-  color: var(--ws-ink-faint);
-}
-
-.ws-tutor-drag-handle:hover,
-.ws-tutor-drag-handle:focus-visible,
-.ws-tutor-drag-handle.active {
-  background: var(--ws-surface-hover, var(--ws-surface));
-}
-
-.ws-tutor-drag-handle:hover svg,
-.ws-tutor-drag-handle:focus-visible svg,
-.ws-tutor-drag-handle.active svg {
-  color: var(--ws-accent);
-}
-
-.ws-tutor-drag-handle.active {
-  cursor: grabbing;
-}
-
-.ws-tutor-close {
-  position: absolute;
-  top: 5px;
-  right: 8px;
-  z-index: 3;
-  display: grid;
+  flex: 0 0 auto;
   width: 32px;
   height: 32px;
   padding: 0;
   color: var(--ws-ink-muted);
   border: 1px solid transparent;
-  border-radius: var(--ws-radius-md);
+  border-radius: var(--ws-radius-sm);
   background: transparent;
   place-items: center;
   cursor: pointer;
 }
 
-.ws-tutor-close:hover,
-.ws-tutor-close:focus-visible {
-  color: var(--ws-ink);
+.ws-tutor-reset-size:hover,
+.ws-tutor-reset-size:focus-visible {
+  color: var(--ws-accent);
   border-color: var(--ws-line);
-  background: var(--ws-surface);
+  background: var(--ws-surface-hover, var(--ws-surface));
 }
 
 .ws-tutor-resizer {
@@ -4846,6 +4859,70 @@ onBeforeUnmount(() => {
   background: var(--ws-accent);
 }
 
+.ws-tutor-right-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 12px;
+  border: 0;
+  outline: 0;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.ws-tutor-right-resizer span {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 3px;
+  height: 64px;
+  border-radius: var(--ws-radius-full) 0 0 var(--ws-radius-full);
+  background: var(--ws-line-strong, var(--ws-line));
+  transform: translateY(-50%);
+  transition: width 0.15s ease, background 0.15s ease;
+}
+
+.ws-tutor-right-resizer:hover span,
+.ws-tutor-right-resizer:focus-visible span,
+.ws-tutor-right-resizer.active span {
+  width: 5px;
+  background: var(--ws-accent);
+}
+
+.ws-tutor-top-resizer {
+  position: absolute;
+  top: 0;
+  left: 52px;
+  right: 52px;
+  z-index: 2;
+  height: 12px;
+  border: 0;
+  outline: 0;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.ws-tutor-top-resizer span {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 64px;
+  height: 3px;
+  border-radius: 0 0 var(--ws-radius-full) var(--ws-radius-full);
+  background: var(--ws-line-strong, var(--ws-line));
+  transform: translateX(-50%);
+  transition: height 0.15s ease, background 0.15s ease;
+}
+
+.ws-tutor-top-resizer:hover span,
+.ws-tutor-top-resizer:focus-visible span,
+.ws-tutor-top-resizer.active span {
+  height: 5px;
+  background: var(--ws-accent);
+}
+
 .ws-tutor-height-resizer {
   position: absolute;
   right: 16px;
@@ -4877,6 +4954,39 @@ onBeforeUnmount(() => {
 .ws-tutor-height-resizer.active span {
   height: 5px;
   background: var(--ws-accent);
+}
+
+.ws-tutor-corner-resizer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 4;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  outline: 0;
+  cursor: nesw-resize;
+  touch-action: none;
+}
+
+.ws-tutor-corner-resizer span {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  width: 10px;
+  height: 10px;
+  border-bottom: 2px solid var(--ws-line-strong, var(--ws-line));
+  border-left: 2px solid var(--ws-line-strong, var(--ws-line));
+  border-radius: 0 0 0 4px;
+  transition: width 0.15s ease, height 0.15s ease, border-color 0.15s ease;
+}
+
+.ws-tutor-corner-resizer:hover span,
+.ws-tutor-corner-resizer:focus-visible span,
+.ws-tutor-corner-resizer.active span {
+  width: 12px;
+  height: 12px;
+  border-color: var(--ws-accent);
 }
 
 .ws-tutor-float-backdrop {
@@ -5187,7 +5297,7 @@ onBeforeUnmount(() => {
   position: fixed;
   top: calc(var(--vp-nav-height) + var(--ws-space-2));
   left: 50%;
-  z-index: 30;
+  z-index: var(--ws-z-notice);
   display: flex;
   align-items: center;
   gap: var(--ws-space-3);
@@ -5224,7 +5334,7 @@ onBeforeUnmount(() => {
 .ws-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: var(--ws-z-toast);
+  z-index: var(--ws-z-modal);
   display: grid;
   place-items: center;
   padding: var(--ws-space-4);

@@ -2167,7 +2167,7 @@ const modeLabel = computed(() =>
 .ws-report-lightbox {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: var(--ws-z-modal);
   display: grid;
   place-items: center;
   padding: 24px;

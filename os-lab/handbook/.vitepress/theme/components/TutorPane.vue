@@ -28,6 +28,7 @@ const emit = defineEmits<{
   (event: 'send', text: string): void
   (event: 'new-session'): void
   (event: 'check-connection'): void
+  (event: 'close'): void
   (event: 'use-prompt', prompt: TutorPrompt): void
   (event: 'open-evidence', ref: string): void
   (event: 'remove-attachment', id: string): void
@@ -120,6 +121,7 @@ defineExpose({ scrollToLatest, focusComposer })
       @pointercancel="emit('drag-end', $event)"
       @lostpointercapture="emit('drag-end', $event)"
     >
+      <slot name="reset" />
       <div class="ws-tutor-identity">
         <span class="ws-tutor-mark" aria-hidden="true"><Bot :size="18" /></span>
         <span class="ws-tutor-title">
@@ -146,6 +148,15 @@ defineExpose({ scrollToLatest, focusComposer })
           @click="emit('new-session')"
         >
           <MessageSquarePlus :size="16" aria-hidden="true" />
+        </button>
+        <button
+          class="ws-close"
+          type="button"
+          aria-label="关闭 AI 导师"
+          title="关闭 AI 导师"
+          @click="emit('close')"
+        >
+          <X :size="18" aria-hidden="true" />
         </button>
       </div>
     </header>
@@ -246,6 +257,7 @@ defineExpose({ scrollToLatest, focusComposer })
 
 /* -- 顶栏 ------------------------------------------------------------------ */
 .ws-tutor-head {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -264,6 +276,7 @@ defineExpose({ scrollToLatest, focusComposer })
 
 .ws-tutor-identity {
   display: flex;
+  flex: 1 1 auto;
   min-width: 0;
   align-items: center;
   gap: var(--ws-space-2);
@@ -326,7 +339,8 @@ defineExpose({ scrollToLatest, focusComposer })
 }
 
 .ws-connection,
-.ws-new-session {
+.ws-new-session,
+.ws-close {
   display: grid;
   width: 32px;
   height: 32px;
@@ -347,7 +361,9 @@ defineExpose({ scrollToLatest, focusComposer })
 .ws-connection:hover,
 .ws-connection:focus-visible,
 .ws-new-session:hover,
-.ws-new-session:focus-visible {
+.ws-new-session:focus-visible,
+.ws-close:hover,
+.ws-close:focus-visible {
   color: var(--ws-accent);
   border-color: var(--ws-line);
   background: var(--ws-accent-soft);
@@ -432,7 +448,9 @@ defineExpose({ scrollToLatest, focusComposer })
 .ws-composer-dock {
   position: relative;
   z-index: 1;
+  min-height: 96px;
   padding: var(--ws-space-2) var(--ws-space-5) var(--ws-space-4);
+  overflow-y: auto;
   border-top: 1px solid var(--ws-line);
   background: var(--ws-surface-raised);
   box-shadow: 0 -8px 20px rgba(16, 28, 32, 0.04);

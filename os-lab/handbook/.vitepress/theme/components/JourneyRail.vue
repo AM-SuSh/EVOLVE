@@ -76,13 +76,14 @@ function actionLabel(item: LabJourneyItem) {
       <strong>{{ completedCount }}/{{ tutorLabs.length }}</strong>
     </button>
 
-    <div v-if="open" class="ws-journey-backdrop" @click.self="open = false">
-      <section
-        class="ws-journey-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="ws-journey-title"
-      >
+    <Teleport to="body">
+      <div v-if="open" class="ws-journey-backdrop" @click.self="open = false">
+        <section
+          class="ws-journey-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ws-journey-title"
+        >
         <header class="ws-journey-header">
           <div>
             <span><Waypoints :size="16" aria-hidden="true" />你的系统构建路径</span>
@@ -171,8 +172,9 @@ function actionLabel(item: LabJourneyItem) {
             </button>
           </li>
         </ol>
-      </section>
-    </div>
+        </section>
+      </div>
+    </Teleport>
   </div>
 </template>
 
