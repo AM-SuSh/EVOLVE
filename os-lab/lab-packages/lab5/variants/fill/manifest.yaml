@@ -1,44 +1,46 @@
-# lab5 fill 变体（加强版）
+# lab5 fill 变体：fork 后管道引用计数
 
 id: lab5-fill
 lab: lab5
 variant: fill
-version: 1.1.0
+version: 2.0.0
 
 learning_goal: |
-  学生补全管道两端关闭与读写协议，理解 pipe + fork 协作。
+  学生补全 fork 复制 fd 表后对 PipeRead/PipeWrite 的 pipe_add_refs，
+  理解「打开表复制」与「管道引用计数」不是同一件事。
 
 target_concepts:
   - os.ipc.pipe
   - os.fs.fd
 
-student_file: user/src/bin/pipe_test.rs
-source_template: ../../../scaffold/exercises/lab5/fill/user/src/bin/pipe_test.rs
+student_file: kernel/src/fs/embedded.rs
+source_template: ../../../../scaffold/exercises/lab5/fill/kernel/src/fs/embedded.rs
+manual_anchor: labs/lab5-fs-and-sync.md
 
 what_is_blank:
-  - symbol: child_reader / parent_writer
+  - symbol: bump_inherited_pipe_refs
     hint_in_source: true
 
 success_criteria:
   recipe: lab5.verify.v1
-  assertions: [pipe-pass, all-processes-exited]
+  assertions: [file-content, fs-pass, pipe-pass, all-processes-exited]
 
 negative_tests:
   - id: leave-todo
-    description: 未实现（仍 todo!）则编译或运行失败
-    expect_fail: true
+    description: 未实现（仍 todo!）则无法完成 pipe_test
+    expect_fail_assertions: [pipe-pass]
 
 hint_ladder:
   - level: 0
-    when: 尚未描述协议/循环
-    say: 先用自己的话写出要补的步骤，再对照函数注释。
+    when: 尚未描述要补什么
+    say: 先说清 fork 复制了什么；管道 refs 若不增加，子进程 close 写端会发生什么？
   - level: 1
     when: 方向正确但仍卡住
-    say: 对照手册背景知识，用最小改动验证每一步假设。
+    say: 对照 clone_fd_table：表已复制后，应对哪些 FdType 调用 pipe_add_refs？参数怎么填？
   - level: 2
-    when: 能编译但断言失败
-    say: 对照预期输出与边界（关闭哪一端、nlink 推算、是否持锁）。
+    when: 能编译但 pipe_test 失败
+    say: 核对 PipeRead → (true, false)、PipeWrite → (false, true)；Regular 不要加。
 
 report_prompts:
-  - 你实现的关键步骤是什么？用测例输出证明正确。
-  - 若某一步顺序反了（例如先关错管道端、未持锁），会发生什么？
+  - fork 后为何必须 bump 管道引用计数？用 pipe_test 输出证明你的实现。
+  - 若只复制 fd 表、不加 refs，父进程仍握着写端时子进程 close 写端会怎样？

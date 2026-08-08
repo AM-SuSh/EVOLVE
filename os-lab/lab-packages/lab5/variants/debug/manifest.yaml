@@ -1,57 +1,57 @@
-# Lab5 debug 变体：管道关错端
+# Lab5 debug 变体：clone_fd_table 漏掉管道引用计数
 
-id: lab5-debug-pipe-ends
+id: lab5-debug-pipe-refs
 lab: lab5
 variant: debug
-version: 1.1.0
+version: 2.0.0
 
 learning_goal: |
-  学生按现象→假设排查：fork 后管道读/写端关闭顺序错误，导致子进程读不到数据。
-  与 fill 变体考察同一知识点（pipe + fork 两端协议），形式为排错而非补全。
+  学生按现象→假设排查：fork 复制了 fd 表，但未为管道端增加引用计数，
+  导致 pipe_test 失败。与 fill 考察同一知识点（fd 继承 + pipe refs）。
 
 target_concepts:
   - os.ipc.pipe
   - os.fs.fd
 
-student_file: user/src/bin/pipe_test.rs
-source_template: ../../../../scaffold/exercises/lab5/debug/user/src/bin/pipe_test.rs
+student_file: kernel/src/fs/embedded.rs
+source_template: ../../../../scaffold/exercises/lab5/debug/kernel/src/fs/embedded.rs
 manual_anchor: labs/lab5-fs-and-sync.md
 
 planted_bug:
-  location: fork 后子进程的 close
-  wrong: 子进程关闭了读端 fds[0]，却仍试图从 fds[0] 读取
-  correct: 子进程应关闭写端 fds[1]，从读端 fds[0] 读取
+  location: fs::clone_fd_table 中复制表之后的循环
+  wrong: 遍历了 PipeRead/PipeWrite，但没有调用 sync::pipe_add_refs
+  correct: PipeRead 调用 pipe_add_refs(id, true, false)；PipeWrite 调用 pipe_add_refs(id, false, true)
   symptom: |
-    看不到 pipe says hi / pipe_test pass，或子进程 read 持续失败；
-    父进程侧 write 可能仍成功，容易误判「管道坏了」或「调度问题」。
+    fs_test 仍可能通过；看不到 pipe says hi / pipe_test pass，
+    或管道在子进程 close 后异常结束。
 
 success_criteria:
   recipe: lab5.verify.v1
   assertions: [file-content, fs-pass, pipe-pass, all-processes-exited]
 
 negative_tests:
-  - id: wrong-end-closed
+  - id: missing-pipe-refs
     description: 未修复时 pipe_test pass 缺失
     expect_fail_assertions: [pipe-pass]
 
 common_mistakes:
-  - 去改 fs_test / 文件名，忽略管道端
-  - 只改父进程，不核对子进程该关哪一端
+  - 去改 user/src/bin/pipe_test.rs 的关端顺序，忽略内核 clone_fd_table
+  - 给 Regular 也加 refs，或把 read/write 参数写反
 
 hint_ladder:
   - level: 0
     when: 尚未复现
-    say: 先记录有没有 pipe_test pass，以及父进程是否打印 pipe write failed。
+    say: 先记录有没有 fs_test pass 与 pipe_test pass，二者是否同时失败。
   - level: 1
-    when: 已确认管道测例失败
-    say: fork 之后，读端进程通常应关掉哪一端？写端进程呢？
+    when: 已确认只有管道测例失败
+    say: fork 路径上谁复制了打开表？复制之后还应对管道做什么？
   - level: 2
-    when: 假设停在「write 失败」
-    say: 若父进程 write 成功但子进程仍无输出，更应检查子进程 close/read 用的 fd。
+    when: 已打开 clone_fd_table
+    say: 对照注释中的 PLANTED BUG；补上 pipe_add_refs 后必须看到完整四条管道相关输出。
   - level: 3
-    when: 已读到子进程 close
-    say: 对照注释中的 PLANTED BUG；修复后必须看到 pipe says hi 与 pipe_test pass。
+    when: 仍失败
+    say: 核对 pipe_add_refs 的两个 bool：读端加 read_refs，写端加 write_refs。
 
 report_prompts:
   - 你的第一个假设是什么？哪条输出否定了它？
-  - fill（补全协议）与 debug（关错端）考察的是同一点的哪两个侧面？
+  - fill（补全 bump）与 debug（漏掉 refs）考察的是同一点的哪两个侧面？

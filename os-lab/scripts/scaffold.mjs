@@ -167,8 +167,14 @@ const LEGACY_EXERCISES = {
   lab5: {
     default: 'debug',
     variants: {
-      fill: { label: '补全：管道两端关闭与读写协议', files: ['user/src/bin/pipe_test.rs'] },
-      debug: { label: '排错：fork 后管道关错端', files: ['user/src/bin/pipe_test.rs'] },
+      fill: {
+        label: '补全：fork 后为继承的管道端增加引用计数',
+        files: ['kernel/src/fs/embedded.rs'],
+      },
+      debug: {
+        label: '排错：clone_fd_table 漏掉管道引用计数',
+        files: ['kernel/src/fs/embedded.rs'],
+      },
     },
   },
   lab6: {

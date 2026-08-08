@@ -694,10 +694,10 @@ export const tutorLabs: TutorLab[] = [
       { label: '清理', command: 'cargo clean -p kernel' },
     ],
     resources: {
-      orient: { paths: ['labs/lab5-fs-and-sync.md', 'kernel/src/fs.rs'], docs: [{ title: 'Lab5 实验指导', description: '建立文件、管道和同步机制的整体认识', href: '/labs/lab5-fs-and-sync' }, { title: '实验知识地图', description: '查看完整实验能力链', href: '/labs/overview' }] },
-      read: { paths: ['kernel/src/fs.rs', 'kernel/src/sync.rs', 'kernel/src/cell.rs'], docs: [{ title: 'Lab5 机制说明', description: '沿文件操作、共享状态和同步路径阅读', href: '/labs/lab5-fs-and-sync' }, { title: '系统架构', description: '理解文件系统与进程模块的接口', href: '/project/architecture' }] },
+      orient: { paths: ['labs/lab5-fs-and-sync.md', 'kernel/src/fs/mod.rs', 'kernel/src/fs/embedded.rs'], docs: [{ title: 'Lab5 实验指导', description: '建立文件、管道和同步机制的整体认识', href: '/labs/lab5-fs-and-sync' }, { title: '实验知识地图', description: '查看完整实验能力链', href: '/labs/overview' }] },
+      read: { paths: ['kernel/src/fs/mod.rs', 'kernel/src/fs/embedded.rs', 'kernel/src/sync.rs', 'kernel/src/cell.rs'], docs: [{ title: 'Lab5 机制说明', description: '沿文件操作、共享状态和同步路径阅读', href: '/labs/lab5-fs-and-sync' }, { title: '系统架构', description: '理解文件系统与进程模块的接口', href: '/project/architecture' }] },
       run: { paths: ['user/src/bin/fs_test.rs', 'user/src/bin/pipe_test.rs'], docs: [{ title: '快速验证', description: '运行文件与管道测试并记录并发行为', href: '/guide/ai-tutor' }, { title: 'Lab5 阅读理解（任务二）', description: '用实验文档【任务二】自测机制理解', href: '/labs/lab5-fs-and-sync' }] },
-      debug: { paths: ['kernel/src/fs.rs', 'kernel/src/sync.rs', 'kernel/src/process.rs'], docs: [{ title: 'Lab5 常见问题', description: '从共享状态、锁和资源生命周期定位异常', href: '/labs/lab5-fs-and-sync' }, { title: '验证方法', description: '用重复运行和最小并发场景检验假设', href: '/guide/ai-tutor' }] },
+      debug: { paths: ['kernel/src/fs/embedded.rs', 'kernel/src/fs/mod.rs', 'kernel/src/sync.rs', 'kernel/src/process.rs'], docs: [{ title: 'Lab5 常见问题', description: '从 fd 继承、管道 refs 和锁定位异常', href: '/labs/lab5-fs-and-sync' }, { title: '验证方法', description: '用重复运行和最小并发场景检验假设', href: '/guide/ai-tutor' }] },
       reflect: { paths: ['project/ai-collaboration.md', 'answers/lab5-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理并发问题的证据链', href: '/project/ai-collaboration' }, { title: 'Lab5 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab5-answers' }] },
     },
   },

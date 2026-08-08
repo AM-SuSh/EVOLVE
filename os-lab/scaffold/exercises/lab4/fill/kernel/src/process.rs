@@ -1,4 +1,4 @@
-//! 【Lab4 任务：补全】实现 `sys_wait4` 的阻塞等待与僵尸回收。
+//! 【Lab4 任务：fill】实现 `sys_wait4` 的阻塞等待与僵尸回收。
 //!
 //! 现象：当前 `sys_wait4` 是 `todo!()`，父进程调用 `waitpid` 时无法回收子进程，
 //! 运行后不会出现 `fork_test pass`。
@@ -674,7 +674,7 @@ fn reap_zombie_child(parent_slot: usize, want_pid: isize) -> Option<(usize, i32)
     })
 }
 
-/// 【Lab4 任务：补全】阻塞等待子进程并回收僵尸，见文件头要求。
+/// 【Lab4 任务：fill】阻塞等待子进程并回收僵尸，见文件头要求。
 ///
 /// 预期行为：
 /// 1. 循环先尝试 `reap_zombie_child(current_slot(), want_pid)`；

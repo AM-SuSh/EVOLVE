@@ -1,5 +1,34 @@
 # os-lab 项目进度总览
 
+## 2026-08-08 - Task: 重写 Lab5 手册「三、实验任务」对齐内核 fill/debug
+
+### What was done
+- 按当前任务重写 `lab5-fs-and-sync.md` 第三节：任务一明确 fill/debug 在 `embedded.rs` 补/修管道 refs；任务二第 6–7 题改为考 `clone_fd_table` 与用户关端分层；任务三改为关错端对照、去锁、yield、可选加内嵌文件。
+- 同步更新 `lab5-answers.md` 第 6–7 题与任务三现象参考；实验目标一句点明内核动手点。
+
+### Testing
+- 人工通读第三节与答案编号一致；网站需 `npm run sync` 或刷新 VitePress 后可见。
+
+### Notes
+- 改动：`os-lab/labs/lab5-fs-and-sync.md`；`os-lab/labs/answers/lab5-answers.md`；`progress.md`
+- 回滚：还原上述文件
+
+---
+
+## 2026-08-08 - Task: Lab5 网站阶段推荐改用 fs/ 目录
+
+### What was done
+- 将手册站点 Lab5 各阶段推荐路径从旧的 `kernel/src/fs.rs` 改为 `kernel/src/fs/mod.rs` 与 `kernel/src/fs/embedded.rs`，与当前内核布局及 fill/debug 动手点一致。
+
+### Testing
+- 核对 `tutor-model.ts` 中 lab5 的 orient/read/debug 路径已无 `fs.rs`；需刷新 VitePress 页面后在阶段推荐中可见。
+
+### Notes
+- 改动：`os-lab/handbook/.vitepress/theme/tutor-model.ts`；`progress.md`
+- 回滚：还原上述文件中 lab5 `resources.paths` 为 `kernel/src/fs.rs`
+
+---
+
 ## 2026-08-08 - Task: 移除收获与反思的默认填写提示
 
 ### What was done
@@ -14,6 +43,19 @@
 - `npm run test:smoke`（`os-lab/handbook`）：通过。
 - `npm run build`（`os-lab/handbook`）：通过。
 - `teacher.json` JSON 解析通过；`git diff --check` 通过。
+## 2026-08-08 - Task: Lab5 fill/debug 改到内核 embedded.rs
+
+### What was done
+- 将 Lab5 fill/debug 从用户态 `pipe_test.rs` 改为内核 `kernel/src/fs/embedded.rs`：fill 补全 `bump_inherited_pipe_refs`；debug 埋点为 `clone_fd_table` 漏掉 `pipe_add_refs`。
+- 同步 scaffold、published.json、lab.yaml、manifest、concepts、tutor context、手册 §2.6/任务一与 factory 测试路径。
+
+### Testing
+- 人工核对 fill 为 `todo!`、debug 未调用 `pipe_add_refs`；catalog 指向新 sources。未在本机重跑完整 QEMU（需学生工作区领取后验证）。
+
+### Notes
+- 改动：scaffold/exercises/lab5/{fill,debug}/kernel/src/fs/embedded.rs；删除旧 user 题面目录；lab-packages/lab5/{lab.yaml,checkpoints.yaml,concepts,variants/*}；scripts/scaffold.mjs；published.json；labs/lab5-fs-and-sync.md；labs/answers/lab5-answers.md；tutor/prompts/lab5/{context,stage-debug}.md；handbook/lab-factory.test.mjs；progress.md
+- 回滚：还原上述文件并恢复旧 user 题面路径
+- 已领取旧 Lab5 工作区的学生需重新下发/重置才能拿到新题
 
 ---
 
@@ -101,6 +143,46 @@
 
 ### Notes
 - 对应提交：`2c4d794`（`TRACE的一点优化`）。
+## 2026-08-08 - Task: 加详 Lab5 手册背景知识（面向学生）
+
+### What was done
+- 加详 lab5-fs-and-sync.md 第二节：补充新手问题、fd 表示意表、FdType 用错后果、fork 前后打开表对照、关端正误表、单核为何也要锁的说明，以及读完自测 6 问，降低概念门槛。
+
+### Testing
+- 人工通读第二节与 fill/debug 题面一致；未改实验断言与任务结构。
+
+### Notes
+- 改动：os-lab/labs/lab5-fs-and-sync.md；progress.md（本条）
+- 回滚：还原该手册第二节相关扩写
+
+---
+
+## 2026-08-08 - Task: 按 Lab2/Lab3 格式重写 Lab5 手册
+
+### What was done
+- 对照 lab2/lab3 手册结构重写 lab5-fs-and-sync.md：补知识路径、阅读顺序表、代码锚点（fd / 内嵌文件 / 管道 / 自旋锁）、fill/debug 关端考点与时间线；任务一与 `pipe_test.rs` 变体对齐，阅读理解与验证断言表收口。
+
+### Testing
+- 人工对照 lab2/lab3 章节骨架与 lab5 fill/debug 题面；手册不给出完整解法。
+
+### Notes
+- 改动：os-lab/labs/lab5-fs-and-sync.md；progress.md（本条）
+- 回滚：还原 lab5-fs-and-sync.md 本轮内容
+
+---
+
+## 2026-08-08 - Task: Lab5 fill/debug 注释对齐 Lab2/Lab3 风格
+
+### What was done
+- 按 Lab2/Lab3 题面风格改写 Lab5 fill/debug 的 `pipe_test.rs`：文件头用 `【Lab5 任务：fill/debug】`；fill 两函数用「思路提示」分条引导；debug 写清现象与排查步骤，埋点旁用中文对照引导。
+- 手册任务一变体识别说明改为对照 `pipe_test.rs` 的 fill/debug 标记。
+
+### Testing
+- 人工对照 Lab2/Lab3 文件头与函数提示结构；fill 仍为 `todo!`，debug 埋点（子进程误关读端）未改逻辑。
+
+### Notes
+- 改动：scaffold/exercises/lab5/fill|debug/user/src/bin/pipe_test.rs；labs/lab5-fs-and-sync.md；progress.md（本条）
+- 回滚：还原上述文件
 
 ---
 
