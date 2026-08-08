@@ -50,7 +50,7 @@ test('per-lab templates fall back to the teacher default', () => {
   assert.equal(getReportTemplate(config, 'lab3').sections[0].title, 'Lab3 专用格式')
 })
 
-test('teachers can customize reflection wording without changing its fixed field id', () => {
+test('reflection keeps its fixed id and never restores a configured prompt', () => {
   const template = normalizeReportTemplate({
     sections: [{ id: 'observe', title: '观察记录', prompt: '记录现象。', rows: 4 }],
     reflection: { id: 'another-id', title: '本周复盘', prompt: '写清判断和证据。', rows: 7 },
@@ -59,7 +59,7 @@ test('teachers can customize reflection wording without changing its fixed field
   assert.deepEqual(template.reflection, {
     id: FIXED_REFLECTION.id,
     title: '本周复盘',
-    prompt: '写清判断和证据。',
+    prompt: '',
     rows: 7,
   })
 })

@@ -135,6 +135,18 @@ async function runLab(headers, sessionId) {
 
 try {
   await waitForServer()
+  const reportDraftPreflight = await fetch(`${endpoint}/reports/draft`, {
+    method: 'OPTIONS',
+    headers: {
+      Origin: 'http://localhost:5173',
+      'Access-Control-Request-Method': 'PUT',
+      'Access-Control-Request-Headers': 'authorization,content-type',
+    },
+  })
+  assert.equal(reportDraftPreflight.status, 204)
+  assert.equal(reportDraftPreflight.headers.get('access-control-allow-origin'), 'http://localhost:5173')
+  assert.match(reportDraftPreflight.headers.get('access-control-allow-methods') || '', /(?:^|,\s*)PUT(?:\s*,|$)/)
+
   const earlyTeacher = await fetch(`${endpoint}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -833,6 +845,56 @@ try {
   assert.equal((await loadedDraft.json()).draft.markdownBody, 'server draft')
   assert.equal(readFileSync(path.join(dataDir, '2', 'reports', 'lab2', 'draft.json'), 'utf8').includes('server draft'), true)
   assert.equal(readFileSync(path.join(dataDir, '2', 'reports', 'lab2', 'submission.md'), 'utf8').includes('Lab2'), true)
+
+  const attachmentUpload = await fetch(`${endpoint}/reports/draft/attachments`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...studentHeaders },
+    body: JSON.stringify({
+      labId: 'lab2',
+      attachment: {
+        id: 'att-smoke-image',
+        name: 'smoke.png',
+        mime: 'image/png',
+        size: 5,
+        addedAt: new Date().toISOString(),
+        dataBase64: 'aGVsbG8=',
+      },
+    }),
+  })
+  assert.equal(attachmentUpload.status, 200)
+  const uploadedAttachment = (await attachmentUpload.json()).attachment
+  const attachmentDraft = await fetch(`${endpoint}/reports/draft`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...studentHeaders },
+    body: JSON.stringify({
+      labId: 'lab2',
+      draft: {
+        mode: 'markdown',
+        sections: {},
+        markdownBody: `![smoke](attachment:${uploadedAttachment.id})`,
+        attachments: [uploadedAttachment],
+      },
+    }),
+  })
+  assert.equal(attachmentDraft.status, 200)
+  const staleAttachmentDraft = await fetch(`${endpoint}/reports/draft`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...studentHeaders },
+    body: JSON.stringify({
+      labId: 'lab2',
+      draft: { mode: 'markdown', sections: {}, markdownBody: '图片引用已删除', attachments: [] },
+    }),
+  })
+  assert.equal(staleAttachmentDraft.status, 200)
+  const fallbackAttachmentDelete = await fetch(
+    `${endpoint}/reports/draft/attachments?labId=lab2&id=${encodeURIComponent(uploadedAttachment.id)}&storedName=${encodeURIComponent(uploadedAttachment.storedName)}`,
+    { method: 'DELETE', headers: studentHeaders },
+  )
+  assert.equal(fallbackAttachmentDelete.status, 200)
+  assert.equal(
+    existsSync(path.join(dataDir, '2', 'reports', 'lab2', 'draft-attachments', uploadedAttachment.storedName)),
+    false,
+  )
   assert.equal(readFileSync(path.join(dataDir, '2', 'conversations', 'smoke-learning-session.json'), 'utf8').includes('cross-device restore'), true)
 
   const score = await fetch(`${endpoint}/report`, {

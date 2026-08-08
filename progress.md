@@ -1,5 +1,22 @@
 # os-lab 项目进度总览
 
+## 2026-08-08 - Task: 移除收获与反思的默认填写提示
+
+### What was done
+- 删除学生端「收获与反思」下方的「填写提示」文案和输入框占位提示，仅保留章节标题与填写区域。
+- 固定 `reflection` 字段的提示为空；服务端和前端规范化逻辑忽略旧模板中的历史提示，已有学生草稿刷新后也不会重新显示旧句子。
+- 教师端报告格式编辑器移除反思节的填写提示编辑框，仍保留「收获与反思」标题和输入行数设置；其他报告章节的教师提示不变。
+- 更新本地 `os-lab/scaffold/teacher.json` 默认报告模板，反思节只保留 `reflection` ID、标题和行数。该文件按设计被 `.gitignore` 忽略，不提交教师账号配置。
+
+### Testing
+- `node --test os-lab/learning/report-template.test.mjs`：4/4 通过。
+- `npm test`（`os-lab/handbook`）：69/69 通过。
+- `npm run test:smoke`（`os-lab/handbook`）：通过。
+- `npm run build`（`os-lab/handbook`）：通过。
+- `teacher.json` JSON 解析通过；`git diff --check` 通过。
+
+---
+
 ## 2026-08-08 - Task: 统一反思编辑区并按解锁初始化实验报告
 
 ### What was done
@@ -4810,3 +4827,36 @@ ariants/fill/manifest.yaml、published.json 与 scripts/scaffold.mjs LEGACY 表�
 
 - 新数据不再写入全局 `learning/sessions/` 或旧报告附件目录；这些路径仅作为已有数据的兼容来源。
 - 清理学生数据时应根据 SQLite 中的 `users.id` 删除对应 `learning/student-data/<userId>/`，不要仅按用户名目录猜测归属。
+
+## 2026-08-08 - Task: improve report reflection layout and image attachment cleanup
+
+### What was done
+
+- 调整学生端实验报告的“收获与反思”区域为标题行加文本框两行布局，标题字号略微增大，文本框使用稳定的宽度、边框盒模型和内外边距，避免提示删除后留下空网格导致位置错开。
+- 为报告编辑增加图片引用基线：覆盖 Markdown 正文和所有报告分段，只有曾经被引用且当前完全没有引用的图片才会触发清理，仍被其他位置引用或仅上传未插入的图片不会被误删。
+- 复用现有 `/reports/draft/attachments` DELETE 接口，自动删除成功后同步清理缩略图 URL、附件元数据和报告草稿；批量清理完成后只保存一次草稿，保留手动删除附件的原有行为。
+- 修复草稿元数据短暂缺失时附件 DELETE 返回 404 的问题：前端同时提交经服务端路径校验的 `storedName`，服务端将删除改为幂等操作，不再让失效元数据阻塞“报告文件”列表清理。
+- 保存草稿时增加一次短延迟重试：网络短暂断开或服务端 5xx 时自动恢复，401/403/400 等业务错误则显示明确原因，避免学生只看到笼统的“报告保存失败”。
+- 保存地址增加本机回退：当前配置地址连接失败时依次尝试 `localhost` 和当前页面主机，兼容不同本地开发端口与主机名解析方式。
+
+### Testing
+
+- `npm test`：通过，69 项测试全绿。
+- `npm run test:smoke`：通过；新增“草稿附件元数据已缺失但文件仍存在”的删除回归场景，运行/Trace、账号隔离、报告草稿、会话恢复和 Lab Factory 链路均正常。
+- `npm run build`：通过；VitePress 客户端/服务端 bundle、页面渲染和链接检查通过。
+- 真实学生会话保存探测：`GET /reports/draft` 与原样 `PUT /reports/draft` 均返回 200。
+- `git diff --check`：通过。
+
+## 2026-08-08 - Task: fix browser report save CORS failure
+
+### What was done
+
+- 修复导师服务 CORS 配置遗漏 `PUT` 的问题；浏览器现在可以通过预检并保存 `PUT /reports/draft` 请求。
+- 新增报告草稿保存的 CORS 预检冒烟测试，校验 `localhost:5173` 来源、204 响应及 `PUT` 允许方法。
+
+### Testing
+
+- `npm test`：通过，69 项测试全绿。
+- `npm run test:smoke`：通过；报告草稿的 `PUT` CORS 预检断言通过，原有导师服务链路正常。
+- `npm run build`：通过；VitePress 客户端/服务端 bundle 和页面渲染通过。
+- `git diff --check`：通过。
