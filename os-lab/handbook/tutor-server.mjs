@@ -3021,6 +3021,58 @@ const server = http.createServer(async (request, response) => {
           }
         }
 
+        // 随机下发：按范围把每个学生分配为一种具体变体，写入学生级覆盖。
+        // 这样「个别调整」里能直接看到每位学生实际分到的任务。
+        if (body.randomAssignment && typeof body.randomAssignment === 'object') {
+          const labId = String(body.randomAssignment.labId || '')
+          const exercise = getExerciseCatalog()[labId]
+          const variantNames = Object.keys(exercise?.variants || {})
+          if (!exercise || variantNames.length < 2) {
+            json(response, 400, { error: `随机下发需要至少两种任务变体（${labId}）` }, origin)
+            return
+          }
+          if (scopeType !== 'global' && !scopeId) {
+            json(response, 400, { error: '缺少班级名/学生名' }, origin)
+            return
+          }
+          if (scopeType !== 'global' && !CLASS_NAME_RE.test(scopeId)) {
+            json(response, 400, { error: '班级名需为 1-32 位字母、数字、中文、_ 或 -' }, origin)
+            return
+          }
+          const known = new Map()
+          for (const user of listUsers()) {
+            if (user.role === 'student') known.set(user.username, user.className || '')
+          }
+          for (const workspace of await listStudents()) {
+            if (!known.has(workspace.user)) known.set(workspace.user, '')
+          }
+          let targets = [...known.keys()]
+          if (scopeType === 'class') targets = targets.filter((user) => known.get(user) === scopeId)
+          if (scopeType === 'student') targets = targets.filter((user) => user === scopeId)
+          if (!targets.length) {
+            json(response, 400, { error: '该范围还没有学生，暂不能随机下发' }, origin)
+            return
+          }
+          const config = await readTeacherConfig()
+          const students = { ...(config.students || {}) }
+          for (const user of targets) {
+            const entry = { ...(students[user] || {}), assignments: { ...(students[user]?.assignments || {}) } }
+            entry.assignments[labId] = variantNames[Math.floor(Math.random() * variantNames.length)]
+            students[user] = entry
+          }
+          const next = await writeTeacherConfig({ students })
+          json(
+            response,
+            200,
+            {
+              ok: true,
+              config: { ...next, llm: { ...next.llm, apiKey: next.llm?.apiKey ? '（已设置）' : '' } },
+            },
+            origin,
+          )
+          return
+        }
+
         if (scopeType === 'global') {
           const patch = {}
           let publishedReportTemplate = null

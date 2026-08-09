@@ -340,6 +340,20 @@ try {
     })
     assert.equal(rejectedAssignment.status, 400)
   }
+  const randomClassAssign = await postJson('/teacher/config', teacherHeaders, {
+    scope: { type: 'class', id: '计科2301' },
+    randomAssignment: { labId: 'lab2' },
+  })
+  assert.equal(randomClassAssign.status, 200)
+  const randomOverview = await fetch(`${endpoint}/teacher/overview`, {
+    headers: teacherHeaders,
+  }).then((response) => response.json())
+  const randomClassStudents = randomOverview.students.filter((s) => s.className === '计科2301')
+  assert.ok(randomClassStudents.length >= 2)
+  for (const randomStudent of randomClassStudents) {
+    const assigned = randomOverview.config.students[randomStudent.user]?.assignments?.lab2
+    assert.ok(assigned === 'fill' || assigned === 'debug')
+  }
   const factoryTest = await postJson('/teacher/lab-factory/test', teacherHeaders, {
     labId: 'lab3',
     variant: 'debug',

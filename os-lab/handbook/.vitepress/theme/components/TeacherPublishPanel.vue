@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import {
   ArrowDown,
   ArrowUp,
+  Download,
   FileText,
   Megaphone,
   Plus,
@@ -15,6 +16,7 @@ import {
   Users,
   X,
 } from 'lucide-vue-next'
+import { buildXlsxBlob } from '../../../export-xlsx.mjs'
 import { authHeaders, type TutorLab } from '../tutor-model'
 import {
   DEFAULT_REPORT_TEMPLATE,
@@ -122,6 +124,11 @@ const variants = computed(() =>
     label: v.name === defaultVariant.value ? `${v.label}（默认）` : v.label,
   })),
 )
+const RANDOM_VARIANT = 'random'
+const taskOptions = computed(() => [
+  { name: RANDOM_VARIANT, label: '随机分配（每名学生随机一种）' },
+  ...variants.value,
+])
 const targetCount = computed(() => classList.value.length + 1)
 const openTargetCount = computed(() => {
   const entries: Array<ScopeConfig | undefined> = [
@@ -152,6 +159,33 @@ function assignedVariant(entry?: ScopeConfig): [string, boolean] {
   const global = overview.value?.config.assignments?.[props.lab.id]
   if (global) return [global, false]
   return [overview.value?.exercises?.[props.lab.id]?.default || '默认任务', false]
+}
+
+/** 学生实际生效任务：学生单独设置 > 所在班级 > 全局默认。 */
+function assignedStudentVariant(user: string): [string, boolean] {
+  const own = studentEntry(user)?.assignments?.[props.lab.id]
+  if (own) return [own, true]
+  const student = overview.value?.students.find((s) => s.user === user)
+  const className = String(student?.className || '').trim()
+  const assigned = className ? classEntry(className)?.assignments?.[props.lab.id] : undefined
+  if (assigned) return [assigned, false]
+  const global = overview.value?.config.assignments?.[props.lab.id]
+  if (global) return [global, false]
+  return [overview.value?.exercises?.[props.lab.id]?.default || '默认任务', false]
+}
+
+/** 学生实际生效开放进度：学生单独设置 > 所在班级 > 全局默认。 */
+function studentOpenLab(user: string): string {
+  const own = studentEntry(user)?.openLab
+  if (own) return own
+  const student = overview.value?.students.find((s) => s.user === user)
+  const className = String(student?.className || '').trim()
+  const assigned = className ? classEntry(className)?.openLab : undefined
+  return assigned || overview.value?.config.openLab || ''
+}
+
+function isStudentOpen(user: string) {
+  return labIndex(studentOpenLab(user)) >= labIndex(props.lab.id)
 }
 
 function classEntry(name: string) {
@@ -275,10 +309,24 @@ function scopeName(key: string) {
 async function assignTo(key: string) {
   const variant = variantDrafts.value[key]
   if (!variant) return
+  if (variant === RANDOM_VARIANT) {
+    await randomAssignTo(key)
+    return
+  }
   await publish(
     scopeOf(key),
     { assignment: { labId: props.lab.id, variant } },
     `${scopeName(key)}：${props.lab.id} 任务已设为 ${variant}。`,
+  )
+}
+
+/** 随机下发：按范围把每位学生分配为一种具体任务变体。 */
+async function randomAssignTo(key: string) {
+  if (busy.value || !variants.value.length) return
+  await publish(
+    scopeOf(key),
+    { randomAssignment: { labId: props.lab.id } },
+    `${scopeName(key)}：已随机下发，学生任务可在「个别调整」查看。`,
   )
 }
 
@@ -292,6 +340,52 @@ async function openAndDistributeVariant() {
   if (!hint || busy.value) return
   await openTo('')
   if (noteOk.value && variantDrafts.value['']) await assignTo('')
+}
+
+/** 导出当前班级每位学生及其任务分配（.xlsx）。 */
+function exportTaskFor(user: string): string {
+  const own = studentEntry(user)?.assignments?.[props.lab.id]
+  if (own) return own
+  const draft = variantDrafts.value[selectedClass.value]
+  if (draft && draft !== RANDOM_VARIANT) return draft
+  return assignedStudentVariant(user)[0]
+}
+
+async function exportClassExcel() {
+  if (!selectedClass.value || !studentList.value.length) return
+  const draft = variantDrafts.value[selectedClass.value]
+  if (draft === RANDOM_VARIANT) {
+    const hasOwnAssignment = studentList.value.some(
+      (user) => Boolean(studentEntry(user)?.assignments?.[props.lab.id]),
+    )
+    if (!hasOwnAssignment) {
+      await randomAssignTo(selectedClass.value)
+      const stillMissing = studentList.value.some(
+        (user) => !studentEntry(user)?.assignments?.[props.lab.id],
+      )
+      if (stillMissing) {
+        note.value = '随机下发未写入学生配置：导师服务可能仍是旧版本，请重启 npm run tutor 后重试。'
+        noteOk.value = false
+        return
+      }
+    }
+  }
+  const rows: Array<Array<string>> = [
+    ['学生', '任务类型', '任务说明'],
+    ...studentList.value.map((user) => {
+      const variant = exportTaskFor(user)
+      return [user, variant, variantLabel(variant)]
+    }),
+  ]
+  const blob = buildXlsxBlob(rows)
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `${selectedClass.value}-${props.lab.id}-任务分配.xlsx`
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
 }
 
 async function publishNotice() {
@@ -444,7 +538,7 @@ onMounted(load)
             <template v-if="variants.length">
               <select v-model="variantDrafts['']" aria-label="快速下发任务类型">
                 <option value="" disabled>选择任务类型</option>
-                <option v-for="v in variants" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
+                <option v-for="v in taskOptions" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
               </select>
               <button
                 type="button"
@@ -489,6 +583,17 @@ onMounted(load)
             </button>
           </div>
         </div>
+        <div class="ws-pub-class-actions">
+          <button
+            type="button"
+            class="ghost"
+            :disabled="busy || !selectedClass || !studentList.length"
+            title="导出当前班级学生名单与任务分配"
+            @click="exportClassExcel"
+          >
+            <Download :size="14" aria-hidden="true" />导出班级名单
+          </button>
+        </div>
 
         <div v-if="selectedClass" class="ws-pub-target">
           <div class="ws-pub-target-info">
@@ -502,7 +607,7 @@ onMounted(load)
             <template v-if="variants.length">
               <select v-model="variantDrafts[selectedClass]" :aria-label="`${selectedClass}任务类型`">
                 <option value="" disabled>选择任务类型</option>
-                <option v-for="v in variants" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
+                <option v-for="v in taskOptions" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
               </select>
               <button type="button" :disabled="busy || !variantDrafts[selectedClass]" title="下发任务" @click="assignTo(selectedClass)"><Send :size="14" aria-hidden="true" />下发</button>
             </template>
@@ -524,40 +629,45 @@ onMounted(load)
       <section class="ws-pub-block">
         <div class="ws-pub-section-title">
           <span>02</span>
-          <div><h3>个别调整</h3><p>仅在学生需要不同任务或额外分发时使用；上方已选班级时，这里只显示该班学生。</p></div>
+          <div><h3>个别调整</h3><p>从下拉框选择学生后查看具体分发情况并单独调整；上方已选班级时只显示该班学生。</p></div>
         </div>
-        <div class="ws-pub-student-row">
+        <div v-if="studentList.length" class="ws-pub-student-picker">
           <select v-model="studentSel" aria-label="选择学生">
             <option value="" disabled>选择学生</option>
             <option v-for="u in studentList" :key="u" :value="u">{{ u }}</option>
           </select>
           <template v-if="studentSel">
             <span class="ws-pub-student-current">
-              <UserRound :size="14" aria-hidden="true" />当前 {{ assignedVariant(studentEntry(studentSel))[0] }} · {{ assignedVariant(studentEntry(studentSel))[1] ? '单独设置' : '跟随班级/默认' }}
+              当前任务：{{ assignedStudentVariant(studentSel)[0] }}<template v-if="variantLabel(assignedStudentVariant(studentSel)[0])"> · {{ variantLabel(assignedStudentVariant(studentSel)[0]) }}</template>
+              · {{ assignedStudentVariant(studentSel)[1] ? '单独设置' : '跟随班级/默认' }}
+              <template v-if="isStudentOpen(studentSel)"> · 本实验已分发</template>
+              <template v-else> · 尚未分发</template>
             </span>
-            <select v-model="variantDrafts[`student:${studentSel}`]" :disabled="!variants.length" aria-label="学生任务类型">
-              <option value="" disabled>选择任务类型</option>
-              <option v-for="v in variants" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
-            </select>
-            <button
-              type="button"
-              :disabled="busy || !variantDrafts[`student:${studentSel}`]"
-              @click="assignTo(`student:${studentSel}`)"
-            >
-              <Send :size="14" aria-hidden="true" />下发
-            </button>
-            <button
-              v-if="!isOpen(studentEntry(studentSel))"
-              type="button"
-              class="ghost"
-              :disabled="busy"
-              @click="openTo(`student:${studentSel}`)"
-            >
-              <Unlock :size="14" aria-hidden="true" />分发
-            </button>
+            <div class="ws-pub-student-actions">
+              <select v-model="variantDrafts[`student:${studentSel}`]" :disabled="!variants.length" :aria-label="`${studentSel}任务类型`">
+                <option value="" disabled>选择任务类型</option>
+                <option v-for="v in taskOptions" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
+              </select>
+              <button
+                type="button"
+                :disabled="busy || !variantDrafts[`student:${studentSel}`]"
+                @click="assignTo(`student:${studentSel}`)"
+              >
+                <Send :size="14" aria-hidden="true" />下发
+              </button>
+              <button
+                v-if="!isStudentOpen(studentSel)"
+                type="button"
+                class="ghost"
+                :disabled="busy"
+                @click="openTo(`student:${studentSel}`)"
+              >
+                <Unlock :size="14" aria-hidden="true" />分发
+              </button>
+            </div>
           </template>
         </div>
-        <p v-if="!studentList.length" class="ws-pub-empty">{{ selectedClass ? `该班级还没有学生。` : '还没有学生注册。' }}</p>
+        <p v-else class="ws-pub-empty">{{ selectedClass ? `该班级还没有学生。` : '还没有学生注册。' }}</p>
       </section>
 
       <section class="ws-pub-block">
@@ -705,7 +815,7 @@ onMounted(load)
               <header>
                 <strong>固定复盘字段</strong>
               </header>
-              <p>每位学生报告末尾都会有“收获与反思”这一节。系统固定其记录标识，不生成额外填写提示。</p>
+              <p>每位学生报告末尾都会有「收获与反思」这一节。系统固定其记录标识，不生成额外填写提示。</p>
               <label>
                 <span>标题</span>
                 <input v-model="reportDraft.reflection.title" type="text" maxlength="80" />
@@ -717,7 +827,7 @@ onMounted(load)
             </div>
 
             <details class="ws-pub-report-preview" open>
-              <summary>预览学生提交稿骨架</summary>
+              <summary>预览学生提交稿结构</summary>
               <pre>{{ reportPreview }}</pre>
             </details>
           </div>
@@ -890,6 +1000,11 @@ onMounted(load)
   gap: var(--ws-space-2);
 }
 
+.ws-pub-class-actions {
+  display: flex;
+  padding: var(--ws-space-2) 0;
+}
+
 .ws-pub-target {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -942,8 +1057,7 @@ onMounted(load)
   background: transparent;
 }
 
-.ws-pub-target-actions,
-.ws-pub-student-row {
+.ws-pub-target-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -991,8 +1105,18 @@ onMounted(load)
   color: var(--ws-accent);
 }
 
-.ws-pub-student-row {
+.ws-pub-student-picker {
+  display: grid;
+  gap: var(--ws-space-2);
+  padding: var(--ws-space-2) 0;
+}
+
+.ws-pub-student-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-start;
+  gap: var(--ws-space-1);
 }
 
 .ws-pub-student-current,
@@ -1386,7 +1510,7 @@ onMounted(load)
   }
 
   .ws-pub-target-actions select,
-  .ws-pub-student-row > select {
+  .ws-pub-student-actions select {
     flex: 1 1 100%;
     width: 100%;
   }

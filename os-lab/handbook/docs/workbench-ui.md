@@ -167,6 +167,9 @@ Lab 工厂页面与入口已从前端移除，教师只通过工作台右栏「�
 
 - **变体来源**：`GET /teacher/overview` 直接读取 `scaffold/exercises/<lab>/<variant>/` 与 `lab-packages/published.json` 目录；目录里存在的变体自动出现在任务类型下拉框。
 - **下发动作**：选择变体后点「分发并下发」，面板先 `POST /teacher/config` 写入 `openLab`，再写入 `assignments[labId] = variant`；学生刷新后，只有在老师已分发的范围内才能经 `/scaffold/upgrade` 领取对应代码。
+- **随机下发**：任务类型下拉框直接提供 `random` 选项；快速下发与按班级安排点「分发并下发/下发」时，服务端按范围内学生逐一随机写入具体变体（`students[user].assignments[labId]`），教师随后可在「个别调整」查看每人分到的任务。
+- **个别调整**：学生名单收进下拉框，选择单个学生后才显示该生的生效任务与分发状态，可逐人选择变体单独下发或补充分发本实验。
+- **导出班级名单**：在「按班级安排」选择班级后，可点击「导出班级名单」下载 `.xlsx`，包含学生姓名、任务类型与任务说明。
 - **文件要求**：变体任务文件（如 `kernel/src/mm.rs`、`kernel/src/process.rs`）必须存在于 `scaffold/exercises/` 对应路径；当前 Lab2–8 的 fill/debug/remedial 变体文件均已核对齐全。
 - **门控**：非教师 / 未登录显示「需要教师账号」；连不上 tutor 时说明原因。
 
