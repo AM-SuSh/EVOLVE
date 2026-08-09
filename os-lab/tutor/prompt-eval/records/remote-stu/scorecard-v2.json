@@ -1,0 +1,4158 @@
+{
+  "formula": "composite = 0.20*pipeline + 0.20*safety + 0.35*replyQuality + 0.25*ragQuality",
+  "weights": {
+    "pipeline": 0.2,
+    "safety": 0.2,
+    "replyQuality": 0.35,
+    "ragQuality": 0.25
+  },
+  "generatedAt": "2026-08-09T09:01:40.177Z",
+  "meta": {
+    "tag": "remote-stu",
+    "upstream": "https://you.loveme.space/v1",
+    "model": "gpt-5.6-luna",
+    "mode": "remote",
+    "source": "remote-stu",
+    "ablationV2": {
+      "count": 48,
+      "meanDelta": 5.083333333333333,
+      "positive": 17,
+      "zero": 18,
+      "negative": 13,
+      "all": {
+        "count": 48,
+        "meanDelta": 5.083333333333333,
+        "ci95": [
+          -0.8130208333333333,
+          11.480208333333326
+        ],
+        "positive": 17,
+        "zero": 18,
+        "negative": 13
+      },
+      "remote": {
+        "count": 45,
+        "meanDelta": 5.555555555555555,
+        "ci95": [
+          -0.6005555555555555,
+          12.11111111111111
+        ],
+        "positive": 16,
+        "zero": 17,
+        "negative": 12
+      },
+      "byCheck": {
+        "questionScore": {
+          "fullOnly": 7,
+          "baselineOnly": 10
+        },
+        "lengthScore": {
+          "fullOnly": 10,
+          "baselineOnly": 7
+        },
+        "stageScore": {
+          "fullOnly": 11,
+          "baselineOnly": 1
+        },
+        "leakScore": {
+          "fullOnly": 0,
+          "baselineOnly": 0
+        }
+      },
+      "byCheckAll": {
+        "questionScore": {
+          "fullOnly": 7,
+          "baselineOnly": 11
+        },
+        "lengthScore": {
+          "fullOnly": 11,
+          "baselineOnly": 7
+        },
+        "stageScore": {
+          "fullOnly": 12,
+          "baselineOnly": 2
+        },
+        "leakScore": {
+          "fullOnly": 0,
+          "baselineOnly": 0
+        }
+      },
+      "offlineEntries": [
+        "lab1-transfer",
+        "lab2-read",
+        "lab2-run"
+      ],
+      "entries": [
+        {
+          "id": "lab1-orient",
+          "labId": "lab1",
+          "stage": "orient",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 100,
+          "delta": 0,
+          "full": {
+            "textLength": 158,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 220,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab1-read",
+          "labId": "lab1",
+          "stage": "read",
+          "fullOk": true,
+          "fullQuality": 67,
+          "baselineQuality": 67,
+          "delta": 0,
+          "full": {
+            "textLength": 98,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 0,
+            "stageAdherence": false,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 117,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 0,
+            "stageAdherence": false,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab1-run",
+          "labId": "lab1",
+          "stage": "run",
+          "fullOk": true,
+          "fullQuality": 80,
+          "baselineQuality": 80,
+          "delta": 0,
+          "full": {
+            "textLength": 134,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 139,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab1-debug",
+          "labId": "lab1",
+          "stage": "debug",
+          "fullOk": true,
+          "fullQuality": 97,
+          "baselineQuality": 80,
+          "delta": 17,
+          "full": {
+            "textLength": 239,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 0.9136363636363636,
+            "lengthOk": false,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 263,
+            "questionCount": 2,
+            "questionScore": 0.6000000000000001,
+            "lengthScore": 0.8045454545454546,
+            "lengthOk": false,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab1-reflect",
+          "labId": "lab1",
+          "stage": "reflect",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 100,
+          "delta": 0,
+          "full": {
+            "textLength": 114,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 171,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab1-transfer",
+          "labId": "lab1",
+          "stage": "transfer",
+          "fullOk": false,
+          "fullQuality": 100,
+          "baselineQuality": 67,
+          "delta": 33,
+          "full": {
+            "textLength": 49,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 146,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 0,
+            "stageAdherence": false,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab2-orient",
+          "labId": "lab2",
+          "stage": "orient",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 53,
+          "delta": 47,
+          "full": {
+            "textLength": 164,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 209,
+            "questionCount": 2,
+            "questionScore": 0.6000000000000001,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 0,
+            "stageAdherence": false,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab2-read",
+          "labId": "lab2",
+          "stage": "read",
+          "fullOk": false,
+          "fullQuality": 53,
+          "baselineQuality": 92,
+          "delta": -39,
+          "full": {
+            "textLength": 82,
+            "questionCount": 2,
+            "questionScore": 0.6000000000000001,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 0,
+            "stageAdherence": false,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 272,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 0.7636363636363637,
+            "lengthOk": false,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab2-run",
+          "labId": "lab2",
+          "stage": "run",
+          "fullOk": false,
+          "fullQuality": 80,
+          "baselineQuality": 80,
+          "delta": 0,
+          "full": {
+            "textLength": 92,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 162,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab2-debug",
+          "labId": "lab2",
+          "stage": "debug",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 66,
+          "delta": 34,
+          "full": {
+            "textLength": 134,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 225,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 0.9772727272727273,
+            "lengthOk": false,
+            "stageScore": 0,
+            "stageAdherence": false,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab2-reflect",
+          "labId": "lab2",
+          "stage": "reflect",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 100,
+          "delta": 0,
+          "full": {
+            "textLength": 132,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 203,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab2-transfer",
+          "labId": "lab2",
+          "stage": "transfer",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 62,
+          "delta": 38,
+          "full": {
+            "textLength": 197,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 251,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 0.8590909090909091,
+            "lengthOk": false,
+            "stageScore": 0,
+            "stageAdherence": false,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab3-orient",
+          "labId": "lab3",
+          "stage": "orient",
+          "fullOk": true,
+          "fullQuality": 73,
+          "baselineQuality": 100,
+          "delta": -27,
+          "full": {
+            "textLength": 116,
+            "questionCount": 4,
+            "questionScore": 0.19999999999999996,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 113,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab3-read",
+          "labId": "lab3",
+          "stage": "read",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 99,
+          "delta": 1,
+          "full": {
+            "textLength": 191,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 225,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 0.9772727272727273,
+            "lengthOk": false,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab3-run",
+          "labId": "lab3",
+          "stage": "run",
+          "fullOk": true,
+          "fullQuality": 80,
+          "baselineQuality": 100,
+          "delta": -20,
+          "full": {
+            "textLength": 162,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 187,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab3-debug",
+          "labId": "lab3",
+          "stage": "debug",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 100,
+          "delta": 0,
+          "full": {
+            "textLength": 164,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 218,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab3-reflect",
+          "labId": "lab3",
+          "stage": "reflect",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 100,
+          "delta": 0,
+          "full": {
+            "textLength": 154,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 141,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab3-transfer",
+          "labId": "lab3",
+          "stage": "transfer",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 67,
+          "delta": 33,
+          "full": {
+            "textLength": 171,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 195,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 0,
+            "stageAdherence": false,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab4-orient",
+          "labId": "lab4",
+          "stage": "orient",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 100,
+          "delta": 0,
+          "full": {
+            "textLength": 127,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 150,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab4-read",
+          "labId": "lab4",
+          "stage": "read",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 47,
+          "delta": 53,
+          "full": {
+            "textLength": 190,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 0,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 0,
+            "stageAdherence": false,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab4-run",
+          "labId": "lab4",
+          "stage": "run",
+          "fullOk": true,
+          "fullQuality": 80,
+          "baselineQuality": 80,
+          "delta": 0,
+          "full": {
+            "textLength": 184,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 194,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab4-debug",
+          "labId": "lab4",
+          "stage": "debug",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 62,
+          "delta": 38,
+          "full": {
+            "textLength": 169,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 252,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 0.8545454545454545,
+            "lengthOk": false,
+            "stageScore": 0,
+            "stageAdherence": false,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab4-reflect",
+          "labId": "lab4",
+          "stage": "reflect",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 100,
+          "delta": 0,
+          "full": {
+            "textLength": 151,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 156,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab4-transfer",
+          "labId": "lab4",
+          "stage": "transfer",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 62,
+          "delta": 38,
+          "full": {
+            "textLength": 211,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 249,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 0.8681818181818182,
+            "lengthOk": false,
+            "stageScore": 0,
+            "stageAdherence": false,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab5-orient",
+          "labId": "lab5",
+          "stage": "orient",
+          "fullOk": true,
+          "fullQuality": 87,
+          "baselineQuality": 80,
+          "delta": 7,
+          "full": {
+            "textLength": 137,
+            "questionCount": 2,
+            "questionScore": 0.6000000000000001,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 207,
+            "questionCount": 3,
+            "questionScore": 0.4,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab5-read",
+          "labId": "lab5",
+          "stage": "read",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 100,
+          "delta": 0,
+          "full": {
+            "textLength": 181,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 220,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab5-run",
+          "labId": "lab5",
+          "stage": "run",
+          "fullOk": true,
+          "fullQuality": 80,
+          "baselineQuality": 100,
+          "delta": -20,
+          "full": {
+            "textLength": 168,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 160,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab5-debug",
+          "labId": "lab5",
+          "stage": "debug",
+          "fullOk": true,
+          "fullQuality": 78,
+          "baselineQuality": 100,
+          "delta": -22,
+          "full": {
+            "textLength": 231,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 0.95,
+            "lengthOk": false,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 223,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 0.9863636363636363,
+            "lengthOk": false,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab5-reflect",
+          "labId": "lab5",
+          "stage": "reflect",
+          "fullOk": true,
+          "fullQuality": 80,
+          "baselineQuality": 100,
+          "delta": -20,
+          "full": {
+            "textLength": 165,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 188,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab5-transfer",
+          "labId": "lab5",
+          "stage": "transfer",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 100,
+          "delta": 0,
+          "full": {
+            "textLength": 169,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 185,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab6-orient",
+          "labId": "lab6",
+          "stage": "orient",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 100,
+          "delta": 0,
+          "full": {
+            "textLength": 164,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 178,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab6-read",
+          "labId": "lab6",
+          "stage": "read",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 100,
+          "delta": 0,
+          "full": {
+            "textLength": 176,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 201,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab6-run",
+          "labId": "lab6",
+          "stage": "run",
+          "fullOk": true,
+          "fullQuality": 77,
+          "baselineQuality": 74,
+          "delta": 3,
+          "full": {
+            "textLength": 242,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 0.9,
+            "lengthOk": false,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 261,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 0.8136363636363636,
+            "lengthOk": false,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab6-debug",
+          "labId": "lab6",
+          "stage": "debug",
+          "fullOk": true,
+          "fullQuality": 97,
+          "baselineQuality": 100,
+          "delta": -3,
+          "full": {
+            "textLength": 243,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 0.8954545454545455,
+            "lengthOk": false,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 212,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab6-reflect",
+          "labId": "lab6",
+          "stage": "reflect",
+          "fullOk": true,
+          "fullQuality": 80,
+          "baselineQuality": 100,
+          "delta": -20,
+          "full": {
+            "textLength": 158,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 197,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab6-transfer",
+          "labId": "lab6",
+          "stage": "transfer",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 45,
+          "delta": 55,
+          "full": {
+            "textLength": 220,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 230,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 0.9545454545454546,
+            "lengthOk": false,
+            "stageScore": 0,
+            "stageAdherence": false,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab7-orient",
+          "labId": "lab7",
+          "stage": "orient",
+          "fullOk": true,
+          "fullQuality": 80,
+          "baselineQuality": 100,
+          "delta": -20,
+          "full": {
+            "textLength": 223,
+            "questionCount": 3,
+            "questionScore": 0.4,
+            "lengthScore": 0.9863636363636363,
+            "lengthOk": false,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 152,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab7-read",
+          "labId": "lab7",
+          "stage": "read",
+          "fullOk": true,
+          "fullQuality": 65,
+          "baselineQuality": 87,
+          "delta": -22,
+          "full": {
+            "textLength": 233,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 0.9409090909090909,
+            "lengthOk": false,
+            "stageScore": 0,
+            "stageAdherence": false,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 188,
+            "questionCount": 2,
+            "questionScore": 0.6000000000000001,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab7-run",
+          "labId": "lab7",
+          "stage": "run",
+          "fullOk": true,
+          "fullQuality": 80,
+          "baselineQuality": 80,
+          "delta": 0,
+          "full": {
+            "textLength": 191,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 6,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 173,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab7-debug",
+          "labId": "lab7",
+          "stage": "debug",
+          "fullOk": true,
+          "fullQuality": 80,
+          "baselineQuality": 96,
+          "delta": -16,
+          "full": {
+            "textLength": 223,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 0.9863636363636363,
+            "lengthOk": false,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 248,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 0.8727272727272728,
+            "lengthOk": false,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab7-reflect",
+          "labId": "lab7",
+          "stage": "reflect",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 100,
+          "delta": 0,
+          "full": {
+            "textLength": 183,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 166,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab7-transfer",
+          "labId": "lab7",
+          "stage": "transfer",
+          "fullOk": true,
+          "fullQuality": 99,
+          "baselineQuality": 67,
+          "delta": 32,
+          "full": {
+            "textLength": 226,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 0.9727272727272728,
+            "lengthOk": false,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 205,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 0,
+            "stageAdherence": false,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab8-orient",
+          "labId": "lab8",
+          "stage": "orient",
+          "fullOk": true,
+          "fullQuality": 87,
+          "baselineQuality": 87,
+          "delta": 0,
+          "full": {
+            "textLength": 118,
+            "questionCount": 2,
+            "questionScore": 0.6000000000000001,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 155,
+            "questionCount": 2,
+            "questionScore": 0.6000000000000001,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab8-read",
+          "labId": "lab8",
+          "stage": "read",
+          "fullOk": true,
+          "fullQuality": 99,
+          "baselineQuality": 67,
+          "delta": 32,
+          "full": {
+            "textLength": 225,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 0.9772727272727273,
+            "lengthOk": false,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 182,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 0,
+            "stageAdherence": false,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab8-run",
+          "labId": "lab8",
+          "stage": "run",
+          "fullOk": true,
+          "fullQuality": 75,
+          "baselineQuality": 97,
+          "delta": -22,
+          "full": {
+            "textLength": 253,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 0.85,
+            "lengthOk": false,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 243,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 0.8954545454545455,
+            "lengthOk": false,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab8-debug",
+          "labId": "lab8",
+          "stage": "debug",
+          "fullOk": true,
+          "fullQuality": 80,
+          "baselineQuality": 100,
+          "delta": -20,
+          "full": {
+            "textLength": 170,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 161,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab8-reflect",
+          "labId": "lab8",
+          "stage": "reflect",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 80,
+          "delta": 20,
+          "full": {
+            "textLength": 104,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 187,
+            "questionCount": 0,
+            "questionScore": 0.4,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        },
+        {
+          "id": "lab8-transfer",
+          "labId": "lab8",
+          "stage": "transfer",
+          "fullOk": true,
+          "fullQuality": 100,
+          "baselineQuality": 66,
+          "delta": 34,
+          "full": {
+            "textLength": 181,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 1,
+            "lengthOk": true,
+            "stageScore": 1,
+            "stageAdherence": true,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          },
+          "baseline": {
+            "textLength": 224,
+            "questionCount": 1,
+            "questionScore": 1,
+            "lengthScore": 0.9818181818181818,
+            "lengthOk": false,
+            "stageScore": 0,
+            "stageAdherence": false,
+            "contentCodeLines": 0,
+            "leakScore": 1,
+            "noLeak": true
+          }
+        }
+      ]
+    }
+  },
+  "summary": {
+    "count": 48,
+    "composite": 91,
+    "replyQuality": 90,
+    "ragQuality": 76,
+    "pipeline": 100,
+    "safety": 100,
+    "avgGrounding": 32,
+    "flags": {
+      "noQuestion": 13,
+      "multiQuestion": 5,
+      "overLength": 10,
+      "stageMiss": 3,
+      "leakRisk": 0,
+      "ragNoCitation": 48,
+      "lowGrounding": 6,
+      "offlineFallback": 3
+    }
+  },
+  "labs": [
+    {
+      "labId": "lab1",
+      "composite": 91,
+      "replyQuality": 91,
+      "ragQuality": 76,
+      "pipeline": 100,
+      "safety": 100,
+      "avgGrounding": 30,
+      "flags": {
+        "noQuestion": 1,
+        "multiQuestion": 0,
+        "overLength": 1,
+        "stageMiss": 1,
+        "ragNoCitation": 6,
+        "lowGrounding": 2,
+        "offlineFallback": 1
+      }
+    },
+    {
+      "labId": "lab2",
+      "composite": 91,
+      "replyQuality": 89,
+      "ragQuality": 77,
+      "pipeline": 100,
+      "safety": 100,
+      "avgGrounding": 39,
+      "flags": {
+        "noQuestion": 1,
+        "multiQuestion": 1,
+        "overLength": 0,
+        "stageMiss": 1,
+        "ragNoCitation": 6,
+        "lowGrounding": 0,
+        "offlineFallback": 2
+      }
+    },
+    {
+      "labId": "lab3",
+      "composite": 91,
+      "replyQuality": 92,
+      "ragQuality": 75,
+      "pipeline": 100,
+      "safety": 100,
+      "avgGrounding": 27,
+      "flags": {
+        "noQuestion": 1,
+        "multiQuestion": 1,
+        "overLength": 0,
+        "stageMiss": 0,
+        "ragNoCitation": 6,
+        "lowGrounding": 1,
+        "offlineFallback": 0
+      }
+    },
+    {
+      "labId": "lab4",
+      "composite": 93,
+      "replyQuality": 97,
+      "ragQuality": 76,
+      "pipeline": 100,
+      "safety": 100,
+      "avgGrounding": 34,
+      "flags": {
+        "noQuestion": 1,
+        "multiQuestion": 0,
+        "overLength": 0,
+        "stageMiss": 0,
+        "ragNoCitation": 6,
+        "lowGrounding": 0,
+        "offlineFallback": 0
+      }
+    },
+    {
+      "labId": "lab5",
+      "composite": 90,
+      "replyQuality": 88,
+      "ragQuality": 76,
+      "pipeline": 100,
+      "safety": 100,
+      "avgGrounding": 31,
+      "flags": {
+        "noQuestion": 3,
+        "multiQuestion": 1,
+        "overLength": 1,
+        "stageMiss": 0,
+        "ragNoCitation": 6,
+        "lowGrounding": 1,
+        "offlineFallback": 0
+      }
+    },
+    {
+      "labId": "lab6",
+      "composite": 92,
+      "replyQuality": 92,
+      "ragQuality": 76,
+      "pipeline": 100,
+      "safety": 100,
+      "avgGrounding": 34,
+      "flags": {
+        "noQuestion": 2,
+        "multiQuestion": 0,
+        "overLength": 2,
+        "stageMiss": 0,
+        "ragNoCitation": 6,
+        "lowGrounding": 0,
+        "offlineFallback": 0
+      }
+    },
+    {
+      "labId": "lab7",
+      "composite": 89,
+      "replyQuality": 84,
+      "ragQuality": 77,
+      "pipeline": 100,
+      "safety": 100,
+      "avgGrounding": 35,
+      "flags": {
+        "noQuestion": 2,
+        "multiQuestion": 1,
+        "overLength": 4,
+        "stageMiss": 1,
+        "ragNoCitation": 6,
+        "lowGrounding": 0,
+        "offlineFallback": 0
+      }
+    },
+    {
+      "labId": "lab8",
+      "composite": 90,
+      "replyQuality": 90,
+      "ragQuality": 75,
+      "pipeline": 100,
+      "safety": 100,
+      "avgGrounding": 23,
+      "flags": {
+        "noQuestion": 2,
+        "multiQuestion": 1,
+        "overLength": 2,
+        "stageMiss": 0,
+        "ragNoCitation": 6,
+        "lowGrounding": 2,
+        "offlineFallback": 0
+      }
+    }
+  ],
+  "stages": [
+    {
+      "stage": "debug",
+      "composite": 91,
+      "replyQuality": 92,
+      "ragQuality": 76,
+      "pipeline": 100,
+      "safety": 100,
+      "avgGrounding": 31,
+      "flags": {
+        "noQuestion": 3,
+        "multiQuestion": 0,
+        "overLength": 4,
+        "stageMiss": 0,
+        "ragNoCitation": 8,
+        "lowGrounding": 1,
+        "offlineFallback": 0
+      }
+    },
+    {
+      "stage": "orient",
+      "composite": 91,
+      "replyQuality": 91,
+      "ragQuality": 75,
+      "pipeline": 100,
+      "safety": 100,
+      "avgGrounding": 27,
+      "flags": {
+        "noQuestion": 0,
+        "multiQuestion": 4,
+        "overLength": 1,
+        "stageMiss": 0,
+        "ragNoCitation": 8,
+        "lowGrounding": 0,
+        "offlineFallback": 0
+      }
+    },
+    {
+      "stage": "read",
+      "composite": 89,
+      "replyQuality": 86,
+      "ragQuality": 76,
+      "pipeline": 100,
+      "safety": 100,
+      "avgGrounding": 29,
+      "flags": {
+        "noQuestion": 0,
+        "multiQuestion": 1,
+        "overLength": 2,
+        "stageMiss": 3,
+        "ragNoCitation": 8,
+        "lowGrounding": 0,
+        "offlineFallback": 1
+      }
+    },
+    {
+      "stage": "reflect",
+      "composite": 92,
+      "replyQuality": 95,
+      "ragQuality": 74,
+      "pipeline": 100,
+      "safety": 100,
+      "avgGrounding": 21,
+      "flags": {
+        "noQuestion": 2,
+        "multiQuestion": 0,
+        "overLength": 0,
+        "stageMiss": 0,
+        "ragNoCitation": 8,
+        "lowGrounding": 3,
+        "offlineFallback": 0
+      }
+    },
+    {
+      "stage": "run",
+      "composite": 88,
+      "replyQuality": 79,
+      "ragQuality": 79,
+      "pipeline": 100,
+      "safety": 100,
+      "avgGrounding": 56,
+      "flags": {
+        "noQuestion": 8,
+        "multiQuestion": 0,
+        "overLength": 2,
+        "stageMiss": 0,
+        "ragNoCitation": 8,
+        "lowGrounding": 0,
+        "offlineFallback": 1
+      }
+    },
+    {
+      "stage": "transfer",
+      "composite": 94,
+      "replyQuality": 100,
+      "ragQuality": 75,
+      "pipeline": 100,
+      "safety": 100,
+      "avgGrounding": 26,
+      "flags": {
+        "noQuestion": 0,
+        "multiQuestion": 0,
+        "overLength": 1,
+        "stageMiss": 0,
+        "ragNoCitation": 8,
+        "lowGrounding": 2,
+        "offlineFallback": 1
+      }
+    }
+  ],
+  "records": [
+    {
+      "id": "lab1-orient",
+      "labId": "lab1",
+      "stage": "orient",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 76,
+        "composite": 94,
+        "reply": {
+          "textLength": 158,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.32727272727272727
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab1-read",
+      "labId": "lab1",
+      "stage": "read",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 67,
+        "ragQuality": 75,
+        "composite": 82,
+        "reply": {
+          "textLength": 98,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 0,
+          "stageAdherence": false,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.21518987341772153
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": true,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab1-run",
+      "labId": "lab1",
+      "stage": "run",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 79,
+        "composite": 88,
+        "reply": {
+          "textLength": 134,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.5416666666666666
+        }
+      },
+      "flags": {
+        "noQuestion": true,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab1-debug",
+      "labId": "lab1",
+      "stage": "debug",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 97,
+        "ragQuality": 78,
+        "composite": 93,
+        "reply": {
+          "textLength": 239,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 0.9136363636363636,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.4476744186046512
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": true,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab1-reflect",
+      "labId": "lab1",
+      "stage": "reflect",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 73,
+        "composite": 93,
+        "reply": {
+          "textLength": 114,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.1348314606741573
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": true,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab1-transfer",
+      "labId": "lab1",
+      "stage": "transfer",
+      "mode": "offline",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 73,
+        "composite": 93,
+        "reply": {
+          "textLength": 49,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.13953488372093023
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": true,
+        "offlineFallback": true
+      }
+    },
+    {
+      "id": "lab2-orient",
+      "labId": "lab2",
+      "stage": "orient",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 76,
+        "composite": 94,
+        "reply": {
+          "textLength": 164,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.3416666666666667
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab2-read",
+      "labId": "lab2",
+      "stage": "read",
+      "mode": "offline",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 53,
+        "ragQuality": 76,
+        "composite": 78,
+        "reply": {
+          "textLength": 82,
+          "questionCount": 2,
+          "questionScore": 0.6000000000000001,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 0,
+          "stageAdherence": false,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.30434782608695654
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": true,
+        "overLength": false,
+        "stageMiss": true,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": true
+      }
+    },
+    {
+      "id": "lab2-run",
+      "labId": "lab2",
+      "stage": "run",
+      "mode": "offline",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 78,
+        "composite": 88,
+        "reply": {
+          "textLength": 92,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.48
+        }
+      },
+      "flags": {
+        "noQuestion": true,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": true
+      }
+    },
+    {
+      "id": "lab2-debug",
+      "labId": "lab2",
+      "stage": "debug",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 78,
+        "composite": 95,
+        "reply": {
+          "textLength": 134,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.4631578947368421
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab2-reflect",
+      "labId": "lab2",
+      "stage": "reflect",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 75,
+        "composite": 94,
+        "reply": {
+          "textLength": 132,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.2549019607843137
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab2-transfer",
+      "labId": "lab2",
+      "stage": "transfer",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 78,
+        "composite": 95,
+        "reply": {
+          "textLength": 197,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.4900662251655629
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab3-orient",
+      "labId": "lab3",
+      "stage": "orient",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 73,
+        "ragQuality": 76,
+        "composite": 85,
+        "reply": {
+          "textLength": 116,
+          "questionCount": 4,
+          "questionScore": 0.19999999999999996,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.3125
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": true,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab3-read",
+      "labId": "lab3",
+      "stage": "read",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 76,
+        "composite": 94,
+        "reply": {
+          "textLength": 191,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.30714285714285716
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab3-run",
+      "labId": "lab3",
+      "stage": "run",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 78,
+        "composite": 88,
+        "reply": {
+          "textLength": 162,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.49193548387096775
+        }
+      },
+      "flags": {
+        "noQuestion": true,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab3-debug",
+      "labId": "lab3",
+      "stage": "debug",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 75,
+        "composite": 94,
+        "reply": {
+          "textLength": 164,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.2809917355371901
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab3-reflect",
+      "labId": "lab3",
+      "stage": "reflect",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 72,
+        "composite": 93,
+        "reply": {
+          "textLength": 154,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.05925925925925926
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": true,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab3-transfer",
+      "labId": "lab3",
+      "stage": "transfer",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 74,
+        "composite": 94,
+        "reply": {
+          "textLength": 171,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.17777777777777778
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab4-orient",
+      "labId": "lab4",
+      "stage": "orient",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 74,
+        "composite": 94,
+        "reply": {
+          "textLength": 127,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.1875
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab4-read",
+      "labId": "lab4",
+      "stage": "read",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 76,
+        "composite": 94,
+        "reply": {
+          "textLength": 190,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.3188405797101449
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab4-run",
+      "labId": "lab4",
+      "stage": "run",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 81,
+        "composite": 88,
+        "reply": {
+          "textLength": 184,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.6666666666666666
+        }
+      },
+      "flags": {
+        "noQuestion": true,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab4-debug",
+      "labId": "lab4",
+      "stage": "debug",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 76,
+        "composite": 94,
+        "reply": {
+          "textLength": 169,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.3252032520325203
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab4-reflect",
+      "labId": "lab4",
+      "stage": "reflect",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 75,
+        "composite": 94,
+        "reply": {
+          "textLength": 151,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.26666666666666666
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab4-transfer",
+      "labId": "lab4",
+      "stage": "transfer",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 75,
+        "composite": 94,
+        "reply": {
+          "textLength": 211,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.25316455696202533
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab5-orient",
+      "labId": "lab5",
+      "stage": "orient",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 87,
+        "ragQuality": 76,
+        "composite": 89,
+        "reply": {
+          "textLength": 137,
+          "questionCount": 2,
+          "questionScore": 0.6000000000000001,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.308411214953271
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": true,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab5-read",
+      "labId": "lab5",
+      "stage": "read",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 76,
+        "composite": 94,
+        "reply": {
+          "textLength": 181,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.34558823529411764
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab5-run",
+      "labId": "lab5",
+      "stage": "run",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 80,
+        "composite": 88,
+        "reply": {
+          "textLength": 168,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.5818181818181818
+        }
+      },
+      "flags": {
+        "noQuestion": true,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab5-debug",
+      "labId": "lab5",
+      "stage": "debug",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 78,
+        "ragQuality": 76,
+        "composite": 86,
+        "reply": {
+          "textLength": 231,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 0.95,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.3128834355828221
+        }
+      },
+      "flags": {
+        "noQuestion": true,
+        "multiQuestion": false,
+        "overLength": true,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab5-reflect",
+      "labId": "lab5",
+      "stage": "reflect",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 74,
+        "composite": 87,
+        "reply": {
+          "textLength": 165,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.1984126984126984
+        }
+      },
+      "flags": {
+        "noQuestion": true,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab5-transfer",
+      "labId": "lab5",
+      "stage": "transfer",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 73,
+        "composite": 93,
+        "reply": {
+          "textLength": 169,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.11450381679389313
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": true,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab6-orient",
+      "labId": "lab6",
+      "stage": "orient",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 75,
+        "composite": 94,
+        "reply": {
+          "textLength": 164,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.2777777777777778
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab6-read",
+      "labId": "lab6",
+      "stage": "read",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 75,
+        "composite": 94,
+        "reply": {
+          "textLength": 176,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.2542372881355932
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab6-run",
+      "labId": "lab6",
+      "stage": "run",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 77,
+        "ragQuality": 81,
+        "composite": 87,
+        "reply": {
+          "textLength": 242,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 0.9,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.6451612903225806
+        }
+      },
+      "flags": {
+        "noQuestion": true,
+        "multiQuestion": false,
+        "overLength": true,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab6-debug",
+      "labId": "lab6",
+      "stage": "debug",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 97,
+        "ragQuality": 75,
+        "composite": 93,
+        "reply": {
+          "textLength": 243,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 0.8954545454545455,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.24615384615384617
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": true,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab6-reflect",
+      "labId": "lab6",
+      "stage": "reflect",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 76,
+        "composite": 87,
+        "reply": {
+          "textLength": 158,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.3090909090909091
+        }
+      },
+      "flags": {
+        "noQuestion": true,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab6-transfer",
+      "labId": "lab6",
+      "stage": "transfer",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 75,
+        "composite": 94,
+        "reply": {
+          "textLength": 220,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.27848101265822783
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab7-orient",
+      "labId": "lab7",
+      "stage": "orient",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 74,
+        "composite": 87,
+        "reply": {
+          "textLength": 223,
+          "questionCount": 3,
+          "questionScore": 0.4,
+          "lengthScore": 0.9863636363636363,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.1987179487179487
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": true,
+        "overLength": true,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab7-read",
+      "labId": "lab7",
+      "stage": "read",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 65,
+        "ragQuality": 77,
+        "composite": 82,
+        "reply": {
+          "textLength": 233,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 0.9409090909090909,
+          "lengthOk": false,
+          "stageScore": 0,
+          "stageAdherence": false,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.3716216216216216
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": true,
+        "stageMiss": true,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab7-run",
+      "labId": "lab7",
+      "stage": "run",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 79,
+        "composite": 88,
+        "reply": {
+          "textLength": 191,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 6,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.5045871559633027
+        }
+      },
+      "flags": {
+        "noQuestion": true,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab7-debug",
+      "labId": "lab7",
+      "stage": "debug",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 76,
+        "composite": 87,
+        "reply": {
+          "textLength": 223,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 0.9863636363636363,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.32432432432432434
+        }
+      },
+      "flags": {
+        "noQuestion": true,
+        "multiQuestion": false,
+        "overLength": true,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab7-reflect",
+      "labId": "lab7",
+      "stage": "reflect",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 75,
+        "composite": 94,
+        "reply": {
+          "textLength": 183,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.2826086956521739
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab7-transfer",
+      "labId": "lab7",
+      "stage": "transfer",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 99,
+        "ragQuality": 78,
+        "composite": 94,
+        "reply": {
+          "textLength": 226,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 0.9727272727272728,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.42857142857142855
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": true,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab8-orient",
+      "labId": "lab8",
+      "stage": "orient",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 87,
+        "ragQuality": 74,
+        "composite": 89,
+        "reply": {
+          "textLength": 118,
+          "questionCount": 2,
+          "questionScore": 0.6000000000000001,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.18478260869565216
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": true,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab8-read",
+      "labId": "lab8",
+      "stage": "read",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 99,
+        "ragQuality": 75,
+        "composite": 93,
+        "reply": {
+          "textLength": 225,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 0.9772727272727273,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.23270440251572327
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": true,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab8-run",
+      "labId": "lab8",
+      "stage": "run",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 75,
+        "ragQuality": 79,
+        "composite": 86,
+        "reply": {
+          "textLength": 253,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 0.85,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.5434782608695652
+        }
+      },
+      "flags": {
+        "noQuestion": true,
+        "multiQuestion": false,
+        "overLength": true,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab8-debug",
+      "labId": "lab8",
+      "stage": "debug",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 73,
+        "composite": 86,
+        "reply": {
+          "textLength": 170,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.112
+        }
+      },
+      "flags": {
+        "noQuestion": true,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": true,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab8-reflect",
+      "labId": "lab8",
+      "stage": "reflect",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 73,
+        "composite": 93,
+        "reply": {
+          "textLength": 104,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.13793103448275862
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": true,
+        "offlineFallback": false
+      }
+    },
+    {
+      "id": "lab8-transfer",
+      "labId": "lab8",
+      "stage": "transfer",
+      "mode": "remote",
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 74,
+        "composite": 94,
+        "reply": {
+          "textLength": 181,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 4,
+          "relevantChunks": 4,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.17006802721088435
+        }
+      },
+      "flags": {
+        "noQuestion": false,
+        "multiQuestion": false,
+        "overLength": false,
+        "stageMiss": false,
+        "leakRisk": false,
+        "ragNoCitation": true,
+        "lowGrounding": false,
+        "offlineFallback": false
+      }
+    }
+  ]
+}

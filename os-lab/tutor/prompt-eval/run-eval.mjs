@@ -5,6 +5,7 @@
  * Usage:
  *   node run-eval.mjs --tag <tag> [--upstream <baseUrl>] [--model <model>]
  *                      [--api-key <key>] [--ablate] [--keep-server] [--port <port>]
+ *   node run-eval.mjs --replay <raw.json> [--records <outDir>]
  *
  * Default upstream points at an unreachable address so the server uses the
  * offline-tutor fallback; pass a reachable OpenAI-compatible upstream to run
@@ -19,6 +20,13 @@ import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { extractCompletionText } from '../../handbook/llm-response.mjs'
 import { tutorPolicyPrompt } from '../state-machine.mjs'
+import {
+  buildAblationV2,
+  buildScorecardReport,
+  replyQualityScore,
+  scoreRecordV2,
+  scoreReplyV2,
+} from './scoring-v2.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const osLabRoot = path.resolve(here, '..', '..')
@@ -56,9 +64,12 @@ const apiKey = argValue('--api-key') || process.env.OS_LAB_LLM_API_KEY || ''
 const wantAblate = flag('--ablate')
 const keepServer = flag('--keep-server')
 const port = Number(argValue('--port') || 0)
+const replaySource = argValue('--replay')
 const recordsRoot = argValue('--records')
   ? path.resolve(argValue('--records'))
-  : path.join(here, 'records', tag)
+  : replaySource
+    ? path.dirname(path.resolve(replaySource))
+    : path.join(here, 'records', tag)
 
 const workDir = path.join(os.tmpdir(), `os-lab-prompt-eval-${Date.now()}-${process.pid}`)
 const tempDbPath = path.join(workDir, 'os-lab.db')
@@ -232,6 +243,18 @@ function evaluateCase(caseItem, response) {
     retrievalOk: knowledge.retrievalOk,
   }
   const checksList = Object.values(checks)
+  const chunkTexts = (response.knowledge || []).map((chunk) => chunkTextById(chunk.citation))
+  const scorecard = scoreRecordV2(
+    {
+      ...caseItem,
+      reply,
+      mode: response.mode || 'unknown',
+      knowledge: response.knowledge || [],
+      retrieval: response.retrieval || null,
+      checks,
+    },
+    { chunkTexts },
+  )
   return {
     ...caseItem,
     reply,
@@ -246,6 +269,7 @@ function evaluateCase(caseItem, response) {
     knowledgeScore: knowledge,
     checks,
     composite: Math.round((checksList.filter(Boolean).length / checksList.length) * 100),
+    scorecard,
   }
 }
 
@@ -432,6 +456,41 @@ function chunkTextById(id) {
   }
 }
 
+function chunkTextMap() {
+  const db = new DatabaseSync(knowledgeDbPath)
+  try {
+    const rows = db.prepare('SELECT id, text FROM knowledge_chunks').all()
+    const map = new Map()
+    for (const row of rows) {
+      map.set(row.id, row.text)
+      map.set(`kb:${row.id}`, row.text)
+    }
+    return map
+  } finally {
+    db.close()
+  }
+}
+
+function replayRaw(source, outputRoot) {
+  const raw = JSON.parse(readFileSync(path.resolve(source), 'utf8'))
+  const map = chunkTextMap()
+  const results = raw.results.map((result) => {
+    const chunkTexts = (result.knowledge || []).map(
+      (chunk) => map.get(chunk.citation) || map.get(String(chunk.citation || '').replace(/^kb:/, '')) || '',
+    )
+    return {
+      ...result,
+      scorecard: scoreRecordV2(result, { chunkTexts }),
+    }
+  })
+  writeRecords(results, raw.ablation || null, {
+    tag: raw.tag || 'replay',
+    upstream: raw.upstream || upstream,
+    model: raw.model || model,
+  })
+  console.log(`replayed ${results.length} records to ${outputRoot}`)
+}
+
 async function runAblation(results) {
   const entries = []
   for (const result of results) {
@@ -470,6 +529,8 @@ async function runAblation(results) {
       Math.round(
         (Object.values(score).filter(Boolean).length / Object.values(score).length) * 100,
       )
+    const fullScoreV2 = scoreReplyV2(full.reply, result.stage)
+    const baselineScoreV2 = scoreReplyV2(baseline.reply, result.stage)
     entries.push({
       id: result.id,
       labId: result.labId,
@@ -480,12 +541,16 @@ async function runAblation(results) {
         reply: full.reply,
         score: scoreReply(full.reply, result.stage),
         quality: bools(scoreReply(full.reply, result.stage)),
+        scoreV2: fullScoreV2,
+        qualityV2: replyQualityScore(fullScoreV2),
       },
       baseline: {
         ok: baseline.ok,
         reply: baseline.reply,
         score: scoreReply(baseline.reply, result.stage),
         quality: bools(scoreReply(baseline.reply, result.stage)),
+        scoreV2: baselineScoreV2,
+        qualityV2: replyQualityScore(baselineScoreV2),
       },
     })
     console.log(
@@ -526,13 +591,23 @@ function checksTable(checks) {
   ].join('\n')
 }
 
-function writeRecords(results, ablation) {
+function writeRecords(results, ablation, metaOverrides = {}) {
+  const recordTag = metaOverrides.tag || tag
+  const recordUpstream = metaOverrides.upstream || upstream
+  const recordModel = metaOverrides.model || model
   mkdirSync(recordsRoot, { recursive: true })
 
   writeFileSync(
     path.join(recordsRoot, 'raw.json'),
     JSON.stringify(
-      { tag, upstream, model, mode: results[0]?.mode || 'unknown', results, ablation },
+      {
+        tag: recordTag,
+        upstream: recordUpstream,
+        model: recordModel,
+        mode: results[0]?.mode || 'unknown',
+        results,
+        ablation,
+      },
       null,
       2,
     ),
@@ -651,9 +726,9 @@ function writeRecords(results, ablation) {
   summary.push('# Lab1-8 Prompt 分阶段评测汇总')
   summary.push('')
   summary.push(`- 生成时间：${new Date().toISOString()}`)
-  summary.push(`- 评测标签：\`${tag}\``)
-  summary.push(`- 模式：\`${mode}\` / 模型：\`${results[0]?.model || '-'}\``)
-  summary.push(`- 上游：\`${upstream}\``)
+  summary.push(`- 评测标签：\`${recordTag}\``)
+  summary.push(`- 模式：\`${mode}\` / 模型：\`${recordModel}\``)
+  summary.push(`- 上游：\`${recordUpstream}\``)
   summary.push(`- 用例数：${results.length}`)
   summary.push('')
   summary.push('## 按 Lab 汇总')
@@ -743,8 +818,8 @@ function writeRecords(results, ablation) {
     const lines = []
     lines.push('# Prompt A/B：有/无阶段提示词')
     lines.push('')
-    lines.push(`- 模型：\`${model}\``)
-    lines.push(`- 上游：\`${upstream}\``)
+    lines.push(`- 模型：\`${recordModel}\``)
+    lines.push(`- 上游：\`${recordUpstream}\``)
     lines.push('')
     lines.push('| 用例 | 有提示词 | 无提示词 | 差值 | 有/无回复（节选） |')
     lines.push('| --- | --- | --- | --- | --- |')
@@ -761,10 +836,46 @@ function writeRecords(results, ablation) {
     lines.push('')
     writeFileSync(path.join(recordsRoot, 'ablation.md'), lines.join('\n'), 'utf8')
   }
+
+  const ablationV2 = buildAblationV2(ablation)
+  if (ablationV2) {
+    writeFileSync(
+      path.join(recordsRoot, 'ablation-v2.json'),
+      JSON.stringify(ablationV2, null, 2),
+      'utf8',
+    )
+  }
+  const report = buildScorecardReport(
+    results,
+    {
+      tag: recordTag,
+      upstream: recordUpstream,
+      model: recordModel,
+      mode,
+      source: recordTag,
+      ablationV2,
+    },
+    {},
+  )
+  writeFileSync(path.join(recordsRoot, 'scorecard-v2.md'), report.markdown, 'utf8')
+  writeFileSync(path.join(recordsRoot, 'scorecard-v2.json'), JSON.stringify(report.json, null, 2), 'utf8')
 }
 
 // ---- main ----------------------------------------------------------------------
 async function main() {
+  if (replaySource) {
+    try {
+      replayRaw(replaySource, recordsRoot)
+    } finally {
+      try {
+        rmSync(workDir, { recursive: true, force: true })
+      } catch {
+        /* temp cleanup is best-effort */
+      }
+    }
+    return
+  }
+
   copyFileSync(realDbPath, tempDbPath)
   const serverPort = port || 8790 + Math.floor(Math.random() * 100)
   const server = await spawnServer(serverPort)

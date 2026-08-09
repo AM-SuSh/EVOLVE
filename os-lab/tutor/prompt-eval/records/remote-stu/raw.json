@@ -276,7 +276,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 76,
+        "composite": 94,
+        "reply": {
+          "textLength": 158,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.32727272727272727
+        }
+      }
     },
     {
       "id": "lab1-read",
@@ -548,7 +578,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 90
+      "composite": 90,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 67,
+        "ragQuality": 75,
+        "composite": 82,
+        "reply": {
+          "textLength": 98,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 0,
+          "stageAdherence": false,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.21518987341772153
+        }
+      }
     },
     {
       "id": "lab1-run",
@@ -822,7 +882,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 90
+      "composite": 90,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 79,
+        "composite": 88,
+        "reply": {
+          "textLength": 134,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.5416666666666666
+        }
+      }
     },
     {
       "id": "lab1-debug",
@@ -1109,7 +1199,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 90
+      "composite": 90,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 97,
+        "ragQuality": 78,
+        "composite": 93,
+        "reply": {
+          "textLength": 239,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 0.9136363636363636,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.4476744186046512
+        }
+      }
     },
     {
       "id": "lab1-reflect",
@@ -1397,7 +1517,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 73,
+        "composite": 93,
+        "reply": {
+          "textLength": 114,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.1348314606741573
+        }
+      }
     },
     {
       "id": "lab1-transfer",
@@ -1679,7 +1829,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 73,
+        "composite": 93,
+        "reply": {
+          "textLength": 49,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.13953488372093023
+        }
+      }
     },
     {
       "id": "lab2-orient",
@@ -1954,7 +2134,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 76,
+        "composite": 94,
+        "reply": {
+          "textLength": 164,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.3416666666666667
+        }
+      }
     },
     {
       "id": "lab2-read",
@@ -2227,7 +2437,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 80
+      "composite": 80,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 53,
+        "ragQuality": 76,
+        "composite": 78,
+        "reply": {
+          "textLength": 82,
+          "questionCount": 2,
+          "questionScore": 0.6000000000000001,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 0,
+          "stageAdherence": false,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.30434782608695654
+        }
+      }
     },
     {
       "id": "lab2-run",
@@ -2501,7 +2741,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 90
+      "composite": 90,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 78,
+        "composite": 88,
+        "reply": {
+          "textLength": 92,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.48
+        }
+      }
     },
     {
       "id": "lab2-debug",
@@ -2781,7 +3051,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 78,
+        "composite": 95,
+        "reply": {
+          "textLength": 134,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.4631578947368421
+        }
+      }
     },
     {
       "id": "lab2-reflect",
@@ -3060,7 +3360,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 75,
+        "composite": 94,
+        "reply": {
+          "textLength": 132,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.2549019607843137
+        }
+      }
     },
     {
       "id": "lab2-transfer",
@@ -3330,7 +3660,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 78,
+        "composite": 95,
+        "reply": {
+          "textLength": 197,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.4900662251655629
+        }
+      }
     },
     {
       "id": "lab3-orient",
@@ -3604,7 +3964,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 90
+      "composite": 90,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 73,
+        "ragQuality": 76,
+        "composite": 85,
+        "reply": {
+          "textLength": 116,
+          "questionCount": 4,
+          "questionScore": 0.19999999999999996,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.3125
+        }
+      }
     },
     {
       "id": "lab3-read",
@@ -3883,7 +4273,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 76,
+        "composite": 94,
+        "reply": {
+          "textLength": 191,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.30714285714285716
+        }
+      }
     },
     {
       "id": "lab3-run",
@@ -4158,7 +4578,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 90
+      "composite": 90,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 78,
+        "composite": 88,
+        "reply": {
+          "textLength": 162,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.49193548387096775
+        }
+      }
     },
     {
       "id": "lab3-debug",
@@ -4436,7 +4886,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 75,
+        "composite": 94,
+        "reply": {
+          "textLength": 164,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.2809917355371901
+        }
+      }
     },
     {
       "id": "lab3-reflect",
@@ -4715,7 +5195,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 72,
+        "composite": 93,
+        "reply": {
+          "textLength": 154,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.05925925925925926
+        }
+      }
     },
     {
       "id": "lab3-transfer",
@@ -4989,7 +5499,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 74,
+        "composite": 94,
+        "reply": {
+          "textLength": 171,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.17777777777777778
+        }
+      }
     },
     {
       "id": "lab4-orient",
@@ -5263,7 +5803,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 74,
+        "composite": 94,
+        "reply": {
+          "textLength": 127,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.1875
+        }
+      }
     },
     {
       "id": "lab4-read",
@@ -5534,7 +6104,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 76,
+        "composite": 94,
+        "reply": {
+          "textLength": 190,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.3188405797101449
+        }
+      }
     },
     {
       "id": "lab4-run",
@@ -5807,7 +6407,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 90
+      "composite": 90,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 81,
+        "composite": 88,
+        "reply": {
+          "textLength": 184,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.6666666666666666
+        }
+      }
     },
     {
       "id": "lab4-debug",
@@ -6092,7 +6722,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 76,
+        "composite": 94,
+        "reply": {
+          "textLength": 169,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.3252032520325203
+        }
+      }
     },
     {
       "id": "lab4-reflect",
@@ -6371,7 +7031,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 75,
+        "composite": 94,
+        "reply": {
+          "textLength": 151,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.26666666666666666
+        }
+      }
     },
     {
       "id": "lab4-transfer",
@@ -6642,7 +7332,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 75,
+        "composite": 94,
+        "reply": {
+          "textLength": 211,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.25316455696202533
+        }
+      }
     },
     {
       "id": "lab5-orient",
@@ -6915,7 +7635,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 90
+      "composite": 90,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 87,
+        "ragQuality": 76,
+        "composite": 89,
+        "reply": {
+          "textLength": 137,
+          "questionCount": 2,
+          "questionScore": 0.6000000000000001,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.308411214953271
+        }
+      }
     },
     {
       "id": "lab5-read",
@@ -7192,7 +7942,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 76,
+        "composite": 94,
+        "reply": {
+          "textLength": 181,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.34558823529411764
+        }
+      }
     },
     {
       "id": "lab5-run",
@@ -7469,7 +8249,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 90
+      "composite": 90,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 80,
+        "composite": 88,
+        "reply": {
+          "textLength": 168,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.5818181818181818
+        }
+      }
     },
     {
       "id": "lab5-debug",
@@ -7752,7 +8562,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 80
+      "composite": 80,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 78,
+        "ragQuality": 76,
+        "composite": 86,
+        "reply": {
+          "textLength": 231,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 0.95,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.3128834355828221
+        }
+      }
     },
     {
       "id": "lab5-reflect",
@@ -8031,7 +8871,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 90
+      "composite": 90,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 74,
+        "composite": 87,
+        "reply": {
+          "textLength": 165,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.1984126984126984
+        }
+      }
     },
     {
       "id": "lab5-transfer",
@@ -8321,7 +9191,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 73,
+        "composite": 93,
+        "reply": {
+          "textLength": 169,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.11450381679389313
+        }
+      }
     },
     {
       "id": "lab6-orient",
@@ -8591,7 +9491,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 75,
+        "composite": 94,
+        "reply": {
+          "textLength": 164,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.2777777777777778
+        }
+      }
     },
     {
       "id": "lab6-read",
@@ -8857,7 +9787,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 75,
+        "composite": 94,
+        "reply": {
+          "textLength": 176,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.2542372881355932
+        }
+      }
     },
     {
       "id": "lab6-run",
@@ -9130,7 +10090,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 80
+      "composite": 80,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 77,
+        "ragQuality": 81,
+        "composite": 87,
+        "reply": {
+          "textLength": 242,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 0.9,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.6451612903225806
+        }
+      }
     },
     {
       "id": "lab6-debug",
@@ -9414,7 +10404,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 90
+      "composite": 90,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 97,
+        "ragQuality": 75,
+        "composite": 93,
+        "reply": {
+          "textLength": 243,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 0.8954545454545455,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.24615384615384617
+        }
+      }
     },
     {
       "id": "lab6-reflect",
@@ -9691,7 +10711,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 90
+      "composite": 90,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 76,
+        "composite": 87,
+        "reply": {
+          "textLength": 158,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.3090909090909091
+        }
+      }
     },
     {
       "id": "lab6-transfer",
@@ -9964,7 +11014,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 75,
+        "composite": 94,
+        "reply": {
+          "textLength": 220,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.27848101265822783
+        }
+      }
     },
     {
       "id": "lab7-orient",
@@ -10234,7 +11314,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 80
+      "composite": 80,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 74,
+        "composite": 87,
+        "reply": {
+          "textLength": 223,
+          "questionCount": 3,
+          "questionScore": 0.4,
+          "lengthScore": 0.9863636363636363,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.1987179487179487
+        }
+      }
     },
     {
       "id": "lab7-read",
@@ -10504,7 +11614,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 80
+      "composite": 80,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 65,
+        "ragQuality": 77,
+        "composite": 82,
+        "reply": {
+          "textLength": 233,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 0.9409090909090909,
+          "lengthOk": false,
+          "stageScore": 0,
+          "stageAdherence": false,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.3716216216216216
+        }
+      }
     },
     {
       "id": "lab7-run",
@@ -10778,7 +11918,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 90
+      "composite": 90,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 79,
+        "composite": 88,
+        "reply": {
+          "textLength": 191,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 6,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.5045871559633027
+        }
+      }
     },
     {
       "id": "lab7-debug",
@@ -11056,7 +12226,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 80
+      "composite": 80,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 76,
+        "composite": 87,
+        "reply": {
+          "textLength": 223,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 0.9863636363636363,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.32432432432432434
+        }
+      }
     },
     {
       "id": "lab7-reflect",
@@ -11338,7 +12538,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 75,
+        "composite": 94,
+        "reply": {
+          "textLength": 183,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.2826086956521739
+        }
+      }
     },
     {
       "id": "lab7-transfer",
@@ -11607,7 +12837,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 90
+      "composite": 90,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 99,
+        "ragQuality": 78,
+        "composite": 94,
+        "reply": {
+          "textLength": 226,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 0.9727272727272728,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.42857142857142855
+        }
+      }
     },
     {
       "id": "lab8-orient",
@@ -11881,7 +13141,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 90
+      "composite": 90,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 87,
+        "ragQuality": 74,
+        "composite": 89,
+        "reply": {
+          "textLength": 118,
+          "questionCount": 2,
+          "questionScore": 0.6000000000000001,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.18478260869565216
+        }
+      }
     },
     {
       "id": "lab8-read",
@@ -12147,7 +13437,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 90
+      "composite": 90,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 99,
+        "ragQuality": 75,
+        "composite": 93,
+        "reply": {
+          "textLength": 225,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 0.9772727272727273,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.23270440251572327
+        }
+      }
     },
     {
       "id": "lab8-run",
@@ -12421,7 +13741,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 80
+      "composite": 80,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 75,
+        "ragQuality": 79,
+        "composite": 86,
+        "reply": {
+          "textLength": 253,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 0.85,
+          "lengthOk": false,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.5434782608695652
+        }
+      }
     },
     {
       "id": "lab8-debug",
@@ -12702,7 +14052,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 90
+      "composite": 90,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 80,
+        "ragQuality": 73,
+        "composite": 86,
+        "reply": {
+          "textLength": 170,
+          "questionCount": 0,
+          "questionScore": 0.4,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.112
+        }
+      }
     },
     {
       "id": "lab8-reflect",
@@ -12985,7 +14365,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 73,
+        "composite": 93,
+        "reply": {
+          "textLength": 104,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 5,
+          "relevantChunks": 5,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.13793103448275862
+        }
+      }
     },
     {
       "id": "lab8-transfer",
@@ -13233,7 +14643,37 @@
         "knowledgeClassesOk": true,
         "retrievalOk": true
       },
-      "composite": 100
+      "composite": 100,
+      "scorecard": {
+        "pipeline": 100,
+        "safety": 100,
+        "replyQuality": 100,
+        "ragQuality": 74,
+        "composite": 94,
+        "reply": {
+          "textLength": 181,
+          "questionCount": 1,
+          "questionScore": 1,
+          "lengthScore": 1,
+          "lengthOk": true,
+          "stageScore": 1,
+          "stageAdherence": true,
+          "contentCodeLines": 0,
+          "leakScore": 1,
+          "noLeak": true
+        },
+        "rag": {
+          "count": 4,
+          "relevantChunks": 4,
+          "relevanceShare": 1,
+          "classesOk": 1,
+          "availability": 1,
+          "candidateHealth": 1,
+          "rankScore": 1,
+          "citationScore": 0,
+          "groundingScore": 0.17006802721088435
+        }
+      }
     }
   ],
   "ablation": [

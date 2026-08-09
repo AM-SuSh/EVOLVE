@@ -1,8 +1,8 @@
 # Lab2 Trap 与任务切换 Prompt 分阶段评测
 
-- 评测标签：`remote-stu`
+- 评测标签：`eval-2026-08-09T09-01-40`
 - 模式：`remote` / 模型：`gpt-5.6-luna`
-- 上游：`https://you.loveme.space/v1`
+- 上游：`http://127.0.0.1:9/v1`
 
 ## 定界阶段 · lab2-orient
 

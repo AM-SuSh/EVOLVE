@@ -1,8 +1,8 @@
 # Lab5 文件系统与并发 Prompt 分阶段评测
 
-- 评测标签：`remote-stu`
+- 评测标签：`eval-2026-08-09T09-01-40`
 - 模式：`remote` / 模型：`gpt-5.6-luna`
-- 上游：`https://you.loveme.space/v1`
+- 上游：`http://127.0.0.1:9/v1`
 
 ## 定界阶段 · lab5-orient
 
@@ -179,7 +179,9 @@
 ```text
 # 排错阶段
 
-学生必须先提供精确现象、当前假设和能证伪它的最小实验。信息不足时只追问缺失项；信息充分后给一层检查路径，不直接修改完整代码。优先用最小 open/read 测试区分命名查找与 fd 分发，用去掉锁或缩短消息的对照实验定位管道缓冲问题。
+学生必须先提供精确现象、当前假设和能证伪它的最小实验。信息不足时只追问缺失项；信息充分后给一层检查路径，不直接修改完整代码。
+
+对 fill/debug 工作区：优先用「`fs_test` 是否仍过、`pipe_test` 是否失败」区分「内嵌文件路径」与「fork 后管道引用计数」；再引导到 `clone_fd_table` / `bump_inherited_pipe_refs`，不要先改用户测例关端顺序。
 ```
 
 **服务端路由**：requested=debug → tutorState.stage=debug（gate=missing-debug-hypothesis）
