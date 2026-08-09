@@ -752,9 +752,9 @@ export const tutorLabs: TutorLab[] = [
     resources: {
       orient: { paths: ['labs/lab7-ipc-signal.md', 'kernel/src/signal.rs'], docs: [{ title: 'Lab7 实验指导', description: '建立统一 fd 与信号机制的整体认识', href: '/labs/lab7-ipc-signal' }, { title: '实验知识地图', description: '查看 IPC 在系统能力链中的位置', href: '/labs/overview' }] },
       read: { paths: ['os-fs/src/fd_kind.rs', 'kernel/src/signal.rs', 'os-signal/src/lib.rs'], docs: [{ title: 'Lab7 机制说明', description: '沿 fd 表、dup 与信号投递路径阅读实现', href: '/labs/lab7-ipc-signal' }, { title: '系统架构', description: '理解 os-signal 组件与内核的边界', href: '/project/architecture' }] },
-      run: { paths: ['user/src/bin/dup_test.rs', 'user/src/bin/signal_test.rs'], docs: [{ title: '快速验证', description: '运行 lab7 测试链并观察信号行为', href: '/guide/ai-tutor' }, { title: 'Lab7 阅读理解（任务二）', description: '用实验文档【任务二】自测 fd 与信号语义', href: '/labs/lab7-ipc-signal' }] },
+      run: { paths: ['user/src/bin/dup_test.rs', 'user/src/bin/signal_test.rs', 'user/src/bin/signal_mask_test.rs'], docs: [{ title: '快速验证', description: '运行 lab7 测试链并观察信号行为', href: '/guide/ai-tutor' }, { title: 'Lab7 阅读理解（任务二）', description: '用实验文档【任务二】自测 fd 与信号语义', href: '/labs/lab7-ipc-signal' }] },
       debug: { paths: ['kernel/src/signal.rs', 'kernel/src/trap.rs', 'user/src/bin/signal_mask_test.rs'], docs: [{ title: 'Lab7 常见问题', description: '从投递时机与屏蔽字定位信号异常', href: '/labs/lab7-ipc-signal' }, { title: '验证方法', description: '构造最小信号场景区分故障环节', href: '/guide/ai-tutor' }] },
-      reflect: { paths: ['project/ai-collaboration.md', 'answers/lab7-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理信号时序的证据链', href: '/project/ai-collaboration' }, { title: 'Lab7 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab7-answers' }] },
+      reflect: { paths: ['project/ai-collaboration.md', 'kernel/src/signal.rs'], docs: [{ title: 'AI 协作记录', description: '整理信号时序的证据链', href: '/project/ai-collaboration' }] },
     },
   },
   {

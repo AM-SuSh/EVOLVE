@@ -46,12 +46,12 @@
   },
   "variants": {
     "debug": {
-      "label": "区分信号 pending 与 delivery，修复未真正屏蔽 SIGUSR1 的掩码设置。",
+      "label": "排查 handle_pending 漏改 sepc，handler 未被真正执行。",
       "files": [
-        "user/src/bin/signal_mask_test.rs"
+        "kernel/src/signal.rs"
       ],
       "sources": {
-        "user/src/bin/signal_mask_test.rs": "scaffold/exercises/lab7/debug/user/src/bin/signal_mask_test.rs"
+        "kernel/src/signal.rs": "scaffold/exercises/lab7/debug/kernel/src/signal.rs"
       },
       "manifest": "lab-packages/lab7/variants/debug/manifest.yaml"
     }

@@ -1,43 +1,68 @@
-# lab7 fill 变体（加强版）
+# Lab7 fill 变体：补全信号投递与信号帧
 
-id: lab7-fill
+id: lab7-fill-signal-frame
 lab: lab7
 variant: fill
-version: 1.1.0
+version: 2.0.0
 
 learning_goal: |
-  学生实现屏蔽/kill/确认未交付/解除屏蔽/等待交付的完整协议。
+  学生实现 `handle_pending` 中「默认动作 + 构造信号帧」的部分：区分致命默认动作
+  与用户处理函数，保存 `TrapContext`、把信号编号写入 `a0`、把 `sepc` 改到处理函数
+  地址，使信号在返回用户态前被真正投递。
 
 target_concepts:
-  - os.signal.mask
+  - os.signal.delivery
+  - os.signal.default-action
+  - os.signal.sigreturn-frame
 
-student_file: user/src/bin/signal_mask_test.rs
-source_template: ../../../scaffold/exercises/lab7/fill/user/src/bin/signal_mask_test.rs
+student_file: kernel/src/signal.rs
+source_template: ../../../scaffold/exercises/lab7/fill/kernel/src/signal.rs
+manual_anchor: labs/lab7-ipc-signal.md#任务一完成实验
 
 what_is_blank:
-  - symbol: run_mask_protocol
+  - symbol: handle_pending
     hint_in_source: true
+    required_behavior:
+      - SIGKILL 恒返回 Kill(signum)
+      - SIGINT / SIGKILL 未注册处理函数时按致命默认动作返回 Kill(signum)
+      - 未注册且非致命（如 SIGUSR1 无 handler）时 continue 忽略
+      - 注册处理函数时保存 saved_trap_cx、置 in_signal_handler、a0=signum、sepc=handler
 
 success_criteria:
   recipe: lab7.verify.v1
-  assertions: [signal-mask-pass]
+  assertions: [dup-pass, signal-pass, signal-mask-pass, pipe-pass]
 
 negative_tests:
   - id: leave-todo
     description: 未实现（仍 todo!）则编译或运行失败
     expect_fail: true
+  - id: never-set-sepc
+    description: 构造了帧但不改 sepc → handler 不执行，signal_test / signal_mask_test 超时
+    expect_fail_assertions: [signal-pass, signal-mask-pass]
+  - id: never-set-a0
+    description: 只改 sepc 不写 a0 → handler 收到的信号编号不可靠
+    expect_fail: true
+
+common_mistakes:
+  - 只保存 sepc 而不是保存整帧 TrapContext
+  - 忘记置 in_signal_handler，handler 执行期间又重复投递
+  - 把未注册处理函数的 SIGUSR1 也当成致命默认动作
 
 hint_ladder:
   - level: 0
-    when: 尚未描述协议/循环
-    say: 先用自己的话写出要补的步骤，再对照函数注释。
+    when: 尚未描述投递步骤
+    say: 先用自己的话写出「取到信号之后内核要做什么」，再对照 handle_pending 注释。
   - level: 1
-    when: 方向正确但仍卡住
-    say: 对照手册背景知识，用最小改动验证每一步假设。
+    when: 知道要构造帧但顺序不清
+    say: sigreturn 要恢复的是什么？先保存还是先改 sepc？
   - level: 2
-    when: 能编译但断言失败
-    say: 对照预期输出与边界（关闭哪一端、nlink 推算、是否持锁）。
+    when: 能编译但 signal_test 超时
+    say: 用户态返回后从哪条指令继续？handler 地址写进哪个字段？
+  - level: 3
+    when: 仍在默认动作上出错
+    say: 未注册处理函数的 SIGUSR1 与 SIGINT 行为是否相同？对照 is_fatal_default。
 
 report_prompts:
-  - 你实现的关键步骤是什么？用测例输出证明正确。
-  - 若某一步顺序反了（例如先关错管道端、未持锁），会发生什么？
+  - 你如何区分致命默认动作与注册处理函数？
+  - 为什么保存的是整个 TrapContext 而不是只保存 sepc？sigreturn 恢复的是什么？
+  - 若只改 a0 不改 sepc，signal_test 会观察到什么现象？

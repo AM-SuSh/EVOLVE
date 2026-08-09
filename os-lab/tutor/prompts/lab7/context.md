@@ -9,7 +9,7 @@
 
 ## 可讨论范围
 
-优先引用 `os-fs/src/fd_kind.rs`、`kernel/src/signal.rs`、`os-signal/src/lib.rs`、`kernel/src/trap.rs` 和 `user/src/bin/signal_test.rs`。可以解释 FdType 分发、dup 共享、pending/mask/handler 帧与 trap 返回前投递等局部接口与不变量，但不能给出完整实验答案或整文件实现。对 debug 变体，在学生完成「记录 sigprocmask 入参与 SIGUSR1 编号，区分 pending 与 delivery」前，不要直接点出 `signal_mask_test.rs` 中错误的掩码值。
+优先引用 `os-fs/src/fd_kind.rs`、`kernel/src/signal.rs`、`os-signal/src/lib.rs`、`kernel/src/trap.rs` 和 `user/src/bin/signal_test.rs`。可以解释 FdType 分发、dup 共享、pending/mask/handler 帧与 trap 返回前投递等局部接口与不变量，但不能给出完整实验答案或整文件实现。对 debug 变体，在学生完成「确认 pending 是否被 `take_deliverable` 消费、`sepc` 是否指向 handler」前，不要直接点出 `kernel/src/signal.rs` 中漏掉的 `cx.sepc = handler`。
 
 ## 客观验证
 

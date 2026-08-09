@@ -1,5 +1,50 @@
 # os-lab 项目进度总览
 
+## 2026-08-09 - Task: Lab7 fill/debug 出题迁移到内核 handle_pending
+
+### What was done
+- 将 Lab7 fill/debug 从用户态 `user/src/bin/signal_mask_test.rs` 迁移到内核 `kernel/src/signal.rs`：
+  - fill：`handle_pending` 中「默认动作 + 构造信号帧」改为 `todo!()`，文件头与函数上方给出思路提示；
+  - debug：`handle_pending` 漏掉 `cx.sepc = handler`（PLANTED BUG），现象为 `signal_test` / `signal_mask_test` 等不到处理函数。
+- 同步更新 `lab-packages/lab7/lab.yaml`（editable_by_variant、variants、misconceptions）、fill/debug manifest、`published.json`、`releases/lab7/1.0.0/release.json`、checkpoints C7-4、debug TEACHER_ACCEPTANCE、tutor context/stage-debug、tutor-model.ts、lab-factory.test.mjs 与 lab7 手册任务一。
+- 答案文档 `lab7-answers.md` 补齐任务二 9 题与 `handle_pending` 参考实现；按 lab1-3 答案文档风格，不主动提及 fill/debug。
+- 按 lab1-3 语气收紧手册：问题场景移除比喻式开头与重复疑问列表，背景知识开头统一为「本节所有路径都相对 `os-lab/` 根目录…」。
+
+### Testing
+- `node --test os-lab/handbook/lab-factory.test.mjs`：9/9 通过（含变体源码头部任务标记、Lab3-Lab8 debug 实领一致）。
+- YAML/JSON 解析通过；fill/debug 变体与参考 `kernel/src/signal.rs` 的 diff 只包含预期的注释 / `todo!` / 缺行。
+- 参考实现 QEMU 全链与 host 单测此前已通过；变体行为由 diff 与负向断言描述保证。
+
+### Notes
+- 改动：`os-lab/scaffold/exercises/lab7/{fill,debug}/kernel/src/signal.rs`（新增）；删除旧 `scaffold/exercises/lab7/{fill,debug}/user/src/bin/signal_mask_test.rs`；`lab-packages/lab7/*`；`published.json`；`labs/lab7-ipc-signal.md`；`tutor/prompts/lab7/*`；`tutor-model.ts`；`lab-factory.test.mjs`；`progress.md`
+- 回滚：还原上述文件
+
+---
+
+## 2026-08-09 - Task: 复核并增补 Lab7 手册
+
+### What was done
+- 按 7 项检查复核 `os-lab/labs/lab7-ipc-signal.md`：核对 OSTEP 链接页码（P40 / P302 / P352 分别对应进程 API、基于事件的并发、文件与目录），补充 `dup`、信号 API 与 pending / mask / handler 等教材未展开术语的解释。
+- 扩写背景知识：fd 表 `slots` / `files` 两列与 `FdType` 分发、`PipeInner` 字段、`sys_dup` 三件事、信号投递 / `sigreturn` 代码路径、测例链 `dup_test → signal_test → signal_mask_test → pipe_test`。
+- 第零节改为 Lab1-5 的三项结构（已完成 Lab6 / 快速自检 / 建议先读书）；工作目录、环境激活与 `fs.img` 预构建并入任务一。
+- 移除「代码走读 / lab7 参考答案」链接与任务二答案引用；任务二由 5 题扩为 8 题，纳入 dup offset、默认动作、低号 fd 占位等反复出现的点。
+- 同步移除前端 Lab7 学生侧答案引用：`handbook/data/labs.json` 复盘项与 `tutor-model.ts` reflect resources。
+- 阅读逻辑复查：任务一明确“先完成 fill/debug 变体再预构建运行”；2.2 前置 Lab 由 Lab4 修正为 Lab5；2.5 补齐 `dup_test` 也占用低号 fd 的说明。
+- 任务写法对齐 Lab1-5：任务一改为「完成实验」只陈述任务，不再提及 fill/debug/变体；删除 2.4 术语表，改为术语首次出现处的行内解释（pending / mask / handler / 默认动作 / 投递 / sigreturn），正文中的 handler 统一为「处理函数」。
+- 结构与 Lab1-5 对齐：删除 Lab7 独有的「五、AI 提问模板」章节（其提示内容由工作台 AI 导师快捷提问承接）；stdout 重定向的探索点补进任务二第 9 题。
+
+### Testing
+- Lab7 QEMU 全链通过：`cargo build -p kernel --features lab7 --release` + `check-fs-img` + QEMU，输出 `dup_test / signal_test / signal_mask_test / pipe_test pass`。
+- Lab8 QEMU 全链通过，确认 Lab7 后可正常切到 Lab8。
+- host 单测 `cargo test -p os-fs -p os-signal --target x86_64-pc-windows-msvc`：11 + 4 通过。
+- `npm run build`（`os-lab/handbook`）通过，0 死链；dev server 5174 页面可访问。
+
+### Notes
+- 改动：`os-lab/labs/lab7-ipc-signal.md`；`os-lab/handbook/data/labs.json`；`os-lab/handbook/.vitepress/theme/tutor-model.ts`；`progress.md`
+- 回滚：还原上述文件
+
+---
+
 ## 2026-08-08 - Task: 重写 Lab5 手册「三、实验任务」对齐内核 fill/debug
 
 ### What was done

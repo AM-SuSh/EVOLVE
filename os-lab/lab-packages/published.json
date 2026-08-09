@@ -415,22 +415,22 @@
       },
       "variants": {
         "fill": {
-          "label": "学生实现屏蔽/投递/解除屏蔽完整信号协议。",
+          "label": "学生补全 handle_pending 的默认动作与信号帧构造。",
           "files": [
-            "user/src/bin/signal_mask_test.rs"
+            "kernel/src/signal.rs"
           ],
           "sources": {
-            "user/src/bin/signal_mask_test.rs": "scaffold/exercises/lab7/fill/user/src/bin/signal_mask_test.rs"
+            "kernel/src/signal.rs": "scaffold/exercises/lab7/fill/kernel/src/signal.rs"
           },
           "manifest": "lab-packages/lab7/variants/fill/manifest.yaml"
         },
         "debug": {
-          "label": "区分信号 pending 与 delivery，修复未真正屏蔽 SIGUSR1 的掩码设置。",
+          "label": "排查 handle_pending 漏改 sepc，handler 未被真正执行。",
           "files": [
-            "user/src/bin/signal_mask_test.rs"
+            "kernel/src/signal.rs"
           ],
           "sources": {
-            "user/src/bin/signal_mask_test.rs": "scaffold/exercises/lab7/debug/user/src/bin/signal_mask_test.rs"
+            "kernel/src/signal.rs": "scaffold/exercises/lab7/debug/kernel/src/signal.rs"
           },
           "manifest": "lab-packages/lab7/variants/debug/manifest.yaml"
         }

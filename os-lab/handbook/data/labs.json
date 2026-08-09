@@ -126,7 +126,7 @@
         { "id": "run", "label": "跑通 lab7 全链（make test-lab7）" },
         { "id": "exercise", "label": "完成【任务二】阅读理解与思考题" },
         { "id": "exercise-unit", "label": "（可选）跑通 os-fs + os-signal host 单测" },
-        { "id": "review", "label": "对照 labs/answers/lab7-answers.md 自查" }
+        { "id": "review", "label": "复盘：用自己的话解释 fd / dup / 信号链路" }
       ]
     },
     {

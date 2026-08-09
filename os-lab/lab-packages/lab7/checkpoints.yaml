@@ -4,5 +4,5 @@ checkpoints:
   - { id: C7-1, stage: orient, required_evidence: [manual], prompt: 对比管道传字节与信号传事件。 }
   - { id: C7-2, stage: read, required_evidence: [code], prompt: 标出 pending、mask 和 handler 帧三个状态。 }
   - { id: C7-3, stage: run, required_evidence: [run], prompt: 保存 dup、signal、mask、pipe 四条可信断言。 }
-  - { id: C7-4, stage: debug, required_evidence: [run, code], prompt: 解释 mask 为 0 时信号为何提前投递。 }
+  - { id: C7-4, stage: debug, required_evidence: [run, code], prompt: 解释 sepc 未改到 handler 时，信号为何一直停在 pending。 }
   - { id: C7-5, stage: reflect, required_evidence: [report], prompt: 说明 pending 不等于 handler 已运行。 }

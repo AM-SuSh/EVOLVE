@@ -6,7 +6,7 @@ feature: lab7
 prerequisites: [lab1, lab2, lab3, lab4, lab5, lab6]
 textbook: [OSTEP Interlude File and Directory API, POSIX Signals]
 status: stable
-manual_revision: lab7-signal-mask-debug-stable-v1
+manual_revision: lab7-signal-frame-v2
 manual: ../../labs/lab7-ipc-signal.md
 answers: ../../labs/answers/lab7-answers.md
 tutor_context: ../../tutor/prompts/lab7/context.md
@@ -17,7 +17,7 @@ tasks:
   - { id: orient, stage: orient, goal: 说明同步字节 IPC 与异步信号通知的不同职责 }
   - { id: read, stage: read, goal: 沿 kill、pending、mask、handler 与 sigreturn 追踪投递 }
   - { id: run, stage: run, goal: 跑通 dup、信号、屏蔽字与管道回归断言 }
-  - { id: debug, stage: debug, goal: 用屏蔽期间是否执行 handler 区分 pending 与 delivery }
+  - { id: debug, stage: debug, goal: 用 sepc 是否跳转到 handler 区分 pending 与 delivery }
   - { id: reflect, stage: reflect, goal: 解释清除 mask 后为何必须再次获得内核返回时机 }
 starter_files:
   added:
@@ -28,16 +28,16 @@ starter_files:
     - user/src/bin/signal_child.rs
     - user/src/bin/signal_mask_test.rs
   editable_by_variant:
-    fill: [user/src/bin/signal_mask_test.rs]
-    debug: [user/src/bin/signal_mask_test.rs]
+    fill: [kernel/src/signal.rs]
+    debug: [kernel/src/signal.rs]
   generated: [Cargo.toml, kernel/Cargo.toml, user/Cargo.toml]
 variants:
   fill:
     manifest: variants/fill/manifest.yaml
-    source: ../../scaffold/exercises/lab7/fill/user/src/bin/signal_mask_test.rs
+    source: ../../scaffold/exercises/lab7/fill/kernel/src/signal.rs
   debug:
     manifest: variants/debug/manifest.yaml
-    source: ../../scaffold/exercises/lab7/debug/user/src/bin/signal_mask_test.rs
+    source: ../../scaffold/exercises/lab7/debug/kernel/src/signal.rs
 verification:
   recipe: lab7.verify.v1
   command: make test-lab7
@@ -50,4 +50,5 @@ verification:
 misconceptions:
   - { id: mask-discards-signal, statement: 被 mask 的信号会直接丢失, counter: 信号保持 pending，清除 mask 后才允许投递 }
   - { id: kill-runs-handler-inline, statement: kill 会在发送方系统调用中直接执行目标 handler, counter: 内核只登记 pending，在目标返回用户态前构造信号帧 }
+  - { id: sepc-not-redirected, statement: 注册 handler 后只改 a0 即可，返回时会自动进入 handler, counter: 必须把 sepc 改到 handler 地址，否则返回用户态后仍执行原指令 }
 rubric_ref: ../../learning/rubric-v2-frozen.md
