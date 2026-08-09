@@ -42,6 +42,133 @@
 ### Notes
 - 改动：`os-lab/labs/lab7-ipc-signal.md`；`os-lab/handbook/data/labs.json`；`os-lab/handbook/.vitepress/theme/tutor-model.ts`；`progress.md`
 - 回滚：还原上述文件
+## 2026-08-09 - Task: 按 Lab2 格式重写 Lab6 手册并补代码讲解
+
+### What was done
+- 参照 `lab2-trap-and-task.md`：在「二、背景知识」增加阅读顺序表，按启动切换 → VirtIO/MMIO → build.rs → open → 硬链接/FileIndex → fd 分发 → spawn/exec 展开，并嵌入真实源码片段与对照说明。
+- 任务一补充与 published 对齐的断言表；标明任务文件是 `kernel/src/fs/disk.rs`（勿与 `os-fs` 混淆）；保留 fill/debug 与任务二/三。
+
+### Testing
+- 通读结构：零→一→二(2.1–2.7)→三→四，与 Lab2 层级一致；代码片段与当前 `disk.rs` / `virtio_block.rs` / `fs/mod.rs` / `mm.rs` 一致。
+
+### Notes
+- 改动：`os-lab/labs/lab6-disk-fs.md`；`progress.md`
+- 回滚：`git checkout -- os-lab/labs/lab6-disk-fs.md`
+- 站点若缓存旧文，需 `npm run sync` 或刷新 VitePress
+
+---
+
+## 2026-08-09 - Task: 删除 Lab6 手册预构建 cargo 步骤
+
+### What was done
+- 从 `lab6-disk-fs.md`「零、开始之前」删除单独的 `cargo build -p user/kernel` 预构建步骤与产物表；改为说明直接 `make test-lab6` 即可由 `build.rs` 打包 `fs.img`。
+- 同步去掉任务一中「完成预构建」的表述。
+
+### Testing
+- 通读「零、开始之前」与任务一验证段：无上述两条 cargo 命令，编号连续。
+
+### Notes
+- 改动：`os-lab/labs/lab6-disk-fs.md`；`progress.md`
+- 回滚：`git checkout -- os-lab/labs/lab6-disk-fs.md`
+
+---
+
+## 2026-08-09 - Task: 补发 Lab6 依赖的 check-fs-img.ps1
+
+### What was done
+- 定位可信验证 0/8：学生工作区缺 `scripts/check-fs-img.ps1`，`make test-lab6` 在 check 步骤以退出码 1 失败，QEMU 断言全未跑到。
+- 脚手架：lab1 / lab6 的 `rootFiles` 增加 `scripts/check-fs-img.ps1`；已给 `dtdt`/`dt1002`/`admin` 及 `dtdt` 相关快照补上该脚本。
+
+### Testing
+- 在 `student-labs/dtdt` 构建并跑 QEMU lab6：出现 `file_test pass`、`Test link OK!`、全链 pass 与 `All processes exited.`。
+
+### Notes
+- 改动：`os-lab/scripts/scaffold.mjs`；各学生工作区/`dtdt` 快照下的 `scripts/check-fs-img.ps1`；`progress.md`
+- 回滚：还原 scaffold 中 rootFiles；删除已复制的脚本
+- fill 题面本身已正确；失败主因是缺校验脚本，不是 disk.rs
+
+---
+
+## 2026-08-09 - Task: 去掉 map_mmio_devices 多余 mut
+
+### What was done
+- 将 `map_mmio_devices` 中 `let mut ks` 改为 `let ks`，消除 Lab6 编译时的 `unused_mut` 警告。
+- 同步修改参考实现、Lab3 fill/debug scaffold、`dtdt`/`dt1002` 工作区，以及 `dtdt` 的 lab3–lab6 快照，避免重置后警告回来。
+
+### Testing
+- 在 `student-labs/dtdt` 执行 `cargo build -p kernel --features lab6 --release`：Finished，无 `unused_mut` 警告。
+
+### Notes
+- 改动：`os-lab/kernel/src/mm.rs`；`scaffold/exercises/lab3/{fill,debug}/kernel/src/mm.rs`；`student-labs/{dtdt,dt1002}/kernel/src/mm.rs`；`student-labs/.snapshots/dtdt/lab{3,4,5,6}/kernel/src/mm.rs`；`progress.md`
+- 回滚：对各路径还原该行 `let mut ks`
+- 行为不变，仅消警告；函数仍仅在 lab6+ feature 下编译
+
+---
+
+## 2026-08-09 - Task: 核实 Lab6 按 scaffold fill/debug 分发
+
+### What was done
+- 核实 Lab6 与 Lab2–5 同一套分发：catalog/`published.json` 的任务文件为 `kernel/src/fs/disk.rs`，sources 指向 `scaffold/exercises/lab6/{fill,debug}/...`。
+- 对测试账号 `dtdt` 执行 upgrade，确认下发的是 fill 题面（文件头含「Lab6 任务：fill」、`attach_hard_link_alias` 为 `todo!`），而非完整参考 `os-lab/kernel/.../disk.rs`。
+- 确认 `scaffold/exercises/lab6/` 下仅保留 fill/debug 的 `kernel/src/fs/disk.rs`（无旧 user 题面）。
+
+### Testing
+- `node` 调用 `applyNext('dtdt')`：日志含「新增 kernel/src/fs/disk.rs（任务：…attach_hard_link_alias）」；`variants.lab6 === "fill"`。
+- 学生文件与 `scaffold/exercises/lab6/fill/kernel/src/fs/disk.rs` 内容一致。
+
+### Notes
+- 改动：`progress.md`；本地 `student-labs/dtdt` 已领取 lab6（非仓库交付物）。
+- 回滚：`dtdt` 可用教师端重置 Lab6。
+- 前端若仍见「完整」实现：未登录/未初始化会回落到只读 `os-lab`；或误开了 `os-fs/src/disk.rs`（宿主机辅助 crate，不是任务文件）。任务文件请开 `kernel/src/fs/disk.rs`。
+- 教师未指定 `assignments.lab6` 时，catalog 默认取 variants 首项 **fill**；要 debug 请在教学安排里指定。
+
+---
+
+## 2026-08-09 - Task: Lab6 前端相关文件纳入完整测例链
+
+### What was done
+- 将 Lab6 阶段推荐补全为「内核 + initproc + 全链用户测例」：`lab6_usertest` 以及 file/link/mass_unlink/mmap/spawn/stride/fs/pipe。
+- 手册第三节文件表同步列出上述测例与内核配套文件；「本 Lab 相关」上限调至 24。
+
+### Testing
+- 人工核对 `tutor-model.ts` run 阶段含完整测例链；领取 Lab6 并刷新页面后应在「本 Lab 相关」看到用户测例与内核文件。
+
+### Notes
+- 改动：`tutor-model.ts`；`CodePanel.vue`；`labs/lab6-disk-fs.md`；`progress.md`
+- 回滚：还原上述文件
+- 测例文件须学生已「升级」到 Lab6 后才会出现在工作区目录中
+
+---
+
+## 2026-08-09 - Task: 补全 Lab6 前端「本 Lab 相关」文件推荐
+
+### What was done
+- 扩充 Lab6 各阶段 `resources.paths`（disk/mod/virtio/build/global_alloc、测例与 process/mm 等），与手册文件表对齐，避免只露出单个 `os-fs` 路径。
+- 将代码面板「本 Lab 相关」展示上限由 8 提到 14。
+
+### Testing
+- 对照：未领取 Lab6 时至少可显示 `fs/mod.rs`、`os-fs/src/disk.rs`、`build.rs` 等已有文件；领取后应出现 `disk.rs` / `virtio_block.rs` / 测例。需刷新学生端页面验证。
+
+### Notes
+- 改动：`os-lab/handbook/.vitepress/theme/tutor-model.ts`；`CodePanel.vue`；`progress.md`
+- 回滚：还原上述文件
+- 完整 Lab6 内核/测例仍需学生点「升级我的系统」领取后才会全部出现在工作区
+
+---
+
+## 2026-08-09 - Task: Lab6 fill/debug 改到内核 disk.rs
+
+### What was done
+- 将 Lab6 fill/debug 从用户态 `link_test.rs` 改为内核 `kernel/src/fs/disk.rs`：fill 补全 `attach_hard_link_alias`；debug 埋点为 `DiskFs::link` 漏掉 `nlink += 1`。
+- 同步 scaffold、published.json、lab.yaml、manifest、concepts、checkpoints、tutor、站点阶段推荐与手册第三节。
+
+### Testing
+- 人工核对 fill 为 `todo!`、debug 注释掉 `nlink += 1`；catalog 指向新 sources。未在本机重跑 `make test-lab6`（需学生工作区领取后验证）。
+
+### Notes
+- 改动：scaffold/exercises/lab6/{fill,debug}/kernel/src/fs/disk.rs；删除旧 user 题面；lab-packages/lab6/*；published.json；scripts/scaffold.mjs；labs/lab6-disk-fs.md；labs/answers/lab6-answers.md；tutor/prompts/lab6/*；handbook/{tutor-model.ts,lab-factory.test.mjs}；progress.md
+- 回滚：还原上述文件并恢复旧 user 题面路径
+- 已领取旧 Lab6 工作区的学生需重新下发/重置才能拿到新题
 
 ---
 

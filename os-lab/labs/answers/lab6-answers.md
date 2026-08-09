@@ -26,6 +26,11 @@ unlink: 从 aliases 移除路径名，nlink -= 1；路径加入 hidden，避免�
 
 **死锁规避**：不在持有 easy-fs 全局锁的路径上调用 `inode.clear()`。删除最后一个硬链接时，仅更新内存索引。
 
+> **fill / debug 任务一**：工作区动手点在 `kernel/src/fs/disk.rs`。  
+> - **fill**：把「`nlink += 1` + `aliases.insert` + `hidden.remove`」抽成 `attach_hard_link_alias`，学生补全；`DiskFs::link` 在拿到源 `meta` 后调用它。  
+> - **debug**：仍共享 `FileMeta` 并 `insert`，但漏掉了 `nlink += 1`（PLANTED BUG）。  
+> 用户侧 `link_test.rs` 已是正确断言，一般不必改。
+
 ### 1.4 管道 fd 与普通文件分发
 
 `sys_read`/`sys_write` 先根据 `slots[fd]` 判断 `FdType`：
@@ -58,11 +63,20 @@ MMIO 基址在 `config` 中定义为 `0x1000_1000`，映射进内核页表后，
 
 **为何不 `inode.clear()`**：`fs.lock()` 已持自旋锁，若 `clear()` 内部再 `lock()`，同一执行流无法重入 → 永久自旋。`FileIndex` 只改索引与计数，规避该路径。
 
-### 第 4 题：管道 vs 普通文件分发
+### 第 4 题：漏 bump nlink 为何常是 link_test 坏、file_test 仍过？
+
+`DiskFs::link` 在共享源 `FileMeta` 后还必须 `nlink += 1`（fill 抽成 `attach_hard_link_alias`）。
+
+- **`file_test`**：CREATE / 读写普通文件，不依赖硬链接计数。
+- **`link_test`**：`linkat` 后 `fstat` 期望两路径 `ino` 相同且 `nlink == 2`。若只 `aliases.insert` 不加 `nlink`，常见 `fstat nlink mismatch` / 缺少 `Test link OK!`。
+
+> 一句话：漏 bump 伤的是硬链接元数据；只测 CREATE 的 `file_test` 碰不到这条路径。
+
+### 第 5 题：管道 vs 普通文件分发
 
 管道走 `PipeRead`/`PipeWrite` → `sync` 环形缓冲；普通文件走 `OpenedFile` + inode。管道没有 `OpenedFile`，若误查 `files[fd]` 会得到 `pipe write failed`——这是 Lab6 联调修过的回归点。
 
-### 第 5 题：spawn / exec / mmap
+### 第 6 题：spawn / exec / mmap
 
 - **spawn**：创建**新**子进程，从磁盘路径加载 ELF，父进程继续。
 - **execve**：替换**当前**进程镜像，不新增进程。
@@ -70,6 +84,6 @@ MMIO 基址在 `config` 中定义为 `0x1000_1000`，映射进内核页表后，
 
 ## 三、任务三动手修改的现象参考
 
-**修改 1**：预置文本进 `fs.img` 后，用户程序 `openat`+`read` 应能打印其内容。  
-**修改 2**：`linkat` 前 `nlink` 多为 1；成功后两路径 `ino` 相同、`nlink` 为 2；`unlink` 别名后原路径 `nlink` 回到 1。  
+**修改 1（用户断言写错）**：链接后仍期望 `nlink == 1` → 测例失败；用来对照任务一「用户期望错」vs「内核漏 bump」。  
+**修改 2**：预置文本进 `fs.img` 后，用户程序 `openat`+`read` 应能打印其内容。  
 **修改 3**：短文重点写清「教学简化 vs 参考实现」的取舍即可。

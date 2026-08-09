@@ -113,7 +113,8 @@ const labFiles = computed(() => {
       if (/\.(rs|asm|ld|toml)$/.test(p)) seen.add(p)
     }
   }
-  return [...seen].filter((path) => existingFiles.value.has(path)).slice(0, 8)
+  // Lab6 等实验含完整用户测例链，放宽上限以免测例/内核文件被截断。
+  return [...seen].filter((path) => existingFiles.value.has(path)).slice(0, 24)
 })
 
 function fileStatusFor(path: string): FileStatusKind | null {

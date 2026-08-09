@@ -722,11 +722,89 @@ export const tutorLabs: TutorLab[] = [
       { label: '清理', command: 'cargo clean -p kernel' },
     ],
     resources: {
-      orient: { paths: ['labs/lab6-disk-fs.md', 'kernel/src/virtio_block.rs'], docs: [{ title: 'Lab6 实验指导', description: '建立块设备、磁盘布局与文件系统分层的整体认识', href: '/labs/lab6-disk-fs' }, { title: '实验知识地图', description: '查看八个 Lab 的递进关系', href: '/labs/overview' }] },
-      read: { paths: ['kernel/src/fs/disk.rs', 'os-fs/src/disk.rs', 'kernel/src/virtio_block.rs'], docs: [{ title: 'Lab6 机制说明', description: '沿块缓存、inode 和目录项阅读磁盘文件系统', href: '/labs/lab6-disk-fs' }, { title: '系统架构', description: '理解 os-fs 与内核文件层的职责边界', href: '/project/architecture' }] },
-      run: { paths: ['user/src/bin/file_test.rs', 'user/src/bin/link_test.rs'], docs: [{ title: '快速验证', description: '运行带 VirtIO 的 lab6 测试链', href: '/guide/ai-tutor' }, { title: 'Lab6 阅读理解（任务二）', description: '用实验文档【任务二】自测磁盘布局与硬链接', href: '/labs/lab6-disk-fs' }] },
-      debug: { paths: ['kernel/src/fs/disk.rs', 'user/src/bin/mass_unlink_test.rs', 'scripts/check-fs-img.ps1'], docs: [{ title: 'Lab6 常见问题', description: '从块缓存一致性和引用计数定位异常', href: '/labs/lab6-disk-fs' }, { title: '验证方法', description: '用最小文件操作序列复现问题', href: '/guide/ai-tutor' }] },
-      reflect: { paths: ['project/ai-collaboration.md', 'answers/lab6-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理磁盘路径的证据链', href: '/project/ai-collaboration' }, { title: 'Lab6 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab6-answers' }] },
+      orient: {
+        paths: [
+          'labs/lab6-disk-fs.md',
+          'user/src/bin/lab6_usertest.rs',
+          'kernel/src/fs/disk.rs',
+          'kernel/src/fs/mod.rs',
+          'kernel/src/virtio_block.rs',
+          'kernel/build.rs',
+        ],
+        docs: [
+          { title: 'Lab6 实验指导', description: '建立块设备、磁盘布局与文件系统分层的整体认识', href: '/labs/lab6-disk-fs' },
+          { title: '实验知识地图', description: '查看八个 Lab 的递进关系', href: '/labs/overview' },
+        ],
+      },
+      read: {
+        paths: [
+          'kernel/src/fs/disk.rs',
+          'kernel/src/fs/mod.rs',
+          'kernel/src/virtio_block.rs',
+          'kernel/src/global_alloc.rs',
+          'os-fs/src/disk.rs',
+          'kernel/build.rs',
+          'kernel/src/process.rs',
+          'kernel/src/mm.rs',
+          'kernel/src/sync.rs',
+          'user/src/bin/lab6_usertest.rs',
+        ],
+        docs: [
+          { title: 'Lab6 机制说明', description: '沿 VirtIO、easy-fs、FileIndex、spawn/mmap 与硬链接阅读', href: '/labs/lab6-disk-fs' },
+          { title: '系统架构', description: '理解 os-fs 与内核文件层的职责边界', href: '/project/architecture' },
+        ],
+      },
+      run: {
+        // initproc 全链：file → link → mass_unlink → mmap → spawn → stride → fs → pipe
+        paths: [
+          'user/src/bin/lab6_usertest.rs',
+          'user/src/bin/file_test.rs',
+          'user/src/bin/link_test.rs',
+          'user/src/bin/mass_unlink_test.rs',
+          'user/src/bin/mmap_test.rs',
+          'user/src/bin/spawn_test.rs',
+          'user/src/bin/stride_test.rs',
+          'user/src/bin/fs_test.rs',
+          'user/src/bin/pipe_test.rs',
+          'kernel/src/fs/disk.rs',
+          'kernel/build.rs',
+        ],
+        docs: [
+          { title: '快速验证', description: '运行带 VirtIO 的 lab6 全链测例', href: '/guide/ai-tutor' },
+          { title: 'Lab6 阅读理解（任务二）', description: '用实验文档【任务二】自测磁盘布局与硬链接', href: '/labs/lab6-disk-fs' },
+        ],
+      },
+      debug: {
+        paths: [
+          'kernel/src/fs/disk.rs',
+          'kernel/src/fs/mod.rs',
+          'kernel/src/virtio_block.rs',
+          'user/src/bin/lab6_usertest.rs',
+          'user/src/bin/link_test.rs',
+          'user/src/bin/file_test.rs',
+          'user/src/bin/mass_unlink_test.rs',
+          'kernel/src/process.rs',
+          'kernel/src/mm.rs',
+          'kernel/src/sync.rs',
+        ],
+        docs: [
+          { title: 'Lab6 常见问题', description: '从 DiskFs::link 的 nlink 与全链测例现象定位异常', href: '/labs/lab6-disk-fs' },
+          { title: '验证方法', description: '用 file_test / link_test / 后续测例对照缩小范围', href: '/guide/ai-tutor' },
+        ],
+      },
+      reflect: {
+        paths: [
+          'project/ai-collaboration.md',
+          'answers/lab6-answers.md',
+          'kernel/src/fs/disk.rs',
+          'user/src/bin/lab6_usertest.rs',
+          'user/src/bin/link_test.rs',
+        ],
+        docs: [
+          { title: 'AI 协作记录', description: '整理磁盘路径的证据链', href: '/project/ai-collaboration' },
+          { title: 'Lab6 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab6-answers' },
+        ],
+      },
     },
   },
   {

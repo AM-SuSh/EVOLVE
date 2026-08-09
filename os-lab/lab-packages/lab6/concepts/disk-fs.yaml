@@ -11,5 +11,5 @@ title: 硬链接与 inode 引用计数
 level: mechanism
 summary: linkat 增加指向同一 inode 的目录项与 nlink，unlinkat 删除名字并递减 nlink。
 source_anchors: [kernel/src/fs/disk.rs, user/src/bin/link_test.rs]
-invariants: [链接前后 inode 号相同, nlink 随目录项数量变化]
+invariants: [链接前后 inode 号相同, link 必须显式 nlink += 1, nlink 随目录项数量变化]
 observable_evidence: [Test link OK!]
