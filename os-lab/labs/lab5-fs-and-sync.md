@@ -452,21 +452,6 @@ pipe → fork
 
 
 
-| 变体        | 你在文件里看到什么                                              | 要你做什么                         |
-| --------- | ------------------------------------------------------ | ----------------------------- |
-| **fill**  | `child_reader` / `parent_writer` 是 `todo!()`；上方有「思路提示」 | 按提示补全关端、读写与 `waitpid`         |
-| **debug** | 文件头写清现象；子进程 `close` 附近埋了关错端                            | 按「现象 → 假设 → 最小实验 → 证据 → 结论」排查 |
-
-
-两者指向同一结论：
-
-```text
-fork 后父子都继承读端与写端
-→ 若不关掉不用的一端，引用计数与「何时 EOF」会乱
-→ 子进程若误关读端却仍去 read，往往看不到 pipe says hi / pipe_test pass
-```
-
-
 
 #### 两个容易混的细节
 
@@ -491,6 +476,8 @@ flowchart TD
     G --> H["父 waitpid\n全部进程退出"]
 ```
 
+
+
 串起来记三句话就够用：
 
 1. **fd**：指称「我打开了什么」；
@@ -498,21 +485,22 @@ flowchart TD
 3. **锁**：别把内核里那块共享缓冲改乱。
 
 
+
 ## 三、实验任务
 
 本实验主要相关文件（路径相对 `os-lab/`）：
 
 
-| 文件 | 角色 | 阅读时重点确认 |
-| --- | --- | --- |
-| `os-fs/src/lib.rs` | 内嵌文件抽象 | `open` / `read_at`、按 offset 拷贝 |
-| `kernel/src/fs/mod.rs` | FS 入口开关 | Lab5 选用 `embedded`，Lab6 起换成 `disk` |
+| 文件                          | 角色                           | 阅读时重点确认                                                                |
+| --------------------------- | ---------------------------- | ---------------------------------------------------------------------- |
+| `os-fs/src/lib.rs`          | 内嵌文件抽象                       | `open` / `read_at`、按 offset 拷贝                                         |
+| `kernel/src/fs/mod.rs`      | FS 入口开关                      | Lab5 选用 `embedded`，Lab6 起换成 `disk`                                     |
 | `kernel/src/fs/embedded.rs` | 每进程 fd 表与 syscall；**任务一动手点** | `FdType`、`clone_fd_table`、`bump_inherited_pipe_refs` / `pipe_add_refs` |
-| `kernel/src/sync.rs` | 自旋锁 + 管道缓冲 | CAS、环形缓冲、`read_refs` / `write_refs` |
-| `kernel/src/trap.rs` | 系统调用分发 | openat / read / write / close / pipe |
-| `kernel/src/process.rs` | fork 时调用 `clone_fd_table` | 打开表如何随子进程一起走 |
-| `user/src/bin/fs_test.rs` | 文件测例（参考实现，一般不必改） | open + read + 校验 |
-| `user/src/bin/pipe_test.rs` | 管道测例（参考实现，一般不必改） | 父子关端与读写协议 |
+| `kernel/src/sync.rs`        | 自旋锁 + 管道缓冲                   | CAS、环形缓冲、`read_refs` / `write_refs`                                    |
+| `kernel/src/trap.rs`        | 系统调用分发                       | openat / read / write / close / pipe                                   |
+| `kernel/src/process.rs`     | fork 时调用 `clone_fd_table`    | 打开表如何随子进程一起走                                                           |
+| `user/src/bin/fs_test.rs`   | 文件测例（参考实现，一般不必改）             | open + read + 校验                                                       |
+| `user/src/bin/pipe_test.rs` | 管道测例（参考实现，一般不必改）             | 父子关端与读写协议                                                              |
 
 
 > 完整代码走读与参考答案见 [lab5 参考答案](/answers/lab5-answers)。
@@ -521,20 +509,7 @@ flowchart TD
 
 ### 任务一：完成实验
 
-本实验的任务文件为 `kernel/src/fs/embedded.rs`，请在工作区中打开文件，并根据注释提示完成实验。用户测例 `fs_test` / `pipe_test` 保持不变。
-
-按你领到的变体对照：
-
-| 变体 | 你在 `embedded.rs` 里看到什么 | 要你做什么 |
-| --- | --- | --- |
-| **fill** | `bump_inherited_pipe_refs` 是 `todo!()`；上方有思路提示 | 遍历子进程刚继承的 fd 表，对 `PipeRead` / `PipeWrite` 调用 `sync::pipe_add_refs` |
-| **debug** | 文件头写清现象；`clone_fd_table` 循环里漏掉了 `pipe_add_refs` | 按「现象 → 假设 → 最小实验 → 证据 → 结论」排查并补上 |
-
-核心不变量（对照背景知识里的 fork + 管道）：
-
-1. `clone_fd_table` **复制 fd 表项** 与 **管道引用计数 +1** 是两件事；
-2. `sys_pipe` 时两端 refs 已是 1；fork 后再不加，子进程 `close` 某一端会把 refs 减到 0，父进程还握着那一端就会坏；
-3. `Regular` 内嵌文件是静态切片，不必 bump；只有管道端需要。
+本实验的任务文件为 `kernel/src/fs/embedded.rs`，请在工作区中打开文件，并根据注释提示完成实验。
 
 运行验证：
 
@@ -559,26 +534,23 @@ All processes exited.
 **通过标准**（下列输出断言缺一不可）：
 
 
-| 断言 | 必须看到 |
-| --- | --- |
-| `fs-hello` | `Hello from testfile!` |
-| `fs-pass` | `fs_test pass` |
-| `pipe-msg` | `pipe says hi` |
-| `pipe-pass` | `pipe_test pass` |
+| 断言           | 必须看到                    |
+| ------------ | ----------------------- |
+| `fs-hello`   | `Hello from testfile!`  |
+| `fs-pass`    | `fs_test pass`          |
+| `pipe-msg`   | `pipe says hi`          |
+| `pipe-pass`  | `pipe_test pass`        |
 | `all-exited` | `All processes exited.` |
 
 
 且 QEMU 正常退出（终端命令返回，没有卡住或报错）。
 
 > 未修好时常见：`fs_test pass` 仍在，但缺少 `pipe says hi` / `pipe_test pass`——优先查 `clone_fd_table` / `bump_inherited_pipe_refs`，而不是先改用户测例关端。  
-> 可能看到 `pipe write failed` 与某进程 `exited with code -1`——已知占位现象，不影响以 `pipe_test pass` 为准。  
-> 对比 Lab4：Lab5 在进程 API 之上增加了 fd 与管道；fill/debug 考的是**内核管道 refs**，用户侧 `pipe_test` 已是正确关端协议。
+> 可能看到 `pipe write failed` 与某进程 `exited with code -1`——已知占位现象，不影响以 `pipe_test pass` 为准。
 
 
 
 ### 任务二：阅读理解
-
-任务二为思考题。先合上代码用自己的话写答案，再回到代码逐行核对，不要急着找现成结论。
 
 1. 对照 `FdTable` 与 `FdType`：fd 表如何设计？为什么 `Regular` 要记 `offset`，管道端却不在 fd 上挂 offset？
 2. 对照 `sys_read`（或等价分发）：为什么要按 fd 类型分发？对 `PipeWrite` 做 `read` 应该怎样失败？
@@ -592,10 +564,7 @@ All processes exited.
 
 ### 任务三：动手修改
 
-> 下列修改用于加深理解，可在任务一通过后再做。每项改完都运行 `cargo run -p kernel --features lab5 --release` 验证，通过后改回原样。  
-> 教师下发的 **fill / debug** 是主任务（见任务一）；不要用改用户测例的方式绕过内核题。
-
-**修改 1：观察用户侧关错端（对比任务一）**
+**修改 1：观察用户侧关错端**
 
 在参考实现的 `user/src/bin/pipe_test.rs` 里，临时让子进程 `close` 读端而不是写端（改完再跑）。
 

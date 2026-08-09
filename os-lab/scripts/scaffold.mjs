@@ -59,7 +59,7 @@ const LABS = {
     summary: '裸机启动：SBI 输出与关机的最小系统',
     crates: ['os-sbi'],
     kernel: ['build.rs', 'linker.ld', 'src/main.rs', 'src/entry.asm', 'src/console.rs'],
-    rootFiles: ['rust-toolchain.toml', 'Makefile', '.cargo/config.toml'],
+    rootFiles: ['rust-toolchain.toml', 'Makefile', '.cargo/config.toml', 'scripts/check-fs-img.ps1'],
     userBins: [],
   },
   lab2: {
@@ -88,6 +88,8 @@ const LABS = {
   },
   lab6: {
     summary: 'VirtIO 磁盘文件系统与硬链接',
+    // Lab6+ Makefile 依赖 check-fs-img；对已过 lab1 的工作区在升到 lab6 时补发。
+    rootFiles: ['scripts/check-fs-img.ps1'],
     kernel: ['src/fs/disk.rs', 'src/virtio_block.rs', 'src/global_alloc.rs'],
     userBins: ['lab6_usertest', 'file_test', 'link_test', 'mass_unlink_test', 'mmap_test', 'spawn_test', 'stride_test'],
   },
@@ -180,8 +182,14 @@ const LEGACY_EXERCISES = {
   lab6: {
     default: 'debug',
     variants: {
-      fill: { label: '补全：硬链接元数据校验函数', files: ['user/src/bin/link_test.rs'] },
-      debug: { label: '排错：nlink 断言仍按链接前计数', files: ['user/src/bin/link_test.rs'] },
+      fill: {
+        label: '补全：硬链接挂别名并增加 nlink',
+        files: ['kernel/src/fs/disk.rs'],
+      },
+      debug: {
+        label: '排错：DiskFs::link 漏掉 nlink 递增',
+        files: ['kernel/src/fs/disk.rs'],
+      },
     },
   },
   lab7: {

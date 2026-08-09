@@ -4,12 +4,18 @@
 
 - 解释 VirtIO 块设备、块缓存与 easy-fs 磁盘布局（超级块 / inode 位图 / 数据区）的分层关系。
 - 说明一次 open/write/close 从系统调用到落盘要经过哪些层，以及每层的职责。
-- 解释硬链接的引用计数语义：link/unlink 何时真正回收数据块，fstat 读到的是什么。
+- 解释硬链接的引用计数语义：`DiskFs::link` 如何共享 `FileMeta` 并递增 `nlink`，`unlink` 何时真正回收数据块。
 - 用 `make test-lab6` 的测试链（file_test / link_test / mass_unlink）验证判断，用最小文件操作序列定位一致性问题。
 
 ## 可讨论范围
 
-优先引用 `kernel/src/virtio_block.rs`、`kernel/src/fs/disk.rs`、`os-fs/src/disk.rs`、`user/src/bin/file_test.rs` 和 `user/src/bin/link_test.rs`。可以解释 VirtIO MMIO/virtqueue 访问、超级块 / inode / 目录项分层、FileIndex 别名与 nlink 等局部接口与不变量，但不能给出完整实验答案或整文件实现。对 debug 变体，在学生完成「用 fstat 对照 link 前后 ino/nlink」前，不要直接点出 `link_test.rs` 中错误的 nlink 预期。
+优先引用 `kernel/src/virtio_block.rs`、`kernel/src/fs/disk.rs`、`os-fs/src/disk.rs`、`user/src/bin/file_test.rs` 和 `user/src/bin/link_test.rs`。可以解释 VirtIO MMIO/virtqueue、超级块 / inode / 目录项、`FileIndex` 别名与 `nlink` 等局部接口与不变量，但不能给出完整实验答案或整文件实现。
+
+对 **fill / debug 变体**，学生任务在 `kernel/src/fs/disk.rs`：
+- fill：补全 `attach_hard_link_alias`；
+- debug：排查 `DiskFs::link` 漏掉 `nlink += 1`。
+
+在学生完成「对照 `file_test` 仍过、`link_test` 失败，缩小到 `DiskFs::link`」之前，不要直接点出 PLANTED BUG 或完整补丁。用户侧 `link_test` 可讨论概念，但不要引导学生去改用户断言来「绕过」内核题。
 
 ## 客观验证
 

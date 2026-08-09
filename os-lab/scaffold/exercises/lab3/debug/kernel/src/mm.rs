@@ -261,7 +261,7 @@ pub fn activate_current_user() {
 /// Map VirtIO MMIO region into the kernel address space (lab6).
 #[cfg(feature = "lab6")]
 pub fn map_mmio_devices() {
-    let mut ks = kernel_space_mut();
+    let ks = kernel_space_mut();
     ks.map_identical_region(
         VIRTIO_MMIO_BASE,
         VIRTIO_MMIO_BASE + VIRTIO_MMIO_SIZE,

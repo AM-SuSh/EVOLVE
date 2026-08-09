@@ -180,7 +180,7 @@ test('B+C sequentially issue every published Lab3-Lab8 debug variant with exact 
       lab3: 'kernel/src/mm.rs',
       lab4: 'kernel/src/process.rs',
       lab5: 'kernel/src/fs/embedded.rs',
-      lab6: 'user/src/bin/link_test.rs',
+      lab6: 'kernel/src/fs/disk.rs',
       lab7: 'user/src/bin/signal_mask_test.rs',
       lab8: 'user/src/bin/lab8_integration_test.rs',
     }

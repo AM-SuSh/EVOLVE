@@ -1,25 +1,56 @@
-id: lab6-debug-hard-link-count
+# Lab6 debug 变体：link 漏掉 nlink += 1
+
+id: lab6-debug-nlink
 lab: lab6
 variant: debug
-version: 1.0.0
-learning_goal: 用 fstat 证据解释硬链接共享 inode 与 nlink 计数，而不是把 linkat 当成文件复制。
-target_concepts: [os.fs.hard-link]
-student_file: user/src/bin/link_test.rs
-source_template: ../../../../scaffold/exercises/lab6/debug/user/src/bin/link_test.rs
-manual_anchor: labs/lab6-disk-fs.md#任务一跑通-lab6
+version: 2.0.0
+
+learning_goal: |
+  学生按现象排查：DiskFs::link 已共享 FileMeta，但漏掉 nlink += 1，
+  导致 link_test 失败。与 fill 考察同一知识点。
+
+target_concepts:
+  - os.fs.hard-link
+
+student_file: kernel/src/fs/disk.rs
+source_template: ../../../../scaffold/exercises/lab6/debug/kernel/src/fs/disk.rs
+manual_anchor: labs/lab6-disk-fs.md
+
 planted_bug:
-  location: linkat 后的 fstat 验收条件
-  wrong: 创建第二个名字后仍要求 nlink 等于 1
-  correct: 两个目录项共享 inode，二者 nlink 均为 2
-  symptom: file_test 通过后报告 fstat nlink mismatch，缺失链接及后续断言
+  location: DiskFs::link 中 aliases.insert 之前
+  wrong: 只 insert 别名，注释掉了 nlink += 1
+  correct: meta.lock().nlink += 1 后再 aliases.insert
+  symptom: |
+    file_test 仍可能通过；link_test 报 fstat nlink mismatch
+    或缺少 Test link OK!。
+
 success_criteria:
   recipe: lab6.verify.v1
-  assertions: [file-pass, link-pass, mmap-pass, spawn-pass, stride-pass, fs-pass, pipe-pass, all-processes-exited]
+  assertions: [file-pass, link-pass, all-processes-exited]
+
 negative_tests:
-  - { id: wrong-nlink-expectation, expect_fail_assertions: [link-pass], description: 错误 nlink 预期必须阻止 Test link OK! }
+  - id: missing-nlink-bump
+    description: 未修复时 Test link OK! 缺失
+    expect_fail_assertions: [link-pass]
+
+common_mistakes:
+  - 去改 user/src/bin/link_test.rs 的断言，忽略内核 DiskFs::link
+  - 改成 alloc_meta(dst) 造新 inode，破坏共享 ino
+
 hint_ladder:
-  - { level: 0, when: 尚未运行, say: 用带 VirtIO 的可信 recipe 保存第一个失败点。 }
-  - { level: 1, when: nlink mismatch, say: 同时打印两个 fd 的 ino 与 nlink，先确认是否同一 inode。 }
-  - { level: 2, when: 认为 link 复制数据, say: 两个目录项各贡献几个链接计数？ }
-  - { level: 3, when: 已定位条件, say: 修正计数预期后完整跑过八条回归。 }
-report_prompts: [linkat 后 inode 和 nlink 各发生了什么？, unlink 一个名字后为何另一个仍有效？]
+  - level: 0
+    when: 尚未复现
+    say: 先记录有没有 file_test pass 与 Test link OK!，二者是否同时失败。
+  - level: 1
+    when: 已确认只有硬链接测例失败
+    say: sys_linkat 最终进了哪个内核函数？共享 meta 之后还缺什么？
+  - level: 2
+    when: 已打开 DiskFs::link
+    say: 对照注释中的 PLANTED BUG；补上 nlink += 1 后必须看到 Test link OK!。
+  - level: 3
+    when: 仍失败
+    say: 确认 bump 发生在 aliases.insert 之前或之后均可，但必须对同一份 meta 加锁。
+
+report_prompts:
+  - 你的第一个假设是什么？哪条输出否定了它？
+  - fill（补全 attach）与 debug（漏 bump nlink）考察的是同一点的哪两个侧面？
