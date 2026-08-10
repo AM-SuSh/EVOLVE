@@ -21,7 +21,7 @@ import {
   testLabPackage,
 } from './lab-factory.mjs'
 import { scoreLearningEvents } from '../learning/rubric.mjs'
-import { assessLearningV2 } from '../learning/rubric-v2.mjs'
+import { assessLearningV3 } from '../learning/rubric-v3.mjs'
 import { deriveMasteryUpdates } from '../learning/mastery.mjs'
 import { evaluateReviewGates } from '../learning/review-gates.mjs'
 import { createLearningBackup, generateAnonymousAnalysis } from '../learning/trial-operations.mjs'
@@ -2094,7 +2094,7 @@ const server = http.createServer(async (request, response) => {
         return
       }
       const input = getAssessmentInput(session.id, learningSessionId, labId)
-      const assessment = assessLearningV2({ labId, sessionId: learningSessionId, ...input })
+      const assessment = assessLearningV3({ labId, sessionId: learningSessionId, ...input })
       const saved = saveAssessment(session.id, assessment, deriveMasteryUpdates(assessment))
       const reviewGates = evaluateReviewGates(assessment, {
         guardrailCount: input.events.filter((event) => event.type === 'guardrail_triggered').length,

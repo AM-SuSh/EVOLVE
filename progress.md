@@ -1,5 +1,35 @@
 # os-lab 项目进度总览
 
+## 2026-08-10 - Task: replace stage-dependent learning scoring with evidence behavior metrics
+
+### What was done
+
+- 新增 `os-lab/learning/rubric-v3.mjs`，将自动学习评分改为观察本轮和整个实验中是否：`J1` 提出自己的判断、`E1` 引用源码/输出/诊断/Trace/可信运行证据、`H1` 形成可证伪假设、`V1` 完成可信验证、`I1` 在失败后保存修改并重新验证，以及 `F1/F2` 复盘和 `T1/T2` 迁移反思。
+- 阶段进入事件、消息所在 `stage`、阶段切换数量和提示等级不再参与分值。`stage_enter`、`hint_requested` 仍保留在 `trajectory` 中用于教师分析和历史兼容；答案护栏惩罚和可信运行断言继续保留。
+- `/assessment` 已从 `assessLearningV2()` 切换到 `assessLearningV3()`；保持 `dimensions.process/result/reflection`、14 个细项、`evidenceRefs`、`trajectory`、复核门禁和掌握度保存接口不变，历史 V2 评估仍由 `mastery.mjs` 使用旧 `P*` 映射读取。
+- 旧 `/report` 使用的 `scoreLearningEvents()` 保留原响应字段，但改由 V3 行为评分生成，避免报告预览继续奖励 `orient/read` 或跨阶段提问。
+- 新增 `rubric-v3.test.mjs`：覆盖阶段不变性、提示不计分、非可信运行不得获得验证/结果满分、直接索要答案不得获得判断/假设分，以及 `fail -> save -> pass` 才获得迭代满分。
+
+### Planning comparison
+
+- 已完成“修改评分：用判断、证据、假设、验证和复盘评分，不再奖励人为跨阶段”：V3 的 process 由 `P2/J1/E1/H1/V1/I1` 组成，所有行为判断均不读取 `stage_enter` 或消息 `stage`。
+- 已完成“保留与阶段无关的答案护栏、证据白名单、RAG 权限和可信运行证据”：本部分没有削弱这些边界；可信运行仍是结果断言和验证满分的必要依据。
+- 已完成“先忽略阶段回答、再引入意图策略、最后调整评分和文档”的第三步。前三个提交已完成前两步，本提交只接通评分和相应回归测试；旧状态字段、事件和 V2 模块未删除。
+- 兼容性确认：现有烟测要求的 14 个评估细项仍满足；教师复核继续读取 `process/result/reflection`、`F1/F2`；掌握度对 V3 改用 `J/E/H/V/I`，对历史 V2 继续使用 `P*`。
+
+### Testing
+
+- `node --test os-lab/learning/rubric-v3.test.mjs`：7/7 通过。
+- `node --test os-lab/learning/db.test.mjs os-lab/learning/review-gates.test.mjs`：通过。
+- `node os-lab/handbook/tutor-server.smoke.mjs`：通过；评估版本、14 个细项、V3 验证维度、掌握度、复核和报告链路均正常。
+- `npm test`：95 项中 94 项通过；唯一失败是既有 `lab-factory.test.mjs` 缺少 `lab7 debug` 源文件 `user/src/bin/signal_mask_test.rs`，与本次学习评分改动无关。
+- `git diff --check`：通过。
+
+### Notes
+
+- V3 保留当前总分权重 `process 45% / result 35% / reflection 20%`，先保证教师端和历史报告的数值接口稳定；后续应基于真实学生轨迹和人工标注校准各行为项权重及关键词识别边界。
+- 本部分暂不删除 `rubric-v2.mjs`、旧阶段状态机或历史 `P*` 字段；待文档、部署配置和生产报告消费端完成迁移观察后，再评估移除条件。
+
 ## 2026-08-09 - Task: Lab7 fill/debug 出题迁移到内核 handle_pending
 
 ### What was done
