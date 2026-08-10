@@ -1,5 +1,34 @@
 # os-lab 项目进度总览
 
+## 2026-08-10 - Task: rerun SIZN tutor question evaluation after intent routing update
+
+### What was done
+
+- 还原 SIZN `7340a22` 的 Tutor/RAG Harness 与金标准对话，以及 `901b142` 的 Lab1-8 48 条 Prompt Eval、真实模型记录和 V2 A/B 口径。
+- 使用当前默认 intent 路由运行 19 条 V3 离线全链路语料，并使用 `--corpus legacy-stage` 重跑 SIZN 的同一批 48 条问题；结果保存在 `tutor/prompt-eval/records/current-intent-offline-2026-08-10` 与 `current-intent-legacy-offline-2026-08-10`。
+- 新增 `tutor/prompt-eval/records/current-intent-evaluation-2026-08-10.md`，集中记录测试基线、指标、不可直接比较的边界、失败用例和下一轮优化顺序。
+
+### Planning comparison
+
+- 已验证“任意存储阶段提出同一问题应采用同类回应”：V3 三组跨阶段同题的 `intent + actions + guardrail class` 一致率为 100%。
+- 已验证答案护栏、证据引用白名单和 RAG 权限仍然有效：Tutor Harness 答案泄漏率 0、证据引用准确率 1、无依据判断率 0，RAG Harness 3/3 通过。
+- 已确认旧 `stageAccuracy` 不能再用于判断当前架构：同一批 48 条问题在 intent 模式下会因未加载阶段 Prompt 而被 V2 固定扣分，该结果只说明旧指标已经失效，不能说明教学质量下降。
+- 本轮没有声称真实模型质量已经提升：历史上游返回 401，本机没有 API key；当前新回复全部是离线兜底，SIZN 的 48 条真实模型回复只作为 before 记录保留。
+
+### Testing
+
+- `npm run test:harness`：34/34 通过；`questionRelevance`、`guidanceActionAccuracy`、`evidenceCitationAccuracy`、`stageInvarianceRate` 均为 1。
+- `npm run test:rag-harness`：3/3 通过。
+- `node --test ../tutor/prompt-eval/scoring-v3.test.mjs ../tutor/turn-policy.test.mjs ../tutor/state-machine.test.mjs`：15/15 通过。
+- V3 离线全链路 19 条：综合 94、问题相关 79、引导正确 87、必要解释 100、可执行 100、证据忠实 100、跨阶段一致 100%。报告中的无泄漏 95 是拒绝话术命中“可直接提交”的评分误报，Harness 与人工核对均为零真实泄漏。
+- SIZN 旧 48 条问题已在当前 intent 路由下完整重跑；所有回复为 offline fallback，不能与历史 `gpt-5.6-luna` 的 V2 91 分直接比较。
+- `npm test`：95 项中 94 项通过；唯一失败仍是 `lab-factory.test.mjs:190` 查找已迁移的 Lab7 debug 文件 `user/src/bin/signal_mask_test.rs`。
+
+### Notes
+
+- 本轮发现三个后续优化点：离线兜底没有稳定回应问题核心对象；`sp` 正则误命中 `suspend_current_and_run_next`；旧 debug/run/概念对比表达的意图识别覆盖不足。详细逐项证据见本轮评测报告。
+- 配置可用上游后，应固定模型和温度对 19 条 V3 语料至少采样 3 次，再与 before 记录比较均值、置信区间和逐题分布；离线 94 分不能当作真实模型效果结论。
+
 ## 2026-08-10 - Task: synchronize tutor architecture, deployment and evaluation documentation
 
 ### What was done
