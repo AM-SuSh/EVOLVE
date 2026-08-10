@@ -4,7 +4,8 @@
  *
  * Usage:
  *   node run-eval.mjs --tag <tag> [--upstream <baseUrl>] [--model <model>]
- *                      [--api-key <key>] [--ablate] [--keep-server] [--port <port>]
+ *                      [--api-key <key>] [--connect-timeout-ms <ms>]
+ *                      [--ablate] [--keep-server] [--port <port>]
  *   node run-eval.mjs --replay <raw.json> [--records <outDir>]
  *
  * Default upstream points at an unreachable address so the server uses the
@@ -18,7 +19,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
-import { extractCompletionText } from '../../handbook/llm-response.mjs'
+import { extractCompletionText, extractSseCompletionText } from '../../handbook/llm-response.mjs'
 import {
   buildAblationV2,
   buildScorecardReport,
@@ -65,6 +66,14 @@ const upstream = (
 ).replace(/\/$/, '')
 const model = argValue('--model') || process.env.OS_LAB_LLM_MODEL || 'qwen2.5:7b'
 const apiKey = argValue('--api-key') || process.env.OS_LAB_LLM_API_KEY || ''
+const connectTimeoutMs = Number(
+  argValue('--connect-timeout-ms') ||
+  process.env.OS_LAB_LLM_CONNECT_TIMEOUT_MS ||
+  (upstream === 'http://127.0.0.1:9/v1' ? 500 : 30_000),
+)
+if (!Number.isFinite(connectTimeoutMs) || connectTimeoutMs <= 0) {
+  throw new TypeError('--connect-timeout-ms must be a positive number')
+}
 const wantAblate = flag('--ablate')
 const keepServer = flag('--keep-server')
 const port = Number(argValue('--port') || 0)
@@ -317,6 +326,20 @@ function sha256(value) {
   return createHash('sha256').update(String(value || '')).digest('hex')
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function callModelWithRetry(promptText, message, maxAttempts = 3) {
+  let result = { ok: false, status: 0, reply: '' }
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    result = await callModel(promptText, message)
+    if (result.ok && result.reply) return { ...result, attempts: attempt }
+    const retryable = !result.status || result.status === 429 || result.status >= 500 || (result.ok && !result.reply)
+    if (!retryable || attempt === maxAttempts) return { ...result, attempts: attempt }
+    await sleep(attempt * 2_000)
+  }
+  return { ...result, attempts: maxAttempts }
+}
+
 function promptSnapshot(result) {
   const files = (result.framework?.layers || [])
     .filter((layer) => String(layer.source || '').startsWith('tutor/prompts/'))
@@ -376,7 +399,7 @@ function spawnServer(portNumber) {
         OS_LAB_KNOWLEDGE_UPLOAD_ROOT: tempUploadRoot,
         OS_LAB_LLM_BASE_URL: upstream,
         OS_LAB_LLM_MODEL: model,
-        OS_LAB_LLM_CONNECT_TIMEOUT_MS: '500',
+        OS_LAB_LLM_CONNECT_TIMEOUT_MS: String(connectTimeoutMs),
         OS_LAB_TUTOR_ROUTING_MODE: 'intent',
         OS_LAB_TUTOR_SKIP_KNOWLEDGE_WARMUP: '1',
         OS_LAB_TUTOR_DISABLE_VECTOR: '1',
@@ -504,14 +527,24 @@ async function callModel(promptText, message) {
         model,
         temperature: 0.3,
         max_tokens: 1800,
+        stream: false,
         messages: [
           { role: 'system', content: promptText },
           { role: 'user', content: message },
         ],
       }),
     })
-    const payload = await res.json().catch(() => ({}))
-    const reply = String(extractCompletionText(payload) || payload?.choices?.[0]?.message?.content || '').trim()
+    const raw = await res.text()
+    let reply = extractSseCompletionText(raw)
+    if (!reply) {
+      try {
+        const payload = JSON.parse(raw)
+        reply = extractCompletionText(payload) || payload?.choices?.[0]?.message?.content || ''
+      } catch {
+        // Non-JSON responses have already been handled as SSE above.
+      }
+    }
+    reply = String(reply).trim()
     return { ok: res.ok, status: res.status, reply }
   } finally {
     clearTimeout(timer)
@@ -606,7 +639,7 @@ async function runAblation(results) {
       ok: result.mode === 'remote',
       reply: result.reply,
     }
-    const baseline = await callModel(baselinePrompt, result.message)
+    const baseline = await callModelWithRetry(baselinePrompt, result.message)
     const bools = (score) =>
       Math.round(
         (Object.values(score).filter(Boolean).length / Object.values(score).length) * 100,
@@ -625,6 +658,7 @@ async function runAblation(results) {
       strategyPromptUsed: true,
       full: {
         ok: full.ok,
+        attempts: result.attempts || 1,
         reply: full.reply,
         score: scoreReply(full.reply, result.stage),
         quality: bools(scoreReply(full.reply, result.stage)),
@@ -635,6 +669,7 @@ async function runAblation(results) {
       },
       baseline: {
         ok: baseline.ok,
+        attempts: baseline.attempts,
         reply: baseline.reply,
         score: scoreReply(baseline.reply, result.stage),
         quality: bools(scoreReply(baseline.reply, result.stage)),
@@ -1028,21 +1063,29 @@ async function main() {
   for (const caseItem of cases) {
     seedDb(userId, caseItem)
     const evidenceRefs = caseItem.seedRunId ? [`run:${caseItem.seedRunId}`] : []
-    const response = await postJson(
-      base,
-      '/chat',
-      {
-        sessionId: caseItem.sessionId,
-        labId: caseItem.labId,
-        stage: caseItem.stage,
-        message: caseItem.message,
-        evidenceRefs,
-      },
-      token,
-    )
+    let response
+    let attempts = 0
+    do {
+      attempts += 1
+      response = await postJson(
+        base,
+        '/chat',
+        {
+          sessionId: attempts === 1 ? caseItem.sessionId : `${caseItem.sessionId}-retry-${attempts}`,
+          labId: caseItem.labId,
+          stage: caseItem.stage,
+          message: caseItem.message,
+          evidenceRefs,
+        },
+        token,
+      )
+      if (response.status === 200 && response.data?.mode !== 'offline') break
+      if (attempts < 3) await sleep(attempts * 2_000)
+    } while (attempts < 3)
     if (response.status !== 200) {
       const failed = {
         ...caseItem,
+        attempts,
         reply: `（请求失败 HTTP ${response.status}：${JSON.stringify(response.data).slice(0, 300)}）`,
         mode: 'error',
         model: '',
@@ -1079,10 +1122,10 @@ async function main() {
       results.push(failed)
       continue
     }
-    const evaluated = evaluateCase(caseItem, response.data)
+    const evaluated = { ...evaluateCase(caseItem, response.data), attempts }
     results.push(evaluated)
     console.log(
-      `${caseItem.id}: mode=${response.data.mode} stage=${response.data.tutorState?.stage} intent=${response.data.tutorState?.intent} chunks=${
+      `${caseItem.id}: mode=${response.data.mode} attempts=${attempts} stage=${response.data.tutorState?.stage} intent=${response.data.tutorState?.intent} chunks=${
         (response.data.knowledge || []).length
       } composite=${evaluated.composite}`,
     )
@@ -1091,7 +1134,7 @@ async function main() {
   let ablation = null
   if (wantAblate) {
     try {
-      const probe = await callModel('只回复 ok', '连通性测试')
+      const probe = await callModelWithRetry('只回复 ok', '连通性测试')
       if (probe.ok && probe.reply) {
         console.log('ablation: upstream reachable, running A/B...')
         ablation = await runAblation(results)

@@ -52,6 +52,23 @@ test('V3 detects answer leakage, invented citations and unsupported trusted clai
   assert.deepEqual(score.details.invalidCitations, ['run:invented'])
 })
 
+test('V3 accepts a guarded refusal and an explicit thought exercise without treating either as leakage or inaction', () => {
+  const guarded = scoreRecordV3({
+    ...base,
+    expected: { intent: 'direct-answer', focusTerms: [], guidancePatterns: ['不能'], actions: [] },
+    tutorState: { intent: 'direct-answer', actions: [], evidenceRefs: [] },
+    guardrail: { triggered: true },
+    reply: '我不能交付可直接提交的完整实现。先写出你已经确认的一条事实。',
+  })
+  assert.equal(guarded.dimensions.noLeak, 100)
+
+  const thoughtExercise = scoreRecordV3({
+    ...base,
+    reply: '三级页表按需分配下级表以节省内存。思考：若改成单级页表，需要预留多少表项？',
+  })
+  assert.equal(thoughtExercise.dimensions.actionability, 100)
+})
+
 test('V3 report measures response-class invariance across stored stages', () => {
   const records = ['orient', 'debug', 'reflect'].map((stage) => ({
     ...base,

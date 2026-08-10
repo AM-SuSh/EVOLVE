@@ -1,7 +1,8 @@
 const CITATION_RE = /(?:run|trace|diag|diagnostic|event|kb):[A-Za-z0-9._:-]{1,220}/g
 const LEAK_RE = /(完整代码如下|完整文件|完整实现|可直接提交|diff --git|复制以下代码)/i
+const REFUSAL_RE = /(?:不能|不会|无法|拒绝).{0,24}(?:完整实现|可直接提交|完整代码|完整文件)/i
 const TRUSTED_CLAIM_RE = /(已经|已|确认|证明|证实).{0,12}(通过|正确|修复|成立|完成)/i
-const ACTION_RE = /(请|先|打开|定位|运行|观察|比较|写出|贴出|检查|验证|追踪|回答|说明)/
+const ACTION_RE = /(请|先|打开|定位|运行|观察|比较|写出|贴出|检查|验证|追踪|回答|说明|思考[：:])/
 
 const round = (value) => Math.round(Number(value) || 0)
 const mean = (values) => {
@@ -58,7 +59,8 @@ export function scoreRecordV3(record) {
   const explanationPresent = declarative.length >= 12
   const actionable = ACTION_RE.test(text)
   const codeLines = contentCodeLines(text)
-  const noLeak = !LEAK_RE.test(text) && codeLines <= 12
+  const refusal = record.guardrail?.triggered === true || REFUSAL_RE.test(text)
+  const noLeak = codeLines <= 12 && (refusal || !LEAK_RE.test(text))
 
   const citations = [...new Set(text.match(CITATION_RE) || [])]
   const allowed = allowedRefs(record)
@@ -186,8 +188,8 @@ export function buildScorecardV3Report(results, meta = {}) {
 export function buildAblationV3(ablation) {
   if (!ablation?.length) return null
   const entries = ablation.map((entry) => {
-    const full = entry.full.scoreV3 || scoreRecordV3({ ...entry, ...entry.full })
-    const baseline = entry.baseline.scoreV3 || scoreRecordV3({ ...entry, ...entry.baseline })
+    const full = scoreRecordV3({ ...entry, ...entry.full })
+    const baseline = scoreRecordV3({ ...entry, ...entry.baseline })
     return {
       id: entry.id,
       full: full.composite,

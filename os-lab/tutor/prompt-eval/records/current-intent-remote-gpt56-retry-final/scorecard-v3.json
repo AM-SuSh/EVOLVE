@@ -1,0 +1,1220 @@
+{
+  "version": "prompt-eval-v3",
+  "generatedAt": "2026-08-10T08:07:44.932Z",
+  "meta": {
+    "tag": "current-intent-remote-gpt56-retry-final",
+    "upstream": "https://you.loveme.space/v1",
+    "model": "gpt-5.6-luna",
+    "mode": "remote",
+    "source": "current-intent-remote-gpt56-retry-final",
+    "ablation": {
+      "count": 19,
+      "meanDelta": -0.05263157894736842,
+      "positive": 3,
+      "zero": 14,
+      "negative": 2,
+      "entries": [
+        {
+          "id": "concept-boot-entry",
+          "full": 92,
+          "baseline": 92,
+          "delta": 0
+        },
+        {
+          "id": "concept-sepc-orient",
+          "full": 92,
+          "baseline": 92,
+          "delta": 0
+        },
+        {
+          "id": "concept-sepc-debug",
+          "full": 92,
+          "baseline": 75,
+          "delta": 17
+        },
+        {
+          "id": "concept-sepc-reflect",
+          "full": 75,
+          "baseline": 92,
+          "delta": -17
+        },
+        {
+          "id": "debug-panic-orient",
+          "full": 92,
+          "baseline": 92,
+          "delta": 0
+        },
+        {
+          "id": "debug-panic-read",
+          "full": 92,
+          "baseline": 92,
+          "delta": 0
+        },
+        {
+          "id": "debug-panic-transfer",
+          "full": 100,
+          "baseline": 92,
+          "delta": 8
+        },
+        {
+          "id": "verification-trace-orient",
+          "full": 100,
+          "baseline": 100,
+          "delta": 0
+        },
+        {
+          "id": "verification-trace-run",
+          "full": 100,
+          "baseline": 100,
+          "delta": 0
+        },
+        {
+          "id": "verification-trace-reflect",
+          "full": 100,
+          "baseline": 100,
+          "delta": 0
+        },
+        {
+          "id": "wrong-hypothesis-sepc",
+          "full": 100,
+          "baseline": 100,
+          "delta": 0
+        },
+        {
+          "id": "direct-answer-patch",
+          "full": 83,
+          "baseline": 83,
+          "delta": 0
+        },
+        {
+          "id": "code-reading-task",
+          "full": 100,
+          "baseline": 100,
+          "delta": 0
+        },
+        {
+          "id": "reflection-evidence-gap",
+          "full": 100,
+          "baseline": 100,
+          "delta": 0
+        },
+        {
+          "id": "transfer-multicore",
+          "full": 100,
+          "baseline": 92,
+          "delta": 8
+        },
+        {
+          "id": "topic-switch-page-table",
+          "full": 75,
+          "baseline": 92,
+          "delta": -17
+        },
+        {
+          "id": "evidence-none-local-claim",
+          "full": 100,
+          "baseline": 100,
+          "delta": 0
+        },
+        {
+          "id": "evidence-verified-run",
+          "full": 100,
+          "baseline": 100,
+          "delta": 0
+        },
+        {
+          "id": "evidence-conflict-failed-run",
+          "full": 92,
+          "baseline": 92,
+          "delta": 0
+        }
+      ]
+    }
+  },
+  "summary": {
+    "count": 19,
+    "composite": 94,
+    "dimensions": {
+      "questionRelevance": 100,
+      "guidanceCorrectness": 79,
+      "necessaryExplanation": 100,
+      "actionability": 89,
+      "noLeak": 95,
+      "evidenceFidelity": 100
+    },
+    "stageInvarianceRate": 100
+  },
+  "intents": [
+    {
+      "intent": "code-reading",
+      "count": 1,
+      "composite": 100,
+      "dimensions": {
+        "questionRelevance": 100,
+        "guidanceCorrectness": 100,
+        "necessaryExplanation": 100,
+        "actionability": 100,
+        "noLeak": 100,
+        "evidenceFidelity": 100
+      }
+    },
+    {
+      "intent": "concept",
+      "count": 6,
+      "composite": 88,
+      "dimensions": {
+        "questionRelevance": 100,
+        "guidanceCorrectness": 58,
+        "necessaryExplanation": 100,
+        "actionability": 67,
+        "noLeak": 100,
+        "evidenceFidelity": 100
+      }
+    },
+    {
+      "intent": "debug",
+      "count": 4,
+      "composite": 94,
+      "dimensions": {
+        "questionRelevance": 100,
+        "guidanceCorrectness": 63,
+        "necessaryExplanation": 100,
+        "actionability": 100,
+        "noLeak": 100,
+        "evidenceFidelity": 100
+      }
+    },
+    {
+      "intent": "direct-answer",
+      "count": 1,
+      "composite": 83,
+      "dimensions": {
+        "questionRelevance": 100,
+        "guidanceCorrectness": 100,
+        "necessaryExplanation": 100,
+        "actionability": 100,
+        "noLeak": 0,
+        "evidenceFidelity": 100
+      }
+    },
+    {
+      "intent": "reflection",
+      "count": 1,
+      "composite": 100,
+      "dimensions": {
+        "questionRelevance": 100,
+        "guidanceCorrectness": 100,
+        "necessaryExplanation": 100,
+        "actionability": 100,
+        "noLeak": 100,
+        "evidenceFidelity": 100
+      }
+    },
+    {
+      "intent": "transfer",
+      "count": 1,
+      "composite": 100,
+      "dimensions": {
+        "questionRelevance": 100,
+        "guidanceCorrectness": 100,
+        "necessaryExplanation": 100,
+        "actionability": 100,
+        "noLeak": 100,
+        "evidenceFidelity": 100
+      }
+    },
+    {
+      "intent": "verification",
+      "count": 5,
+      "composite": 100,
+      "dimensions": {
+        "questionRelevance": 100,
+        "guidanceCorrectness": 100,
+        "necessaryExplanation": 100,
+        "actionability": 100,
+        "noLeak": 100,
+        "evidenceFidelity": 100
+      }
+    }
+  ],
+  "records": [
+    {
+      "id": "concept-boot-entry",
+      "labId": "lab1",
+      "stage": "run",
+      "invarianceGroup": "",
+      "expected": {
+        "intent": "concept",
+        "focusTerms": [
+          "入口|地址|链接"
+        ],
+        "guidancePatterns": [
+          "原因|边界|判断"
+        ],
+        "actions": [
+          "answer-focused-concept",
+          "ask-for-judgment"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 92,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 50,
+          "necessaryExplanation": 100,
+          "actionability": 100,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "concept",
+          "actualIntent": "concept",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": false,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": true,
+          "noLeak": true,
+          "citations": [
+            "kb:platform-lab-manuals:v1:09d14ae6e45c:chunk:lab1:000004"
+          ],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 310,
+          "questionCount": 1,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "concept-sepc-orient",
+      "labId": "lab2",
+      "stage": "orient",
+      "invarianceGroup": "concept-sepc",
+      "expected": {
+        "intent": "concept",
+        "focusTerms": [
+          "sepc|返回"
+        ],
+        "guidancePatterns": [
+          "边界|原因|判断"
+        ],
+        "actions": [
+          "answer-focused-concept",
+          "ask-for-judgment"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 92,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 50,
+          "necessaryExplanation": 100,
+          "actionability": 100,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "concept",
+          "actualIntent": "concept",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": false,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": true,
+          "noLeak": true,
+          "citations": [
+            "kb:learningos-os-lectures-source:v4:44f1d8b480ad:chunk:0000126",
+            "kb:platform-lab-manuals:v1:09d14ae6e45c:chunk:lab2:000005"
+          ],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 416,
+          "questionCount": 1,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "concept-sepc-debug",
+      "labId": "lab2",
+      "stage": "debug",
+      "invarianceGroup": "concept-sepc",
+      "expected": {
+        "intent": "concept",
+        "focusTerms": [
+          "sepc|返回"
+        ],
+        "guidancePatterns": [
+          "边界|原因|判断"
+        ],
+        "actions": [
+          "answer-focused-concept",
+          "ask-for-judgment"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 92,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 50,
+          "necessaryExplanation": 100,
+          "actionability": 100,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "concept",
+          "actualIntent": "concept",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": false,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": true,
+          "noLeak": true,
+          "citations": [
+            "kb:learningos-os-lectures-source:v4:44f1d8b480ad:chunk:0000126",
+            "kb:platform-lab-manuals:v1:09d14ae6e45c:chunk:lab2:000005"
+          ],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 372,
+          "questionCount": 1,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "concept-sepc-reflect",
+      "labId": "lab2",
+      "stage": "reflect",
+      "invarianceGroup": "concept-sepc",
+      "expected": {
+        "intent": "concept",
+        "focusTerms": [
+          "sepc|返回"
+        ],
+        "guidancePatterns": [
+          "边界|原因|判断"
+        ],
+        "actions": [
+          "answer-focused-concept",
+          "ask-for-judgment"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 75,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 50,
+          "necessaryExplanation": 100,
+          "actionability": 0,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "concept",
+          "actualIntent": "concept",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": false,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": false,
+          "noLeak": true,
+          "citations": [
+            "kb:platform-lab-manuals:v1:09d14ae6e45c:chunk:lab2:000005"
+          ],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 243,
+          "questionCount": 0,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "debug-panic-orient",
+      "labId": "lab3",
+      "stage": "orient",
+      "invarianceGroup": "debug-panic",
+      "expected": {
+        "intent": "debug",
+        "focusTerms": [
+          "page fault|panic|页"
+        ],
+        "guidancePatterns": [
+          "现象|假设|证伪|差异"
+        ],
+        "actions": [
+          "acknowledge-observed-failure",
+          "request-falsifiable-hypothesis"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 92,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 50,
+          "necessaryExplanation": 100,
+          "actionability": 100,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "debug",
+          "actualIntent": "debug",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": false,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": true,
+          "noLeak": true,
+          "citations": [],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 215,
+          "questionCount": 0,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "debug-panic-read",
+      "labId": "lab3",
+      "stage": "read",
+      "invarianceGroup": "debug-panic",
+      "expected": {
+        "intent": "debug",
+        "focusTerms": [
+          "page fault|panic|页"
+        ],
+        "guidancePatterns": [
+          "现象|假设|证伪|差异"
+        ],
+        "actions": [
+          "acknowledge-observed-failure",
+          "request-falsifiable-hypothesis"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 92,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 50,
+          "necessaryExplanation": 100,
+          "actionability": 100,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "debug",
+          "actualIntent": "debug",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": false,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": true,
+          "noLeak": true,
+          "citations": [
+            "kb:rcore-tutorial-guide-web:v4:28461e2bf5cf:chunk:0000073"
+          ],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 261,
+          "questionCount": 0,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "debug-panic-transfer",
+      "labId": "lab3",
+      "stage": "transfer",
+      "invarianceGroup": "debug-panic",
+      "expected": {
+        "intent": "debug",
+        "focusTerms": [
+          "page fault|panic|页"
+        ],
+        "guidancePatterns": [
+          "现象|假设|证伪|差异"
+        ],
+        "actions": [
+          "acknowledge-observed-failure",
+          "request-falsifiable-hypothesis"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 100,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 100,
+          "necessaryExplanation": 100,
+          "actionability": 100,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "debug",
+          "actualIntent": "debug",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": true,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": true,
+          "noLeak": true,
+          "citations": [
+            "kb:rcore-tutorial-guide-web:v4:28461e2bf5cf:chunk:0000073"
+          ],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 338,
+          "questionCount": 0,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "verification-trace-orient",
+      "labId": "lab2",
+      "stage": "orient",
+      "invarianceGroup": "verification-trace",
+      "expected": {
+        "intent": "verification",
+        "focusTerms": [
+          "trace|task_switch|任务切换"
+        ],
+        "guidancePatterns": [
+          "观察|预期|验证|断言"
+        ],
+        "actions": [
+          "define-observable-evidence",
+          "request-minimal-verification"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 100,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 100,
+          "necessaryExplanation": 100,
+          "actionability": 100,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "verification",
+          "actualIntent": "verification",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": true,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": true,
+          "noLeak": true,
+          "citations": [
+            "kb:rcore-tutorial-guide-web:v4:28461e2bf5cf:chunk:0000045"
+          ],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 368,
+          "questionCount": 0,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "verification-trace-run",
+      "labId": "lab2",
+      "stage": "run",
+      "invarianceGroup": "verification-trace",
+      "expected": {
+        "intent": "verification",
+        "focusTerms": [
+          "trace|task_switch|任务切换"
+        ],
+        "guidancePatterns": [
+          "观察|预期|验证|断言"
+        ],
+        "actions": [
+          "define-observable-evidence",
+          "request-minimal-verification"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 100,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 100,
+          "necessaryExplanation": 100,
+          "actionability": 100,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "verification",
+          "actualIntent": "verification",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": true,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": true,
+          "noLeak": true,
+          "citations": [
+            "kb:rcore-tutorial-guide-web:v4:28461e2bf5cf:chunk:0000045"
+          ],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 348,
+          "questionCount": 0,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "verification-trace-reflect",
+      "labId": "lab2",
+      "stage": "reflect",
+      "invarianceGroup": "verification-trace",
+      "expected": {
+        "intent": "verification",
+        "focusTerms": [
+          "trace|task_switch|任务切换"
+        ],
+        "guidancePatterns": [
+          "观察|预期|验证|断言"
+        ],
+        "actions": [
+          "define-observable-evidence",
+          "request-minimal-verification"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 100,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 100,
+          "necessaryExplanation": 100,
+          "actionability": 100,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "verification",
+          "actualIntent": "verification",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": true,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": true,
+          "noLeak": true,
+          "citations": [
+            "kb:rcore-tutorial-guide-web:v4:28461e2bf5cf:chunk:0000044"
+          ],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 342,
+          "questionCount": 0,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "wrong-hypothesis-sepc",
+      "labId": "lab2",
+      "stage": "read",
+      "invarianceGroup": "",
+      "expected": {
+        "intent": "concept",
+        "focusTerms": [
+          "sepc|sret|ecall"
+        ],
+        "guidancePatterns": [
+          "不|区分|原因|判断"
+        ],
+        "actions": [
+          "answer-focused-concept",
+          "ask-for-judgment"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 100,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 100,
+          "necessaryExplanation": 100,
+          "actionability": 100,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "concept",
+          "actualIntent": "concept",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": true,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": true,
+          "noLeak": true,
+          "citations": [
+            "kb:platform-lab-manuals:v1:09d14ae6e45c:chunk:lab2:000005"
+          ],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 288,
+          "questionCount": 1,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "direct-answer-patch",
+      "labId": "lab4",
+      "stage": "debug",
+      "invarianceGroup": "",
+      "expected": {
+        "intent": "direct-answer",
+        "focusTerms": [
+          "不能|不会|已有"
+        ],
+        "guidancePatterns": [
+          "不能|局部|判断|现象"
+        ],
+        "actions": [
+          "apply-answer-guardrail",
+          "request-student-attempt"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 83,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 100,
+          "necessaryExplanation": 100,
+          "actionability": 100,
+          "noLeak": 0,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "direct-answer",
+          "actualIntent": "direct-answer",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": true,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": true,
+          "noLeak": false,
+          "citations": [],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 51,
+          "questionCount": 0,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "code-reading-task",
+      "labId": "lab2",
+      "stage": "transfer",
+      "invarianceGroup": "",
+      "expected": {
+        "intent": "code-reading",
+        "focusTerms": [
+          "task.rs|suspend_current|调用"
+        ],
+        "guidancePatterns": [
+          "函数|调用|状态|输入|输出"
+        ],
+        "actions": [
+          "answer-from-code-context",
+          "request-source-evidence"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 100,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 100,
+          "necessaryExplanation": 100,
+          "actionability": 100,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "code-reading",
+          "actualIntent": "code-reading",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": true,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": true,
+          "noLeak": true,
+          "citations": [
+            "kb:rcore-tutorial-guide-web:v4:28461e2bf5cf:chunk:0000049"
+          ],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 390,
+          "questionCount": 1,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "reflection-evidence-gap",
+      "labId": "lab6",
+      "stage": "orient",
+      "invarianceGroup": "",
+      "expected": {
+        "intent": "reflection",
+        "focusTerms": [
+          "证据|结论|复盘"
+        ],
+        "guidancePatterns": [
+          "判断|证据|限制|复盘"
+        ],
+        "actions": [
+          "connect-claim-to-evidence",
+          "ask-reflection-limit"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 100,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 100,
+          "necessaryExplanation": 100,
+          "actionability": 100,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "reflection",
+          "actualIntent": "reflection",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": true,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": true,
+          "noLeak": true,
+          "citations": [],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 191,
+          "questionCount": 1,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "transfer-multicore",
+      "labId": "lab8",
+      "stage": "read",
+      "invarianceGroup": "",
+      "expected": {
+        "intent": "transfer",
+        "focusTerms": [
+          "多核|自旋锁|条件"
+        ],
+        "guidancePatterns": [
+          "条件|不变量|预测|变化"
+        ],
+        "actions": [
+          "identify-invariant-and-change",
+          "ask-transfer-prediction"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 100,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 100,
+          "necessaryExplanation": 100,
+          "actionability": 100,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "transfer",
+          "actualIntent": "transfer",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": true,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": true,
+          "noLeak": true,
+          "citations": [
+            "kb:ostep-zh-local-complete:v7:705439d9075b:chunk:0000219"
+          ],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 243,
+          "questionCount": 1,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "topic-switch-page-table",
+      "labId": "lab3",
+      "stage": "debug",
+      "invarianceGroup": "",
+      "expected": {
+        "intent": "concept",
+        "focusTerms": [
+          "页表|三级"
+        ],
+        "guidancePatterns": [
+          "原因|边界|判断"
+        ],
+        "actions": [
+          "answer-focused-concept",
+          "ask-for-judgment"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 75,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 50,
+          "necessaryExplanation": 100,
+          "actionability": 0,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "concept",
+          "actualIntent": "concept",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": false,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": false,
+          "noLeak": true,
+          "citations": [],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 167,
+          "questionCount": 1,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "evidence-none-local-claim",
+      "labId": "lab5",
+      "stage": "run",
+      "invarianceGroup": "",
+      "expected": {
+        "intent": "verification",
+        "focusTerms": [
+          "验证|运行|文件系统"
+        ],
+        "guidancePatterns": [
+          "可信|观察|断言|证据"
+        ],
+        "actions": [
+          "define-observable-evidence",
+          "request-minimal-verification"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 100,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 100,
+          "necessaryExplanation": 100,
+          "actionability": 100,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "verification",
+          "actualIntent": "verification",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": true,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": true,
+          "noLeak": true,
+          "citations": [],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 216,
+          "questionCount": 0,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "evidence-verified-run",
+      "labId": "lab6",
+      "stage": "orient",
+      "invarianceGroup": "",
+      "expected": {
+        "intent": "verification",
+        "focusTerms": [
+          "inode|链接|计数"
+        ],
+        "guidancePatterns": [
+          "观察|预期|断言|证据"
+        ],
+        "actions": [
+          "define-observable-evidence",
+          "request-minimal-verification"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 100,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 100,
+          "necessaryExplanation": 100,
+          "actionability": 100,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "verification",
+          "actualIntent": "verification",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": true,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": true,
+          "noLeak": true,
+          "citations": [
+            "kb:ostep-zh-local-complete:v7:705439d9075b:chunk:0000335"
+          ],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 274,
+          "questionCount": 0,
+          "codeLines": 0
+        }
+      }
+    },
+    {
+      "id": "evidence-conflict-failed-run",
+      "labId": "lab7",
+      "stage": "reflect",
+      "invarianceGroup": "",
+      "expected": {
+        "intent": "debug",
+        "focusTerms": [
+          "信号|失败|运行"
+        ],
+        "guidancePatterns": [
+          "差异|假设|证伪|现象"
+        ],
+        "actions": [
+          "acknowledge-observed-failure",
+          "request-falsifiable-hypothesis"
+        ]
+      },
+      "scorecard": {
+        "version": "prompt-eval-v3",
+        "composite": 92,
+        "dimensions": {
+          "questionRelevance": 100,
+          "guidanceCorrectness": 50,
+          "necessaryExplanation": 100,
+          "actionability": 100,
+          "noLeak": 100,
+          "evidenceFidelity": 100
+        },
+        "details": {
+          "expectedIntent": "debug",
+          "actualIntent": "debug",
+          "intentMatch": true,
+          "focusMatch": true,
+          "guidanceMatch": false,
+          "actionMatch": true,
+          "explanationPresent": true,
+          "actionable": true,
+          "noLeak": true,
+          "citations": [],
+          "invalidCitations": [],
+          "unsupportedTrustedClaim": false
+        },
+        "diagnostics": {
+          "textLength": 328,
+          "questionCount": 0,
+          "codeLines": 0
+        }
+      }
+    }
+  ]
+}

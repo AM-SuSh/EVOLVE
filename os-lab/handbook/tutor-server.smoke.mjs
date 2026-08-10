@@ -25,6 +25,11 @@ const mockChatRequests = []
 const mockUpstream = http.createServer(async (request, response) => {
   const requestUrl = new URL(request.url || '/', 'http://127.0.0.1')
   response.setHeader('Content-Type', 'application/json; charset=utf-8')
+  if (request.method === 'GET' && requestUrl.pathname === '/html/models') {
+    response.setHeader('Content-Type', 'text/html; charset=utf-8')
+    response.end('<!doctype html><title>not an OpenAI endpoint</title>')
+    return
+  }
   if (request.method === 'GET' && requestUrl.pathname === '/v1/models') {
     response.end(JSON.stringify({ data: [{ id: 'm0-smoke-model' }] }))
     return
@@ -174,6 +179,16 @@ try {
   assert.equal(teacherLlmHealth.connected, true)
   assert.equal(teacherLlmHealth.model, 'teacher-smoke-model')
   assert.equal(teacherLlmHealth.studentLlmAllowed, false)
+
+  const htmlBaseUrl = mockBaseUrl.replace(/\/v1$/, '/html')
+  const saveHtmlTeacherLlm = await postJson('/teacher/config', earlyTeacherHeaders, {
+    scope: { type: 'global', id: '' },
+    llm: { baseUrl: htmlBaseUrl, model: 'teacher-smoke-model', apiKey: '' },
+  })
+  assert.equal(saveHtmlTeacherLlm.status, 200)
+  const htmlTeacherLlmHealth = await fetch(`${endpoint}/health`).then((response) => response.json())
+  assert.equal(htmlTeacherLlmHealth.connected, false)
+  assert.match(htmlTeacherLlmHealth.detail, /OpenAI.*JSON|\/v1/)
 
   const preserveTeacherKey = await postJson('/teacher/config', earlyTeacherHeaders, {
     scope: { type: 'global', id: '' },

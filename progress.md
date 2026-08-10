@@ -1,5 +1,33 @@
 # os-lab 项目进度总览
 
+## 2026-08-10 - Task: run valid gpt-5.6-luna intent-routing evaluation
+
+### What was done
+
+- 通过教师统一模型配置确认 `gpt-5.6-luna` 的模型列表和 Chat Completions 接口可用，使用 V3 的 19 条固定语料完成真实模型全链路和意图策略消融。有效原始记录保存在 `tutor/prompt-eval/records/current-intent-remote-gpt56-retry-final/`，修正评分后的报告保存在相邻的 `-rescored/` 目录。
+- 真实有效运行包含 18 条 `remote`、1 条预期 `guardrail`；所有主请求均一次成功，19 条无意图策略基线均有正文且一次成功。真实 Key 仅在评测子进程环境中使用，没有写入命令行、评测记录、日志或 Git。
+- 修复上游兼容问题：`/health` 不再把返回 HTML 的 HTTP 200 当成已连接，必须校验 `/models` 的 OpenAI-compatible JSON；评测消融请求显式携带 `stream:false` 并支持 SSE 文本聚合；真实上游默认连接建立超时从离线用的 500ms 提高到 30s，主链路与基线对 `429/5xx`、空正文和 offline 回退最多退避重试 3 次并记录尝试次数。
+- 修正 V3 两个评测假阴性：护栏拒绝“可直接提交的完整实现”不再被视作答案泄漏；“思考：...”被视为可执行推理动作。冻结记录本地重放后，所有模型回复和证据保持不变，仅重新计算评分。
+
+### Planning comparison
+
+- 已完成“用真实模型验证按本轮问题意图引导”的关键补测：问题相关性 100、必要解释 100、证据忠实 100、跨阶段一致性 100，表明回答策略没有重新依赖人为阶段。
+- 已保持“辅助学生学习而非直接给答案”的边界：直接索要补丁的用例由服务端护栏处理；人工核对与修正后评分均为零真实答案泄漏。
+- 已完成“问题相关性、引导动作正确性、答案泄漏率、证据引用准确率和阶段不变性”替换 `stageAccuracy` 的真实模型验证；但 A/B 仅一轮，不能据此宣称完整意图策略有统计稳定优势。
+- 已明确后续优化优先级：先为 concept 回复补“解释后一个判断/验证动作”，再基于人工标注校准 concept/debug 的引导动作评分，不为命中窄关键词而反向改 Prompt。
+
+### Testing
+
+- 有效真实模型运行：19 条中 `remote=18`、`guardrail=1`、`offline=0`，主请求和 19 条基线的 `attempts` 均为 1。
+- 重评分 V3：综合 96，问题相关 100，引导正确 79，必要解释 100，可执行 95，无泄漏 100，证据忠实 100，跨阶段一致 100%。
+- 消融 V3：完整意图策略相对基线平均 `+0.84` 分，3 条更好、15 条持平、1 条更差；需至少再采样 2 轮后才报告均值与不确定性。
+- `node --test os-lab/tutor/prompt-eval/scoring-v3.test.mjs`：5/5 通过；`node --test os-lab/handbook/llm-response.test.mjs`：8/8 通过；`npm run test:smoke`：通过。
+
+### Notes
+
+- 教师端 Base URL 必须填写真正的 OpenAI-compatible API 路径，例如 `https://you.loveme.space/v1`，不要只填会返回网页 HTML 的站点根地址。重新启动 Tutor Server 后，连接检测会明确提示该配置错误。
+- `concept-sepc-reflect` 是本轮唯一明确的教学动作缺口：回复解释正确但没有继续让学生判断、阅读或验证；其余引导低分需要先人工标注复核，以免把评测关键词误当教学质量本身。
+
 ## 2026-08-10 - Task: restore teacher unified AI model configuration
 
 ### What was done

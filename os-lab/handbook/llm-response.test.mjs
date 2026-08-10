@@ -5,6 +5,7 @@ import {
   emptyCompletionReason,
   extractCompletionText,
   extractReasoningText,
+  extractSseCompletionText,
   extractStreamText,
 } from './llm-response.mjs'
 
@@ -50,6 +51,25 @@ test('does not treat a completed Responses payload as another stream delta', () 
   }
   assert.equal(extractStreamText(completed), '')
   assert.equal(extractCompletionText(completed), '完整回答')
+})
+
+test('aggregates OpenAI-compatible SSE text with completion and reasoning fallbacks', () => {
+  assert.equal(
+    extractSseCompletionText([
+      'data: {"choices":[{"delta":{"content":"片段一"}}]}',
+      'data: {"type":"response.output_text.delta","delta":"片段二"}',
+      'data: [DONE]',
+    ].join('\n\n')),
+    '片段一片段二',
+  )
+  assert.equal(
+    extractSseCompletionText('data: {"choices":[{"message":{"content":"完整回答"}}]}\n\ndata: [DONE]'),
+    '完整回答',
+  )
+  assert.equal(
+    extractSseCompletionText('data: {"choices":[{"delta":{"reasoning_content":"推理兜底"}}]}\n\ndata: [DONE]'),
+    '推理兜底',
+  )
 })
 
 test('payload diagnostics contain shape but not response text', () => {

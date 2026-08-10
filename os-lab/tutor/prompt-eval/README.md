@@ -59,6 +59,10 @@ node run-eval.mjs --tag remote-v3 `
   --upstream https://<upstream>/v1 --model <model> --api-key <key>
 ```
 
+真实上游的连接建立超时默认是 30 秒，可用 `--connect-timeout-ms <ms>` 覆盖；默认离线地址仍使用 500ms，避免离线回归等待。接口地址必须指向实际 OpenAI 兼容 API（通常以 `/v1` 结尾），不能只填写会返回 HTML 首页的站点根地址。
+
+真实评测遇到 HTTP `429/5xx`、空正文或生产链路 `mode=offline` 时最多退避重试 3 次；每条主结果和消融基线都会记录 `attempts`。护栏回复不重试，最终仍为 offline/error 的条目不得计入真实模型结论。
+
 增加 `--ablate` 后，对比“完整意图策略”和“无意图策略基线”。基线只保留 system、Lab 上下文、证据权限与 RAG，不再保留阶段 gate/actions，因此是架构变量更清楚的对照。
 
 输出目录：

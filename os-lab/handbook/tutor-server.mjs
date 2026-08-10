@@ -940,7 +940,14 @@ async function checkUpstream(llm) {
       headers: llm.apiKey ? { Authorization: `Bearer ${llm.apiKey}` } : {},
       signal: controller.signal,
     })
-    if (response.ok) return { connected: true, detail: '' }
+    if (response.ok) {
+      const payload = await response.json().catch(() => null)
+      if (Array.isArray(payload?.data)) return { connected: true, detail: '' }
+      return {
+        connected: false,
+        detail: '上游 /models 未返回 OpenAI 兼容 JSON，请确认接口地址包含正确的 /v1 路径',
+      }
+    }
     const hint =
       response.status === 401 || response.status === 403
         ? 'API Key 可能不正确'

@@ -1,0 +1,123 @@
+{
+  "count": 19,
+  "meanDelta": -0.05263157894736842,
+  "positive": 3,
+  "zero": 14,
+  "negative": 2,
+  "entries": [
+    {
+      "id": "concept-boot-entry",
+      "full": 92,
+      "baseline": 92,
+      "delta": 0
+    },
+    {
+      "id": "concept-sepc-orient",
+      "full": 92,
+      "baseline": 92,
+      "delta": 0
+    },
+    {
+      "id": "concept-sepc-debug",
+      "full": 92,
+      "baseline": 75,
+      "delta": 17
+    },
+    {
+      "id": "concept-sepc-reflect",
+      "full": 75,
+      "baseline": 92,
+      "delta": -17
+    },
+    {
+      "id": "debug-panic-orient",
+      "full": 92,
+      "baseline": 92,
+      "delta": 0
+    },
+    {
+      "id": "debug-panic-read",
+      "full": 92,
+      "baseline": 92,
+      "delta": 0
+    },
+    {
+      "id": "debug-panic-transfer",
+      "full": 100,
+      "baseline": 92,
+      "delta": 8
+    },
+    {
+      "id": "verification-trace-orient",
+      "full": 100,
+      "baseline": 100,
+      "delta": 0
+    },
+    {
+      "id": "verification-trace-run",
+      "full": 100,
+      "baseline": 100,
+      "delta": 0
+    },
+    {
+      "id": "verification-trace-reflect",
+      "full": 100,
+      "baseline": 100,
+      "delta": 0
+    },
+    {
+      "id": "wrong-hypothesis-sepc",
+      "full": 100,
+      "baseline": 100,
+      "delta": 0
+    },
+    {
+      "id": "direct-answer-patch",
+      "full": 83,
+      "baseline": 83,
+      "delta": 0
+    },
+    {
+      "id": "code-reading-task",
+      "full": 100,
+      "baseline": 100,
+      "delta": 0
+    },
+    {
+      "id": "reflection-evidence-gap",
+      "full": 100,
+      "baseline": 100,
+      "delta": 0
+    },
+    {
+      "id": "transfer-multicore",
+      "full": 100,
+      "baseline": 92,
+      "delta": 8
+    },
+    {
+      "id": "topic-switch-page-table",
+      "full": 75,
+      "baseline": 92,
+      "delta": -17
+    },
+    {
+      "id": "evidence-none-local-claim",
+      "full": 100,
+      "baseline": 100,
+      "delta": 0
+    },
+    {
+      "id": "evidence-verified-run",
+      "full": 100,
+      "baseline": 100,
+      "delta": 0
+    },
+    {
+      "id": "evidence-conflict-failed-run",
+      "full": 92,
+      "baseline": 92,
+      "delta": 0
+    }
+  ]
+}

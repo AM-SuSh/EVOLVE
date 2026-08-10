@@ -56,6 +56,32 @@ export function extractStreamText(payload) {
   return ''
 }
 
+/** Aggregate an OpenAI-compatible SSE response without duplicating completed payloads. */
+export function extractSseCompletionText(raw) {
+  let streamed = ''
+  let completionFallback = ''
+  let reasoningFallback = ''
+  for (const line of String(raw || '').split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith(':')) continue
+    const data = trimmed.startsWith('data:') ? trimmed.slice(5).trim() : trimmed
+    if (!data || data === '[DONE]') continue
+    let payload
+    try {
+      payload = JSON.parse(data)
+    } catch {
+      continue
+    }
+    const delta = extractStreamText(payload)
+    if (delta) streamed += delta
+    else {
+      completionFallback = extractCompletionText(payload, { allowReasoning: false }) || completionFallback
+      reasoningFallback += extractReasoningText(payload)
+    }
+  }
+  return streamed || completionFallback || reasoningFallback
+}
+
 export function extractReasoningText(payload) {
   const choice = payload?.choices?.[0]
   const candidates = [
