@@ -5114,3 +5114,27 @@ ariants/fill/manifest.yaml、published.json 与 scripts/scaffold.mjs LEGACY 表�
 - `npm run test:smoke`：通过；报告草稿的 `PUT` CORS 预检断言通过，原有导师服务链路正常。
 - `npm run build`：通过；VitePress 客户端/服务端 bundle 和页面渲染通过。
 - `git diff --check`：通过。
+
+## 2026-08-10 - Task: decouple AI tutor replies from learning stages
+
+### What was done
+
+- 新增 `os-lab/tutor/turn-policy.mjs`，在服务端共享问题分类并按本轮问题规划 `concept`、`code-reading`、`debug`、`verification`、`reflection`、`transfer`、`direct-answer` 七类意图；同一问题在不同前端阶段下得到相同意图和教学动作。
+- `/chat` 默认使用 `intent` 路由，Prompt 由 system、Lab 上下文、本轮意图策略、当前阅读/可信工具上下文和 RAG 组成，不再注入“当前阶段”或“本轮阶段必须动作”。`OS_LAB_TUTOR_ROUTING_MODE=stage` 可临时恢复旧状态机路由。
+- 保留 `activeStage`、`tutor_sessions.current_stage`、`stage_enter` 事件、响应中的阶段字段及旧 `state-machine.mjs`，阶段在意图模式下只承担界面同步、遥测和历史兼容职责。
+- 保留 `enforceTutorOutput()`、直接答案护栏、证据引用白名单、RAG 权限和可信运行/诊断/Trace 摘要；意图策略只决定如何回应与引导，不改变证据权限。
+- 更新系统 Prompt：先用必要的最少解释回答当前问题，学生判断错误时明确纠正，再给至多一个引导问题或行动；新增七份意图策略 Prompt，并让离线回复也按意图而不是阶段选择。
+- 前端 `inferCategory()` 改为调用共享分类实现，避免前后端规则继续漂移；主测试入口加入本轮策略单测。
+
+### Testing
+
+- `node --test os-lab/tutor/turn-policy.test.mjs os-lab/tutor/state-machine.test.mjs`：通过，9/9；覆盖七类意图、跨阶段不变性、证据上下文、旧阶段兼容和前端分类兼容。
+- `npm run test:smoke`：通过；验证真实 `/chat`、意图 Prompt、阶段遥测、RAG、证据白名单、远程及离线回复链路。
+- `node --check os-lab/tutor/turn-policy.mjs` 与 `node --check os-lab/handbook/tutor-server.mjs`：通过。
+- `git diff --check`：通过。
+- `npm test`：75 项中 74 项通过；既有 `lab-factory.test.mjs` 因缺少 `lab7` debug 源文件 `user/src/bin/signal_mask_test.rs` 失败，与本轮 Tutor 路由改动无关。
+
+### Notes
+
+- 规划对照确认：本部分已完成“先让 `/chat` 忽略阶段进行回答并保留阶段字段/事件”与“引入本轮意图策略”；问题线程级提示、评分和 Prompt Eval 指标留在后续独立提交处理。
+- 意图模式下，学生从 `reflect` 切换到 `read` 会新增一条阶段遥测事件，但不会改变问题意图、教学动作或 Prompt 策略。

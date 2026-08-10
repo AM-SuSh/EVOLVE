@@ -53,6 +53,7 @@ import { createCargoJsonCollector } from '../tutor/cargo-diagnostics.mjs'
 import { evaluateRunAssertions, getRunRecipe } from '../tutor/run-recipes.mjs'
 import { parseTraceQuery, readTracePage, TraceIntegrityError } from '../tutor/trace-store.mjs'
 import { decideTutorTurn, enforceTutorOutput, tutorPolicyPrompt } from '../tutor/state-machine.mjs'
+import { planTutorTurn, tutorTurnIntents, tutorTurnPolicyPrompt } from '../tutor/turn-policy.mjs'
 import { validateChatEvidenceRefs } from '../tutor/evidence-refs.mjs'
 import { openKnowledgeStore } from '../learning/knowledge/knowledge-store.mjs'
 import { createHybridRetriever } from '../learning/knowledge/hybrid-retriever.mjs'
@@ -236,6 +237,7 @@ const port = Number(process.env.OS_LAB_TUTOR_PORT || 8787)
 const defaultUpstream = (process.env.OS_LAB_LLM_BASE_URL || 'http://127.0.0.1:11434/v1').replace(/\/$/, '')
 const defaultModel = process.env.OS_LAB_LLM_MODEL || 'qwen2.5:7b'
 const defaultApiKey = process.env.OS_LAB_LLM_API_KEY || ''
+const tutorRoutingMode = process.env.OS_LAB_TUTOR_ROUTING_MODE === 'stage' ? 'stage' : 'intent'
 // 学习事件默认落在仓库内（gitignore），而不是系统临时目录——临时目录会被清理，
 // 真实学生实验的数据不能放在那里。
 const dataDir = studentDataRoot
@@ -333,6 +335,14 @@ const fallbackLabPrompts = Object.fromEntries(
 const sharedStagePrompts = Object.fromEntries(
   await Promise.all(
     [...stageIds].map(async (stage) => [stage, await readPrompt(path.join(promptRoot, 'stages', `stage-${stage}.md`))]),
+  ),
+)
+const intentStrategyPrompts = Object.fromEntries(
+  await Promise.all(
+    tutorTurnIntents.map(async (intent) => [
+      intent,
+      await readPrompt(path.join(promptRoot, 'strategies', `${intent}.md`)),
+    ]),
   ),
 )
 const labStagePrompts = Object.fromEntries(
@@ -845,32 +855,49 @@ function readingLayer(reading) {
   return `学生此刻正在实验手册中阅读 ${where}。请优先围绕这一节的内容追问，必要时才引导他前后翻。`
 }
 
-function frameworkFor(labId, stage, reading, policyPrompt = '', retrievedKnowledge = '') {
+function frameworkFor(labId, tutorState, reading, policyPrompt = '', retrievedKnowledge = '') {
   const safeLabId = labIds.has(labId) ? labId : 'lab2'
-  const safeStage = stageIds.has(stage) ? stage : 'orient'
-  const labStage = labStagePrompts[safeLabId] || {}
-  const hasLabOverride = Boolean(labStage[safeStage])
-  const stagePrompt = hasLabOverride ? labStage[safeStage] : sharedStagePrompts[safeStage]
-  const stageSource = hasLabOverride
-    ? `tutor/prompts/${safeLabId}/stage-${safeStage}.md`
-    : `tutor/prompts/stages/stage-${safeStage}.md`
+  const safeStage = stageIds.has(tutorState?.stage) ? tutorState.stage : 'orient'
+  const routingMode = tutorState?.routingMode === 'stage' ? 'stage' : 'intent'
+  const safeIntent = tutorTurnIntents.includes(tutorState?.intent) ? tutorState.intent : 'concept'
   const reading_ = readingLayer(reading)
   const publishedContext = publishedContentPath(safeLabId, 'tutorContext', '')
   const labPrompt = publishedContext ? readFileSync(publishedContext, 'utf8') : fallbackLabPrompts[safeLabId]
   const layers = [
     { id: 'system', label: '教学边界', source: 'tutor/prompts/system.md' },
     { id: 'lab', label: `${labLabels[safeLabId]} 上下文`, source: `tutor/prompts/${safeLabId}/context.md` },
-    { id: 'stage', label: `阶段策略 · ${safeStage}`, source: stageSource },
   ]
+  let strategyPrompt = ''
+  if (routingMode === 'stage') {
+    const labStage = labStagePrompts[safeLabId] || {}
+    const hasLabOverride = Boolean(labStage[safeStage])
+    strategyPrompt = hasLabOverride ? labStage[safeStage] : sharedStagePrompts[safeStage]
+    layers.push({
+      id: 'stage',
+      label: `阶段策略 · ${safeStage}`,
+      source: hasLabOverride
+        ? `tutor/prompts/${safeLabId}/stage-${safeStage}.md`
+        : `tutor/prompts/stages/stage-${safeStage}.md`,
+    })
+  } else {
+    strategyPrompt = intentStrategyPrompts[safeIntent]
+    layers.push({
+      id: 'intent',
+      label: `本轮意图策略 · ${safeIntent}`,
+      source: `tutor/prompts/strategies/${safeIntent}.md`,
+    })
+  }
   if (reading_) layers.push({ id: 'reading', label: '当前阅读位置', source: 'runtime' })
-  if (policyPrompt) layers.push({ id: 'policy', label: '服务端证据门控', source: 'runtime' })
+  if (policyPrompt) layers.push({ id: 'policy', label: '本轮策略与可信上下文', source: 'runtime' })
   if (retrievedKnowledge) layers.push({ id: 'knowledge', label: '受限知识检索', source: 'knowledge.db' })
   return {
-    version: 'multi-lab-v2.1',
+    version: routingMode === 'stage' ? 'multi-lab-v2.1' : 'intent-routing-v1',
+    routingMode,
     labId: safeLabId,
     stage: safeStage,
+    intent: routingMode === 'intent' ? safeIntent : undefined,
     layers,
-    prompt: [systemPrompt, labPrompt, stagePrompt, reading_, policyPrompt, retrievedKnowledge]
+    prompt: [systemPrompt, labPrompt, strategyPrompt, reading_, policyPrompt, retrievedKnowledge]
       .filter(Boolean)
       .join('\n\n---\n\n'),
   }
@@ -1035,6 +1062,19 @@ function serverOfflineTutorReply(message, labId, tutorState, guardrailTriggered 
     return '设想不用 sscratch：trap 刚发生时 sp 仍属于谁？在保存任何通用寄存器前，哪一个寄存器还能临时借用而不破坏用户现场？先用这两个问题检查栈交换的必要性。'
   }
 
+  const intentReplies = {
+    concept: `先回答你问到的边界：${label} 里的结论需要同时区分硬件行为、内核状态变化和可观察证据。你现在最不确定的是哪一层？`,
+    'code-reading': '先沿你提到的符号回答：看它接收什么状态、修改哪个不变量、把控制权交给谁。请贴出当前函数及其一个调用点，我们只核对这条路径。',
+    debug: '这个现象说明当前实现与预期至少在一个可观察状态上分叉。先写出最早出现差异的一行输出，以及一个能被它证伪的原因假设。',
+    verification: `验证的关键不是“能运行”，而是观察结果能否区分两个判断。先写预期差异，再运行 ${command}，只比较对应断言或 Trace。`,
+    reflection: `复盘时要把结论和证据一一对应。先选 ${label} 中一个你现在能解释的机制，并指出它由哪条代码路径或运行结果支持。`,
+    transfer: `先分开不变量与改变的条件：条件变化后，原机制未必整体失效。请先预测一个会变化的可观察结果，再说明如何验证。`,
+    'direct-answer': `我不能交付可直接提交的完整实现。请给出你已有的局部代码、判断或失败现象之一，我会先解释关键机制，再引导下一步。`,
+  }
+  if (tutorState.routingMode === 'intent') {
+    return intentReplies[tutorState.intent] || intentReplies.concept
+  }
+
   const stageReplies = {
     orient: `先不急着写实现。围绕 ${label}，写下你认为最关键的一个系统边界，以及这个判断的依据；我再帮你把它拆成可验证的小问题。`,
     read: '从当前阅读位置选一个入口，沿调用链或数据流追到核心实现。每经过一层，分别写下输入、状态变化和输出，我们再检查哪一环最薄弱。',
@@ -1126,13 +1166,16 @@ async function handleChat(body, request, response, origin, session) {
   const guardrail = matchGuardrail(message)
   const storedState = getTutorSessionState(session.id, learningSessionId, labId)
   const evidence = getTutorEvidenceSummary(session.id, learningSessionId, labId)
-  const tutorState = decideTutorTurn({
+  const turnInput = {
     currentStage: storedState.stage,
     requestedStage,
     message,
     evidence,
     hintLevel: storedState.hintLevel,
-  })
+  }
+  const tutorState = tutorRoutingMode === 'stage'
+    ? { ...decideTutorTurn(turnInput), routingMode: 'stage' }
+    : planTutorTurn(turnInput)
   tutorState.evidenceRefs = [...new Set([
     ...tutorState.evidenceRefs,
     ...requestedEvidence.evidenceRefs,
@@ -1149,7 +1192,10 @@ async function handleChat(body, request, response, origin, session) {
       timestamp,
       type: 'stage_enter',
       stage: tutorState.stage,
-      metadata: { source: 'server-state-machine', gate: tutorState.gate },
+      metadata: {
+        source: tutorState.routingMode === 'intent' ? 'client-stage-telemetry' : 'server-state-machine',
+        gate: tutorState.gate,
+      },
     })
   }
   if (tutorState.hintAdvanced) {
@@ -1169,7 +1215,10 @@ async function handleChat(body, request, response, origin, session) {
     insertLearningEvents(session.id, decisionEvents)
     await persistEvents(session.id, decisionEvents)
   }
-  let framework = frameworkFor(labId, tutorState.stage, body.reading, tutorPolicyPrompt(tutorState))
+  const policyPrompt = tutorState.routingMode === 'intent'
+    ? tutorTurnPolicyPrompt(tutorState)
+    : tutorPolicyPrompt(tutorState)
+  let framework = frameworkFor(labId, tutorState, body.reading, policyPrompt)
 
   // 护栏命中是规则判定，没有上游调用，直接整段返回。
   if (guardrail) {
@@ -1191,9 +1240,9 @@ async function handleChat(body, request, response, origin, session) {
   const allowedKnowledgeRefs = retrievedKnowledge.map((chunk) => chunk.citation)
   framework = frameworkFor(
     labId,
-    tutorState.stage,
+    tutorState,
     body.reading,
-    tutorPolicyPrompt(tutorState),
+    policyPrompt,
     knowledgePrompt(retrievedKnowledge),
   )
   const knowledgeMeta = tutorKnowledgeMeta(retrievedKnowledge)
@@ -3268,7 +3317,7 @@ await seedLegacyClasses()
 
 server.listen(port, '127.0.0.1', () => {
   console.log(`os-lab tutor proxy: http://127.0.0.1:${port}`)
-  console.log(`framework: multi-lab-v2.1 · 默认上游: ${defaultUpstream} · 默认模型: ${defaultModel}`)
+  console.log(`framework: ${tutorRoutingMode === 'intent' ? 'intent-routing-v1' : 'multi-lab-v2.1'} · routing: ${tutorRoutingMode} · 默认上游: ${defaultUpstream} · 默认模型: ${defaultModel}`)
   console.log('账号体系: 注册（学生+班级）/登录 · 预置管理员 admin/admin123（请尽快改密码）· 教师入口 /guide/ai-tutor')
   console.log(`events: ${dataDir}`)
 })

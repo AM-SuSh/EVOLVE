@@ -1,6 +1,8 @@
 import { parse as parseYaml } from 'yaml'
 // @ts-expect-error 评分唯一实现（前端与 tutor-server 共用，避免两处漂移）
 import { scoreLearningEvents } from '../../../learning/rubric.mjs'
+// @ts-expect-error 本轮问题分类与服务端意图策略共用同一实现
+import { inferQuestionCategory } from '../../../tutor/turn-policy.mjs'
 // 护栏规则单一事实源：与 tutor-server 读同一份 YAML
 import guardrailSource from '../../../tutor/prompts/guardrails.yaml?raw'
 
@@ -1219,12 +1221,7 @@ export function isDirectAnswerRequest(text: string) {
 }
 
 export function inferCategory(text: string): QuestionCategory {
-  if (isDirectAnswerRequest(text)) return 'direct_answer'
-  if (/(区别|对比|相比|迁移|类似)/.test(text)) return 'comparison'
-  if (/(现象|乱码|报错|失败|崩溃|panic|卡住|输出)/i.test(text)) return 'phenomenon'
-  if (/(为什么|原因|必须|导致|根因|怎么会)/.test(text)) return 'cause'
-  if (/(实验|验证|尝试|观察|运行|QEMU|cargo)/i.test(text)) return 'exploration'
-  return 'concept'
+  return inferQuestionCategory(text) as QuestionCategory
 }
 
 export function offlineTutorReply(
