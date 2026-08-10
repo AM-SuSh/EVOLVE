@@ -148,6 +148,11 @@ export interface TutorState {
   gate?: string
   hintLevel?: number
   hintAdvanced?: boolean
+  topicKey?: string
+  topicIntent?: string
+  topicAnchor?: string
+  topicChanged?: boolean
+  topicChangeReason?: string
   actions?: string[]
   evidenceRefs?: string[]
   toolContext?: TutorToolContext

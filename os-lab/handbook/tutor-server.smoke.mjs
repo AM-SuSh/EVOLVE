@@ -576,8 +576,9 @@ try {
       sessionId: 'smoke-learning-session',
       labId: 'lab2',
       stage: 'reflect',
-      message: '我观察到 trace 中发生了 task_switch，这能说明调度器做了什么？',
+      message: '我观察到 trace 中发生了 task_switch，这能说明调度器做了什么？给点提示',
       evidenceRefs: [`run:${runFrame.runId}`, `trace:${runFrame.runId}`],
+      codeContext: { file: 'kernel/src/task.rs', line: 42, selection: 'pub fn suspend_current_and_run_next()' },
     }),
   }).then((chatResponse) => chatResponse.json())
   assert.equal(chat.mode, 'remote', JSON.stringify(chat))
@@ -586,6 +587,8 @@ try {
   assert.equal(chat.tutorState.requestedStage, 'reflect')
   assert.equal(chat.tutorState.intent, 'verification')
   assert.equal(chat.tutorState.routingMode, 'intent')
+  assert.equal(chat.tutorState.hintLevel, 1)
+  assert.match(chat.tutorState.topicKey, /^topic:[a-f0-9]{8}$/)
   assert.equal(chat.tutorState.evidenceRefs.includes(`run:${runFrame.runId}`), true)
   assert.equal(chat.tutorState.evidenceRefs.includes(`trace:${runFrame.runId}`), true)
   assert.equal(chat.retrieval.vectorCandidates > 0, true)
@@ -604,6 +607,7 @@ try {
   assert.equal(mockChatRequests.length, 1)
   assert.match(mockChatRequests[0].messages[0].content, /Lab2/)
   assert.match(mockChatRequests[0].messages[0].content, /本轮策略：实验验证/)
+  assert.match(mockChatRequests[0].messages[0].content, /kernel\/src\/task\.rs:42/)
   assert.doesNotMatch(mockChatRequests[0].messages[0].content, /当前阶段：reflect|本轮必须动作/)
   assert.match(mockChatRequests[0].messages[0].content, /knowledge-chunk/)
   assert.match(mockChatRequests[0].messages[0].content, /只能转化为反问或观察目标/)
@@ -644,6 +648,8 @@ try {
   assert.equal(offlineDone.model, 'offline-tutor')
   assert.match(offlineDone.reply, /sepc|trap/i)
   assert.ok(offlineDone.tutorState?.stage)
+  assert.notEqual(offlineDone.tutorState?.topicKey, chat.tutorState.topicKey)
+  assert.equal(offlineDone.tutorState?.hintLevel, 0)
   assert.ok(offlineDone.retrieval)
   assert.equal(mockChatRequests.length, 2)
 
@@ -952,7 +958,7 @@ try {
   assert.equal(counts.assertions, 12)
   assert.equal(counts.diagnostics > 0, true)
   assert.equal(counts.diagnosticOpens, 1)
-  assert.equal(counts.learningChain, 13)
+  assert.equal(counts.learningChain, 14)
   assert.equal(counts.serverStages, 2)
   assert.equal(counts.tutorSessions, 1)
   assert.equal(counts.assessments, 1)

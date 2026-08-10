@@ -106,6 +106,29 @@ test('migration binds events and immutable runs to the authenticated user', () =
   const tutorState = learningDb.getTutorSessionState(session.id, 'learning-1', 'lab2')
   assert.equal(tutorState.stage, 'transfer')
   assert.equal(tutorState.hintLevel, 4)
+  assert.equal(tutorState.topicKey, '')
+  learningDb.saveTutorSessionState(session.id, 'learning-1', 'lab2', {
+    stage: 'transfer',
+    hintLevel: 3,
+    version: 'turn-policy-v2',
+    topicKey: 'topic:sepc',
+    topicIntent: 'debug',
+    topicAnchor: 'sepc|E0425:kernel/src/main.rs',
+  })
+  learningDb.saveTutorSessionState(session.id, 'learning-1', 'lab2', {
+    stage: 'transfer',
+    hintLevel: 1,
+    version: 'turn-policy-v2',
+    topicKey: 'topic:page-table',
+    topicIntent: 'concept',
+    topicAnchor: '页表',
+  })
+  assert.equal(learningDb.getTutorTopicHintState(session.id, 'learning-1', 'lab2', 'topic:sepc').hintLevel, 3)
+  assert.equal(learningDb.getTutorTopicHintState(session.id, 'learning-1', 'lab2', 'topic:page-table').hintLevel, 1)
+  assert.equal(learningDb.getTutorTopicHintState(session.id, 'learning-1', 'lab2', 'topic:new').hintLevel, 0)
+  const currentTopic = learningDb.getTutorSessionState(session.id, 'learning-1', 'lab2')
+  assert.equal(currentTopic.topicKey, 'topic:page-table')
+  assert.equal(currentTopic.hintLevel, 1)
   const evidence = learningDb.getTutorEvidenceSummary(session.id, 'learning-1', 'lab2')
   assert.equal(evidence.latestRun.runId, runId)
   assert.equal(evidence.latestRun.verified, true)

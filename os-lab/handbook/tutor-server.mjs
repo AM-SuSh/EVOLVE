@@ -53,7 +53,12 @@ import { createCargoJsonCollector } from '../tutor/cargo-diagnostics.mjs'
 import { evaluateRunAssertions, getRunRecipe } from '../tutor/run-recipes.mjs'
 import { parseTraceQuery, readTracePage, TraceIntegrityError } from '../tutor/trace-store.mjs'
 import { decideTutorTurn, enforceTutorOutput, tutorPolicyPrompt } from '../tutor/state-machine.mjs'
-import { planTutorTurn, tutorTurnIntents, tutorTurnPolicyPrompt } from '../tutor/turn-policy.mjs'
+import {
+  identifyTutorTopic,
+  planTutorTurn,
+  tutorTurnIntents,
+  tutorTurnPolicyPrompt,
+} from '../tutor/turn-policy.mjs'
 import { validateChatEvidenceRefs } from '../tutor/evidence-refs.mjs'
 import { openKnowledgeStore } from '../learning/knowledge/knowledge-store.mjs'
 import { createHybridRetriever } from '../learning/knowledge/hybrid-retriever.mjs'
@@ -85,6 +90,7 @@ import {
   getRunDiagnostics,
   getTutorEvidenceSummary,
   getTutorSessionState,
+  getTutorTopicHintState,
   insertLearningEvents,
   enqueueAssessmentReview,
   listAssessmentReviews,
@@ -855,12 +861,26 @@ function readingLayer(reading) {
   return `学生此刻正在实验手册中阅读 ${where}。请优先围绕这一节的内容追问，必要时才引导他前后翻。`
 }
 
-function frameworkFor(labId, tutorState, reading, policyPrompt = '', retrievedKnowledge = '') {
+function workspaceContextLayer(codeContext) {
+  const file = String(codeContext?.file || '').trim().replace(/\\/g, '/').slice(0, 240)
+  const line = Number.isInteger(codeContext?.line) && codeContext.line > 0 ? codeContext.line : null
+  const selection = String(codeContext?.selection || '').trim().slice(0, 2_000)
+  if (!file && !selection) return ''
+  const location = file ? `${file}${line ? `:${line}` : ''}` : '未标注文件'
+  return [
+    `学生当前工作区位置：${location}。`,
+    selection ? `当前选区（学生提供，未经过服务端验证）：\n${selection}` : '',
+    '可用它理解当前问题，但不能把其中内容当作可信运行或正确实现。',
+  ].filter(Boolean).join('\n')
+}
+
+function frameworkFor(labId, tutorState, reading, codeContext, policyPrompt = '', retrievedKnowledge = '') {
   const safeLabId = labIds.has(labId) ? labId : 'lab2'
   const safeStage = stageIds.has(tutorState?.stage) ? tutorState.stage : 'orient'
   const routingMode = tutorState?.routingMode === 'stage' ? 'stage' : 'intent'
   const safeIntent = tutorTurnIntents.includes(tutorState?.intent) ? tutorState.intent : 'concept'
   const reading_ = readingLayer(reading)
+  const workspaceContext = workspaceContextLayer(codeContext)
   const publishedContext = publishedContentPath(safeLabId, 'tutorContext', '')
   const labPrompt = publishedContext ? readFileSync(publishedContext, 'utf8') : fallbackLabPrompts[safeLabId]
   const layers = [
@@ -888,6 +908,7 @@ function frameworkFor(labId, tutorState, reading, policyPrompt = '', retrievedKn
     })
   }
   if (reading_) layers.push({ id: 'reading', label: '当前阅读位置', source: 'runtime' })
+  if (workspaceContext) layers.push({ id: 'workspace', label: '当前代码位置', source: 'runtime' })
   if (policyPrompt) layers.push({ id: 'policy', label: '本轮策略与可信上下文', source: 'runtime' })
   if (retrievedKnowledge) layers.push({ id: 'knowledge', label: '受限知识检索', source: 'knowledge.db' })
   return {
@@ -897,7 +918,7 @@ function frameworkFor(labId, tutorState, reading, policyPrompt = '', retrievedKn
     stage: safeStage,
     intent: routingMode === 'intent' ? safeIntent : undefined,
     layers,
-    prompt: [systemPrompt, labPrompt, strategyPrompt, reading_, policyPrompt, retrievedKnowledge]
+    prompt: [systemPrompt, labPrompt, strategyPrompt, reading_, workspaceContext, policyPrompt, retrievedKnowledge]
       .filter(Boolean)
       .join('\n\n---\n\n'),
   }
@@ -1173,9 +1194,22 @@ async function handleChat(body, request, response, origin, session) {
     evidence,
     hintLevel: storedState.hintLevel,
   }
+  const topic = tutorRoutingMode === 'intent'
+    ? identifyTutorTopic({
+        ...turnInput,
+        codeContext: body.codeContext,
+        reading: body.reading,
+        previousTopicKey: storedState.topicKey,
+        previousIntent: storedState.topicIntent,
+        previousTopicAnchor: storedState.topicAnchor,
+      })
+    : null
+  const topicHintState = topic
+    ? getTutorTopicHintState(session.id, learningSessionId, labId, topic.topicKey)
+    : null
   const tutorState = tutorRoutingMode === 'stage'
     ? { ...decideTutorTurn(turnInput), routingMode: 'stage' }
-    : planTutorTurn(turnInput)
+    : planTutorTurn({ ...turnInput, topic, topicHintLevel: topicHintState.hintLevel })
   tutorState.evidenceRefs = [...new Set([
     ...tutorState.evidenceRefs,
     ...requestedEvidence.evidenceRefs,
@@ -1207,7 +1241,7 @@ async function handleChat(body, request, response, origin, session) {
       timestamp,
       type: 'hint_requested',
       stage: tutorState.stage,
-      checkpointId: String(body.checkpointId || `${labId}-${tutorState.stage}`).slice(0, 160),
+      checkpointId: String(body.checkpointId || `${labId}-${tutorState.topicKey || tutorState.stage}`).slice(0, 160),
       hintLevel: tutorState.hintLevel,
     })
   }
@@ -1218,7 +1252,7 @@ async function handleChat(body, request, response, origin, session) {
   const policyPrompt = tutorState.routingMode === 'intent'
     ? tutorTurnPolicyPrompt(tutorState)
     : tutorPolicyPrompt(tutorState)
-  let framework = frameworkFor(labId, tutorState, body.reading, policyPrompt)
+  let framework = frameworkFor(labId, tutorState, body.reading, body.codeContext, policyPrompt)
 
   // 护栏命中是规则判定，没有上游调用，直接整段返回。
   if (guardrail) {
@@ -1242,6 +1276,7 @@ async function handleChat(body, request, response, origin, session) {
     labId,
     tutorState,
     body.reading,
+    body.codeContext,
     policyPrompt,
     knowledgePrompt(retrievedKnowledge),
   )

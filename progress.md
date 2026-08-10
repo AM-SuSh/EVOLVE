@@ -5138,3 +5138,26 @@ ariants/fill/manifest.yaml、published.json 与 scripts/scaffold.mjs LEGACY 表�
 
 - 规划对照确认：本部分已完成“先让 `/chat` 忽略阶段进行回答并保留阶段字段/事件”与“引入本轮意图策略”；问题线程级提示、评分和 Prompt Eval 指标留在后续独立提交处理。
 - 意图模式下，学生从 `reflect` 切换到 `read` 会新增一条阶段遥测事件，但不会改变问题意图、教学动作或 Prompt 策略。
+
+## 2026-08-10 - Task: scope AI tutor hints to the current question topic
+
+### What was done
+
+- 新增 `tutor_topic_hints` SQLite 表，按用户、会话、Lab 和 `topicKey` 独立保存提示等级；`tutor_sessions` 新增当前主题键、意图和锚点，原 `hint_level` 与阶段字段继续作为当前状态兼容镜像。
+- 主题识别综合本轮意图、问题中的操作系统机制词、当前阅读位置、当前源码文件和最新诊断签名；意图、文件、诊断或核心主题明显变化时切换线程，新线程从 L0 开始。
+- “再给一点提示”等省略式追问沿用上一问题线程和意图，因此同一线程按 L1-L4 递进；切换后旧线程等级不会泄漏到新问题，重新回到稳定 `topicKey` 时仍可读取该线程已有状态。
+- `/chat` 先识别主题并读取该主题的提示状态，再调用 `planTutorTurn()`；`hint_requested.checkpointId` 默认绑定主题键，响应增加 `topicKey`、`topicIntent`、`topicChanged` 和变化原因。
+- 将前端已经上报的 `codeContext` 纳入 Prompt 当前上下文层，包含截断后的文件、行号和选区，并明确标注为学生提供的未验证内容，不能替代可信运行、诊断或 Trace。
+
+### Testing
+
+- `node --test os-lab/tutor/turn-policy.test.mjs`：通过，6/6；覆盖同主题累积、换题归零、意图沿用、文件切换、诊断变化和 L4 封顶。
+- `node --test os-lab/learning/db.test.mjs`：通过，3/3；覆盖迁移、多个主题等级独立保存、当前主题兼容镜像和可信诊断摘要。
+- `npm run test:smoke`：通过；验证 `/chat` 首次提示为 L1、换题后为 L0、主题键变化、当前代码位置进入 Prompt，以及原 RAG/证据链路正常。
+- `node --check os-lab/learning/db.mjs` 与 `node --check os-lab/handbook/tutor-server.mjs`：通过；`git diff --check` 通过。
+- `npm test`：77 项中 76 项通过；唯一失败仍为既有 `lab-factory.test.mjs` 缺少 `lab7` debug 源文件 `user/src/bin/signal_mask_test.rs`，与本轮主题提示改动无关。
+
+### Notes
+
+- 规划对照确认：已完成“提示等级从整个会话累计改为当前问题线程累计”，并保留旧 session 列、历史事件和 L1-L4 契约；本部分未改学习评分或评估指标。
+- `topicKey` 是服务端生成的稳定非语义哈希，不向模型暴露学生身份；主题锚点只保存截断后的机制词、相对文件/阅读位置和诊断代码，不保存整段聊天或代码选区。

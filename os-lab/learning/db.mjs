@@ -165,6 +165,24 @@ CREATE TABLE IF NOT EXISTS tutor_sessions (
 );
 CREATE INDEX IF NOT EXISTS tutor_sessions_user_updated_idx ON tutor_sessions(user_id, updated_at DESC);
 `)
+applyMigration('20260810_tutor_topic_hints_v1', `
+ALTER TABLE tutor_sessions ADD COLUMN current_topic_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE tutor_sessions ADD COLUMN current_topic_intent TEXT NOT NULL DEFAULT '';
+ALTER TABLE tutor_sessions ADD COLUMN current_topic_anchor TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE tutor_topic_hints (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  session_id TEXT NOT NULL,
+  lab_id TEXT NOT NULL,
+  topic_key TEXT NOT NULL,
+  intent TEXT NOT NULL,
+  topic_anchor TEXT NOT NULL,
+  hint_level INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(user_id, session_id, lab_id, topic_key)
+);
+CREATE INDEX tutor_topic_hints_user_updated_idx ON tutor_topic_hints(user_id, updated_at DESC);
+`)
 applyMigration('20260730_member_c_assessment_v2', `
 CREATE TABLE IF NOT EXISTS assessments (
   id TEXT PRIMARY KEY,
@@ -490,7 +508,9 @@ export function getLearningEvidence(userId) {
 export function getTutorSessionState(userId, sessionId, labId) {
   const existing = db
     .prepare(
-      `SELECT current_stage AS stage, hint_level AS hintLevel, state_version AS version, updated_at AS updatedAt
+      `SELECT current_stage AS stage, hint_level AS hintLevel, state_version AS version,
+              current_topic_key AS topicKey, current_topic_intent AS topicIntent,
+              current_topic_anchor AS topicAnchor, updated_at AS updatedAt
        FROM tutor_sessions WHERE user_id = ? AND session_id = ? AND lab_id = ?`,
     )
     .get(userId, sessionId, labId)
@@ -500,19 +520,74 @@ export function getTutorSessionState(userId, sessionId, labId) {
     `INSERT INTO tutor_sessions (user_id, session_id, lab_id, current_stage, hint_level, state_version, updated_at)
      VALUES (?, ?, ?, 'orient', 0, 'c3-v1', ?)`,
   ).run(userId, sessionId, labId, timestamp)
-  return { stage: 'orient', hintLevel: 0, version: 'c3-v1', updatedAt: timestamp }
+  return {
+    stage: 'orient',
+    hintLevel: 0,
+    version: 'c3-v1',
+    topicKey: '',
+    topicIntent: '',
+    topicAnchor: '',
+    updatedAt: timestamp,
+  }
+}
+
+export function getTutorTopicHintState(userId, sessionId, labId, topicKey) {
+  const safeTopicKey = String(topicKey || '').trim().slice(0, 120)
+  if (!safeTopicKey) return { topicKey: '', hintLevel: 0, intent: '', topicAnchor: '' }
+  const existing = db
+    .prepare(
+      `SELECT topic_key AS topicKey, hint_level AS hintLevel, intent, topic_anchor AS topicAnchor,
+              updated_at AS updatedAt
+       FROM tutor_topic_hints
+       WHERE user_id = ? AND session_id = ? AND lab_id = ? AND topic_key = ?`,
+    )
+    .get(userId, sessionId, labId, safeTopicKey)
+  if (existing) return existing
+  return { topicKey: safeTopicKey, hintLevel: 0, intent: '', topicAnchor: '' }
 }
 
 export function saveTutorSessionState(userId, sessionId, labId, state) {
+  const topicKey = String(state.topicKey || '').trim().slice(0, 120)
+  const topicIntent = String(state.topicIntent || state.intent || '').trim().slice(0, 40)
+  const topicAnchor = String(state.topicAnchor || '').trim().slice(0, 240)
+  const timestamp = now()
   db.prepare(
-    `INSERT INTO tutor_sessions (user_id, session_id, lab_id, current_stage, hint_level, state_version, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO tutor_sessions
+       (user_id, session_id, lab_id, current_stage, hint_level, state_version,
+        current_topic_key, current_topic_intent, current_topic_anchor, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(user_id, session_id, lab_id) DO UPDATE SET
        current_stage = excluded.current_stage,
        hint_level = excluded.hint_level,
        state_version = excluded.state_version,
+       current_topic_key = CASE WHEN excluded.current_topic_key = '' THEN tutor_sessions.current_topic_key ELSE excluded.current_topic_key END,
+       current_topic_intent = CASE WHEN excluded.current_topic_intent = '' THEN tutor_sessions.current_topic_intent ELSE excluded.current_topic_intent END,
+       current_topic_anchor = CASE WHEN excluded.current_topic_key = '' THEN tutor_sessions.current_topic_anchor ELSE excluded.current_topic_anchor END,
        updated_at = excluded.updated_at`,
-  ).run(userId, sessionId, labId, state.stage, state.hintLevel, state.version || 'c3-v1', now())
+  ).run(
+    userId,
+    sessionId,
+    labId,
+    state.stage,
+    state.hintLevel,
+    state.version || 'c3-v1',
+    topicKey,
+    topicIntent,
+    topicAnchor,
+    timestamp,
+  )
+  if (topicKey) {
+    db.prepare(
+      `INSERT INTO tutor_topic_hints
+         (user_id, session_id, lab_id, topic_key, intent, topic_anchor, hint_level, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, session_id, lab_id, topic_key) DO UPDATE SET
+         intent = excluded.intent,
+         topic_anchor = excluded.topic_anchor,
+         hint_level = excluded.hint_level,
+         updated_at = excluded.updated_at`,
+    ).run(userId, sessionId, labId, topicKey, topicIntent, topicAnchor, state.hintLevel, timestamp)
+  }
   return { ok: true }
 }
 
@@ -535,9 +610,9 @@ export function getTutorEvidenceSummary(userId, sessionId, labId) {
   const latestRun = runRows[0]
     ? { ...runRows[0], verified: Boolean(runRows[0].verified) }
     : null
-  const diagnosticCount = latestRun
-    ? db.prepare('SELECT count(*) AS value FROM run_diagnostics WHERE run_id = ?').get(latestRun.runId).value
-    : 0
+  const diagnostics = latestRun
+    ? db.prepare('SELECT code, file FROM run_diagnostics WHERE run_id = ? ORDER BY diagnostic_index').all(latestRun.runId)
+    : []
   const lastFailureAt = runRows.find((run) => !run.verified && run.finishedAt)?.finishedAt || ''
   const hasSaveAfterLatestFailure = Boolean(
     lastFailureAt && eventRows.some((event) => event.type === 'code_save' && event.occurredAt > lastFailureAt),
@@ -545,7 +620,8 @@ export function getTutorEvidenceSummary(userId, sessionId, labId) {
   return {
     counts,
     latestRun,
-    diagnosticCount: Number(diagnosticCount || 0),
+    diagnosticCount: diagnostics.length,
+    diagnosticKeys: [...new Set(diagnostics.map((item) => `${item.code || 'diagnostic'}:${item.file || ''}`))].slice(0, 10),
     hasSaveAfterLatestFailure,
     eventIds: eventRows.slice(-20).map((event) => event.id),
   }

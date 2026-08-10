@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   inferQuestionCategory,
   inferTutorIntent,
+  identifyTutorTopic,
   planTutorTurn,
   tutorTurnPolicyPrompt,
 } from './turn-policy.mjs'
@@ -53,4 +54,80 @@ test('turn policy keeps evidence authority without injecting a required stage ac
 test('legacy UI question category is sourced from the shared policy module', () => {
   assert.equal(inferQuestionCategory('为什么会 panic？'), 'phenomenon')
   assert.equal(inferQuestionCategory('请直接给完整代码'), 'direct_answer')
+})
+
+test('hint levels accumulate within one topic and reset after a meaningful topic switch', () => {
+  const firstTopic = identifyTutorTopic({
+    message: 'sepc 相关代码报错了，给点提示',
+    codeContext: { file: 'kernel/src/trap/mod.rs' },
+  })
+  const first = planTutorTurn({
+    message: 'sepc 相关代码报错了，给点提示',
+    requestedStage: 'debug',
+    topic: firstTopic,
+    topicHintLevel: 0,
+  })
+  assert.equal(first.hintLevel, 1)
+
+  const followUpTopic = identifyTutorTopic({
+    message: '再给一点提示',
+    previousTopicKey: first.topicKey,
+    previousIntent: first.topicIntent,
+    previousTopicAnchor: first.topicAnchor,
+  })
+  const followUp = planTutorTurn({
+    message: '再给一点提示',
+    requestedStage: 'reflect',
+    topic: followUpTopic,
+    topicHintLevel: first.hintLevel,
+  })
+  assert.equal(followUp.topicKey, first.topicKey)
+  assert.equal(followUp.intent, 'debug')
+  assert.equal(followUp.hintLevel, 2)
+
+  const switchedTopic = identifyTutorTopic({
+    message: '页表为什么要分三级？给点提示',
+    codeContext: { file: 'kernel/src/mm/page_table.rs' },
+    previousTopicKey: followUp.topicKey,
+    previousIntent: followUp.topicIntent,
+    previousTopicAnchor: followUp.topicAnchor,
+  })
+  const switched = planTutorTurn({
+    message: '页表为什么要分三级？给点提示',
+    topic: switchedTopic,
+    topicHintLevel: 0,
+  })
+  assert.notEqual(switched.topicKey, first.topicKey)
+  assert.equal(switched.topicChanged, true)
+  assert.equal(switched.hintLevel, 1)
+})
+
+test('topic identity changes with source file or diagnostic meaning and hints remain capped', () => {
+  const trapTopic = identifyTutorTopic({
+    message: '这个函数怎么读？',
+    codeContext: { file: 'kernel/src/trap/mod.rs' },
+  })
+  const taskTopic = identifyTutorTopic({
+    message: '这个函数怎么读？',
+    codeContext: { file: 'kernel/src/task/mod.rs' },
+    previousTopicKey: trapTopic.topicKey,
+    previousIntent: trapTopic.topicIntent,
+    previousTopicAnchor: trapTopic.topicAnchor,
+  })
+  assert.notEqual(taskTopic.topicKey, trapTopic.topicKey)
+
+  const diagnosticA = identifyTutorTopic({
+    message: '这里报错了',
+    codeContext: { file: 'kernel/src/task/mod.rs' },
+    evidence: { diagnosticKeys: ['E0425:kernel/src/task/mod.rs'] },
+  })
+  const diagnosticB = identifyTutorTopic({
+    message: '这里报错了',
+    codeContext: { file: 'kernel/src/task/mod.rs' },
+    evidence: { diagnosticKeys: ['E0308:kernel/src/task/mod.rs'] },
+  })
+  assert.notEqual(diagnosticA.topicKey, diagnosticB.topicKey)
+  const capped = planTutorTurn({ message: '再给一点提示', topic: diagnosticB, topicHintLevel: 4 })
+  assert.equal(capped.hintLevel, 4)
+  assert.equal(capped.hintAdvanced, false)
 })
