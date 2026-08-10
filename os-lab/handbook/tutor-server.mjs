@@ -3177,11 +3177,13 @@ const server = http.createServer(async (request, response) => {
             patch.llm = {
               baseUrl: typeof body.llm.baseUrl === 'string' ? body.llm.baseUrl.trim() : current.baseUrl || '',
               model: typeof body.llm.model === 'string' ? body.llm.model.trim() : current.model || '',
-              // 前端传「（已设置）」占位或空表示不修改 Key。
+              // 前端传「（已设置）」占位或空表示不修改 Key；clearApiKey 用于显式清除。
               apiKey:
-                typeof body.llm.apiKey === 'string' && body.llm.apiKey && body.llm.apiKey !== '（已设置）'
-                  ? body.llm.apiKey.trim()
-                  : current.apiKey || '',
+                body.llm.clearApiKey === true
+                  ? ''
+                  : typeof body.llm.apiKey === 'string' && body.llm.apiKey && body.llm.apiKey !== '（已设置）'
+                    ? body.llm.apiKey.trim()
+                    : current.apiKey || '',
             }
           }
           if (body.assignment) {

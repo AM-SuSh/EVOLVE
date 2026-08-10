@@ -154,6 +154,50 @@ try {
   }).then((response) => response.json())
   assert.equal(earlyTeacher.ok, true)
   const earlyTeacherHeaders = { Authorization: `Bearer ${earlyTeacher.token}` }
+  const saveTeacherLlm = await postJson('/teacher/config', earlyTeacherHeaders, {
+    scope: { type: 'global', id: '' },
+    allowStudentLlm: false,
+    llm: {
+      baseUrl: mockBaseUrl,
+      model: 'teacher-smoke-model',
+      apiKey: 'teacher-secret',
+    },
+  })
+  assert.equal(saveTeacherLlm.status, 200)
+  const teacherOverview = await fetch(`${endpoint}/teacher/overview`, { headers: earlyTeacherHeaders })
+    .then((response) => response.json())
+  assert.equal(teacherOverview.config.llm.baseUrl, mockBaseUrl)
+  assert.equal(teacherOverview.config.llm.model, 'teacher-smoke-model')
+  assert.equal(teacherOverview.config.llm.apiKey, '（已设置）')
+  assert.equal(teacherOverview.config.allowStudentLlm, false)
+  const teacherLlmHealth = await fetch(`${endpoint}/health`).then((response) => response.json())
+  assert.equal(teacherLlmHealth.connected, true)
+  assert.equal(teacherLlmHealth.model, 'teacher-smoke-model')
+  assert.equal(teacherLlmHealth.studentLlmAllowed, false)
+
+  const preserveTeacherKey = await postJson('/teacher/config', earlyTeacherHeaders, {
+    scope: { type: 'global', id: '' },
+    llm: { baseUrl: mockBaseUrl, model: 'teacher-smoke-model', apiKey: '' },
+  })
+  assert.equal(preserveTeacherKey.status, 200)
+  assert.equal(JSON.parse(readFileSync(teacherFile, 'utf8')).llm.apiKey, 'teacher-secret')
+
+  const clearTeacherKey = await postJson('/teacher/config', earlyTeacherHeaders, {
+    scope: { type: 'global', id: '' },
+    llm: { baseUrl: '', model: '', apiKey: '', clearApiKey: true },
+  })
+  assert.equal(clearTeacherKey.status, 200)
+  const clearedTeacherConfig = JSON.parse(readFileSync(teacherFile, 'utf8'))
+  assert.equal(clearedTeacherConfig.llm.baseUrl, '')
+  assert.equal(clearedTeacherConfig.llm.model, '')
+  assert.equal(clearedTeacherConfig.llm.apiKey, '')
+
+  const restoreTeacherLlmDefaults = await postJson('/teacher/config', earlyTeacherHeaders, {
+    scope: { type: 'global', id: '' },
+    allowStudentLlm: true,
+    llm: { baseUrl: '', model: '', apiKey: '' },
+  })
+  assert.equal(restoreTeacherLlmDefaults.status, 200)
   const createClass = await postJson('/teacher/config', earlyTeacherHeaders, {
     scope: { type: 'class', id: '计科2301' },
     createClass: true,

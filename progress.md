@@ -1,5 +1,34 @@
 # os-lab 项目进度总览
 
+## 2026-08-10 - Task: restore teacher unified AI model configuration
+
+### What was done
+
+- 核对确认教师统一模型后端能力此前已经存在：`resolveLlm()` 支持“允许时学生自配 > 教师统一配置 > 环境默认”，`GET /teacher/overview` 会遮罩 API Key，`POST /teacher/config` 能保存 `allowStudentLlm` 与 `llm`；实际缺失的是教师前端入口，并非最近删除。
+- 在教师工作台右栏「教学安排」新增第 05 节「统一 AI 模型」：可填写 OpenAI 兼容接口地址、模型名和 API Key，支持 Key 显示/隐藏、已有 Key 状态提示，以及是否允许学生使用浏览器本地模型配置的开关。
+- 「保存并检测」先持久化教师配置，再调用 `GET /health` 检测服务端最终生效的配置，界面区分已连接、上游未连接和 Tutor Server 请求失败，并显示实际生效模型名。
+- 保持安全边界：教师总览只返回 `（已设置）`，不把真实 Key 回填到浏览器；Key 输入留空继续保留旧值。新增 `clearApiKey: true` 作为唯一显式清除语义，「清除统一配置」经确认后同时清空教师接口地址、模型名和 Key。
+- 扩展 Tutor Server 冒烟测试，覆盖教师配置持久化、Key 遮罩、关闭学生自配、`/health` 使用教师模型、空 Key 保留、显式清除，以及清除后恢复环境默认配置，测试过程只使用临时目录和虚构密钥。
+
+### Planning comparison
+
+- 已补齐“教师端统一填写真实模型配置”的缺口：教师现在可直接在「教学安排」中配置 `gpt-5.6-luna` 等 OpenAI 兼容模型，不再依赖手工编辑 `scaffold/teacher.json`。
+- 已保持原模型权限逻辑和学生端兼容性：没有删除学生浏览器本地设置，也没有改变教师配置与环境默认的回退顺序；教师关闭学生自配时才统一忽略学生配置。
+- 已保持本轮修复与 AI 导师意图路由解耦：没有恢复阶段 Prompt，也没有修改 `/chat` 的意图策略、答案护栏、证据白名单、RAG 权限或按问题线程累计的提示等级。
+- 已完成“入口、保存、检测、遮罩、保留、清除、策略开关、回归测试、文档”全部规划项；真实 API Key 不进入仓库、日志、测试输出或接口读回结果。
+
+### Testing
+
+- `npm run test:smoke`：通过；新增教师模型保存、遮罩、权限开关、连接探测、保留和清除断言均通过，原聊天、运行、评价、教师复核和报告链路正常。
+- `npm run build`：通过；VitePress 客户端/服务端构建与页面渲染完成。
+- `npm test`：95 项中 94 项通过；唯一失败仍是既有 `lab-factory.test.mjs:190` 查找已迁移的 Lab7 debug 文件 `user/src/bin/signal_mask_test.rs`，与本次教师模型配置无关。
+- `git diff --check`：通过。
+
+### Notes
+
+- 本地 VitePress 与 Tutor Server 分别监听 `http://localhost:5173` 和 `http://127.0.0.1:8787`。当前自动化环境没有可连接的浏览器实例，因此未完成截图式视觉检查；已通过生产构建、模板结构检查和 `560px` 窄屏 CSS 回退确认布局边界。
+- 配置真实 API Key 后，可在教师端直接点击「保存并检测」确认 `gpt-5.6-luna` 连接，再运行 Prompt Eval；不要把 Key 写入命令记录、评测记录或 Git。
+
 ## 2026-08-10 - Task: rerun SIZN tutor question evaluation after intent routing update
 
 ### What was done

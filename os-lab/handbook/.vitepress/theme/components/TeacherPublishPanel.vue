@@ -4,10 +4,13 @@ import {
   ArrowDown,
   ArrowUp,
   Download,
+  Eye,
+  EyeOff,
   FileText,
   Megaphone,
   Plus,
   RefreshCw,
+  Save,
   Send,
   Trash2,
   Unlock,
@@ -44,6 +47,12 @@ interface ScopeConfig {
   notice?: string
 }
 
+interface TeacherLlmConfig {
+  baseUrl: string
+  model: string
+  apiKey: string
+}
+
 interface Overview {
   config: {
     openLab: string
@@ -51,6 +60,8 @@ interface Overview {
     notice: string
     classes: Record<string, ScopeConfig>
     students: Record<string, ScopeConfig>
+    allowStudentLlm?: boolean
+    llm?: TeacherLlmConfig
   }
   classNames: string[]
   students: Array<{ user: string; className: string }>
@@ -70,6 +81,15 @@ const selectedClass = ref('')
 const newClassName = ref('')
 const noticeScope = ref('')
 const noticeDraft = ref('')
+
+const llmDraft = ref<TeacherLlmConfig>({ baseUrl: '', model: '', apiKey: '' })
+const llmKeyConfigured = ref(false)
+const llmKeyVisible = ref(false)
+const allowStudentLlmDraft = ref(true)
+const llmChecking = ref(false)
+const llmConnection = ref<'idle' | 'connected' | 'offline'>('idle')
+const llmDetail = ref('')
+const llmActiveModel = ref('')
 
 /** 当前 Lab 的报告版式草稿（全局布置，学生端拉取）。 */
 const reportDraft = ref<ReportTemplate>(cloneTemplate(DEFAULT_REPORT_TEMPLATE))
@@ -222,6 +242,18 @@ async function load() {
     const response = await fetch(`${props.endpoint}/teacher/overview`, { headers: authHeaders() })
     if (response.ok) {
       overview.value = await response.json()
+      const llm = overview.value?.config.llm
+      llmDraft.value = {
+        baseUrl: llm?.baseUrl || '',
+        model: llm?.model || '',
+        apiKey: '',
+      }
+      llmKeyConfigured.value = llm?.apiKey === '（已设置）'
+      llmKeyVisible.value = false
+      allowStudentLlmDraft.value = overview.value?.config.allowStudentLlm !== false
+      llmConnection.value = 'idle'
+      llmDetail.value = ''
+      llmActiveModel.value = ''
       if (selectedClass.value && !classList.value.includes(selectedClass.value)) selectedClass.value = ''
       seedVariantHint()
       if (!noticeScope.value) noticeDraft.value = overview.value?.config.notice || ''
@@ -272,6 +304,69 @@ async function publish(
     busy.value = false
   }
   return ok
+}
+
+function validLlmBaseUrl(value: string) {
+  if (!value) return true
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+async function checkTeacherLlmConnection() {
+  llmChecking.value = true
+  llmDetail.value = ''
+  try {
+    const response = await fetch(`${props.endpoint}/health`, { headers: authHeaders() })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload?.error || `服务返回 ${response.status}`)
+    llmConnection.value = payload.connected ? 'connected' : 'offline'
+    llmActiveModel.value = typeof payload.model === 'string' ? payload.model : ''
+    llmDetail.value = payload.connected ? '' : payload.detail || '上游模型未连接'
+  } catch (err) {
+    llmConnection.value = 'offline'
+    llmActiveModel.value = ''
+    llmDetail.value = err instanceof Error ? err.message : '无法连接导师服务'
+  } finally {
+    llmChecking.value = false
+  }
+}
+
+async function saveTeacherLlm() {
+  if (busy.value || llmChecking.value) return
+  const baseUrl = llmDraft.value.baseUrl.trim().replace(/\/$/, '')
+  if (!validLlmBaseUrl(baseUrl)) {
+    note.value = '接口地址需为有效的 http:// 或 https:// 地址。'
+    noteOk.value = false
+    return
+  }
+  const ok = await publish(
+    { type: 'global', id: '' },
+    {
+      allowStudentLlm: allowStudentLlmDraft.value,
+      llm: {
+        baseUrl,
+        model: llmDraft.value.model.trim(),
+        apiKey: llmDraft.value.apiKey.trim(),
+      },
+    },
+    '统一模型配置已保存，正在检测连接。',
+  )
+  if (ok) await checkTeacherLlmConnection()
+}
+
+async function clearTeacherLlm() {
+  if (busy.value || llmChecking.value) return
+  if (!window.confirm('确认清除教师统一模型的接口地址、模型名和 API Key？')) return
+  const ok = await publish(
+    { type: 'global', id: '' },
+    { llm: { baseUrl: '', model: '', apiKey: '', clearApiKey: true } },
+    '教师统一模型配置已清除，正在检测环境默认配置。',
+  )
+  if (ok) await checkTeacherLlmConnection()
 }
 
 async function createClass() {
@@ -706,6 +801,80 @@ onMounted(load)
           <button type="button" @click="openReportModal">
             <FileText :size="14" aria-hidden="true" />打开报告版式编辑
           </button>
+        </div>
+      </section>
+
+      <section class="ws-pub-block">
+        <div class="ws-pub-section-title">
+          <span>05</span>
+          <div>
+            <h3>统一 AI 模型</h3>
+            <p>配置教师统一使用的 OpenAI 兼容接口，并控制学生能否使用本机模型设置。</p>
+          </div>
+        </div>
+        <div class="ws-pub-llm-grid">
+          <label class="ws-pub-llm-field">
+            <span>接口地址</span>
+            <input
+              v-model="llmDraft.baseUrl"
+              type="url"
+              placeholder="https://example.com/v1"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </label>
+          <label class="ws-pub-llm-field">
+            <span>模型名</span>
+            <input
+              v-model="llmDraft.model"
+              type="text"
+              placeholder="gpt-5.6-luna"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </label>
+          <label class="ws-pub-llm-field ws-pub-llm-key-field">
+            <span>API Key{{ llmKeyConfigured ? '（已设置，留空保留）' : '' }}</span>
+            <span class="ws-pub-key-input">
+              <input
+                v-model="llmDraft.apiKey"
+                :type="llmKeyVisible ? 'text' : 'password'"
+                :placeholder="llmKeyConfigured ? '已设置，输入新值可替换' : '输入 API Key'"
+                autocomplete="new-password"
+                spellcheck="false"
+              />
+              <button
+                type="button"
+                class="ghost ws-pub-key-toggle"
+                :title="llmKeyVisible ? '隐藏 API Key' : '显示 API Key'"
+                :aria-label="llmKeyVisible ? '隐藏 API Key' : '显示 API Key'"
+                @click="llmKeyVisible = !llmKeyVisible"
+              >
+                <EyeOff v-if="llmKeyVisible" :size="14" aria-hidden="true" />
+                <Eye v-else :size="14" aria-hidden="true" />
+              </button>
+            </span>
+          </label>
+        </div>
+        <label class="ws-pub-llm-toggle">
+          <input v-model="allowStudentLlmDraft" type="checkbox" />
+          <span>允许学生使用浏览器本地保存的模型配置</span>
+        </label>
+        <div class="ws-pub-llm-footer">
+          <p class="ws-pub-llm-status" :data-state="llmConnection">
+            <template v-if="llmChecking">正在检测当前生效配置…</template>
+            <template v-else-if="llmConnection === 'connected'">已连接{{ llmActiveModel ? `：${llmActiveModel}` : '' }}</template>
+            <template v-else-if="llmConnection === 'offline'">未连接{{ llmDetail ? `：${llmDetail}` : '' }}</template>
+            <template v-else>保存后检测当前生效配置</template>
+          </p>
+          <div class="ws-pub-llm-actions">
+            <button type="button" class="ghost" :disabled="busy || llmChecking" @click="clearTeacherLlm">
+              <Trash2 :size="14" aria-hidden="true" />清除统一配置
+            </button>
+            <button type="button" :disabled="busy || llmChecking" @click="saveTeacherLlm">
+              <Save :size="14" aria-hidden="true" />保存并检测
+            </button>
+          </div>
         </div>
       </section>
     </div>
@@ -1242,6 +1411,96 @@ onMounted(load)
   cursor: pointer;
 }
 
+.ws-pub-llm-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ws-space-3);
+}
+
+.ws-pub-llm-field {
+  display: grid;
+  min-width: 0;
+  gap: var(--ws-space-1);
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-pub-llm-field > input,
+.ws-pub-key-input > input {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--ws-control-sm);
+  padding: var(--ws-space-1) var(--ws-space-2);
+  color: var(--ws-ink);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+  font: inherit;
+  font-size: var(--ws-text-xs);
+}
+
+.ws-pub-llm-key-field {
+  grid-column: 1 / -1;
+}
+
+.ws-pub-key-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--ws-control-sm);
+  gap: var(--ws-space-1);
+}
+
+.ws-pub .ws-pub-key-toggle {
+  width: var(--ws-control-sm);
+  padding: 0;
+}
+
+.ws-pub-llm-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--ws-space-2);
+  margin-top: var(--ws-space-3);
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-pub-llm-toggle input {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--ws-accent);
+}
+
+.ws-pub-llm-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ws-space-2);
+  margin-top: var(--ws-space-3);
+}
+
+.ws-pub-llm-status {
+  min-width: 0;
+  margin: 0;
+  color: var(--ws-ink-faint);
+  font-size: var(--ws-text-xs);
+  overflow-wrap: anywhere;
+}
+
+.ws-pub-llm-status[data-state='connected'] {
+  color: var(--ws-ok, #1a7f37);
+}
+
+.ws-pub-llm-status[data-state='offline'] {
+  color: var(--ws-danger, #c0392b);
+}
+
+.ws-pub-llm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ws-space-1);
+}
+
 .ws-pub-modal-overlay {
   position: fixed;
   inset: 0;
@@ -1513,6 +1772,23 @@ onMounted(load)
   .ws-pub-student-actions select {
     flex: 1 1 100%;
     width: 100%;
+  }
+
+  .ws-pub-llm-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ws-pub-llm-key-field {
+    grid-column: auto;
+  }
+
+  .ws-pub-llm-status,
+  .ws-pub-llm-actions {
+    width: 100%;
+  }
+
+  .ws-pub-llm-actions button {
+    flex: 1 1 auto;
   }
 }
 </style>
