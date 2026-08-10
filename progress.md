@@ -1,5 +1,27 @@
 # os-lab 项目进度总览
 
+## 2026-08-10 - Task: fix GitHub CI Lab Factory source assertion
+
+### What was done
+
+- 修正 `handbook/lab-factory.test.mjs` 中 Lab7 debug 变体的源文件断言：从已迁移的用户态 starter 文件 `user/src/bin/signal_mask_test.rs` 改为实际可编辑、已发布的 `kernel/src/signal.rs`。
+- 保留 `signal_mask_test.rs` 作为 Lab7 的 baseline starter 文件；发布目录的 `variants.debug.sources` 只记录变体覆盖文件，测试不再把 baseline 文件误当成 debug 源文件。
+
+### Planning comparison
+
+- 本修复只校准测试与 `lab7/lab.yaml`、published catalog 及脚手架实际下发语义，不改变实验内容、变体选择或 AI 导师路由。
+- 通过修复迁移后的测试路径，恢复 Lab3-Lab8 debug 变体的完整发布链路校验，避免 GitHub CI 因历史路径断言失败。
+
+### Testing
+
+- `node --test lab-factory.test.mjs`：9/9 通过，覆盖 Lab Factory 的全部用例。
+- `npm test`：97/97 通过，CI 中此前唯一失败的 Lab7 source assertion 已消失。
+- `git diff --check`：通过。
+
+### Notes
+
+- 失败位置为 `lab-factory.test.mjs:190`，错误是 `lab7 debug source missing for user/src/bin/signal_mask_test.rs`；CI 报错并非源码文件缺失，而是测试索引使用了迁移前的目标路径。
+
 ## 2026-08-10 - Task: run valid gpt-5.6-luna intent-routing evaluation
 
 ### What was done
