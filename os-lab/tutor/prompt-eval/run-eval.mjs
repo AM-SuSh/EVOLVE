@@ -12,14 +12,13 @@
  * the real model chain.
  */
 import { spawn } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
-import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { extractCompletionText } from '../../handbook/llm-response.mjs'
-import { tutorPolicyPrompt } from '../state-machine.mjs'
 import {
   buildAblationV2,
   buildScorecardReport,
@@ -27,12 +26,17 @@ import {
   scoreRecordV2,
   scoreReplyV2,
 } from './scoring-v2.mjs'
+import {
+  buildAblationV3,
+  buildScorecardV3Report,
+  scoreRecordV3,
+} from './scoring-v3.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const osLabRoot = path.resolve(here, '..', '..')
 const promptRoot = path.join(osLabRoot, 'tutor', 'prompts')
 const realDbPath = path.join(osLabRoot, 'learning', 'os-lab.db')
-const knowledgeDbPath = path.join(osLabRoot, 'learning', 'knowledge', 'knowledge.db')
+const realKnowledgeDbPath = path.join(osLabRoot, 'learning', 'knowledge', 'knowledge.db')
 
 const LABS = ['lab1', 'lab2', 'lab3', 'lab4', 'lab5', 'lab6', 'lab7', 'lab8']
 const STAGES = ['orient', 'read', 'run', 'debug', 'reflect', 'transfer']
@@ -65,14 +69,20 @@ const wantAblate = flag('--ablate')
 const keepServer = flag('--keep-server')
 const port = Number(argValue('--port') || 0)
 const replaySource = argValue('--replay')
+const corpusVersion = argValue('--corpus') || 'v3'
 const recordsRoot = argValue('--records')
   ? path.resolve(argValue('--records'))
   : replaySource
-    ? path.dirname(path.resolve(replaySource))
+    ? path.join(
+        path.dirname(path.resolve(replaySource)),
+        `replay-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`,
+      )
     : path.join(here, 'records', tag)
 
 const workDir = path.join(os.tmpdir(), `os-lab-prompt-eval-${Date.now()}-${process.pid}`)
 const tempDbPath = path.join(workDir, 'os-lab.db')
+const tempKnowledgeDbPath = path.join(workDir, 'knowledge.db')
+const tempTeacherFile = path.join(workDir, 'teacher.json')
 const tempDataDir = path.join(workDir, 'data')
 const tempStudentsRoot = path.join(workDir, 'student-labs')
 const tempUploadRoot = path.join(workDir, 'knowledge-uploads')
@@ -162,7 +172,7 @@ const MESSAGES = {
   },
 }
 
-function buildCases() {
+function buildLegacyCases() {
   const cases = []
   for (const labId of LABS) {
     for (const stage of STAGES) {
@@ -176,6 +186,18 @@ function buildCases() {
     }
   }
   return cases
+}
+
+function buildCases() {
+  if (corpusVersion === 'legacy-stage') return buildLegacyCases()
+  const parsed = JSON.parse(readFileSync(path.join(here, 'cases-v3.json'), 'utf8'))
+  if (!Array.isArray(parsed) || !parsed.length) throw new TypeError('V3 corpus must contain cases')
+  for (const item of parsed) {
+    if (!LABS.includes(item.labId) || !STAGES.includes(item.stage) || !item.expected?.intent) {
+      throw new TypeError(`invalid V3 case: ${item.id || 'unknown'}`)
+    }
+  }
+  return parsed
 }
 
 // ---- scoring ---------------------------------------------------------------
@@ -225,14 +247,15 @@ function scoreKnowledge(knowledge, labId, retrieval) {
 function evaluateCase(caseItem, response) {
   const reply = String(response.reply || '')
   const replyScore = scoreReply(reply, caseItem.stage)
-  const stageLayer = (response.framework?.layers || []).find((layer) => layer.id === 'stage')
-  const expectedStageSource = stagePromptText(caseItem.labId, caseItem.stage).source
-  const promptUsed = Boolean(stageLayer?.source && stageLayer.source.includes(expectedStageSource))
-  const stageRoute = response.tutorState?.stage === caseItem.stage
+  const strategyLayer = (response.framework?.layers || []).find((layer) => layer.id === 'intent')
+  const expectedStrategySource = `tutor/prompts/strategies/${caseItem.expected?.intent}.md`
+  const promptUsed = Boolean(strategyLayer?.source === expectedStrategySource)
+  const intentRoute = response.tutorState?.intent === caseItem.expected?.intent
   const knowledge = scoreKnowledge(response.knowledge, caseItem.labId, response.retrieval)
   const checks = {
     promptUsed,
-    stageRoute,
+    intentRoute,
+    stageRoute: intentRoute,
     hasQuestion: replyScore.hasQuestion,
     singleQuestion: replyScore.singleQuestion,
     lengthOk: replyScore.lengthOk,
@@ -244,6 +267,11 @@ function evaluateCase(caseItem, response) {
   }
   const checksList = Object.values(checks)
   const chunkTexts = (response.knowledge || []).map((chunk) => chunkTextById(chunk.citation))
+  const knowledgeSnapshot = (response.knowledge || []).map((chunk, index) => ({
+    citation: chunk.citation,
+    text: chunkTexts[index] || '',
+    sha256: sha256(chunkTexts[index] || ''),
+  }))
   const scorecard = scoreRecordV2(
     {
       ...caseItem,
@@ -255,7 +283,7 @@ function evaluateCase(caseItem, response) {
     },
     { chunkTexts },
   )
-  return {
+  const result = {
     ...caseItem,
     reply,
     mode: response.mode || 'unknown',
@@ -270,7 +298,11 @@ function evaluateCase(caseItem, response) {
     checks,
     composite: Math.round((checksList.filter(Boolean).length / checksList.length) * 100),
     scorecard,
+    knowledgeSnapshot,
   }
+  result.promptSnapshot = promptSnapshot(result)
+  result.scorecardV3 = scoreRecordV3(result)
+  return result
 }
 
 function readPromptText(relative) {
@@ -278,6 +310,37 @@ function readPromptText(relative) {
     return readFileSync(path.join(promptRoot, relative), 'utf8')
   } catch {
     return ''
+  }
+}
+
+function sha256(value) {
+  return createHash('sha256').update(String(value || '')).digest('hex')
+}
+
+function promptSnapshot(result) {
+  const files = (result.framework?.layers || [])
+    .filter((layer) => String(layer.source || '').startsWith('tutor/prompts/'))
+    .map((layer) => {
+      const relative = String(layer.source).replace(/^tutor\/prompts\//, '')
+      const text = readPromptText(relative)
+      return { id: layer.id, source: layer.source, sha256: sha256(text) }
+    })
+  const runtimeState = JSON.stringify({
+    intent: result.tutorState?.intent,
+    actions: result.tutorState?.actions || [],
+    evidenceRefs: result.tutorState?.evidenceRefs || [],
+    toolContext: result.tutorState?.toolContext || {},
+  })
+  return {
+    frameworkVersion: result.framework?.version || '',
+    routingMode: result.framework?.routingMode || result.tutorState?.routingMode || '',
+    files,
+    runtimeStateSha256: sha256(runtimeState),
+    composedInputsSha256: sha256(JSON.stringify({
+      files,
+      runtimeState,
+      knowledge: result.knowledgeSnapshot?.map((chunk) => ({ citation: chunk.citation, sha256: chunk.sha256 })),
+    })),
   }
 }
 
@@ -292,6 +355,11 @@ function stagePromptText(labId, stage) {
       }
 }
 
+function intentPromptText(intent) {
+  const source = `tutor/prompts/strategies/${intent}.md`
+  return { source, text: readPromptText(`strategies/${intent}.md`) }
+}
+
 // ---- server ----------------------------------------------------------------
 function spawnServer(portNumber) {
   return new Promise((resolve, reject) => {
@@ -301,11 +369,17 @@ function spawnServer(portNumber) {
       env: {
         ...process.env,
         OS_LAB_DB_PATH: tempDbPath,
+        OS_LAB_KNOWLEDGE_DB_PATH: tempKnowledgeDbPath,
+        OS_LAB_TEACHER_FILE: tempTeacherFile,
         OS_LAB_TUTOR_DATA_DIR: tempDataDir,
         OS_LAB_STUDENTS_ROOT: tempStudentsRoot,
         OS_LAB_KNOWLEDGE_UPLOAD_ROOT: tempUploadRoot,
         OS_LAB_LLM_BASE_URL: upstream,
         OS_LAB_LLM_MODEL: model,
+        OS_LAB_LLM_CONNECT_TIMEOUT_MS: '500',
+        OS_LAB_TUTOR_ROUTING_MODE: 'intent',
+        OS_LAB_TUTOR_SKIP_KNOWLEDGE_WARMUP: '1',
+        OS_LAB_TUTOR_DISABLE_VECTOR: '1',
         ...(apiKey ? { OS_LAB_LLM_API_KEY: apiKey } : {}),
         ...(portNumber ? { OS_LAB_TUTOR_PORT: String(portNumber) } : {}),
       },
@@ -445,7 +519,8 @@ async function callModel(promptText, message) {
 }
 
 function chunkTextById(id) {
-  const db = new DatabaseSync(knowledgeDbPath)
+  const dbPath = existsSync(tempKnowledgeDbPath) ? tempKnowledgeDbPath : realKnowledgeDbPath
+  const db = new DatabaseSync(dbPath)
   try {
     const row = db
       .prepare('SELECT text FROM knowledge_chunks WHERE id = ?')
@@ -457,7 +532,8 @@ function chunkTextById(id) {
 }
 
 function chunkTextMap() {
-  const db = new DatabaseSync(knowledgeDbPath)
+  const dbPath = existsSync(tempKnowledgeDbPath) ? tempKnowledgeDbPath : realKnowledgeDbPath
+  const db = new DatabaseSync(dbPath)
   try {
     const rows = db.prepare('SELECT id, text FROM knowledge_chunks').all()
     const map = new Map()
@@ -473,15 +549,22 @@ function chunkTextMap() {
 
 function replayRaw(source, outputRoot) {
   const raw = JSON.parse(readFileSync(path.resolve(source), 'utf8'))
-  const map = chunkTextMap()
+  const snapshotsComplete = raw.results.every((result) => Array.isArray(result.knowledgeSnapshot))
+  const map = snapshotsComplete ? new Map() : chunkTextMap()
   const results = raw.results.map((result) => {
-    const chunkTexts = (result.knowledge || []).map(
-      (chunk) => map.get(chunk.citation) || map.get(String(chunk.citation || '').replace(/^kb:/, '')) || '',
+    const snapshotByCitation = new Map((result.knowledgeSnapshot || []).map((chunk) => [chunk.citation, chunk.text]))
+    const chunkTexts = (result.knowledge || []).map((chunk) =>
+      snapshotByCitation.get(chunk.citation) ||
+      map.get(chunk.citation) ||
+      map.get(String(chunk.citation || '').replace(/^kb:/, '')) ||
+      '',
     )
-    return {
+    const replayed = {
       ...result,
       scorecard: scoreRecordV2(result, { chunkTexts }),
     }
+    replayed.scorecardV3 = scoreRecordV3(replayed)
+    return replayed
   })
   writeRecords(results, raw.ablation || null, {
     tag: raw.tag || 'replay',
@@ -496,25 +579,24 @@ async function runAblation(results) {
   for (const result of results) {
     const systemPrompt = readPromptText('system.md')
     const labContext = readPromptText(`${result.labId}/context.md`)
-    const stage = stagePromptText(result.labId, result.stage)
     const decision = result.tutorState || {
-      stage: result.stage,
-      gate: 'eval',
-      hintLevel: 0,
+      intent: result.expected?.intent,
       actions: [],
       evidenceRefs: [],
       toolContext: {},
     }
-    const policy = tutorPolicyPrompt(decision)
     const chunks = (result.knowledge || []).map((meta) => ({
       ...meta,
-      text: chunkTextById(meta.citation),
+      text: result.knowledgeSnapshot?.find((item) => item.citation === meta.citation)?.text || chunkTextById(meta.citation),
     }))
     const knowledge = knowledgePrompt(chunks)
-    const fullPrompt = [systemPrompt, labContext, stage.text, policy, knowledge]
-      .filter(Boolean)
-      .join('\n\n---\n\n')
-    const baselinePrompt = [systemPrompt, labContext, policy, knowledge]
+    const evidenceContext = [
+      '当前服务端可信上下文（只用于约束证据，不规定教学动作）：',
+      `- 可引用证据：${(decision.evidenceRefs || []).join(', ') || '无'}`,
+      `- 工具摘要：${JSON.stringify(decision.toolContext || {})}`,
+      '不得声称执行了工具摘要中不存在的运行、诊断或 Trace。',
+    ].join('\n')
+    const baselinePrompt = [systemPrompt, labContext, evidenceContext, knowledge]
       .filter(Boolean)
       .join('\n\n---\n\n')
 
@@ -531,11 +613,16 @@ async function runAblation(results) {
       )
     const fullScoreV2 = scoreReplyV2(full.reply, result.stage)
     const baselineScoreV2 = scoreReplyV2(baseline.reply, result.stage)
+    const fullScoreV3 = scoreRecordV3({ ...result, reply: full.reply })
+    const baselineScoreV3 = scoreRecordV3({ ...result, reply: baseline.reply })
     entries.push({
       id: result.id,
       labId: result.labId,
       stage: result.stage,
-      stagePromptUsed: stage.used,
+      expected: result.expected,
+      tutorState: result.tutorState,
+      knowledge: result.knowledge,
+      strategyPromptUsed: true,
       full: {
         ok: full.ok,
         reply: full.reply,
@@ -543,6 +630,8 @@ async function runAblation(results) {
         quality: bools(scoreReply(full.reply, result.stage)),
         scoreV2: fullScoreV2,
         qualityV2: replyQualityScore(fullScoreV2),
+        scoreV3: fullScoreV3,
+        qualityV3: fullScoreV3.composite,
       },
       baseline: {
         ok: baseline.ok,
@@ -551,6 +640,8 @@ async function runAblation(results) {
         quality: bools(scoreReply(baseline.reply, result.stage)),
         scoreV2: baselineScoreV2,
         qualityV2: replyQualityScore(baselineScoreV2),
+        scoreV3: baselineScoreV3,
+        qualityV3: baselineScoreV3.composite,
       },
     })
     console.log(
@@ -595,6 +686,7 @@ function writeRecords(results, ablation, metaOverrides = {}) {
   const recordTag = metaOverrides.tag || tag
   const recordUpstream = metaOverrides.upstream || upstream
   const recordModel = metaOverrides.model || model
+  const isV3 = results.some((result) => result.expected?.intent)
   mkdirSync(recordsRoot, { recursive: true })
 
   writeFileSync(
@@ -604,6 +696,8 @@ function writeRecords(results, ablation, metaOverrides = {}) {
         tag: recordTag,
         upstream: recordUpstream,
         model: recordModel,
+        corpusVersion: isV3 ? 'v3' : 'legacy-stage',
+        snapshotVersion: 1,
         mode: results[0]?.mode || 'unknown',
         results,
         ablation,
@@ -616,35 +710,34 @@ function writeRecords(results, ablation, metaOverrides = {}) {
 
   for (const labId of LABS) {
     const labResults = results.filter((item) => item.labId === labId)
+    if (!labResults.length) continue
     const lines = []
-    lines.push(`# ${labTitle(labId)} Prompt 分阶段评测`)
+    lines.push(`# ${labTitle(labId)} Prompt ${isV3 ? '意图评测' : '分阶段评测'}`)
     lines.push('')
     lines.push(`- 评测标签：\`${tag}\``)
     lines.push(`- 模式：\`${labResults[0]?.mode}\` / 模型：\`${labResults[0]?.model || '-'}\``)
     lines.push(`- 上游：\`${upstream}\``)
     lines.push('')
     for (const result of labResults) {
-      const stagePrompt = stagePromptText(labId, result.stage)
-      lines.push(`## ${STAGE_LABELS[result.stage]}阶段 · ${result.id}`)
+      const strategyPrompt = isV3
+        ? intentPromptText(result.expected.intent)
+        : stagePromptText(labId, result.stage)
+      lines.push(`## ${isV3 ? result.expected.intent : `${STAGE_LABELS[result.stage]}阶段`} · ${result.id}`)
       lines.push('')
       lines.push(`**学生消息**：${mdEscape(result.message)}`)
       lines.push('')
       lines.push(
-        `**阶段提示词源**：\`${stagePrompt.source}\`（${
-          stagePrompt.used ? 'lab 定制' : '通用兜底'
-        }）`,
+        `**${isV3 ? '意图策略' : '阶段提示词'}源**：\`${strategyPrompt.source}\``,
       )
       lines.push('')
-      lines.push('**阶段提示词正文**：')
+      lines.push(`**${isV3 ? '意图策略' : '阶段提示词'}正文**：`)
       lines.push('')
       lines.push('```text')
-      lines.push(stagePrompt.text.trim())
+      lines.push(strategyPrompt.text.trim())
       lines.push('```')
       lines.push('')
       lines.push(
-        `**服务端路由**：requested=${result.stage} → tutorState.stage=${
-          result.tutorState?.stage
-        }（gate=${result.tutorState?.gate || '-'}）`,
+        `**服务端路由**：storedStage=${result.stage}，intent=${result.tutorState?.intent || '-'}（gate=${result.tutorState?.gate || '-'}）`,
       )
       lines.push('')
       lines.push(`**模式/模型**：${result.mode} / ${result.model || '-'}`)
@@ -658,12 +751,12 @@ function writeRecords(results, ablation, metaOverrides = {}) {
       lines.push(
         checksTable({
           ...result.replyScore,
-          stageRoute: result.checks.stageRoute,
+          intentRoute: result.checks.intentRoute ?? result.checks.stageRoute,
           promptUsed: result.checks.promptUsed,
         }),
       )
       lines.push('')
-      lines.push(`**综合分**：${result.composite}/100`)
+      lines.push(`**${isV3 ? 'V3 ' : ''}综合分**：${isV3 ? result.scorecardV3.composite : result.composite}/100`)
       lines.push('')
       lines.push('**RAG 检索**：')
       lines.push('')
@@ -683,6 +776,25 @@ function writeRecords(results, ablation, metaOverrides = {}) {
       lines.push('')
     }
     writeFileSync(path.join(recordsRoot, `${labId}.md`), lines.join('\n'), 'utf8')
+  }
+
+  if (isV3) {
+    const ablationV3 = buildAblationV3(ablation)
+    const report = buildScorecardV3Report(results, {
+      tag: recordTag,
+      upstream: recordUpstream,
+      model: recordModel,
+      mode: results[0]?.mode || 'unknown',
+      source: metaOverrides.source || recordTag,
+      ablation: ablationV3,
+    })
+    writeFileSync(path.join(recordsRoot, 'summary.md'), report.markdown, 'utf8')
+    writeFileSync(path.join(recordsRoot, 'scorecard-v3.md'), report.markdown, 'utf8')
+    writeFileSync(path.join(recordsRoot, 'scorecard-v3.json'), JSON.stringify(report.json, null, 2), 'utf8')
+    if (ablationV3) {
+      writeFileSync(path.join(recordsRoot, 'ablation-v3.json'), JSON.stringify(ablationV3, null, 2), 'utf8')
+    }
+    return
   }
 
   const mode = results[0]?.mode || 'unknown'
@@ -877,6 +989,12 @@ async function main() {
   }
 
   copyFileSync(realDbPath, tempDbPath)
+  copyFileSync(realKnowledgeDbPath, tempKnowledgeDbPath)
+  writeFileSync(
+    tempTeacherFile,
+    JSON.stringify({ classes: { 'prompt-eval': {} }, allowStudentLlm: true }, null, 2),
+    'utf8',
+  )
   const serverPort = port || 8790 + Math.floor(Math.random() * 100)
   const server = await spawnServer(serverPort)
   const base = server.base
@@ -923,7 +1041,7 @@ async function main() {
       token,
     )
     if (response.status !== 200) {
-      results.push({
+      const failed = {
         ...caseItem,
         reply: `（请求失败 HTTP ${response.status}：${JSON.stringify(response.data).slice(0, 300)}）`,
         mode: 'error',
@@ -942,6 +1060,7 @@ async function main() {
         knowledgeScore: { count: 0, relevant: false, classesOk: false, retrievalOk: false },
         checks: {
           promptUsed: false,
+          intentRoute: false,
           stageRoute: false,
           hasQuestion: false,
           singleQuestion: false,
@@ -953,13 +1072,17 @@ async function main() {
           retrievalOk: false,
         },
         composite: 0,
-      })
+        knowledgeSnapshot: [],
+        promptSnapshot: null,
+      }
+      failed.scorecardV3 = scoreRecordV3(failed)
+      results.push(failed)
       continue
     }
     const evaluated = evaluateCase(caseItem, response.data)
     results.push(evaluated)
     console.log(
-      `${caseItem.id}: mode=${response.data.mode} stage=${response.data.tutorState?.stage} chunks=${
+      `${caseItem.id}: mode=${response.data.mode} stage=${response.data.tutorState?.stage} intent=${response.data.tutorState?.intent} chunks=${
         (response.data.knowledge || []).length
       } composite=${evaluated.composite}`,
     )

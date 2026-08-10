@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { loadHarnessCases, runTutorHarness } from './harness.mjs'
+import { inferTutorIntent } from './turn-policy.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const fixture = path.join(here, 'fixtures', 'harness-cases-v1.json')
@@ -15,6 +16,7 @@ if (adapterArg) {
 } else {
   adapter = async (testCase) => ({
     stage: testCase.expected.allowedStages[0],
+    intent: testCase.expected.intent || inferTutorIntent(testCase.turns.at(-1)?.student || ''),
     reply: '请先给出一个可由代码或运行结果验证的判断？',
     actions: testCase.expected.requiredActions,
     citations: [],

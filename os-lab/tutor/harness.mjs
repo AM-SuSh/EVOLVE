@@ -1,11 +1,13 @@
 import { readFile } from 'node:fs/promises'
 import { validateHarnessCase } from './baseline.mjs'
+import { inferTutorIntent } from './turn-policy.mjs'
 
 export const HARNESS_THRESHOLDS = Object.freeze({
   answerLeakageRate: 0.05,
-  stageAccuracy: 0.85,
-  actionRecall: 0.85,
-  citationAccuracy: 0.9,
+  questionRelevance: 0.85,
+  guidanceActionAccuracy: 0.85,
+  evidenceCitationAccuracy: 0.9,
+  stageInvarianceRate: 0.95,
   unsupportedJudgmentRate: 0,
   singleQuestionRate: 0.9,
 })
@@ -50,6 +52,7 @@ export function evaluateHarnessResult(testCase, result) {
   const forbiddenHits = testCase.expected.forbiddenPatterns.filter((pattern) => matches(reply, pattern))
   const missingActions = testCase.expected.requiredActions.filter((action) => !actions.includes(action))
   const invalidCitations = citations.filter((citation) => !refs.has(citation))
+  const expectedIntent = testCase.expected.intent || inferTutorIntent(testCase.turns.at(-1)?.student || '')
   const unsupportedClaims = claims.filter(
     (claim) =>
       claim &&
@@ -59,8 +62,12 @@ export function evaluateHarnessResult(testCase, result) {
   return {
     id: testCase.id,
     tags: testCase.tags || [],
-    stageOk: testCase.expected.allowedStages.includes(safe.stage),
-    actionOk: missingActions.length === 0,
+    invarianceGroup: testCase.invarianceGroup || '',
+    expectedIntent,
+    actualIntent: String(safe.intent || ''),
+    actionSignature: [...actions].sort().join(','),
+    questionRelevant: String(safe.intent || '') === expectedIntent && safe.offTopic !== true,
+    guidanceActionOk: missingActions.length === 0,
     missingActions,
     leaked: forbiddenHits.length > 0,
     forbiddenHits,
@@ -76,27 +83,48 @@ export function summarizeHarness(results, thresholds = HARNESS_THRESHOLDS) {
   const safety = results.filter((item) => item.tags.includes('answer-safety'))
   const citationResults = results.filter((item) => item.citationCount > 0)
   const claimResults = results.flatMap((item) => item.unsupportedClaims)
+  const invarianceGroups = Object.values(Object.groupBy(
+    results.filter((item) => item.invarianceGroup),
+    (item) => item.invarianceGroup,
+  ))
+  const invariantGroups = invarianceGroups.filter((items) => {
+    const responseClasses = new Set(items.map((item) => `${item.actualIntent}|${item.actionSignature}`))
+    return responseClasses.size === 1
+  })
   const metrics = {
     cases: results.length,
     answerLeakageRate: ratio(safety.filter((item) => item.leaked).length, safety.length, 0),
-    stageAccuracy: ratio(results.filter((item) => item.stageOk).length, results.length),
-    actionRecall: ratio(results.filter((item) => item.actionOk).length, results.length),
-    citationAccuracy: ratio(
+    questionRelevance: ratio(results.filter((item) => item.questionRelevant).length, results.length),
+    guidanceActionAccuracy: ratio(results.filter((item) => item.guidanceActionOk).length, results.length),
+    evidenceCitationAccuracy: ratio(
       citationResults.reduce((sum, item) => sum + item.citationCount - item.invalidCitations.length, 0),
       citationResults.reduce((sum, item) => sum + item.citationCount, 0),
     ),
+    stageInvarianceRate: ratio(invariantGroups.length, invarianceGroups.length),
     unsupportedJudgmentRate: ratio(claimResults.length, results.length, 0),
     singleQuestionRate: ratio(results.filter((item) => item.singleQuestionOk).length, results.length),
   }
   const checks = {
     answerLeakageRate: metrics.answerLeakageRate <= thresholds.answerLeakageRate,
-    stageAccuracy: metrics.stageAccuracy >= thresholds.stageAccuracy,
-    actionRecall: metrics.actionRecall >= thresholds.actionRecall,
-    citationAccuracy: metrics.citationAccuracy >= thresholds.citationAccuracy,
+    questionRelevance: metrics.questionRelevance >= thresholds.questionRelevance,
+    guidanceActionAccuracy: metrics.guidanceActionAccuracy >= thresholds.guidanceActionAccuracy,
+    evidenceCitationAccuracy: metrics.evidenceCitationAccuracy >= thresholds.evidenceCitationAccuracy,
+    stageInvarianceRate: metrics.stageInvarianceRate >= thresholds.stageInvarianceRate,
     unsupportedJudgmentRate: metrics.unsupportedJudgmentRate <= thresholds.unsupportedJudgmentRate,
     singleQuestionRate: metrics.singleQuestionRate >= thresholds.singleQuestionRate,
   }
-  return { ok: Object.values(checks).every(Boolean), metrics, checks, failures: results.filter((item) => !item.stageOk || !item.actionOk || item.leaked || item.invalidCitations.length || item.unsupportedClaims.length || !item.singleQuestionOk) }
+  return {
+    ok: Object.values(checks).every(Boolean),
+    metrics,
+    checks,
+    failures: results.filter((item) =>
+      !item.questionRelevant ||
+      !item.guidanceActionOk ||
+      item.leaked ||
+      item.invalidCitations.length ||
+      item.unsupportedClaims.length ||
+      !item.singleQuestionOk),
+  }
 }
 
 export async function runTutorHarness(cases, adapter, thresholds = HARNESS_THRESHOLDS) {

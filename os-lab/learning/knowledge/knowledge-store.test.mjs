@@ -198,6 +198,11 @@ test('hybrid retrieval caches vectors, bridges OS aliases, and falls back to FTS
     assert.equal(cached.upserted, 0)
     assert.equal(store.stats().retrievalRuns, 1)
 
+    const lexicalOnly = await retriever.search('任务调度', { labId: 'lab2', limit: 3, vector: false })
+    assert.equal(lexicalOnly.results.length, 1)
+    assert.equal(lexicalOnly.diagnostics.provider, 'lexical-only')
+    assert.equal(lexicalOnly.diagnostics.vectorCandidates, 0)
+
     const unavailable = createHybridRetriever(store, {
       provider: {
         kind: 'unavailable-test-provider', model: 'test:offline', dimensions: 128,

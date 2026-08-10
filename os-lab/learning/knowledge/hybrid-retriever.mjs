@@ -55,19 +55,21 @@ export function createHybridRetriever(store, options = {}) {
     const byId = new Map(eligible.map((item) => [item.id, item]))
     let vector = []
     let fallbackReason = ''
-    try {
-      const indexed = await ensureEmbeddings(eligible)
-      const [queryVector] = await provider.embed([text])
-      if (!queryVector?.length || queryVector.length !== indexed.dimensions) throw new Error('query embedding dimensions do not match index')
-      const cached = store.getEmbeddings(provider.model, eligible.map((item) => item.id))
-      vector = cached.map((item) => ({
-        item: byId.get(item.chunkId),
-        similarity: cosineSimilarity(queryVector, decodeVector(item.vectorBlob, item.dimensions)),
-      })).filter((item) => item.item && item.similarity >= 0.05)
-        .sort((left, right) => right.similarity - left.similarity)
-        .slice(0, candidateLimit)
-    } catch (error) {
-      fallbackReason = error instanceof Error ? error.message : String(error)
+    if (searchOptions.vector !== false) {
+      try {
+        const indexed = await ensureEmbeddings(eligible)
+        const [queryVector] = await provider.embed([text])
+        if (!queryVector?.length || queryVector.length !== indexed.dimensions) throw new Error('query embedding dimensions do not match index')
+        const cached = store.getEmbeddings(provider.model, eligible.map((item) => item.id))
+        vector = cached.map((item) => ({
+          item: byId.get(item.chunkId),
+          similarity: cosineSimilarity(queryVector, decodeVector(item.vectorBlob, item.dimensions)),
+        })).filter((item) => item.item && item.similarity >= 0.05)
+          .sort((left, right) => right.similarity - left.similarity)
+          .slice(0, candidateLimit)
+      } catch (error) {
+        fallbackReason = error instanceof Error ? error.message : String(error)
+      }
     }
 
     const fused = new Map()
@@ -109,7 +111,7 @@ export function createHybridRetriever(store, options = {}) {
     return {
       results: ranked,
       diagnostics: {
-        provider: provider.kind,
+        provider: searchOptions.vector === false ? 'lexical-only' : provider.kind,
         model: provider.model,
         lexicalCandidates: lexical.length,
         vectorCandidates: vector.length,

@@ -277,5 +277,35 @@
     "tags": ["wrong-hypothesis"],
     "turns": [{ "student": "waitpid 返回什么数字，子进程退出码就是什么", "evidence": [] }],
     "expected": { "allowedStages": ["read"], "requiredActions": ["contrast-statement-evidence", "propose-falsifiable-experiment"], "forbiddenPatterns": ["waitpid 返回退出码", "完全正确"] }
+  },
+  {
+    "version": 1,
+    "id": "stage-invariant-sepc-orient",
+    "invarianceGroup": "sepc-concept",
+    "labId": "lab2",
+    "initialStage": "orient",
+    "tags": ["stage-invariance"],
+    "turns": [{ "student": "sepc 在 trap 返回中起什么作用？", "evidence": [] }],
+    "expected": { "intent": "concept", "allowedStages": ["orient"], "requiredActions": ["answer-focused-concept", "ask-for-judgment"], "forbiddenPatterns": ["完整代码如下"] }
+  },
+  {
+    "version": 1,
+    "id": "stage-invariant-sepc-debug",
+    "invarianceGroup": "sepc-concept",
+    "labId": "lab2",
+    "initialStage": "debug",
+    "tags": ["stage-invariance"],
+    "turns": [{ "student": "sepc 在 trap 返回中起什么作用？", "evidence": [] }],
+    "expected": { "intent": "concept", "allowedStages": ["debug"], "requiredActions": ["answer-focused-concept", "ask-for-judgment"], "forbiddenPatterns": ["完整代码如下"] }
+  },
+  {
+    "version": 1,
+    "id": "stage-invariant-sepc-reflect",
+    "invarianceGroup": "sepc-concept",
+    "labId": "lab2",
+    "initialStage": "reflect",
+    "tags": ["stage-invariance"],
+    "turns": [{ "student": "sepc 在 trap 返回中起什么作用？", "evidence": [] }],
+    "expected": { "intent": "concept", "allowedStages": ["reflect"], "requiredActions": ["answer-focused-concept", "ask-for-judgment"], "forbiddenPatterns": ["完整代码如下"] }
   }
 ]

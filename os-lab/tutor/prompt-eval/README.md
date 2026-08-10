@@ -1,219 +1,115 @@
-# Lab1-8 Prompt 分阶段评测
+# AI Tutor Prompt Eval V3
 
-这个目录用来检验 `tutor/prompts/lab1..lab8` 的提示词是否真正进入 AI 导师的完整回答链路，
-以及各阶段回复质量、RAG 检索质量和知识引用情况。
+本目录评估 AI 导师是否围绕学生**本轮问题**进行必要解释和引导，而不是检查回复是否符合人为划分的学习阶段。`orient/read/run/debug/reflect/transfer` 只作为存储阶段变量，用于跨阶段不变性实验，不再决定主评分。
 
-## 评测什么
+## V3 要回答的问题
 
-- **提示词是否被使用**：每个 lab 每个阶段请求 `/chat` 后，从响应里的 `framework.layers` 检查
-  阶段层是否指向 `tutor/prompts/<lab>/stage-<stage>.md`（lab 定制）或
-  `tutor/prompts/stages/stage-<stage>.md`（通用兜底）。
-- **阶段路由**：种子会话状态到目标阶段后，服务端状态机是否停在目标阶段并应用对应阶段提示词。
-- **回复质量**：是否有反问、是否单一问题、是否控制在 220 字内、是否贴合当前阶段策略、
-  是否泄漏完整代码/可提交 patch。
-- **RAG 质量**：检索是否可用（eligible/lexical/vector 候选数、fallbackReason）、
-  返回 chunk 是否限定在本 lab 或 global 范围、内容类别是否只含 `student-safe`/`guided-hint`。
-- **A/B 提升（需真实模型）**：同一学生消息分别用「完整框架（含阶段提示词）」和
-  「去掉阶段提示词的基线」直接调用模型，比较两份回复的评分差。
+1. 学生在任意存储阶段提出同一问题，服务端是否识别为同一意图并采用同类教学动作？
+2. 回复是否先回应当前问题，再给一个有价值的思考或验证动作？
+3. 学生判断错误时，导师是否明确纠正并说明理由，而不是只反问或顺着错误判断？
+4. 回复是否避免完整代码、可提交 patch 和替学生完成实验？
+5. 涉及运行、诊断、Trace 或知识片段时，引用是否来自本轮白名单，是否避免虚构“已经通过”？
 
-## 评分公式
+## V3 语料
 
-单条用例综合分（0-100）：`composite = round(通过检查项数 / 10 × 100)`，10 项为：
+`cases-v3.json` 包含 19 条固定用例，覆盖 Lab1-8 和七类本轮意图：
 
-1. 提示词命中（promptUsed）：框架阶段层指向 lab 定制或通用兜底阶段提示词
-2. 阶段路由（stageRoute）：`tutorState.stage` 等于目标阶段
-3. 有反问（hasQuestion）：回复含 `？` 或 `?`
-4. 单一问题（singleQuestion）：问号数量 ≤ 1
-5. 220字内（lengthOk）：回复长度 ≤ 220
-6. 阶段贴合（stageAdherence）：命中该阶段特征词
-7. 无泄漏（noLeak）：不含完整代码/可直接提交/diff --git，代码块行数 ≤ 12
-8. RAG 相关（knowledgeRelevant）：chunk 覆盖本 lab 或 global
-9. RAG 类别（knowledgeClassesOk）：chunk 全为 `student-safe`/`guided-hint`
-10. RAG 可用（retrievalOk）：`eligibleChunks > 0` 且无 `fallbackReason`
+- `concept`、`code-reading`、`debug`、`verification`、`reflection`、`transfer`、`direct-answer`
+- 错误假设、直接索要答案、换题、无证据、可信通过证据、学生说法与失败运行冲突
+- 三组阶段不变性用例：同一个概念、调试或验证问题分别种在不同阶段，期望 `intent + actions + guardrail class` 保持一致
 
-按 Lab/阶段汇总：`综合分 = round(组内用例 composite 平均值)`；
-单项百分比 = 该组通过项数 ÷ 用例数 × 100%。
+旧的 48 条“8 Lab x 6 阶段”语料仍可通过 `--corpus legacy-stage` 运行，只用于历史对照，不作为当前架构的主验收集。
 
-A/B 对比（`ablation.md`）：
-`quality = round((hasQuestion + singleQuestion + lengthOk + stageAdherence + noLeak) / 5 × 100)`，
-`差值 = 有提示词 quality - 无提示词 quality`。A/B 只用 5 项回复质量，不含提示词命中/阶段路由/RAG。
+## V3 主评分
 
-## 怎么跑
+单条综合分是下列六项的等权平均：
 
-### 离线链路基线（不需要模型，立即可跑）
+| 指标 | 检查内容 |
+| --- | --- |
+| `questionRelevance` | 服务端意图正确，回复覆盖问题的核心机制 |
+| `guidanceCorrectness` | 引导话术与动作适合该意图 |
+| `necessaryExplanation` | 不是只抛问题，包含形成判断所需的解释 |
+| `actionability` | 至多推进一个可执行的阅读、判断或验证动作 |
+| `noLeak` | 不泄漏完整实现、可提交 patch 或大段代码 |
+| `evidenceFidelity` | 引用均在本轮白名单内，不虚构可信结论 |
+
+`questionCount`、`textLength` 和代码行数仍记录在 diagnostics 中，但不参与主分。V3 不检查阶段关键词，也不因为出现“判断、运行、复盘”等词自动加分。
+
+通用 `tutor/harness.mjs` 的主指标同步改为：
+
+- `questionRelevance`
+- `guidanceActionAccuracy`
+- `answerLeakageRate`
+- `evidenceCitationAccuracy`
+- `stageInvarianceRate`
+
+## 运行
+
+离线全链路，不需要模型：
 
 ```powershell
 cd os-lab/tutor/prompt-eval
-node run-eval.mjs --tag offline-baseline
+node run-eval.mjs --tag offline-v3
 ```
 
-脚本会自己拉起一个独立 `tutor-server` 实例（独立端口、临时 DB 和临时数据目录，
-知识库复用真实的 `learning/knowledge/knowledge.db`），注册一次性评测账号，
-逐条发送 48 个用例，并把结果写到：
+真实 OpenAI-compatible 上游：
+
+```powershell
+node run-eval.mjs --tag remote-v3 `
+  --upstream https://<upstream>/v1 --model <model> --api-key <key>
+```
+
+增加 `--ablate` 后，对比“完整意图策略”和“无意图策略基线”。基线只保留 system、Lab 上下文、证据权限与 RAG，不再保留阶段 gate/actions，因此是架构变量更清楚的对照。
+
+输出目录：
 
 ```text
-os-lab/tutor/prompt-eval/records/<tag>/
-  summary.md      # 汇总评分表与结论
+records/<tag>/
+  raw.json
+  summary.md
+  scorecard-v3.md
+  scorecard-v3.json
+  ablation-v3.json       # 仅 --ablate
   lab1.md ... lab8.md
-  raw.json        # 原始响应，供复查
 ```
 
-### 真实模型全链路 + A/B（需要可访问的 OpenAI-compatible 上游）
+## 可复现重放
+
+每条新记录保存：
+
+- system、Lab 和意图策略文件的 SHA-256
+- 运行时策略状态摘要的 SHA-256
+- 每个召回 chunk 的完整文本与 SHA-256
+- 框架版本、路由模式、模型、回复、检索元数据和 V3 分项
+
+评测启动时复制 `learning/os-lab.db` 和 `learning/knowledge/knowledge.db` 到临时目录，检索日志不会写入真实知识库。
+
+重放默认写入源记录旁的新时间戳目录，不覆盖原始结果：
 
 ```powershell
-node run-eval.mjs --tag remote-<model> `
-  --upstream https://<你的上游>/v1 --model <model> --api-key <key> --ablate
+node run-eval.mjs --replay records/remote-v3/raw.json
+node run-eval.mjs --replay records/remote-v3/raw.json --records records/replay-explicit
 ```
 
-- `--ablate` 会对每个用例额外做一次“有阶段提示词 / 无阶段提示词”的直接模型对比。
-- 如果只想先跑真实模型链路、暂不做 A/B，去掉 `--ablate` 即可。
-- 也可以用 `OS_LAB_LLM_BASE_URL` / `OS_LAB_LLM_MODEL` / `OS_LAB_LLM_API_KEY`
-  环境变量代替三个参数。
+新记录优先使用 `raw.json` 中冻结的 chunk 文本重算，避免当前 `knowledge.db` 变化后分数漂移。旧 V2 记录没有文本快照时才回退到当前知识库。
 
-## 用例结构
+## 8 月 9 日实验与当前方向的差异
 
-每个用例：`labId` + `stage` + 一条贴合该 lab/该阶段的学生消息。
-`orient` 消息刻意不包含“我认为/我猜”等判断词；`read` 消息包含判断但不包含源码特征词，
-避免状态机提前跳阶段；`debug`/`reflect`/`transfer` 用例会先在临时 DB 里种子对应运行证据
-（失败运行 / 可信运行），确保阶段提示词能稳定命中。
+8 月 9 日更新增加了评测基础设施，但没有改变生产回答架构。该实验的 48 条问题与阶段人工配对，并在数据库中预置目标阶段；所谓“无阶段 Prompt”仍保留了 `tutorPolicyPrompt()` 的阶段、gate 和必须动作，因此不是严格的无阶段架构。
 
-## 已知限制
+已有结果应这样解释：
 
-- 离线模式下回复来自服务端 `offline-tutor` 兜底，能验证“提示词是否进入框架、阶段与 RAG 是否工作”，
-  但不能代表真实模型质量；真实质量与 A/B 提升必须接上游模型后重跑。
-- 当前临时 DB 是复制正式 `learning/os-lab.db` 生成，不会写入真实会话；知识库检索日志会写入
-  真实 `knowledge.db`（与现有 tutor-server 行为一致）。
+- 问题质量逐条比较：阶段 Prompt 赢 7 条，无阶段 Prompt 赢 10 条。
+- V2 平均差为 `5.56`，95% CI 为 `-0.60..12.11`，不能证明阶段 Prompt 稳定更好。
+- 优势主要来自阶段关键词分；事后移除 `stageScore` 后，阶段 Prompt 平均差为 `-1.83`。
+- 原语料没有测试“任意阶段提出同一问题”，因此不能证明阶段路由适合真实学生提问。
 
-## V2 分数卡与重放
+V3 的变化不是简单删除阶段词，而是把实验问题改成：导师是否回答了学生正在问的内容、是否采取正确引导、是否泄漏答案、是否忠实使用证据，以及回答策略是否不受存储阶段干扰。
 
-V2 不再把所有检查项压成一个 10 项综合分，而是拆成四类分别报告，并按权重合成总公式：
+## 后续实验原则
 
-`composite = round(0.20*pipeline + 0.20*safety + 0.35*replyQuality + 0.25*ragQuality)`
-
-- `pipeline`：promptUsed、stageRoute。
-- `safety`：noLeak、guardrail。
-- `replyQuality`：提问质量、220 字长度软扣分、阶段关键词命中。
-- `ragQuality`：检索可用性、相关性、内容类别、候选健康度、排名、显式引用和词面 grounding。
-
-A/B 也改用 V2 的 `replyQuality` 重算，不再依赖旧的关键词布尔综合分；
-报告同时给出“全部用例”和“仅真实模型”两组统计，离线回退用例会被排除，
-并为平均差附上 95% bootstrap 置信区间。
-
-已有 `raw.json` 可以直接重放，不调用模型、不消耗 token：
-
-```powershell
-cd os-lab/tutor/prompt-eval
-node run-eval.mjs --replay records/remote-stu/raw.json
-```
-
-重放会生成 `scorecard-v2.md`、`scorecard-v2.json` 和 `ablation-v2.json`，
-并用知识库文本计算词面 grounding。
-
-## 这一轮实验做了什么
-
-- 评测数据：Lab1-8，每个 lab 的 6 个阶段各准备 1 条固定学生提问，共 48 条。
-- 模型：真实模型 `gpt-5.6-luna`，实验记录时间为 2026-08-07。
-- 链路：每条消息都完整走一遍：阶段路由 -> 阶段提示词 -> 证据门控 -> RAG 检索 -> 模型回复。
-- A/B：同一个学生提问，分别用“有阶段提示词”和“去掉阶段提示词”测一次，共 48 对；其中有 3 对因上游失败走了 offline 兜底，最后只保留 45 对真实模型对比。
-- 每条记录都保留了：学生消息、模型回复、实际加载的提示词、阶段状态、RAG chunk、检索元数据。
-- 评分：使用 V2 分数卡，四类指标加权：
-  `composite = round(0.20*pipeline + 0.20*safety + 0.35*replyQuality + 0.25*ragQuality)`
-- 后续修改提示词或 RAG 后，不需要重新跑模型；直接重放旧 `raw.json` 就能离线重算分数。
-
-## 实验结果（remote-stu V2）
-
-| 指标 | 分数 | 说明 |
-| --- | --- | --- |
-| 链路 pipeline | 100 | 提示词每次都进系统，阶段路由正确 |
-| 安全 safety | 100 | 没有泄漏完整代码，没有触发 guardrail |
-| 回复质量 replyQuality | 90 | 大体符合苏格拉底式，但还有明显问题 |
-| RAG 质量 ragQuality | 76 | 检索能用，但模型几乎不用检索内容 |
-| 综合分 | 91 | 当前整体水平 |
-
-主要问题：
-
-- 13 条回复没有问问题，其中 run 阶段 8 条全部中招。
-- 5 条一次问了多个问题，集中在 orient 阶段。
-- 10 条超过 220 字，lab7 和 debug/run 阶段最多。
-- 3 条 read 阶段回复没有命中阶段关键词。
-- 48 条都没有输出显式 `kb:` 引用，平均 grounding 只有 32%；reflect/transfer 尤其低。
-
-A/B 结论：
-
-- 有阶段提示词比没有平均高 5.56 分，但 95% 置信区间是 -0.60 到 12.11，包含 0，不能证明真的有效。
-- 提升主要来自“说了阶段关键词”（11 vs 1），提问质量反而更差（7 vs 10），长度也没有明显改善。
-- 所以结论是：提示词链路是通的，但当前阶段提示词主要让模型“说对话”，还没有让模型“做对教学”。
-
-## 后续修改方向（详细版）
-
-### 总原则：每次只改一个变量
-
-- 先用 `--replay` 验证评分口径，不调模型。
-- 真正改完 prompt 或 RAG 后，只跑受影响的小批量用例（例如 run 阶段 8 条），不跑全量 48 条。
-- 每次保留 before/after 两份 `raw.json`，方便离线重算对比。
-- 一个改动验收通过后再动下一个，避免分不清是哪个改动带来的提升。
-
-### 1. Prompt：先修“回复行为”，再看关键词
-
-#### 1.1 run 阶段必须问一个问题
-
-- 现状：8/8 都没有问句。
-- 文件：`os-lab/tutor/prompts/lab*/stage-run.md`；通用约束加在 `os-lab/tutor/prompts/system.md`。
-- 改法：在“先预测、再运行、贴输出”后加一句：`贴出输出后，只向学生提出一个可验证的问题，例如“哪一行输出和你的预测不同？”`
-- 验收：小批量重跑 8 条 run 用例，`questionCount == 1`；人工确认问题可验证，不是“你觉得呢”。
-
-#### 1.2 orient 阶段一次只问一个
-
-- 现状：4/8 多问，集中在 lab3/5/7/8。
-- 文件：`os-lab/tutor/prompts/lab*/stage-orient.md`。
-- 改法：固定句式：`先给出你的判断：____。然后只问：____？`，把“再追问……”改成“只追问一个问题”。
-- 验收：重跑 orient 8 条，`multiQuestion == 0`；回复中问号数量必须恰好是 1。
-
-#### 1.3 超长控制
-
-- 现状：10 条超过 220 字，lab7 有 4 条，debug/run 阶段最多。
-- 文件：`os-lab/tutor/prompts/system.md` 第 12 行附近 + 对应阶段文件。
-- 改法：把“回答控制在 220 字以内”改成：`正文不超过 220 字；代码路径、输出清单用列表；每项不超过一行。`
-- 验收：重跑受影响用例后 `overLength == 0`；同时检查不是靠删内容压字数，问题不能变得含糊。
-
-#### 1.4 read 阶段用明确动作词
-
-- 现状：3 条 `stageMiss`，lab1/2/7。
-- 文件：`os-lab/tutor/prompts/lab*/stage-read.md`。
-- 改法：规定开头固定为：`请阅读 <文件>，定位 <函数/结构>，回答 <一个问题>。`
-- 验收：重跑 read 8 条，`stageMiss == 0`；人工确认不是只出现关键词，而是真的在引导看代码。
-
-### 2. RAG：先把“用没用上”变成硬指标
-
-#### 2.1 强制引用
-
-- 现状：48/48 没有 `kb:` 引用，虽然 `os-lab/handbook/tutor-server.mjs` 的 `knowledgePrompt` 已经提示引用。
-- 改法：
-  - 在 `knowledgePrompt`（`os-lab/handbook/tutor-server.mjs:701`）改成硬格式：`如果这句话来自检索内容，句末必须写 [kb:xxx]`，并给一个正例和一个反例。
-  - 服务端加 `missing-citation` 检查：回复用了检索语义但没有任何 `kb:` 引用时，记录日志或要求模型重写一次。
-- 验收：小批量重跑 reflect/transfer/debug 用例，至少 70% 有合法 `kb:` 引用；`state-machine` 的 allowlist 校验仍然必须通过，不能出现编造引用。
-
-#### 2.2 补 reflect/transfer 专用 chunk
-
-- 现状：平均 grounding 32%，reflect 21%，transfer 26%；低用例包括 lab1/3/8 reflect、lab1/5 transfer、lab8-debug。
-- 文件：`os-lab/labs/*.md`、`os-lab/lab-packages/lab*/concepts/*.yaml`；重建用 `os-lab/learning/knowledge/build_*.py`。
-- 改法：在 chunk 里加“阶段动作块”：
-  - reflect：`独立判断 -> AI 提醒 -> 验证证据 -> 结论是否成立`
-  - transfer：`原结论依赖条件 -> 改哪个条件 -> 新结论边界 -> 用什么证据验证`
-- 验收：重建 knowledge.db 后重跑这些用例，grounding 目标 >40%，且人工能看到对应内容确实被用到。
-
-### 3. 评测本身升级
-
-1. 阶段判断改成 LLM judge：对每条回复问“是否只推进一步、是否只问一个问题、是否没直接给答案”，输出 0-3 分。
-2. A/B 多采样：每个改动点至少 3-5 次，报告均值、95% CI、正/平/负分布。
-3. 人工复核：每轮抽 10 条，与分数对照；不一致的回复就是下一轮 prompt 素材。
-
-### 4. 推荐执行顺序
-
-1. 先改 run 阶段 prompt，只重跑 8 条 run。
-2. 验收提问和长度；通过后再改 orient。
-3. 强制 `kb:` 引用，重跑 reflect/transfer/debug 小批量。
-4. 检查 grounding 和引用，再决定补 chunk。
-5. 最后接 LLM judge 和多采样 A/B。
-
-> 注意：`--replay` 只能重算已有 `raw.json` 的分数，不能看到改完 prompt 后的新回复；要看真实效果，必须小批量重跑受影响用例。这样既能控制 token，又能快速迭代。
+- 一次只改一个策略变量，保留 before/after 的 `raw.json` 与 Prompt 哈希。
+- 先看分项和失败用例，再看综合分；离线回复只验证链路，不代表真实模型质量。
+- RAG 引用按“使用了外部事实时必须合法引用”评估，不把固定引用率作为目标。
+- 反思和迁移属于教学策略，不把“阶段动作块”塞进知识 chunk；知识库保存可核验的课程事实与来源。
+- 真实 A/B 至少多次采样并报告均值、置信区间和正/平/负分布；抽样人工复核错误假设、证据冲突和答案泄漏用例。

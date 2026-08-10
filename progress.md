@@ -5161,3 +5161,27 @@ ariants/fill/manifest.yaml、published.json 与 scripts/scaffold.mjs LEGACY 表�
 
 - 规划对照确认：已完成“提示等级从整个会话累计改为当前问题线程累计”，并保留旧 session 列、历史事件和 L1-L4 契约；本部分未改学习评分或评估指标。
 - `topicKey` 是服务端生成的稳定非语义哈希，不向模型暴露学生身份；主题锚点只保存截断后的机制词、相对文件/阅读位置和诊断代码，不保存整段聊天或代码选区。
+
+## 2026-08-10 - Task: replace stage-centered tutor evaluation with V3 behavior metrics
+
+### What was done
+
+- 通用 Harness 移除 `stageAccuracy`，主指标改为 `questionRelevance`、`guidanceActionAccuracy`、`answerLeakageRate` 和 `evidenceCitationAccuracy`，并增加 `stageInvarianceRate` 诊断；同一问题在多个存储阶段下的意图、动作和护栏类别必须一致。
+- 新增 `prompt-eval/scoring-v3.mjs` 与测试。V3 主分评估问题相关性、引导动作正确性、必要解释、可执行性、答案泄漏和证据忠实度；问号数量、字数、代码行数和阶段关键词只保留为 diagnostics。
+- 新增 `cases-v3.json`，共 19 条用例，覆盖七类意图、错误假设、直接答案请求、代码阅读、换题、无证据/可信证据/冲突证据，以及三组跨阶段同题不变性；旧 48 条阶段语料通过 `--corpus legacy-stage` 保留历史对照。
+- `run-eval.mjs` 默认使用 V3，评测进程使用临时 Tutor DB、临时知识库副本和临时教师配置；每条结果冻结 Prompt 文件/运行策略哈希及召回 chunk 文本/哈希。`--replay` 默认写入新的时间戳目录，不覆盖源 `raw.json`。
+- 评测专用环境跳过知识向量预热并使用 `vector: false` 的 lexical-only 检索，仍验证真实检索、Lab 权限、内容类别和引用白名单；生产默认仍使用混合向量检索。上游建连超时可配置，生产默认 30 秒，评测单独为 500ms。
+- 重写 `tutor/prompt-eval/README.md`，记录 8 月 9 日阶段实验的真实限制：阶段 Prompt 赢 7 条、无阶段赢 10 条，平均差 `5.56` 且 CI 包含 0，去掉 `stageScore` 后差值为 `-1.83`；明确后续以意图行为和证据忠实度为验收目标，不强制知识库加入阶段动作块或固定引用率。
+
+### Testing
+
+- `node --test os-lab/tutor/harness.test.mjs os-lab/tutor/prompt-eval/scoring-v2.test.mjs os-lab/tutor/prompt-eval/scoring-v3.test.mjs os-lab/learning/knowledge/knowledge-store.test.mjs`：通过，18/18。
+- `npm run test:harness`：通过，34 条 Harness 用例；相关性、引导动作、证据引用和跨阶段一致性检查全部通过。
+- 离线 V3 全链路：`node run-eval.mjs --tag offline-v3-check --records ../../../tmp/prompt-eval-v3-check`，19 条 `/chat` 全部完成；生成 Prompt/知识快照，V3 报告主分为 94，跨阶段一致性为 100%。
+- 默认 `--replay`：成功生成 `tmp/prompt-eval-v3-check/replay-2026-08-10T03-13-10/`，源 `raw.json` 未被覆盖，重放分数与原始分数一致。
+- `node --check`（评测、服务端、混合检索）与 `git diff --check`：通过。
+
+### Notes
+
+- 规划对照确认：已完成“Harness 替换阶段准确率”“Prompt Eval 改按问题相关/引导/泄漏/证据评分”“增加任意阶段同题同类回应测试”“回放不破坏源数据并冻结检索证据”；学习评分留到下一部分。
+- 离线 V3 的 94 分只说明当前离线 fallback 与链路指标表现，不代表真实模型教学质量；真实模型仍需使用同一 V3 语料、多次 A/B 和人工抽检。

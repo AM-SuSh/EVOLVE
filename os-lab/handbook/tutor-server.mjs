@@ -120,10 +120,12 @@ const osLabRoot = path.resolve(handbookRoot, '..')
 const knowledgeStore = openKnowledgeStore()
 const hybridRetriever = createHybridRetriever(knowledgeStore)
 // 向量索引是可重建派生数据；启动时后台预热，失败时保留 FTS-only 能力。
-const knowledgeWarmup = hybridRetriever.index().catch((error) => {
+const knowledgeWarmup = process.env.OS_LAB_TUTOR_SKIP_KNOWLEDGE_WARMUP === '1'
+  ? Promise.resolve({ ok: true, skipped: true })
+  : hybridRetriever.index().catch((error) => {
   console.warn(`knowledge embedding warmup skipped: ${error instanceof Error ? error.message : String(error)}`)
   return { ok: false }
-})
+  })
 const KNOWLEDGE_ROOT = path.resolve(osLabRoot, 'learning', 'knowledge')
 const KNOWLEDGE_UPLOAD_ROOT = path.resolve(
   process.env.OS_LAB_KNOWLEDGE_UPLOAD_ROOT || path.join(osLabRoot, 'learning', 'uploads', 'knowledge'),
@@ -244,6 +246,10 @@ const defaultUpstream = (process.env.OS_LAB_LLM_BASE_URL || 'http://127.0.0.1:11
 const defaultModel = process.env.OS_LAB_LLM_MODEL || 'qwen2.5:7b'
 const defaultApiKey = process.env.OS_LAB_LLM_API_KEY || ''
 const tutorRoutingMode = process.env.OS_LAB_TUTOR_ROUTING_MODE === 'stage' ? 'stage' : 'intent'
+const configuredConnectTimeout = Number(process.env.OS_LAB_LLM_CONNECT_TIMEOUT_MS || 30_000)
+const llmConnectTimeoutMs = Number.isFinite(configuredConnectTimeout)
+  ? Math.max(100, Math.min(configuredConnectTimeout, 120_000))
+  : 30_000
 // 学习事件默认落在仓库内（gitignore），而不是系统临时目录——临时目录会被清理，
 // 真实学生实验的数据不能放在那里。
 const dataDir = studentDataRoot
@@ -741,6 +747,7 @@ async function retrieveTutorKnowledge(message, labId) {
       labId,
       allowedClasses: ['student-safe', 'guided-hint'],
       limit: 12,
+      vector: process.env.OS_LAB_TUTOR_DISABLE_VECTOR !== '1',
     })
     const candidates = hybrid.results
     let globalCount = 0
@@ -1287,7 +1294,7 @@ async function handleChat(body, request, response, origin, session) {
   const controller = new AbortController()
   // 超时只用于「连不上上游」；连上后即解除——本地 7B 模型生成长回复
   // 可能远超一分钟，不能把正常的慢当成故障掐断。
-  const timer = setTimeout(() => controller.abort(), 30_000)
+  const timer = setTimeout(() => controller.abort(), llmConnectTimeoutMs)
   // 学生关页/断开时同步终止上游请求（response close 在连接断开或响应结束后触发，
   // 结束后 abort 是无害的空操作）。
   response.on('close', () => controller.abort())
@@ -1459,7 +1466,9 @@ async function handleChat(body, request, response, origin, session) {
   } catch (error) {
     const raw = error instanceof Error ? error.message : '导师服务发生未知错误'
     const aborted = raw.toLowerCase().includes('abort')
-    const detail = aborted ? '连接上游超时（30 秒内未建立连接），检查网络或接口地址' : raw
+    const detail = aborted
+      ? `连接上游超时（${llmConnectTimeoutMs}ms 内未建立连接），检查网络或接口地址`
+      : raw
     sendOffline(detail)
   } finally {
     clearTimeout(timer)
