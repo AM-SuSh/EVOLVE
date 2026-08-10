@@ -1,230 +1,145 @@
-# AI 导师阶段配置与引导设计指南
+# AI 导师问题意图与引导设计指南
 
-本文面向维护 OS Lab AI 导师的教师和开发者，说明教学阶段如何流转、各层 Prompt 如何组合、修改时应编辑哪些文件，以及如何验证调整没有破坏证据门控和答案保护。
-
-> 学生端不展示 `stage`、`gate`、`hintLevel`、`actions`、`evidenceRefs` 等内部状态。它们仍由服务端维护并注入模型上下文，用来约束回答；前端只展示自然语言对话和学生可执行的操作。
+本文面向维护 OS Lab AI 导师的教师和开发者，说明当前回答策略、问题线程提示、Prompt 组合、证据边界和迁移兼容方式。实验手册仍然是学生实际工作的主线；AI 导师不负责按内部阶段替学生编排实验顺序，而是在学生提出任何问题时，帮助其形成判断、寻找证据、验证假设和复盘结论。
 
 ## 1. 一轮对话如何形成
 
 ```text
-学生消息 + 当前 Lab + 工作区事件/可信运行
-  -> handbook/tutor-server.mjs
-  -> learning/db.mjs 读取会话阶段和提示等级
-  -> tutor/state-machine.mjs 决定阶段、门控和动作
-  -> system + Lab context + stage prompt + evidence policy + RAG
-  -> 上游模型
-  -> enforceTutorOutput() 校验答案泄漏和非法证据引用
-  -> 返回学生对话，同时持久化内部 TutorState
+学生消息 + 当前 Lab + 阶段遥测 + 阅读/代码/运行上下文
+  -> handbook/tutor-server.mjs 身份与权限校验
+  -> turn-policy.mjs 识别本轮意图和问题线程
+  -> learning/db.mjs 读取当前 topicKey 的提示等级与可信证据摘要
+  -> system + Lab context + intent strategy + current context + RAG
+  -> 上游模型或离线回退
+  -> enforceTutorOutput() 校验答案泄漏与证据引用
+  -> 返回回复、意图、阶段兼容字段、提示状态和合法引用
 ```
 
-权威状态由服务端生成，不能让模型自行声称“进入下一阶段”或“验证已通过”。
+服务端拥有证据和权限的权威性。模型不能声称执行了工具摘要中不存在的运行、诊断或 Trace，也不能通过自然语言把学生带入一个并不存在的完成状态。阶段字段仍会随响应和事件保存，但默认 `/chat` 不使用它选择回答策略。
 
-## 2. 当前六个教学阶段
+## 2. 阶段与问题意图的职责
 
-| 阶段 ID | 教学目标 | 进入下一步的主要依据 | 默认引导动作 |
-| --- | --- | --- | --- |
-| `orient` | 把“不会做”收敛为问题、初始判断和不确定点 | 学生给出自己的判断或观察 | `ask-for-judgment` |
-| `read` | 沿调用链或数据流定位源码和不变量 | 打开源码、指出函数/状态/位置 | `request-source-evidence` |
-| `run` | 用可信运行验证预测，不凭退出码猜测 | 服务端保存的 `run_finished` 与断言 | `request-trusted-run` |
-| `debug` | 用“现象 -> 假设 -> 最小实验 -> 证据 -> 结论”排错 | 保存修改、诊断、失败/回归运行 | `request-falsifiable-hypothesis` |
-| `reflect` | 区分学生判断、AI 帮助和客观证据 | 复盘和实验报告提交 | `ask-causal-explanation` |
-| `transfer` | 改变条件后重新解释机制 | 带预测和验证方法的迁移回答 | `ask-transfer-question` |
+### 2.1 阶段是工作台遥测，不是回答路由
 
-基础阶段目录和允许转换定义在 `tutor/baseline.mjs`。真正决定每一轮是否转换的是 `tutor/state-machine.mjs` 中的 `decideTutorTurn()`。
+实验手册决定学生做什么。工作台的 `orient`、`read`、`run`、`debug`、`reflect`、`transfer` 仍用于导航、历史会话、事件记录和旧数据兼容；`stage_enter` 仍可用于教师查看学习轨迹。
 
-## 3. 文件职责
+默认路由由 `OS_LAB_TUTOR_ROUTING_MODE` 决定：未设置或设置为其他值时使用 `intent`，只有显式设置为 `stage` 才启用旧状态机兼容模式。即使在 intent 模式中，学生从一个页面阶段切到另一个阶段，也不应因为阶段本身得到不同的回答类别。
 
-### 3.1 阶段和门控规则
+### 2.2 当前七类回答意图
 
-| 文件 | 职责 | 适合修改的内容 |
+| 意图 | 适用问题 | 本轮主要动作 |
 | --- | --- | --- |
-| `tutor/baseline.mjs` | 阶段清单、允许的下一阶段、退出证据目录 | 阶段拓扑和证据契约 |
-| `tutor/state-machine.mjs` | 运行时状态转换、门控、提示升级、输出保护 | 什么时候进入 read/run/debug/reflect，动作名称，L0-L4 推进条件 |
-| `tutor/state-machine.test.mjs` | 状态机单元测试 | 每个新门槛、转换和提示等级的正反例 |
-| `learning/db.mjs` | 保存 `current_stage`、`hint_level` 和证据摘要 | 状态持久化字段，不负责教学话术 |
-| `handbook/tutor-server.mjs` | 身份校验、取证、调用状态机、拼装 Prompt、调用模型 | 阶段白名单、Prompt 优先级、服务端返回契约 |
+| `concept` | 询问机制、概念或“为什么” | 先用必要解释回应，再让学生说出自己的判断 |
+| `code-reading` | 询问源码位置、调用链、字段或控制流 | 从当前代码上下文解释，要求学生指出源码证据 |
+| `debug` | 报错、异常、失败现象或根因定位 | 承认已观察现象，要求一个可证伪假设 |
+| `verification` | 运行、测试、预期输出和断言 | 定义可观察证据，要求最小验证 |
+| `reflection` | 复盘、报告、答辩和理解变化 | 把结论连接到证据，区分自己的判断与 AI 提醒 |
+| `transfer` | 对比、改变条件、边界和迁移 | 指出不变量与变化量，要求先预测再验证 |
+| `direct-answer` | 直接要完整代码、最终答案或可提交 patch | 触发答案护栏，要求学生先提交尝试或定位 |
 
-`decideTutorTurn()` 返回的内部 `TutorState` 主要字段：
+问题意图由 `tutor/turn-policy.mjs` 的 `inferTutorIntent()` 识别，策略动作由 `planTutorTurn()` 生成。前端使用同一模块中的 `inferQuestionCategory()` 做旧 UI 分析分类，避免前后端规则漂移。
+
+## 3. 文件职责与 Prompt 层次
+
+| 文件或目录 | 当前职责 |
+| --- | --- |
+| `tutor/turn-policy.mjs` | 本轮意图、问题线程、提示等级和教学动作 |
+| `tutor/prompts/system.md` | 全局教学边界、回答风格、引导原则和答案保护 |
+| `tutor/prompts/<lab>/context.md` | 当前 Lab 的机制、允许讨论范围和验证标准 |
+| `tutor/prompts/strategies/*.md` | 七类意图的回答策略与引导动作 |
+| `tutor/prompts/guardrails.yaml` | 直接答案、参考实现和越权请求的硬规则 |
+| `tutor/prompts/stages/stage-*.md` | 旧阶段路由的兼容 Prompt；默认 intent 路由不加载 |
+| `tutor/prompts/<lab>/stage-*.md` | 旧阶段模式下的 Lab 专属覆盖；不作为默认回答策略 |
+| `lab-packages/<lab>/variants/<type>/manifest.yaml` | 任务目标、检查点、验证命令和提示梯度 |
+| `learning/db.mjs` | 持久化阶段镜像、当前 `topicKey`、主题提示等级和证据摘要 |
+| `handbook/tutor-server.mjs` | 身份校验、可信取证、Prompt 组装、模型调用和输出校验 |
+
+默认 Prompt 顺序是：
 
 ```text
-stage          当前阶段
-previousStage  上一阶段
-gate           本轮门控结论
-hintLevel      当前提示等级（0-4）
-actions        本轮模型必须执行的教学动作
-evidenceRefs   本轮允许引用的 run/event/trace
-toolContext    最近运行、诊断数量、Trace 数量摘要
+system
+  + Lab context
+  + 本轮意图策略
+  + 当前阅读 / 代码 / 运行 / 诊断 / Trace 上下文
+  + 当前轮允许引用的 RAG chunk
 ```
 
-### 3.2 Prompt 层次和覆盖顺序
+意图策略只决定“怎样回应和引导”，不改变 RAG 权限、可信运行证据、引用白名单或答案护栏。当前代码选区属于学生提供的未验证上下文，模型不得把它当成服务端运行证据。
 
-| 文件/目录 | 作用 |
-| --- | --- |
-| `tutor/prompts/system.md` | 全局教学边界、回答风格、答案保护 |
-| `tutor/prompts/<lab>/context.md` | 当前 Lab 的机制、允许讨论范围、验证标准 |
-| `tutor/prompts/stages/stage-*.md` | 六个阶段的通用引导策略 |
-| `tutor/prompts/<lab>/stage-*.md` | 某个 Lab 对某阶段的专属覆盖 |
-| `tutor/prompts/guardrails.yaml` | 直接索要答案、参考实现等请求的硬拒绝规则 |
-| `lab-packages/<lab>/variants/<type>/manifest.yaml` | 单个任务的目标、埋点、成功标准和提示阶梯 |
+## 4. 问题线程提示等级
 
-阶段 Prompt 的选择规则在 `handbook/tutor-server.mjs` 的 `frameworkFor()`：
+提示等级仍为 L0-L4，但累计范围是当前 `topicKey`，不是整个会话：
 
-1. 若存在 `tutor/prompts/<lab>/stage-<stage>.md`，使用 Lab 专属版本。
-2. 否则回退到 `tutor/prompts/stages/stage-<stage>.md`。
-3. 再叠加服务端生成的证据门控 Prompt 和本轮允许的知识库片段。
-
-因此，只改阶段 Markdown 会改变“怎么说”，不会改变“什么时候进入这个阶段”；阶段转换必须修改状态机。
-
-### 3.3 前端和学生可见内容
-
-| 文件 | 职责 |
-| --- | --- |
-| `handbook/.vitepress/theme/components/LabWorkspace.vue` | 发送 `labId/stage/message/evidenceRefs`，接收并保存服务端状态 |
-| `handbook/.vitepress/theme/components/TutorPane.vue` | 学生对话窗口；不展示内部 TutorState |
-| `handbook/.vitepress/theme/components/TutorMessage.vue` | 消息正文、复制按钮、知识来源图标 |
-| `handbook/.vitepress/theme/tutor-model.ts` | 前端类型、快捷提问和离线回退文案 |
-
-`tutor-model.ts` 中仍保留 `TutorState` 类型，是因为前端需要把状态随会话恢复并传回服务端；保留数据不等于向学生展示。
-
-## 4. 如何调整阶段流转
-
-### 4.1 修改现有阶段的进入条件
-
-例：希望学生在 `read` 阶段不仅打开源码，还必须提交一个检查点答案后才能进入 `run`。
-
-1. 在 `tutor/state-machine.mjs` 的 `read` 分支修改条件，不要只修改 Prompt。
-2. 使用服务端证据摘要中的结构化字段，避免只靠学生自然语言声称“我看过了”。
-3. 为缺失条件定义清晰的 `gate` 和 `action`，例如 `missing-checkpoint-answer`、`request-checkpoint-answer`。
-4. 在 `tutorPolicyPrompt()` 中继续把新动作交给模型执行。
-5. 在 `state-machine.test.mjs` 增加“没有证据不能推进”和“证据齐全可以推进”两条测试。
-6. 如需前端自然语言提示，将 action/gate 的教师可读说明写进本文或教师后台，不恢复学生端内部状态条。
-
-### 4.2 调整提示等级 L0-L4
-
-当前等级含义：
-
-| 等级 | 目标 | 允许的帮助 |
+| 等级 | 目标 | 可采用的帮助 |
 | --- | --- | --- |
-| L0 | 观察复现 | 要求先运行并记录现象 |
-| L1 | 提出假设 | 帮助形成可检验假设 |
-| L2 | 最小实验 | 帮助设计对照或证伪实验 |
-| L3 | 对比路径 | 指向相关调用链和状态写入 |
-| L4 | 升阶边界 | 停止继续泄露，转教师短辅导 |
+| L0 | 观察现象和已有材料 | 要求学生先描述现象或定位对象 |
+| L1 | 提出假设 | 帮助形成可检查的假设 |
+| L2 | 设计最小验证 | 给出观察点、预期差异和恢复方法 |
+| L3 | 对照路径 | 指向相关调用链、状态写入或证据关系 |
+| L4 | 边界辅助 | 停止继续泄漏实现，必要时转教师或要求提交尝试 |
 
-通用升级逻辑位于 `tutor/state-machine.mjs`：只有学生明确请求提示时才递增，最高到 L4。通用名称位于 `handbook/.vitepress/theme/tutor-model.ts` 的 `TUTOR_HINT_LADDER`，单任务具体话术位于 variant manifest 的 `hint_ladder`。
+只有学生明确请求提示时才递增，最高为 L4。“再给一点提示”等省略式追问沿用上一问题线程；切换意图、源码文件、阅读位置、诊断含义或核心机制后，新线程从 L0 开始。提示使用次数和最高等级是学习轨迹信息，不是学习评分奖励或惩罚。
 
-调整时应同时检查：
+## 5. 如何修改导师行为
 
-- 是否仍然只在明确请求提示时升级。
-- 是否保留 L4 上限。
-- 是否会因刷新或新会话错误继承旧等级。
-- `hint_requested` 事件是否记录正确等级。
-- 量规中的 `maxHintLevel` 是否仍能反映学生依赖程度。
+### 5.1 修改回答策略
 
-### 4.3 新增一个阶段
+1. 先判断需求属于哪个意图，不要按学生当前页面阶段写分支。
+2. 在对应 `tutor/prompts/strategies/<intent>.md` 中调整解释深度、引导动作和证据要求。
+3. 每轮最多保留一个最有价值的引导动作：先回应当前问题，再提出一个问题或行动。
+4. 学生判断错误时明确指出错误的依据，并要求其用证据重新分析；“引导式”不等于回避纠错。
+5. 不在策略 Prompt 中写入完整实现、可直接提交 patch 或未验证运行结论。
 
-新增阶段的影响面较大，至少同步：
+### 5.2 修改意图识别或线程边界
 
-1. `tutor/baseline.mjs`：阶段、允许转换和退出证据。
-2. `tutor/state-machine.mjs`：决策分支和默认动作。
-3. `handbook/tutor-server.mjs`：`stageIds` 白名单和阶段 Prompt 加载。
-4. `handbook/.vitepress/theme/tutor-model.ts`：`TutorStageId`、阶段元数据、资源映射和离线回退。
-5. `tutor/prompts/stages/stage-<id>.md`：通用阶段 Prompt。
-6. 需要专属策略的 `tutor/prompts/<lab>/stage-<id>.md`。
-7. `tutor/state-machine.test.mjs`、baseline 测试和 Harness fixture。
-8. 数据库中已有会话的兼容回退；未知阶段必须回到 `orient`。
+修改 `turn-policy.mjs` 时要同步更新：
 
-除非新增阶段有独立证据门槛和明确教学目标，否则优先扩展现有阶段，而不是增加状态数量。
+- `turn-policy.test.mjs` 的七类意图和跨阶段不变性测试；
+- 主题切换、追问沿用和 L4 封顶测试；
+- Prompt Eval V3 的问题相关性、引导动作、答案泄漏、证据准确性和跨阶段一致性；
+- 若动作名或 Prompt 版本改变，更新评测记录中的文件 hash。
 
-## 5. 如何设计引导话术
+### 5.3 修改阶段字段
 
-每一轮只推进一个主要动作，推荐结构：
+只有在需要修复导航、事件记录、历史兼容或旧路由时才修改 `baseline.mjs`、`state-machine.mjs` 或阶段字段。修改阶段不能作为改善回答质量的默认手段；必须证明它改变的是遥测/兼容行为，而不是让同一问题在不同阶段得到不同回答。
 
-```text
-1. 复述学生已经提供的事实，不补造运行结果。
-2. 指出当前判断缺少哪一类证据。
-3. 提出一个可执行问题或最小实验。
-4. 告诉学生应观察什么，不提前给出最终代码。
-```
+## 6. Lab 专属内容的放置规则
 
-### Orient
-
-- 把宽泛问题改写为一个机制问题。
-- 要求学生先给判断和依据。
-- 不讨论具体 patch。
-
-### Read
-
-- 指定入口或模块，不替学生总结整个文件。
-- 每次追问输入、状态变化、输出、不变量中的一个。
-- 要求指出文件、函数或关键字段。
-
-### Run
-
-- 先让学生预测关键输出，再执行可信命令。
-- 只根据服务端 run 和断言判断是否通过。
-- 退出码 0 不能替代行为断言。
-
-### Debug
-
-- 固定使用“精确现象 -> 可证伪假设 -> 最小实验 -> 证据 -> 结论”。
-- 优先区分不同原因，不直接指出修复行。
-- 学生保存修改后必须要求回归运行。
-
-### Reflect
-
-- 分开记录“我的判断 / AI 提醒 / 验证证据”。
-- 要求解释断言证明了什么，而不是只写“测试通过”。
-
-### Transfer
-
-- 只改变一个关键条件。
-- 要求先预测，再说明验证方式。
-- 不把原题复述视为迁移能力。
-
-## 6. Lab 专属调整示例
-
-以 Lab2 debug 为例：
-
-- 机制范围写在 `tutor/prompts/lab2/context.md`。
-- 通用排错纪律写在 `tutor/prompts/stages/stage-debug.md`。
-- Lab2 专属排错路径写在 `tutor/prompts/lab2/stage-debug.md`。
-- `yield` 埋点、成功断言和 L0-L3 任务提示写在 `lab-packages/lab2/variants/debug/manifest.yaml`。
-- “运行失败进入 debug、回归通过进入 reflect”由 `tutor/state-machine.mjs` 决定。
-
-若只想改变 Lab2 的提问方式，应优先改 `lab2/stage-debug.md`；若想改变所有 Lab 的 debug 方法，改共享 `stage-debug.md`；若想改变进入 debug 的条件，改状态机。
+- Lab 机制范围和可信验证写在 `tutor/prompts/<lab>/context.md`。
+- 通用概念、源码阅读、排错、验证、复盘和迁移方法写在 `prompts/strategies/`。
+- 任务特定的检查点、命令和提示梯度写在 variant manifest。
+- 阶段 Prompt 只为旧 `stage` 路由保留；新功能不应继续增加 `stage-*.md` 的默认依赖。
+- 运行/Trace/诊断证据优先于知识库解释；知识库只能使用本轮召回且通过权限筛选的 chunk。
 
 ## 7. 回归验证
 
-从 `os-lab/handbook` 目录执行：
+在 `os-lab/handbook` 目录执行：
 
 ```powershell
-node --test ../tutor/state-machine.test.mjs
+node --test ../tutor/turn-policy.test.mjs ../learning/rubric-v3.test.mjs
+npm run test:harness
 npm run test:rag-harness
 npm test
+npm run test:smoke
 npm run build
 ```
 
-修改阶段或动作后，还应更新 `tutor/fixtures/harness-cases-v1.json`：
-
-- `allowedStages`：允许状态机落在哪些阶段。
-- `requiredActions`：本轮必须包含哪些教学动作。
-- `forbiddenPatterns`：禁止出现的完整答案、越权结论或错误引导。
-
 最低验收标准：
 
-- 没有可信 run 时，导师不能声称通过。
-- 失败 run 能进入 debug，保存修改后要求回归。
-- 提示等级不超过 L4。
-- 直接索要完整实现仍触发 guardrail。
-- 模型只能引用本轮允许的证据和知识块。
-- 学生端不显示内部阶段、门控、证据摘要和提示等级。
+- 同一问题在 `orient/read/run/debug/reflect/transfer` 下意图、教学动作和护栏类别一致；
+- 没有可信 run 时，导师不能声称验证通过；
+- 直接索要完整实现仍触发答案护栏，且不调用知识检索；
+- 引用只能来自本轮允许的 `run:`、`trace:`、`diag:`、`event:` 或 `kb:` 白名单；
+- 提示等级只在当前问题线程递进，不把旧线程的 L4 泄漏到新问题；
+- 评分使用判断、证据、假设、验证、迭代和复盘行为，不因阶段进入或跨阶段提问加分。
 
-## 8. 维护原则
+## 8. 迁移和旧模式退出条件
 
-1. 状态机决定“何时推进”，Prompt 决定“如何引导”，manifest 决定“这个任务具体提示什么”。
-2. 学生自然语言可以辅助判断，但“已运行、已通过、已提交”必须来自服务端证据。
-3. 不在多个文件复制同一套完整话术；通用策略放 shared stage，Lab 差异放 Lab override，任务细节放 manifest。
-4. 每次调整至少增加一个正例和一个反例测试。
-5. 内部状态可供教师审计和评分使用，但不直接暴露给学生。
+当前迁移顺序已经完成：
 
+1. `/chat` 默认忽略阶段选择回答策略，但保留阶段字段和事件；
+2. 引入服务端共享的本轮意图策略和问题线程提示；
+3. Prompt Eval 和学习评分切换到 V3 行为指标；
+4. 本文及技术文档同步到 intent 默认语义。
+
+暂不删除旧阶段状态机。满足以下条件后才评估移除 `OS_LAB_TUTOR_ROUTING_MODE=stage`：所有已部署前端不再依赖旧阶段门控响应、历史会话读取已覆盖旧字段、教师报告和导出已完成 V3 兼容观察，并且至少一轮真实学生数据的意图不变性、护栏和证据指标稳定。移除时应先发布迁移说明，再删除旧代码和对应测试，不直接覆盖历史数据。

@@ -1,7 +1,5 @@
 # Agent 系统技术设计与实现记录
 
-> AI 导师阶段、Prompt、门控和提示等级的具体调整方法见 [AI 导师阶段配置与引导设计指南](./ai-tutor-stage-guide.md)。
-
 本文记录 OS Lab 中 AI 导师、AI 学习评价和 Harness 工程的可执行技术契约。它描述当前已经落地的边界与接口，对尚未落地的能力明确标为后续步骤，不把设计设想写成既成事实。
 
 ## 1. 总体目标与边界
@@ -10,12 +8,10 @@
 
 | 组件 | 输入 | 核心职责 | 输出 | 权限边界 |
 | --- | --- | --- | --- | --- |
-| AI Tutor | 当前 Lab、阶段状态、学生消息、代码/运行/Trace 证据、允许的知识片段 | 通过递进提示促成判断、观察、假设、验证和迁移；拒绝直接交付答案 | 一轮教学回复、最多一个反问、动作和合法引用 | 不能改变服务端阶段，不能声称没有证据的运行结果，不能读取 `teacher-only` |
+| AI Tutor | 当前 Lab、学生消息、本轮意图、阶段遥测、代码/运行/Trace 证据、允许的知识片段 | 通过问题相关的递进提示促成判断、观察、假设、验证和迁移；拒绝直接交付答案 | 一轮教学回复、最多一个反问、动作和合法引用 | 不能伪造服务端证据，不能读取 `teacher-only`；阶段字段不决定默认回答策略 |
 | AI Assessment | 学习事件、运行断言、报告、Tutor 对话、知识库元数据 | 汇总学习过程并给出带证据的量规建议 | 细项分数、证据引用、待复核项、学习摘要 | 不拥有最终成绩裁决权；没有证据的项必须标为未观察到 |
-| Tutor Harness | Tutor fixture、阶段/证据上下文、候选回复 | 离线回归教学安全与行为契约 | 泄漏率、阶段准确率、动作召回、引用准确率等 | 不访问真实学生数据，不调用生产模型 |
+| Tutor Harness | Tutor fixture、问题意图/阶段遥测、证据上下文、候选回复 | 离线回归教学安全与行为契约 | 问题相关性、引导动作、答案泄漏、引用准确率和跨阶段一致性 | 不访问真实学生数据，不调用生产模型 |
 | Assessment Harness | 事件序列、报告和评分候选 | 回归评分稳定性、证据完整性和边界行为 | 量规断言、证据覆盖率、越权/幻觉统计 | 与 Tutor Harness 分开计分，允许共享事件 fixture |
-
-两个 Harness 不是一个混合评分器。它们可以共享 `event-v2`、`run-result-v1` 等输入 schema 和测试运行器，但必须拥有独立的期望字段、阈值和失败门槛；这样 Tutor 的“是否追问”不会被 Assessment 的“是否评分”掩盖。
 
 ## 2. 运行时架构
 
@@ -24,46 +20,42 @@ flowchart LR
   UI[Workbench / Tutor UI] --> S[handbook/tutor-server.mjs]
   S --> I[身份与 Lab 解锁]
   S --> E[可信证据汇总\nrun / trace / diagnostics / report]
-  I --> D[tutor/state-machine.mjs\n阶段门控与动作决策]
+  I --> D[tutor/turn-policy.mjs\n本轮意图与问题线程]
   E --> D
   D --> P[knowledge access-policy.json\n内容级别与范围过滤]
   P --> R[Retriever\n当前 Lab + 公共概念]
-  R --> A[Prompt Assembly\nsystem + stage + evidence + KB]
+  R --> A[Prompt Assembly\nsystem + Lab + intent + context + KB]
   A --> M[LLM Adapter]
-  M --> G[tutor/state-machine.mjs\n输出护栏与引用校验]
+  M --> G[tutor/turn-policy.mjs + enforceTutorOutput()\n输出护栏与引用校验]
   G --> UI
   G --> T[(Trace / audit log)]
-  T --> AS[Assessment Pipeline\nlearning/rubric-v2.mjs]
+  T --> AS[Assessment Pipeline\nlearning/rubric-v3.mjs]
 ```
 
-当前 Tutor 的权威控制点在服务端：`decideTutorTurn()` 先于模型调用执行阶段和证据门控，`enforceTutorOutput()` 在模型输出后执行答案泄漏与 `run:/trace:/event:` 引用校验。RAG 只能提供不可信的教学材料，不能覆盖这两个控制点。
+当前 Tutor 的权威控制点在服务端：`planTutorTurn()` 先于模型调用识别本轮意图、问题线程和允许动作，`enforceTutorOutput()` 在模型输出后执行答案泄漏与 `run:/trace:/event:` 引用校验。RAG 只能提供不可信的教学材料，不能覆盖这两个控制点。
 
-### Tutor 一轮的状态转换
+### Tutor 一轮的回答策略
 
-```mermaid
-stateDiagram-v2
-  [*] --> orient
-  orient --> read: 观察/判断已给出
-  read --> run: 提供源码位置或代码证据
-  run --> reflect: 可信运行通过
-  run --> debug: 可信运行失败
-  debug --> run: 保存修改后回归
-  debug --> reflect: 回归通过
-  reflect --> transfer: 反思与报告证据齐全
-  transfer --> [*]
-  orient --> orient: 缺少判断或索要完整答案
+```text
+concept       -> 必要概念回应 + ask-for-judgment
+code-reading  -> 代码上下文回应 + request-source-evidence
+debug         -> 承认失败现象 + request-falsifiable-hypothesis
+verification  -> 定义可观察证据 + request-minimal-verification
+reflection    -> 连接结论与证据 + ask-reflection-limit
+transfer      -> 区分不变量/变化 + ask-transfer-prediction
+direct-answer -> 答案护栏 + request-student-attempt
 ```
 
-每个阶段只允许一个主要教学动作（例如 `request-source-evidence` 或 `request-falsifiable-hypothesis`）。直接索要完整代码时，状态保持不变并执行 `apply-answer-guardrail`；提示层级最多递进到 L4，防止一次回复越过学习阶段。
+阶段只记录学生在工作台中的位置，不决定上述映射。直接索要完整代码时，执行 `apply-answer-guardrail`；提示层级最多递进到 L4，并按当前 `topicKey` 独立累计。
 
 ## 3. Harness 工程
 
-Tutor Harness 的实现入口是 [tutor/harness.mjs](../tutor/harness.mjs)，fixture 位于 `tutor/fixtures/harness-cases-v1.json`，命令入口是 `tutor/harness-cli.mjs`。当前阈值包括：答案泄漏率不高于 5%、阶段准确率和动作召回不低于 85%、引用准确率不低于 90%、无证据判断率为 0、单轮最多一个问题的比例不低于 90%。
+Tutor Harness 的实现入口是 [tutor/harness.mjs](../tutor/harness.mjs)，Prompt Eval V3 的实现入口是 [tutor/prompt-eval/scoring-v3.mjs](../tutor/prompt-eval/scoring-v3.mjs)，命令入口是 `tutor/harness-cli.mjs`。当前评测关注问题相关性、引导动作正确性、答案泄漏率、证据引用准确率和跨阶段不变性；阶段关键词和阶段分数不再作为主要奖励。
 
 Harness 对每一轮同时检查：
 
 1. 回复是否命中 `forbiddenPatterns`（完整实现、patch、直接答案等）。
-2. 服务端选择的阶段是否在 `allowedStages`，是否包含 `requiredActions`。
+2. 服务端选择的问题意图是否命中预期，是否包含该意图的 `requiredActions`；阶段只作为跨阶段不变性测试的变量。
 3. 回复中的引用是否属于本轮输入证据；任何越权引用都失败。
 4. `mastered/passed/correct/incorrect` 等判断是否绑定了有效证据。
 5. 是否只问一个可执行问题。
@@ -76,7 +68,7 @@ Assessment Harness 应复用事件和证据引用 schema，但使用独立 fixtu
 
 ```mermaid
 flowchart TB
-  Q[学生问题] --> C[查询理解\nlab / concept / stage / intent]
+  Q[学生问题] --> C[查询理解\nlab / concept / intent / topic]
   C --> L1[Lab 专属层\n当前手册、concepts、检查点]
   C --> L2[公共概念层\nOSTEP、讲义、RISC-V、CSAPP]
   C --> L3[证据层\n可信 run / trace / diagnostics]
@@ -84,7 +76,7 @@ flowchart TB
   L2 --> X
   L3 --> X
   X --> H[最多 5 个知识 chunk\n公共层最多 2 个]
-  H --> T[生成阶段适配的提示\n而非答案]
+  H --> T[生成意图适配的提示\n而非答案]
 ```
 
 证据层不是普通文本 RAG：它来自服务端验证过的运行和 Trace，优先级高于书本解释。知识片段必须携带 `sourceId`、`contentClass`、`labScope`、`sectionPath` 和稳定 locator；Tutor 的 `kb:` 引用只能指向本轮实际召回的 chunk。未解锁 Lab 不允许通过公共资源回退获取专属材料。
@@ -105,7 +97,7 @@ flowchart TB
 [learning/knowledge/access-policy.json](../learning/knowledge/access-policy.json) 定义四类内容：
 
 - `student-safe`：可检索、可有限引用（最多 240 字符）。
-- `guided-hint`：只能转换成一个阶段适配的问题或观察目标，不得原文引用。
+- `guided-hint`：只能转换成一个与本轮意图匹配的问题或观察目标，不得原文引用。
 - `teacher-only`：仅评分和教师复核使用。
 - `system-metadata`：仅服务端门控使用，不进入全文索引。
 
@@ -240,7 +232,7 @@ Store 已提供 `knowledgeTree()`、`listSources()`、`listChunks()`、`getChunk
 
 ### 对话接入顺序
 
-Tutor Server 在一轮对话中执行如下顺序，RAG 不拥有阶段推进或拒答权限：
+Tutor Server 在一轮对话中执行如下顺序，RAG 不拥有意图选择、阶段遥测或拒答权限：
 
 ```mermaid
 sequenceDiagram
@@ -249,7 +241,7 @@ sequenceDiagram
   participant K as KnowledgeStore
   participant M as LLM
   U->>S: message + labId + evidenceRefs
-  S->>S: 身份/Lab/证据校验 + decideTutorTurn
+  S->>S: 身份/Lab/证据校验 + planTutorTurn + topic hint state
   alt 直接答案护栏命中
     S-->>U: 规则式引导（不访问知识库）
   else 普通教学问题
@@ -456,7 +448,7 @@ Tutor Server 将 `limit` 规范到 1-200，默认 100，将 `offset` 规范为�
 
 ### 14.1 Harness 契约
 
-RAG Harness 不调用生产模型，也不替代原有 Tutor Harness 的阶段/动作评分。它接收一个最小、可版本化的 case：
+RAG Harness 不调用生产模型，也不替代 Tutor Harness 的意图/动作和安全评分。它接收一个最小、可版本化的 case；case 中的 `stage` 是用于复现工作台上下文的遥测输入，不是回答策略期望：
 
 ```json
 {
@@ -511,13 +503,13 @@ sequenceDiagram
   participant M as LLM
   participant V as TutorMessage
   U->>S: POST /chat（Lab、阶段、问题、证据）
-  S->>S: decideTutorTurn + direct-answer guardrail
+  S->>S: planTutorTurn + topic hint state + direct-answer guardrail
   alt 直接索要完整答案
     S-->>U: guardrail + 空 knowledge + guardrail-before-retrieval
   else 普通教学问题
     S->>K: 当前 Lab + global，student-safe/guided-hint
     K-->>S: 最多 5 个 chunk + lexical/vector/fallback diagnostics
-    S->>M: system/stage/evidence + 不可信 knowledge-chunk
+    S->>M: system/Lab/intent/current context/evidence + 不可信 knowledge-chunk
     M-->>S: candidate reply
     S->>S: enforceTutorOutput + 当前轮 kb citation allowlist
     S-->>U: JSON 或 SSE meta/done（reply、knowledge、retrieval）

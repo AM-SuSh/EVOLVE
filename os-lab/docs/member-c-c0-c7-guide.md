@@ -73,13 +73,13 @@ npm run dev
 结构化学习事件 + 服务端可信运行 + Trace 制品
               |
               v
-服务端状态机判断当前阶段和缺少的退出证据
-              |
-              v
-AI 导师只执行当前阶段允许的教学动作
-              |
-              v
-Rubric v2 评价 + 概念掌握画像
+服务端识别本轮问题意图、问题线程和可信证据
+               |
+               v
+AI 导师按问题意图执行一个引导动作，不直接交付答案
+               |
+               v
+Rubric v3 证据行为评价 + 概念掌握画像
               |
               v
 命中风险门控时进入教师复核队列并保留审计记录
@@ -89,7 +89,7 @@ Rubric v2 评价 + 概念掌握画像
 
 1. **学习过程可记录**：记录提问、提示、保存、运行、诊断、Trace 检查、反思和迁移回答，而不只记录最终答案。
 2. **证据有可信等级**：学生自述不能替代服务端运行结果；Trace 必须绑定可信 run，并经过哈希、数量和事件顺序校验。
-3. **导师具有动态性但不失控**：动态性来自“当前阶段 + 已有证据 + 尚缺证据”，不是让模型自行决定学生是否完成，也不能由模型绕过状态门控。
+3. **导师具有动态性但不失控**：动态性来自“本轮意图 + 当前问题线程 + 已有证据”，不是让模型自行决定学生是否完成，也不能由模型绕过证据和答案护栏。
 
 ## 4. C0-C7 分阶段完成情况
 
@@ -122,8 +122,8 @@ Rubric v2 评价 + 概念掌握画像
 ### C2：AI 导师离线回归 Harness
 
 - 建立不依赖在线模型的回归 Harness。
-- 用多轮 fixture 检查阶段是否正确、教学动作是否合规、回复是否出现越权代写或无证据放行。
-- 汇总通过率、阶段准确率、动作召回率和禁用模式命中等指标。
+- 用多轮 fixture 检查问题相关性、教学动作是否合规、回复是否出现越权代写或无证据放行，并验证同一问题跨阶段回应不变。
+- 汇总问题相关性、引导动作、答案泄漏率、证据引用准确率和跨阶段一致性。
 - 可通过 `npm run test:harness` 单独运行。
 
 主要文件：
@@ -132,32 +132,35 @@ Rubric v2 评价 + 概念掌握画像
 - [`../tutor/harness-cli.mjs`](../tutor/harness-cli.mjs)
 - [`../tutor/fixtures/harness-cases-v1.json`](../tutor/fixtures/harness-cases-v1.json)
 
-### C3：服务端导师状态机与证据门控
+### C3：服务端导师意图策略与证据门控
 
-- 把阶段推进权从前端和 LLM 收回服务端。
-- 每次对话根据历史事件计算当前阶段、缺失证据和允许的教学动作。
-- LLM 只能生成当前阶段允许的表达，不能自行跳阶段或宣告完成。
+- 把回答策略和证据权限从前端和 LLM 收回服务端。
+- 每次对话根据本轮问题识别 `intent` 和 `topicKey`，再结合可信证据生成允许的教学动作。
+- `stage` 仍由工作台和服务端保存为导航、遥测和历史兼容字段，但默认不决定回答类别；LLM 不能宣告不存在的运行结果或完成状态。
 - 工作台附件将 `run:`、`trace:`、`diag:` 作为结构化 `evidenceRefs` 提交；服务端逐条校验当前账号与 Lab，伪造其他学生 runId 直接拒绝。
 - AI 回复中的证据引用必须出现在服务端白名单中；出现越权引用时丢弃原回复并返回安全追问。
-- 新增迁移阶段提示词，并将服务端状态返回前端用于持续交互。
+- 新增七类意图策略和问题线程提示；服务端状态返回前端用于持续交互，内部字段不作为学生的阶段任务清单。
 
 主要文件：
 
-- [`../tutor/state-machine.mjs`](../tutor/state-machine.mjs)
+- [`../tutor/turn-policy.mjs`](../tutor/turn-policy.mjs)
+- [`../tutor/state-machine.mjs`](../tutor/state-machine.mjs)（旧 stage 兼容模式）
 - [`../tutor/evidence-refs.mjs`](../tutor/evidence-refs.mjs)
 - `os-lab/tutor/prompts/stages/stage-transfer.md`
 - [`../handbook/tutor-server.mjs`](../handbook/tutor-server.mjs)
 
-### C4：证据驱动评价 v2 与掌握画像
+### C4：证据行为评价 v3 与掌握画像
 
 - `POST /assessment` 根据指定学习 session 的真实事件和可信 runs 生成评价。
-- Rubric v2 含 14 个细项，区分过程、结果、反思，并为评分项附带 `event:`、`run:` 等证据引用。
+- Rubric v3 含 14 个细项，按判断、证据、假设、可信验证、失败后迭代、反思和迁移评分，区分过程、结果、反思，并为评分项附带 `event:`、`run:` 等证据引用。
+- 阶段进入、消息所在阶段和提示等级只保留为轨迹，不因人为跨阶段提问加分。
 - 无证据的项目保持“未观察”，不会由 LLM 建议补成确定分数。
 - `GET /mastery` 返回按概念聚合的掌握状态、误区、提示等级、置信度和最近评价引用。
 
 主要文件：
 
-- [`../learning/rubric-v2.mjs`](../learning/rubric-v2.mjs)
+- [`../learning/rubric-v3.mjs`](../learning/rubric-v3.mjs)
+- [`../learning/rubric-v2.mjs`](../learning/rubric-v2.mjs)（历史兼容）
 - [`../learning/mastery.mjs`](../learning/mastery.mjs)
 - [`../learning/db.mjs`](../learning/db.mjs)
 
@@ -212,7 +215,7 @@ Rubric v2 评价 + 概念掌握画像
 
 | 身份 | 方法与路径 | 用途 |
 | --- | --- | --- |
-| 学生 | `POST /assessment` | 为 `sessionId + labId` 生成 Rubric v2 评价并执行复核门控 |
+| 学生 | `POST /assessment` | 为 `sessionId + labId` 生成 Rubric v3 证据行为评价并执行复核门控 |
 | 学生 | `GET /mastery` | 查看当前账号的概念掌握画像 |
 | 教师 | `GET /teacher/reviews?status=pending` | 查看待复核评价 |
 | 教师 | `POST /teacher/review` | 提交确认/修正、理由与证据引用 |

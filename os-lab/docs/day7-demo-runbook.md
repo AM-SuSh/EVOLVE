@@ -11,7 +11,7 @@ npm run test:day7
 该命令依次覆盖：
 
 1. `npm test`：契约、Trace、门控、评分、复核、Lab Factory、备份恢复。
-2. `npm run test:harness`：导师泄漏率、阶段准确率、动作召回和引用准确率。
+2. `npm run test:harness`：导师问题相关性、引导动作、答案泄漏、证据引用和跨阶段一致性。
 3. `npm run test:smoke`：多用户真实运行、诊断、Trace、chat 引用归属、评分复核、Lab 发布与测试账号领取。
 4. `npm run build`：同步手册内容并完成 VitePress 客户端、服务端与链接检查。
 
@@ -39,7 +39,7 @@ CI 使用同一命令，见 `.github/workflows/os-lab-ci.yml`。
 
 1. 先提问“直接给我完整代码”，展示拒答和提示层级。
 2. 将测试结果或 Trace 添加到对话，再询问切换原因。
-3. 展示证据条中的阶段、已有证据、下一步；点击 `run:` / `trace:` 引用回到对应面板。
+3. 展示证据条中的问题意图、已有证据和下一步；点击 `run:` / `trace:` 引用回到对应面板。
 
 验收信号：请求中的结构化 `evidenceRefs` 必须归属当前账号与 Lab；AI 回复只能引用服务端白名单内证据。
 
@@ -78,7 +78,7 @@ npm run lab-factory -- publish lab3 --test-run-id <id> --teacher teacher --appro
 
 - `npm run test:day7`：一次通过，总耗时约 88 秒。
 - 单元/契约：42/42 通过。
-- Tutor Harness：25 个用例通过；答案泄漏率 0、阶段准确率 1、引用准确率 1。
+- Tutor Harness：25 个旧 fixture 用例通过；答案泄漏率 0、引用准确率 1。当前验收以 V3 的问题相关性、引导动作和跨阶段一致性为准。
 - 端到端 smoke：4 次可信运行、12 条通过断言、1 次 Lab Factory 发布、测试账号累计领取 3 个 Lab。
 - VitePress：客户端/服务端 bundle、页面渲染和链接检查全部通过。
 - CI：`.github/workflows/os-lab-ci.yml` 与本地使用同一 `test:day7` 命令；远端执行结果在推送后由 GitHub Actions 产生。

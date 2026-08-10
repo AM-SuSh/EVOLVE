@@ -1,5 +1,33 @@
 # os-lab 项目进度总览
 
+## 2026-08-10 - Task: synchronize tutor architecture, deployment and evaluation documentation
+
+### What was done
+
+- 重写 `docs/ai-tutor-stage-guide.md`：明确实验手册是学生工作主线，`stage` 只负责导航、遥测和历史兼容；默认 `/chat` 按 `concept`、`code-reading`、`debug`、`verification`、`reflection`、`transfer`、`direct-answer` 七类意图选择回答策略。
+- 同步 `docs/agent-system-technical.md`、`docs/member-c-c0-c7-guide.md` 和 `docs/day7-demo-runbook.md` 的架构图、Harness 指标、RAG 链路和成员交付说明，移除仍把阶段准确率当主要质量奖励的表述。
+- 更新 `docs/deployment-and-recovery.md`，记录 `OS_LAB_TUTOR_ROUTING_MODE` 的 intent 默认值、stage 兼容用途、V3 评分版本和旧模式可移除条件。
+- 更新 `handbook/docs/workbench-ui.md` 的学生/教师评价文档，改为 `rubric-v3.0.0`、`learningDimensions` 和证据行为指标。
+- 保留本轮开始前用户已有的两份文档删除内容：技术设计文档不再重复放置阶段指南链接和 Harness 混合评分说明；阶段指南不再宣称把内部状态展示给学生。
+
+### Planning comparison
+
+- 已完成迁移计划最后一步“调整评分和文档”：代码、评测、部署和工作台文档现在统一描述 intent 默认模式、topicKey 提示线程、可信证据护栏和 Rubric V3。
+- 已明确旧阶段模式的退出条件，不把兼容字段误写成当前教学策略，也没有删除旧状态机、阶段 Prompt 或历史字段。
+- 已完成全链路对照：Prompt Eval 的跨阶段不变性、学习评分的阶段无关性、RAG 权限、答案护栏和可信运行证据在文档中使用同一套术语和边界。
+
+### Testing
+
+- `npm run test:harness`：34/34，用例全部通过；`questionRelevance`、`guidanceActionAccuracy`、`evidenceCitationAccuracy`、`stageInvarianceRate` 均为 1，答案泄漏率和无依据判断率为 0。
+- `npm run test:smoke`：通过；4 次运行、12 条断言、V3 assessment、掌握度、教师复核和报告链路正常。
+- `npm run build`：通过；内容同步、VitePress 客户端/服务端构建和渲染完成。
+- `npm test`：95 项中 94 项通过；唯一失败仍是既有 `lab-factory.test.mjs:190` 缺少已迁移的 Lab7 debug 源文件 `user/src/bin/signal_mask_test.rs`，与导师意图、评分和文档改动无关。
+- `git diff --check`：通过。
+
+### Notes
+
+- 当前工作区保留两份用户原有文档修改之外，本部分将全部文档修改作为单独提交；后续删除 stage 兼容模式前，应先按部署文档中的条件完成真实数据观察和历史会话审计。
+
 ## 2026-08-10 - Task: replace stage-dependent learning scoring with evidence behavior metrics
 
 ### What was done

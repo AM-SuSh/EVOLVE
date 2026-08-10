@@ -134,25 +134,27 @@
 - **预览最终稿**：与导出 / `POST /reports` 使用同一份 Markdown。
 - **教师布置 UI**：弹窗编辑；可导入 Markdown；无需配置「用途 / 行数」。
 
-## 评分 v2 · 学生得分区（Day4）
+## 评分 v3 · 学生得分区
 
 挂载位置：学习支持 · **学习评价**页签（与实验报告同级；`AssessmentPane` → `AssessmentScorePanel`）。
 
-- **生成**：学生登录后点「生成 / 刷新评价」→ `POST /assessment`，body `{ labId, sessionId }`；权威结果为 `assessment`（`rubric-v2.0.0`：`total` / `dimensions` / 14 `items` / `evidenceRefs`）。
+- **生成**：学生登录后点「生成 / 刷新评价」→ `POST /assessment`，body `{ labId, sessionId }`；权威结果为 `assessment`（`rubric-v3.0.0`：`total` / `dimensions` / `learningDimensions` / 14 `items` / `evidenceRefs`）。
 - **展示**：综合分 + 过程/结果/反思；细项可展开；`status === unobserved` 或无分显示「未观察到」，禁止凭空满分话术。
 - **跳转**：细项 chips 经 `LabWorkspace.navigateEvidenceRef`：
   - `run:` → 底部测试结果（无断言则终端）
   - `trace:` → Trace
   - `diag:` → Problems
   - `event:` → 实验报告页签（事件证据落点）
-- **空态**：未登录 / 无 session / 请求失败时说明原因，**不**用本地 `scoreEvents` 启发式冒充 v2。
+- **空态**：未登录 / 无 session / 请求失败时说明原因，**不**用本地 `scoreEvents` 启发式冒充 V3。
+
+V3 的过程评分观察 `judgment`、`evidence`、`hypothesis`、`verification` 和 `iteration`；反思评分观察判断归因、AI 提醒与证据区分以及迁移对照。阶段进入、消息所在阶段和提示等级只写入轨迹，不改变评价分数。
 
 ## 实验报告操作文案
 
 - **AI 点评**：把报告发给 AI 助手（浮层对话），不是真人老师。
 - **提交给老师**：提交前弹窗二次确认；重复提交覆盖本实验上一份。
 
-## 评分 v2 · 教师评分复核（Day4–5）
+## 评分 v3 · 教师评分复核
 
 挂载：`/guide/teacher-report`（`TeacherReport`）。与「实验验收」页（`TeacherReview` / 报告批语）不同入口。
 
