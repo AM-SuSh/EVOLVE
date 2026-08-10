@@ -132,7 +132,7 @@ lab8 = ["lab7", "dep:os-sync"]
 
 **第 2 周 Lab7**：统一 fd、信号框架、`os-signal`、`dup`；`make test-lab7`。
 
-**第 3 周 Lab8**：双层线程、`os-sync`、死锁检测、`lab8_integration_test`；`make test-lab8`。
+**第 3 周 Lab8**：双层线程、`os-sync`、死锁检测；学生动手点为 `kernel/src/sync_syscall.rs`（fill：`finish_blocking_syscall`；debug：unlock `re_enque`）；initproc 仍为 `lab8_integration_test`；`make test-lab8`。
 
 **第 4 周**：host 单测扩展、三件套自查、Lab6–8 QEMU 回归、`progress.md` 更新。
 
@@ -507,7 +507,7 @@ host 单测：`os-signal` 4 项（pending/mask、fork 继承、默认致命、SI
 | 模块 | 职责 |
 |------|------|
 | `processor.rs` | TCB、就绪队列、线程 syscall |
-| `sync_syscall.rs` | mutex / semaphore / condvar |
+| `sync_syscall.rs` | mutex / semaphore / condvar；**Lab8 任务文件**（`finish_blocking_syscall` / unlock `re_enque`） |
 | `deadlock.rs` | 死锁检测 |
 | `os-sync/` | 阻塞原语 host 测 |
 
@@ -519,7 +519,7 @@ cargo build -p kernel --features lab8 --release
 make test-lab8
 ```
 
-initproc：`lab8_integration_test`（单进程全链，末尾 `exec pipe_test`）。
+initproc：`lab8_integration_test`（单进程全链，末尾 `exec pipe_test`）。**不是** fill/debug 任务文件——任务下发覆盖的是 `kernel/src/sync_syscall.rs`。
 
 用户测例：`user/src/bin/lab8_*`、`threads_*`、`mutex_test`、`condvar_test`、`pipetest`、`deadlock_*`。
 

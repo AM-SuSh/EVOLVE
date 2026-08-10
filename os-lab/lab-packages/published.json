@@ -503,22 +503,22 @@
       },
       "variants": {
         "fill": {
-          "label": "学生实现互斥临界区，并创建两个 worker 累加共享计数到 50。",
+          "label": "学生补全 finish_blocking_syscall：-1 时回退 sepc 并阻塞调度。",
           "files": [
-            "user/src/bin/lab8_integration_test.rs"
+            "kernel/src/sync_syscall.rs"
           ],
           "sources": {
-            "user/src/bin/lab8_integration_test.rs": "scaffold/exercises/lab8/fill/user/src/bin/lab8_integration_test.rs"
+            "kernel/src/sync_syscall.rs": "scaffold/exercises/lab8/fill/kernel/src/sync_syscall.rs"
           },
           "manifest": "lab-packages/lab8/variants/fill/manifest.yaml"
         },
         "debug": {
-          "label": "用最终共享计数不变量区分互斥失效与每线程工作量的 off-by-one 错误。",
+          "label": "学生排查 sys_mutex_unlock 漏掉 re_enque，导致等待者不醒。",
           "files": [
-            "user/src/bin/lab8_integration_test.rs"
+            "kernel/src/sync_syscall.rs"
           ],
           "sources": {
-            "user/src/bin/lab8_integration_test.rs": "scaffold/exercises/lab8/debug/user/src/bin/lab8_integration_test.rs"
+            "kernel/src/sync_syscall.rs": "scaffold/exercises/lab8/debug/kernel/src/sync_syscall.rs"
           },
           "manifest": "lab-packages/lab8/variants/debug/manifest.yaml"
         }

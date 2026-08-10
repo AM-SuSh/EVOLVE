@@ -112,8 +112,7 @@ pub fn get_app_elf_by_name(name: &str) -> Option<&'static [u8]> {
         }
         #[cfg(feature = "lab8")]
         "deadlock_sem_test" => Some(include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/deadlock_sem_test"))),
-        #[cfg(feature = "lab8")]
-        "pipe_test" => Some(include_bytes!(concat!(env!("KERNEL_APP_DIR"), "/pipe_test"))),
+        // lab5 已有 "pipe_test" 分支；lab8 复用，勿再匹配一次（否则 unreachable）
         _ => None,
     }
 }

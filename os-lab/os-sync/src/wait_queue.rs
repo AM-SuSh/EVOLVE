@@ -41,6 +41,7 @@ impl WaitQueue {
         self.len == 0
     }
 
+    #[allow(dead_code)]
     pub fn remove(&mut self, tid: ThreadId) {
         if self.len == 0 {
             return;

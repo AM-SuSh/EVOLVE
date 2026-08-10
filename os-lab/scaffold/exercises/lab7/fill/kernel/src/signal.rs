@@ -1,4 +1,4 @@
-//! 【Lab7 任务：补全】`handle_pending` 中「默认动作 + 构造信号帧」的部分是 `todo!()`。
+//! 【Lab7 任务：fill】`handle_pending` 中「默认动作 + 构造信号帧」的部分是 `todo!()`。
 //! 请先阅读 `handle_pending` 上方的思路提示，再实现投递逻辑。
 //! 验证：`make test-lab7`，应看到 `dup_test pass`、`signal_test pass`、
 //! `signal_mask_test pass` 与 `pipe_test pass`。

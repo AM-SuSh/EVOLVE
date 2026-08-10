@@ -17,12 +17,26 @@
 
 ### 1.2 `kernel/src/sync_syscall.rs`
 
-| syscall | 要点 |
+| syscall / 函数 | 要点 |
 |---------|------|
-| `mutex_lock` | 先死锁检测 → 可能 `-0xDEAD`；否则 `lock(tid)`，失败则 `Blocked` 返回 `-1` |
-| `mutex_unlock` | `unlock()` 得到待唤醒 tid → `re_enque` |
+| `mutex_lock` | 先死锁检测 → 可能 `-0xDEAD`；否则 `lock(tid)`，失败则记录等待并返回 `-1` |
+| `mutex_unlock` | `unlock()` 得到待唤醒 tid → `mark_mutex_handoff` + **`re_enque`** |
 | `semaphore_down` / `up` | 与 mutex 类似 |
-| `condvar_wait` | 释放关联 mutex → 入等待队列 → 阻塞；唤醒后用户重试并重新持锁 |
+| `condvar_wait` | 释放关联 mutex → 入等待队列 → 返回 `-1`；唤醒后用户重试并重新持锁 |
+| `finish_blocking_syscall` | **仅当** `ret == -1`：回退 `sepc` 并 `block_thread_slot_and_run_next`（任务一 fill） |
+
+`finish_blocking_syscall` 参考实现（任务一 fill）：
+
+```rust
+pub fn finish_blocking_syscall(ret: isize, cx: &mut TrapContext, thread_slot: usize) {
+    if ret == -1 {
+        cx.sepc = cx.sepc.wrapping_sub(4);
+        processor::block_thread_slot_and_run_next(thread_slot, cx);
+    }
+}
+```
+
+debug 变体常埋点在 `sys_mutex_unlock`：只做了 `mark_mutex_handoff`，漏掉 `re_enque(tid)`，等待者永久 Blocked。
 
 ### 1.3 `os-sync` 阻塞 mutex
 
@@ -61,7 +75,8 @@ loop {
 
 ### 第 2 题：Blocked 与重试
 
-返回 `-1` 前调用 `make_current_blocked()`，当前线程移出就绪队列并调度他人。`unlock`/`up`/`signal` 内对等待者 `re_enque`。用户态 while 重试：一次 syscall 只表示「尝试」；唤醒后须再次陷入内核完成加锁，边界清晰，也便于间隙处理信号。
+`mutex_lock` 返回 `-1` 后，`trap` 调用 `finish_blocking_syscall`：回退 `sepc`（trap 入口已 `advance_sepc`，否则唤醒后不会重试同一条 `ecall`），再 `block_thread_slot_and_run_next` 标 Blocked 并调度他人。`unlock`/`up`/`signal` 内对等待者 `re_enque`。用户态 while 重试：一次 syscall 只表示「尝试」；唤醒后须再次陷入内核完成加锁。  
+若只 `mark_mutex_handoff` 而不 `re_enque`，等待线程永远停在 Blocked，典型现象是 `mutex_test` / `condvar_test` 卡住。
 
 ### 第 3 题：自旋 vs 阻塞
 
@@ -75,7 +90,8 @@ loop {
 
 `-1`：正常「暂时拿不到，已阻塞，稍后再试」。  
 `-0xDEAD`：检测到死锁，**不应再阻塞**，用户应中止或改设计。  
-`deadlock_mutex_test`：同线程对同一 mutex 二次 `lock`，等待图见自环，在真正入队阻塞前短路返回 `-0xDEAD`。
+`deadlock_mutex_test`：同线程对同一 mutex 二次 `lock`，等待图见自环，在真正入队阻塞前短路返回 `-0xDEAD`。  
+`finish_blocking_syscall` 只认 `ret == -1`：若把 `-0xDEAD` 也当成阻塞，调用者会被送进永远等不到的 `Blocked`，与「再试也无意义」的语义相反。
 
 ## 三、任务三动手修改的现象参考
 

@@ -1,44 +1,53 @@
-# lab8 fill 变体（加强版）
+# lab8 fill 变体：补全阻塞式同步的 finish_blocking_syscall
 
-id: lab8-fill
+id: lab8-fill-blocking-finish
 lab: lab8
 variant: fill
-version: 1.1.0
+version: 2.0.0
 
 learning_goal: |
-  学生实现互斥临界区，并创建两个 worker 将共享计数累加到 50。
+  学生实现 finish_blocking_syscall：当同步 syscall 返回 -1 时，回退 sepc
+  并把当前线程送入 Blocked，再调度其他线程；使 mutex / condvar 等待可被唤醒重试。
 
 target_concepts:
+  - os.thread.blocking
   - os.sync.mutex
-  - os.thread.tcb
 
-student_file: user/src/bin/lab8_integration_test.rs
-source_template: ../../../scaffold/exercises/lab8/fill/user/src/bin/lab8_integration_test.rs
+student_file: kernel/src/sync_syscall.rs
+source_template: ../../../../scaffold/exercises/lab8/fill/kernel/src/sync_syscall.rs
+manual_anchor: labs/lab8-thread-sync.md
 
 what_is_blank:
-  - symbol: bump_under_mutex / worker / spawn_two_workers
+  - symbol: finish_blocking_syscall
     hint_in_source: true
+    required_behavior:
+      - 仅当 ret == -1 时处理
+      - cx.sepc wrapping_sub 4
+      - 调用 block_thread_slot_and_run_next
 
 success_criteria:
   recipe: lab8.verify.v1
-  assertions: [mutex-pass]
+  assertions: [threads-pass, mutex-pass, condvar-pass, pipe-pass]
 
 negative_tests:
   - id: leave-todo
-    description: 未实现（仍 todo!）则编译或运行失败
+    description: 未实现（仍 todo!）则编译或运行失败 / 测例卡住
     expect_fail: true
+  - id: never-rewind-sepc
+    description: 只 block 不回退 sepc → 唤醒后不重试 ecall，同步测例异常
+    expect_fail_assertions: [mutex-pass]
 
 hint_ladder:
   - level: 0
-    when: 尚未描述协议/循环
-    say: 先用自己的话写出要补的步骤，再对照函数注释。
+    when: 尚未描述要补什么
+    say: 先说清「返回 -1」对阻塞锁意味着什么，用户态 while 重试依赖什么。
   - level: 1
     when: 方向正确但仍卡住
-    say: 对照手册背景知识，用最小改动验证每一步假设。
+    say: trap 入口是否已经 advance_sepc？阻塞唤醒后 PC 应指回哪里？
   - level: 2
-    when: 能编译但断言失败
-    say: 对照预期输出与边界（关闭哪一端、nlink 推算、是否持锁）。
+    when: 能编译但 mutex_test 卡住
+    say: 核对 sepc-=4 与 block_thread_slot_and_run_next；不要把 -0xDEAD 当阻塞。
 
 report_prompts:
-  - 你实现的关键步骤是什么？用测例输出证明正确。
-  - 若某一步顺序反了（例如先关错管道端、未持锁），会发生什么？
+  - 为何阻塞路径必须回退 sepc？用 mutex_test 现象证明。
+  - -1 与 -0xDEAD 在 finish_blocking_syscall 里为何不能一视同仁？

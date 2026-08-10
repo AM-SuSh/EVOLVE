@@ -850,7 +850,7 @@ export const tutorLabs: TutorLab[] = [
     systemLayer: '并发同步',
     buildOutcome: '在进程内支持多线程，提供阻塞式互斥锁、信号量、条件变量与死锁检测。',
     bridge: '承接 Lab7 的进程能力，把执行流细分为线程，并让同步原语真正阻塞而非自旋。',
-    focus: '理解进程/线程双层结构、阻塞唤醒队列与银行家式死锁检测。',
+    focus: '理解进程/线程双层结构、finish_blocking_syscall 阻塞衔接、unlock 唤醒与死锁短路。',
     documentRoute: '/labs/lab8-thread-sync',
     initialQuestion: '自旋锁和阻塞锁在内核里的代价差在哪里？先描述一个线程拿不到锁之后应该发生什么，再沿 wait queue 验证。',
     verificationCommand: 'make test-lab8',
@@ -863,11 +863,47 @@ export const tutorLabs: TutorLab[] = [
       { label: '清理', command: 'cargo clean -p kernel' },
     ],
     resources: {
-      orient: { paths: ['labs/lab8-thread-sync.md', 'kernel/src/processor.rs'], docs: [{ title: 'Lab8 实验指导', description: '建立线程模型与同步原语的整体认识', href: '/labs/lab8-thread-sync' }, { title: '实验知识地图', description: '查看完整八层系统能力链', href: '/labs/overview' }] },
-      read: { paths: ['kernel/src/processor.rs', 'kernel/src/sync_syscall.rs', 'os-sync/src/mutex.rs'], docs: [{ title: 'Lab8 机制说明', description: '沿线程创建、阻塞唤醒与死锁检测阅读实现', href: '/labs/lab8-thread-sync' }, { title: '系统架构', description: '理解 os-sync 组件与内核调度的接口', href: '/project/architecture' }] },
-      run: { paths: ['user/src/bin/threads_test.rs', 'user/src/bin/mutex_test.rs'], docs: [{ title: '快速验证', description: '运行 lab8 集成测试链', href: '/guide/ai-tutor' }, { title: 'Lab8 阅读理解（任务二）', description: '用实验文档【任务二】自测线程与死锁检测', href: '/labs/lab8-thread-sync' }] },
-      debug: { paths: ['kernel/src/deadlock.rs', 'os-sync/src/wait_queue.rs', 'user/src/bin/deadlock_mutex_test.rs'], docs: [{ title: 'Lab8 常见问题', description: '从唤醒丢失与资源计数定位并发异常', href: '/labs/lab8-thread-sync' }, { title: '验证方法', description: '用重复运行暴露时序问题', href: '/guide/ai-tutor' }] },
-      reflect: { paths: ['project/ai-collaboration.md', 'answers/lab8-answers.md'], docs: [{ title: 'AI 协作记录', description: '整理并发证据链', href: '/project/ai-collaboration' }, { title: 'Lab8 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab8-answers' }] },
+      orient: {
+        paths: ['labs/lab8-thread-sync.md', 'kernel/src/processor.rs', 'kernel/src/sync_syscall.rs'],
+        docs: [
+          { title: 'Lab8 实验指导', description: '建立线程模型与阻塞同步的整体认识', href: '/labs/lab8-thread-sync' },
+          { title: '实验知识地图', description: '查看完整八层系统能力链', href: '/labs/overview' },
+        ],
+      },
+      read: {
+        paths: ['kernel/src/sync_syscall.rs', 'kernel/src/processor.rs', 'os-sync/src/mutex.rs', 'kernel/src/trap.rs'],
+        docs: [
+          { title: 'Lab8 机制说明', description: '沿 lock/unlock、finish_blocking_syscall 与 re_enque 阅读', href: '/labs/lab8-thread-sync' },
+          { title: '系统架构', description: '理解 os-sync 与内核调度接口', href: '/project/architecture' },
+        ],
+      },
+      run: {
+        paths: [
+          'kernel/src/sync_syscall.rs',
+          'user/src/bin/lab8_integration_test.rs',
+          'user/src/bin/threads_test.rs',
+          'user/src/bin/mutex_test.rs',
+          'user/src/bin/condvar_test.rs',
+        ],
+        docs: [
+          { title: '快速验证', description: '运行 lab8 全链 make test-lab8', href: '/guide/ai-tutor' },
+          { title: 'Lab8 阅读理解（任务二）', description: '用实验文档【任务二】自测阻塞与死锁', href: '/labs/lab8-thread-sync' },
+        ],
+      },
+      debug: {
+        paths: ['kernel/src/sync_syscall.rs', 'kernel/src/processor.rs', 'kernel/src/deadlock.rs', 'os-sync/src/wait_queue.rs'],
+        docs: [
+          { title: 'Lab8 常见问题', description: '从 unlock/re_enque 与 finish_blocking 定位卡住', href: '/labs/lab8-thread-sync' },
+          { title: '验证方法', description: '用重复运行暴露唤醒丢失', href: '/guide/ai-tutor' },
+        ],
+      },
+      reflect: {
+        paths: ['answers/lab8-answers.md', 'kernel/src/sync_syscall.rs', 'project/ai-collaboration.md'],
+        docs: [
+          { title: 'AI 协作记录', description: '整理并发证据链', href: '/project/ai-collaboration' },
+          { title: 'Lab8 参考答案', description: '完成复盘后再核对关键结论', href: '/answers/lab8-answers' },
+        ],
+      },
     },
   },
 ]

@@ -1,5 +1,109 @@
 # os-lab 项目进度总览
 
+## 2026-08-10 - Task: 加厚 Lab8 手册背景知识（对齐 Lab6/7 走读风格）
+
+### What was done
+- 重写 `labs/lab8-thread-sync.md` 第二节：补充阅读顺序表、办公室类比、阻塞两拍调用链、`sepc`/`handoff`/`re_enque` 对照、用户态 while 示意、死锁与 finish_blocking 关系，以及「测例坏了查哪里」表；顺带修正实验目标行损坏的加粗标记。
+
+### Testing
+- 人工通读第二节与任务一动手点、`lab.yaml` 断言一致；未改代码路径。
+
+### Notes
+- 改动：`os-lab/labs/lab8-thread-sync.md`；`progress.md`
+- 回滚：还原第二节至上一版。
+
+---
+
+## 2026-08-10 - Task: Lab8 手册通过标准改为断言表（对齐 Lab6）
+
+### What was done
+- 将 `labs/lab8-thread-sync.md` 任务一「通过标准」改为与 Lab6 相同的「下列断言缺一不可」表格，并同步第四节验证命令表述。
+
+### Testing
+- 对照 `lab-packages/lab8/lab.yaml` 断言 id/文本与表内「必须看到」一致。
+
+### Notes
+- 改动：`os-lab/labs/lab8-thread-sync.md`；`progress.md`
+- 回滚：还原该段「通过标准」为旧单行表述。
+
+---
+
+## 2026-08-10 - Task: 修正 Lab7 手册 initproc 笔误
+
+### What was done
+- 将 `labs/lab7-ipc-signal.md`「零、开始之前」中错误的 `lab8_integration_test` 改为 Lab7 实际 initproc `lab7_usertest`。
+
+### Testing
+- 对照同手册 §2.5 / 任务二：initproc 均为 `lab7_usertest`。
+
+### Notes
+- 改动：`os-lab/labs/lab7-ipc-signal.md`；`progress.md`
+- 回滚：将该行改回或还原该文件。
+
+---
+
+## 2026-08-10 - Task: 消除 Lab8 前端 Problems 中的 unused/dead_code 告警
+
+### What was done
+- 消除 `make test-lab8` / `cargo check --features lab8` 时前端 Problems 面板常见的 unused 告警：进程层按 lab8 裁剪未用调度辅助、为 processor/os-sync 预留 API 加 `allow(dead_code)`、去掉 loader 重复的 `pipe_test` 匹配。
+- 同步到学生工作区 `student-labs/dtdt` 及其 lab8 快照（不改动任务文件 `sync_syscall.rs`）。
+
+### Testing
+- `cargo check -p kernel --features lab8 --release`（参考内核与 `student-labs/dtdt`）：无 warning。
+- `cargo check --features lab7/lab4`：仍通过。
+
+### Notes
+- 改动：`os-lab/kernel/src/{process,processor,loader}.rs`；`os-lab/os-sync/src/wait_queue.rs`；已同步 `student-labs/dtdt` 与 `.snapshots/dtdt/lab8` 对应文件（未改任务文件 `sync_syscall.rs`）；`admin`/`dt1002` 仅有 `loader.rs` 时一并同步；`progress.md`
+- 回滚：还原上述文件。其它账号若仍有旧告警，复制同一批文件或 reset lab8 即可。
+
+---
+
+## 2026-08-10 - Task: Lab8 实验改到 kernel/sync_syscall.rs（对齐 Lab2–7）
+
+### What was done
+- Lab8 fill/debug 动手点从用户态 `lab8_integration_test.rs` 改为内核 `kernel/src/sync_syscall.rs`：fill 补全 `finish_blocking_syscall`；debug 修复 `sys_mutex_unlock` 漏掉的 `re_enque`。
+- 同步实验手册、参考答案、catalog/manifest/scaffold、tutor prompts、checkpoints/concepts、前端 tutor-model 与 `docs/lab6-8.md`；清空旧用户态 exercise 目录。
+
+### Testing
+- `node --test os-lab/handbook/lab-factory.test.mjs`：9/9 通过（含 Lab8 debug 源文件断言为 `kernel/src/sync_syscall.rs`）。
+- 人工核对：手册「任务一」与 Lab7 同构；catalog/manifest/scaffold 均指向 `sync_syscall.rs`。
+
+### Notes
+- 改动：`os-lab/scaffold/exercises/lab8/{fill,debug}/kernel/src/sync_syscall.rs`；`lab-packages/lab8/**`；`labs/lab8-thread-sync.md`；`labs/answers/lab8-answers.md`；`tutor/prompts/lab8/**`；`handbook/.vitepress/theme/tutor-model.ts`；`scripts/scaffold.mjs`；`handbook/lab-factory.test.mjs`；`docs/lab6-8.md`；`progress.md`
+- 回滚：还原上述文件；若需恢复旧用户态任务，需从 git 历史取回 `scaffold/exercises/lab8/*/user/...`
+
+---
+
+## 2026-08-10 - Task: 修复可信运行 CARGO_TARGET_DIR 导致找不到 kernel
+
+### What was done
+- 导师服务 `enrichRunEnv` 改为按工作区强制设置 `CARGO_TARGET_DIR=<cwd>/target`，避免继承外部重定向目录后出现「fs.img 在工作区、kernel 在别处」，QEMU 报 `release/kernel: No such file`。
+
+### Testing
+- 代码核对：`runStep` 调用 `enrichRunEnv(cwd)`。需重启 `npm run tutor` 后在前端再跑 `make test-lab7` / 可信验证。
+
+### Notes
+- 改动：`os-lab/handbook/tutor-server.mjs`；`progress.md`
+- 回滚：还原 `enrichRunEnv` 不设置 `CARGO_TARGET_DIR`
+- 重置后 Lab7 fill 的 `signal.rs` 会回到 `todo!()`，需重新补全；本问题与补全无关，是产物路径错位
+
+---
+
+## 2026-08-10 - Task: 为 with_pcb_ref 增加 allow(dead_code)
+
+### What was done
+- 在 `with_pcb_ref` 上增加 `#[allow(dead_code)]`，消除 Lab7 编译时「函数从未使用」警告（该辅助函数主要给 Lab8 用）。
+- 同步参考内核、Lab4 fill/debug scaffold、`dtdt` 工作区及其 lab4–lab7 快照。
+
+### Testing
+- 人工核对上述路径均已带上 `#[allow(dead_code)]`。
+
+### Notes
+- 改动：`os-lab/kernel/src/process.rs`；`scaffold/exercises/lab4/{fill,debug}/kernel/src/process.rs`；`student-labs/dtdt/kernel/src/process.rs`；`student-labs/.snapshots/dtdt/lab{4,5,6,7}/kernel/src/process.rs`；`progress.md`
+- 回滚：去掉各处新增的 `#[allow(dead_code)]`
+
+---
+
 ## 2026-08-10 - Task: fix GitHub CI Lab Factory source assertion
 
 ### What was done

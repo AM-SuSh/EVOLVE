@@ -1511,7 +1511,7 @@ const TOOL_BIN_DIRS = [
 
 const resolvedBinCache = new Map()
 
-function enrichRunEnv() {
+function enrichRunEnv(cwd) {
   const env = { ...process.env }
   if (!env.CARGO_HOME) {
     if (existsSyncSync('D:\\AppGallery\\Rust\\cargo\\bin\\cargo.exe')) {
@@ -1521,6 +1521,14 @@ function enrichRunEnv() {
       env.CARGO_HOME = 'D:\\Rust\\cargo'
       env.RUSTUP_HOME = env.RUSTUP_HOME || 'D:\\Rust\\rustup'
     }
+  }
+  // 强制产物落在工作区 target/，与 recipe/Makefile 的相对路径一致。
+  // 否则若进程继承了外部 CARGO_TARGET_DIR，会出现 fs.img 在工作区、kernel 在别处，
+  // QEMU 报 target/.../release/kernel: No such file or directory。
+  if (cwd) {
+    env.CARGO_TARGET_DIR = path.join(cwd, 'target')
+  } else {
+    delete env.CARGO_TARGET_DIR
   }
   const extra = TOOL_BIN_DIRS.filter((dir) => Boolean(dir) && existsSyncSync(dir))
   if (extra.length) {
@@ -1601,7 +1609,7 @@ function runStep(step, response, run, cwd) {
   return new Promise((resolve) => {
     sendFrame(response, { type: 'step', title: step.title })
     const bin = resolveToolBin(step.cmd)
-    const env = enrichRunEnv()
+    const env = enrichRunEnv(cwd)
     const child = spawn(bin, step.args, { cwd, env, windowsHide: true })
     run.child = child
     let settled = false

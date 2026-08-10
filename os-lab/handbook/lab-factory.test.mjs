@@ -182,7 +182,7 @@ test('B+C sequentially issue every published Lab3-Lab8 debug variant with exact 
       lab5: 'kernel/src/fs/embedded.rs',
       lab6: 'kernel/src/fs/disk.rs',
       lab7: 'kernel/src/signal.rs',
-      lab8: 'user/src/bin/lab8_integration_test.rs',
+      lab8: 'kernel/src/sync_syscall.rs',
     }
     const catalog = getExerciseCatalog()
     for (const [labId, target] of Object.entries(issuedSources)) {

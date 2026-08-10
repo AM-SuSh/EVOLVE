@@ -1,4 +1,4 @@
-//! 【Lab7 任务：排错】`signal_test` / `signal_mask_test` 一直等不到处理函数。
+//! 【Lab7 任务：debug】`signal_test` / `signal_mask_test` 一直等不到处理函数。
 //!
 //! 现象：运行 `make test-lab7` 时，`dup_test pass` 后出现
 //! `signal_child timeout` 与 `signal child exit bad`，随后是

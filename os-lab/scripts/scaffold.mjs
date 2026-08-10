@@ -202,8 +202,14 @@ const LEGACY_EXERCISES = {
   lab8: {
     default: 'debug',
     variants: {
-      fill: { label: '补全：互斥临界区 + 双 worker 累加', files: ['user/src/bin/lab8_integration_test.rs'] },
-      debug: { label: '排错：互斥测例工作量少一轮', files: ['user/src/bin/lab8_integration_test.rs'] },
+      fill: {
+        label: '补全：阻塞返回 -1 时回退 sepc 并调度阻塞',
+        files: ['kernel/src/sync_syscall.rs'],
+      },
+      debug: {
+        label: '排错：mutex unlock 漏掉 re_enque',
+        files: ['kernel/src/sync_syscall.rs'],
+      },
     },
   },
 }
