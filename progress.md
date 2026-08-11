@@ -1,5 +1,19 @@
 # os-lab 项目进度总览
 
+## 2026-08-11 - Task: Lab6 前端相关文件列表对齐 Lab7 精简标准
+
+### What was done
+- 将 `tutor-model.ts` 中 Lab6 各阶段 `paths` 收成与 Lab7 同级规模：orient/read/run/debug/reflect 各 2–3 个核心路径，聚焦 `disk.rs` 与关键测例，去掉全链测例与周边内核文件铺开。
+
+### Testing
+- 人工对照 Lab7：orient 2、read 3、run 3、debug 3、reflect 2；Lab6 现为同一结构。刷新 VitePress 后快捷区应变短。
+
+### Notes
+- 改动：`os-lab/handbook/.vitepress/theme/tutor-model.ts`；`CodePanel.vue` 注释；`progress.md`
+- 回滚：还原 Lab6 `resources.paths` 为全链版本。
+
+---
+
 ## 2026-08-11 - Task: 按开篇三点理顺 Lab8 背景知识叙述流
 
 ### What was done
