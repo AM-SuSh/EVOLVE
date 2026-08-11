@@ -4,12 +4,12 @@
 
 - 解释进程/线程双层结构：线程共享什么、独占什么，线程调度与 Lab2 的任务切换有何异同。
 - 说明阻塞式互斥锁/信号量/条件变量与自旋的代价差别，以及 wait queue 的阻塞唤醒路径。
-- 解释银行家式死锁检测：Available/Allocation/Need 三张表如何随 acquire/release 变化。
-- 用 `make test-lab8` 的测试链（threads / mutex / condvar / deadlock）验证判断，用重复运行暴露时序问题。
+- 说明 `finish_blocking_syscall`：`-1` 时为何要回退 `sepc` 并 `Blocked`；`-0xDEAD` 为何不能当阻塞。
+- 用 `make test-lab8` 的测试链验证判断；对 debug 变体沿 `sys_mutex_unlock` 核对 `re_enque`。
 
 ## 可讨论范围
 
-优先引用 `kernel/src/processor.rs`、`kernel/src/sync_syscall.rs`、`kernel/src/deadlock.rs`、`os-sync/src/mutex.rs` 和 `user/src/bin/deadlock_mutex_test.rs`。可以解释 TCB 状态、wait queue 阻塞唤醒、handoff 与 -0xDEAD 短路等局部接口与不变量，但不能给出完整实验答案或整文件实现。对 debug 变体，在学生完成「计算理论计数并核对每线程循环上界」前，不要直接点出 `lab8_integration_test.rs` 中错误的工作量。
+优先引用 `kernel/src/sync_syscall.rs`、`kernel/src/processor.rs`、`kernel/src/deadlock.rs`、`os-sync/src/mutex.rs` 与 `kernel/src/trap.rs`。可以解释 TCB 状态、wait queue、handoff、`finish_blocking_syscall` 与 `-0xDEAD` 短路等局部接口，但不能给出完整实验答案或整文件实现。对 debug 变体，在学生完成「复现卡住 → 假设唤醒丢失 → 核对 unlock」前，不要直接点出漏掉的 `re_enque`。
 
 ## 客观验证
 

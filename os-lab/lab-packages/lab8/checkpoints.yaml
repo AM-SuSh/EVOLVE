@@ -2,7 +2,7 @@ schema_version: 1
 lab_id: lab8
 checkpoints:
   - { id: C8-1, stage: orient, required_evidence: [manual], prompt: 列出线程共享与独占的状态。 }
-  - { id: C8-2, stage: read, required_evidence: [code], prompt: 追踪 mutex 获取失败后的阻塞和唤醒。 }
+  - { id: C8-2, stage: read, required_evidence: [code], prompt: 追踪 mutex 获取失败后的阻塞、finish_blocking_syscall 与 unlock 唤醒。 }
   - { id: C8-3, stage: run, required_evidence: [run], prompt: 保存线程同步与死锁八条可信断言。 }
-  - { id: C8-4, stage: debug, required_evidence: [run, code], prompt: 计算理论计数并核对每线程循环边界。 }
-  - { id: C8-5, stage: reflect, required_evidence: [report], prompt: 说明为何计数错误不一定来自锁实现。 }
+  - { id: C8-4, stage: debug, required_evidence: [run, code], prompt: 复现卡住点并核对 unlock 是否 re_enque。 }
+  - { id: C8-5, stage: reflect, required_evidence: [report], prompt: 说明 -1 阻塞重试与 -0xDEAD 短路为何不能混用。 }

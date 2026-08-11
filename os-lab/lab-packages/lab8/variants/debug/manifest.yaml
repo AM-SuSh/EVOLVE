@@ -1,25 +1,61 @@
-id: lab8-debug-mutex-workload
+# lab8 debug 变体：sys_mutex_unlock 漏掉 re_enque
+
+id: lab8-debug-mutex-reenque
 lab: lab8
 variant: debug
-version: 1.0.0
-learning_goal: 用最终共享计数不变量区分互斥失效与每线程工作量的 off-by-one 错误。
-target_concepts: [os.sync.mutex]
-student_file: user/src/bin/lab8_integration_test.rs
-source_template: ../../../../scaffold/exercises/lab8/debug/user/src/bin/lab8_integration_test.rs
-manual_anchor: labs/lab8-thread-sync.md#任务一跑通-lab8必做
+version: 2.0.0
+
+learning_goal: |
+  学生排查 sys_mutex_unlock：mark_mutex_handoff 之后漏掉 re_enque，
+  导致等待者永久 Blocked，mutex_test / condvar_test 卡住。
+
+target_concepts:
+  - os.thread.blocking
+  - os.sync.mutex
+
+student_file: kernel/src/sync_syscall.rs
+source_template: ../../../../scaffold/exercises/lab8/debug/kernel/src/sync_syscall.rs
+manual_anchor: labs/lab8-thread-sync.md
+
 planted_bug:
-  location: mutex_test worker 的循环上界
-  wrong: 每个线程只执行 PER_THREAD - 1 次更新
-  correct: 每个线程执行完整 PER_THREAD 次更新
-  symptom: 线程创建与等待成功，但报告 mutex_test counter mismatch
+  location: sys_mutex_unlock 唤醒分支
+  wrong: 只 mark_mutex_handoff，注释掉 re_enque(tid)
+  correct: handoff 后必须 re_enque(tid)
+  symptom: threads_test 可能通过，但 mutex_test / condvar_test 缺少 pass 或挂起
+
 success_criteria:
   recipe: lab8.verify.v1
-  assertions: [threads-pass, threads-arg-pass, mutex-pass, condvar-pass, pipetest-pass, deadlock-mutex-pass, deadlock-semaphore-pass, pipe-pass]
+  assertions:
+    [
+      threads-pass,
+      threads-arg-pass,
+      mutex-pass,
+      condvar-pass,
+      pipetest-pass,
+      deadlock-mutex-pass,
+      deadlock-semaphore-pass,
+      pipe-pass,
+    ]
+
 negative_tests:
-  - { id: mutex-workload-off-by-one, expect_fail_assertions: [mutex-pass], description: 少一次更新必须让最终计数断言失败 }
+  - id: forget-reenque
+    description: 未恢复 re_enque 则 mutex/condvar 断言失败或超时
+    expect_fail_assertions: [mutex-pass, condvar-pass]
+
 hint_ladder:
-  - { level: 0, when: 尚未运行, say: 先记录理论总数与实际失败位置。 }
-  - { level: 1, when: counter mismatch, say: 分别检查临界区是否加锁和每线程循环次数。 }
-  - { level: 2, when: 只怀疑锁, say: THREAD_COUNT × 实际循环次数是多少？ }
-  - { level: 3, when: 已定位边界, say: 修正循环边界后跑完整同步与死锁回归。 }
-report_prompts: [哪条证据说明线程创建和 waittid 已成功？, 如何区分丢更新与少执行一次？]
+  - level: 0
+    when: 尚未复现
+    say: 先记下卡在哪条 pass 之前，区分「线程创建失败」与「等锁不醒」。
+  - level: 1
+    when: 怀疑调度
+    say: unlock 取出 waking_tid 之后，除了 mark_mutex_handoff 还缺什么？
+  - level: 2
+    when: 已看到 handoff
+    say: Blocked 线程如何回到就绪队列？对照参考路径里的 re_enque。
+  - level: 3
+    when: 仍卡住
+    say: 主路径 waking_tid 与 pending_condvar_wake 两条唤醒，埋点在哪一条？
+
+report_prompts:
+  - 哪条证据说明等待线程已入队但从未被调度？
+  - mark_mutex_handoff 与 re_enque 各自解决什么问题？

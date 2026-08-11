@@ -6,7 +6,7 @@ feature: lab8
 prerequisites: [lab1, lab2, lab3, lab4, lab5, lab6, lab7]
 textbook: [OSTEP Ch.26 Concurrency, OSTEP Ch.28 Locks, OSTEP Ch.30 Condition Variables, OSTEP Ch.32 Common Concurrency Problems]
 status: stable
-manual_revision: lab8-mutex-invariant-debug-stable-v1
+manual_revision: lab8-kernel-blocking-finish-v2.0
 manual: ../../labs/lab8-thread-sync.md
 answers: ../../labs/answers/lab8-answers.md
 tutor_context: ../../tutor/prompts/lab8/context.md
@@ -15,10 +15,10 @@ knowledge:
   - { id: os.sync.mutex, level: mechanism, concept_ref: concepts/thread-sync.yaml#os.sync.mutex }
 tasks:
   - { id: orient, stage: orient, goal: 区分进程资源与线程独占执行上下文 }
-  - { id: read, stage: read, goal: 沿 mutex lock、阻塞队列、unlock 唤醒追踪状态变化 }
+  - { id: read, stage: read, goal: 沿 mutex lock、阻塞队列、unlock 唤醒与 finish_blocking_syscall 追踪 }
   - { id: run, stage: run, goal: 跑通线程、互斥、条件变量、死锁与管道回归断言 }
-  - { id: debug, stage: debug, goal: 用共享计数不变量定位工作量边界错误 }
-  - { id: reflect, stage: reflect, goal: 区分锁实现错误与测试工作量错误的证据 }
+  - { id: debug, stage: debug, goal: 定位 unlock 漏掉 re_enque 导致等待者不醒 }
+  - { id: reflect, stage: reflect, goal: 区分 -1 阻塞重试与 -0xDEAD 死锁短路 }
 starter_files:
   added:
     - kernel/src/processor.rs
@@ -27,17 +27,18 @@ starter_files:
     - os-sync/
     - user/src/bin/mutex_test.rs
     - user/src/bin/condvar_test.rs
+    - user/src/bin/lab8_integration_test.rs
   editable_by_variant:
-    fill: [user/src/bin/lab8_integration_test.rs]
-    debug: [user/src/bin/lab8_integration_test.rs]
+    fill: [kernel/src/sync_syscall.rs]
+    debug: [kernel/src/sync_syscall.rs]
   generated: [Cargo.toml, kernel/Cargo.toml, user/Cargo.toml]
 variants:
   fill:
     manifest: variants/fill/manifest.yaml
-    source: ../../scaffold/exercises/lab8/fill/user/src/bin/lab8_integration_test.rs
+    source: ../../scaffold/exercises/lab8/fill/kernel/src/sync_syscall.rs
   debug:
     manifest: variants/debug/manifest.yaml
-    source: ../../scaffold/exercises/lab8/debug/user/src/bin/lab8_integration_test.rs
+    source: ../../scaffold/exercises/lab8/debug/kernel/src/sync_syscall.rs
 verification:
   recipe: lab8.verify.v1
   command: make test-lab8
@@ -52,6 +53,6 @@ verification:
     - { id: pipe-pass, kind: output-contains, text: "pipe_test pass" }
   observable_trace: []
 misconceptions:
-  - { id: mutex-fixes-workload, statement: 加锁会自动补偿遗漏的循环次数, counter: 锁只保证临界区互斥，不改变每个线程应执行的工作量 }
-  - { id: blocked-is-spinning, statement: 阻塞锁获取失败后仍持续占用 CPU 轮询, counter: 当前线程进入 Blocked 并由 unlock 唤醒重新入队 }
+  - { id: minus-one-is-deadlock, statement: 同步 syscall 返回 -1 就是死锁, counter: -1 表示可重试的阻塞；-0xDEAD 才是死锁短路 }
+  - { id: handoff-equals-ready, statement: mark_mutex_handoff 后等待者会自动运行, counter: 还必须 re_enque 才能回到就绪队列 }
 rubric_ref: ../../learning/rubric-v2-frozen.md

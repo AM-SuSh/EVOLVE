@@ -7,9 +7,9 @@ invariants: [Blocked 线程不可被普通调度选中, 唤醒必须恢复为可
 observable_evidence: [threads_test pass, threads_arg_test pass]
 ---
 id: os.sync.mutex
-title: 互斥锁与共享计数不变量
+title: 阻塞互斥与调度衔接
 level: mechanism
-summary: 每次共享计数更新都必须位于同一把锁保护的临界区；最终值同时取决于互斥正确性和工作量边界。
-source_anchors: [os-sync/src/mutex.rs, user/src/bin/mutex_test.rs]
-invariants: [同一时刻最多一个持有者, 最终计数等于线程数乘每线程次数]
-observable_evidence: [mutex_test pass]
+summary: 拿不到锁返回 -1，由 finish_blocking_syscall 回退 sepc 并 Blocked；unlock 须 mark_mutex_handoff 且 re_enque，用户态 while 重试。
+source_anchors: [kernel/src/sync_syscall.rs, os-sync/src/mutex.rs, kernel/src/trap.rs]
+invariants: [同一时刻最多一个持有者, -1 可重试而 -0xDEAD 不可当阻塞, handoff 不能代替 re_enque]
+observable_evidence: [mutex_test pass, condvar_test pass]

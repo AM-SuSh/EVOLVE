@@ -123,6 +123,7 @@ impl ReadyQueue {
         self.len = write;
     }
 
+    #[allow(dead_code)]
     fn len(&self) -> usize {
         self.len
     }
@@ -315,6 +316,7 @@ pub fn sync_current_trap_cx(cx: &TrapContext) {
     });
 }
 
+#[allow(dead_code)]
 pub fn with_current_trap_cx<R>(f: impl FnOnce(&mut TrapContext) -> R) -> R {
     PROCESSOR.with(|proc| {
         let slot = proc.current.expect("no current thread");
@@ -322,12 +324,14 @@ pub fn with_current_trap_cx<R>(f: impl FnOnce(&mut TrapContext) -> R) -> R {
     })
 }
 
+#[allow(dead_code)]
 pub fn sync_trap_cx_for_slot(slot: usize, cx: &TrapContext) {
     PROCESSOR.with(|proc| {
         proc.slots[slot].as_mut().unwrap().trap_cx = *cx;
     });
 }
 
+#[allow(dead_code)]
 pub fn mark_thread_ready(slot: usize) {
     PROCESSOR.with(|proc| proc.enqueue_ready(slot));
 }
@@ -413,6 +417,7 @@ pub fn run_next_thread() -> ! {
     })
 }
 
+#[allow(dead_code)]
 pub fn yield_current_and_run_next(cx: &TrapContext) -> ! {
     sync_current_trap_cx(cx);
     mark_current_ready();
@@ -437,6 +442,7 @@ pub fn block_thread_slot_and_run_next(slot: usize, cx: &TrapContext) -> ! {
     run_next_thread()
 }
 
+#[allow(dead_code)]
 pub fn block_thread_by_tid(tid: usize, cx: &TrapContext) -> ! {
     PROCESSOR.with(|proc| {
         for slot in 0..MAX_THREADS {
@@ -453,6 +459,7 @@ pub fn block_thread_by_tid(tid: usize, cx: &TrapContext) -> ! {
     run_next_thread()
 }
 
+#[allow(dead_code)]
 pub fn block_current_and_run_next(cx: &TrapContext) -> ! {
     let slot = PROCESSOR.with_ref(|proc| proc.current.expect("no current thread"));
     block_thread_slot_and_run_next(slot, cx)

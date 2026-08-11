@@ -302,6 +302,7 @@ pub fn with_pcb_slot<R>(slot: usize, f: impl FnOnce(&mut ProcessControlBlock) ->
 }
 
 #[cfg(any(feature = "lab7", feature = "lab8"))]
+#[allow(dead_code)]
 pub fn with_pcb_ref<R>(slot: usize, f: impl FnOnce(&ProcessControlBlock) -> R) -> R {
     PROCESS_MANAGER.with_ref(|pm| f(pm.slots[slot].as_ref().expect("invalid pcb slot")))
 }

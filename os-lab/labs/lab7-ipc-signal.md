@@ -21,7 +21,8 @@
    qemu-system-riscv64 --version   # 预期：QEMU emulator version ...
   ```
 3. **建议先读书**：OSTEP 第 5 章（进程 API）、第 39 章（文件与管道直觉）、第 33 章（事件何时介入执行流）。带着「管道和信号差在哪」「信号什么时候真正执行」进来即可。Lab7 对应 feature 为 `lab7`（依赖 `lab6`）。
-
+> Lab7 需要 VirtIO 与磁盘镜像 `fs.img`。直接跑 `make test-lab7` 即可：编内核时 `build.rs` 会自动打包用户程序与 `fs.img`（`initproc` 为 `lab7_usertest`）；也可用 `make check-fs-img` 校验镜像。  
+> **请勿**使用裸的 `cargo run -p kernel --features lab7`，否则往往挂不上块设备。
 
 
 ## 一、问题场景
@@ -239,14 +240,7 @@ sigreturn                   →  恢复被打断前的 TrapContext
 
 本实验的任务文件为 `kernel/src/signal.rs`，请在工作区中打开文件，并根据文件头的任务标记与注释提示完成信号投递逻辑：从 `take_deliverable` 取到信号后，区分致命默认动作与用户处理函数，构造进入处理函数前的信号帧。详细任务描述以文件头注释为准。
 
-运行验证（确认环境已激活，并在 `os-lab/` 下执行；Lab7 需要 VirtIO 与 `fs.img`）：
-
-```powershell
-cargo build -p user --target riscv64gc-unknown-none-elf --release --bins
-cargo build -p kernel --features lab7 --release
-```
-
-然后运行：
+确认环境已激活后，在 `os-lab/`（或学生工作区根目录）下运行：
 
 ```powershell
 make test-lab7
