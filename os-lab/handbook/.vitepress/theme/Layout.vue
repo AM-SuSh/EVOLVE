@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import DefaultTheme from 'vitepress/theme'
 import VPNav from 'vitepress/dist/client/theme-default/components/VPNav.vue'
-import { useData } from 'vitepress'
+import { useData, useRoute } from 'vitepress'
 import AuthGate from './components/AuthGate.vue'
 import LabWorkspace from './components/LabWorkspace.vue'
 import TeacherNav from './components/TeacherNav.vue'
@@ -18,12 +18,13 @@ import type { TutorLabId } from './tutor-model'
  */
 const DefaultLayout = DefaultTheme.Layout
 const { frontmatter } = useData()
+const route = useRoute()
 </script>
 
 <template>
   <!-- 站点入口登录门：进入即登录（学生注册带班级；教师用 admin）。 -->
   <AuthGate />
-  <VPNav v-if="frontmatter.workspace || frontmatter.launch || frontmatter.teacherReview || frontmatter.knowledgeManager">
+  <VPNav v-if="frontmatter.workspace || frontmatter.launch || frontmatter.teacherReview || frontmatter.knowledgeManager || frontmatter.finalProjectPublish">
     <template #nav-bar-content-after>
       <TeacherNav />
       <WorkspaceNav v-if="frontmatter.workspace" />
@@ -32,7 +33,7 @@ const { frontmatter } = useData()
   </VPNav>
   <LabWorkspace
     v-if="frontmatter.workspace"
-    :key="frontmatter.labId as string"
+    :key="`${frontmatter.labId as string}-${String(route.query?.final || '')}`"
     :lab-id="frontmatter.labId as TutorLabId"
   >
     <Content />
@@ -44,6 +45,9 @@ const { frontmatter } = useData()
     <Content />
   </div>
   <div v-else-if="frontmatter.knowledgeManager" class="knowledge-manager-layout">
+    <Content />
+  </div>
+  <div v-else-if="frontmatter.finalProjectPublish" class="final-project-layout">
     <Content />
   </div>
   <DefaultLayout v-else>
@@ -72,6 +76,14 @@ const { frontmatter } = useData()
   overflow: hidden;
 }
 
+.final-project-layout {
+  position: relative;
+  top: var(--vp-nav-height);
+  height: calc(100dvh - var(--vp-nav-height));
+  min-height: 0;
+  overflow: hidden;
+}
+
 .launch-layout {
   position: relative;
   top: var(--vp-nav-height);
@@ -84,6 +96,7 @@ const { frontmatter } = useData()
 @media (max-width: 959px) {
   .teacher-review-layout,
   .knowledge-manager-layout,
+  .final-project-layout,
   .launch-layout {
     top: 0;
   }

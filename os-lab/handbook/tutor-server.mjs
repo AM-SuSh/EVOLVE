@@ -97,7 +97,9 @@ import {
   enqueueAssessmentReview,
   listAssessmentReviews,
   listAllReports,
+  listFinalPerformance,
   listMastery,
+  listMyFinalPerformance,
   listMyReports,
   listRunHistory,
   listStudentAccounts,
@@ -111,6 +113,8 @@ import {
   saveReportDraft,
   saveTutorSessionState,
   submitAssessmentReview,
+  submitFinalPerformance,
+  submitFinalPerformanceBatch,
   setReportFeedback,
   submitReport,
   removeReportDraft,
@@ -2509,6 +2513,56 @@ const server = http.createServer(async (request, response) => {
       return
     }
 
+    if (request.method === 'POST' && pathname === '/final/performance') {
+      if (!session || session.role !== 'student') {
+        json(response, 401, { error: '请以学生账号登录后提交打榜成绩' }, origin)
+        return
+      }
+      const effective = await effectiveFor(session)
+      const finalProject = effective.finalProject
+      if (!finalProject || finalProject.kind !== 'performance') {
+        json(response, 400, { error: '当前尚未发布性能画像期末任务' }, origin)
+        return
+      }
+      const status = await scaffoldStatus(session.username, effective)
+      const access = buildLearningAccess({
+        role: session.role,
+        openLab: effective.openLab,
+        applied: status.applied,
+        evidence: getLearningEvidence(session.id),
+      })
+      const lab8 = accessForLab(access, 'lab8')
+      if (!lab8?.completed) {
+        json(response, 400, { error: '先完成 Lab8 后再提交打榜成绩' }, origin)
+        return
+      }
+      const body = await readBody(request)
+      const result = Array.isArray(body?.scores)
+        ? submitFinalPerformanceBatch(session.id, body)
+        : submitFinalPerformance(session.id, body)
+      json(response, result.ok ? 200 : 400, result, origin)
+      return
+    }
+
+    if (request.method === 'GET' && pathname === '/final/performance') {
+      if (!session || session.role !== 'student') {
+        json(response, 401, { error: '请以学生账号登录后查看打榜成绩' }, origin)
+        return
+      }
+      json(response, 200, { ok: true, scores: listMyFinalPerformance(session.id) }, origin)
+      return
+    }
+
+    if (request.method === 'GET' && pathname === '/final/performance/leaderboard') {
+      if (!session || session.role !== 'student') {
+        json(response, 401, { error: '请以学生账号登录后查看打榜排名' }, origin)
+        return
+      }
+      const metric = String(requestUrl.searchParams.get('metric') || '')
+      json(response, 200, { ok: true, scores: listFinalPerformance(metric) }, origin)
+      return
+    }
+
     const traceRoute = pathname.match(/^\/runs\/([^/]+)\/trace$/)
     if (request.method === 'GET' && traceRoute) {
       if (!session) {
@@ -3100,6 +3154,15 @@ const server = http.createServer(async (request, response) => {
         const body = await readBody(request)
         const result = setReportFeedback(body.user, body.labId, body.feedback)
         json(response, result.ok ? 200 : 400, result, origin)
+        return
+      }
+      if (request.method === 'GET' && pathname === '/teacher/final/performance') {
+        if (!session || session.role !== 'teacher') {
+          json(response, 401, { error: '需要教师账号' }, origin)
+          return
+        }
+        const metric = String(requestUrl.searchParams.get('metric') || '')
+        json(response, 200, { ok: true, scores: listFinalPerformance(metric) }, origin)
         return
       }
       if (request.method === 'GET' && pathname === '/teacher/overview') {

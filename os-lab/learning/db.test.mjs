@@ -95,6 +95,48 @@ test('migration binds events and immutable runs to the authenticated user', () =
   assert.equal(diagnosticResult.diagnostics.length, 1)
   assert.equal(diagnosticResult.diagnostics[0].code, 'E0425')
   assert.equal(learningDb.getRunDiagnostics(999999, runId), null)
+  const score = learningDb.submitFinalPerformance(session.id, {
+    metric: 'syscall-latency-ns',
+    value: 120,
+    direction: 'lower',
+    unit: 'ns',
+    evidenceRunId: runId,
+    note: 'baseline',
+  })
+  assert.equal(score.ok, true)
+  const worse = learningDb.submitFinalPerformance(session.id, {
+    metric: 'syscall-latency-ns',
+    value: 200,
+    direction: 'lower',
+    unit: 'ns',
+    evidenceRunId: runId,
+    note: 'worse',
+  })
+  assert.equal(worse.kept, true)
+  const better = learningDb.submitFinalPerformance(session.id, {
+    metric: 'syscall-latency-ns',
+    value: 80,
+    direction: 'lower',
+    unit: 'ns',
+    evidenceRunId: runId,
+    note: 'optimized',
+  })
+  assert.equal(better.kept, false)
+  const leaderboard = learningDb.listFinalPerformance('syscall-latency-ns')
+  assert.equal(leaderboard.length, 1)
+  assert.equal(leaderboard[0].value, 80)
+  assert.equal(leaderboard[0].rank, 1)
+  assert.equal(learningDb.listMyFinalPerformance(session.id).length, 1)
+  const batch = learningDb.submitFinalPerformanceBatch(session.id, {
+    evidenceRunId: runId,
+    scores: [
+      { metric: 'pipe-mbps', value: 12, direction: 'higher', unit: 'MB/s' },
+      { metric: 'alloc-ops-ms', value: 30, direction: 'higher', unit: 'ops/ms' },
+    ],
+  })
+  assert.equal(batch.ok, true)
+  assert.equal(batch.results.length, 2)
+  assert.equal(learningDb.listMyFinalPerformance(session.id).length, 3)
   assert.throws(() => learningDb.finishRun(999999, { ...stored, stopped: false }), /不属于当前用户/)
 
   assert.deepEqual(learningDb.getTutorSessionState(session.id, 'learning-1', 'lab2').stage, 'orient')

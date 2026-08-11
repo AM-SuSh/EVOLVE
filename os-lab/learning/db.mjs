@@ -256,6 +256,21 @@ CREATE TABLE IF NOT EXISTS report_drafts (
 );
 CREATE INDEX IF NOT EXISTS report_drafts_user_updated_idx ON report_drafts(user_id, updated_at DESC);
 `)
+applyMigration('20260811_final_performance_scores_v1', `
+CREATE TABLE IF NOT EXISTS final_performance_scores (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  metric TEXT NOT NULL,
+  value REAL NOT NULL,
+  direction TEXT NOT NULL,
+  unit TEXT NOT NULL,
+  evidence_run_id TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  submitted_at TEXT NOT NULL,
+  PRIMARY KEY(user_id, metric)
+);
+CREATE INDEX IF NOT EXISTS final_performance_metric_value_idx
+  ON final_performance_scores(metric, direction, value);
+`)
 try {
   db.exec('ALTER TABLE reports ADD COLUMN feedback TEXT NOT NULL DEFAULT ""')
 } catch {
@@ -1089,6 +1104,144 @@ export function listRunHistory(userId, labId, limit = 100) {
     exitCode: row.exitCode,
     assertions: assertionStmt.all(row.id).map((item) => ({ ...item, passed: Boolean(item.passed) })),
   }))
+}
+
+const FINAL_PERFORMANCE_DIRECTIONS = new Set(['higher', 'lower'])
+
+function upsertFinalPerformanceScore(userId, metric, value, direction, unit, evidenceRunId, note) {
+  const existing = db
+    .prepare('SELECT value, direction FROM final_performance_scores WHERE user_id = ? AND metric = ?')
+    .get(userId, metric)
+  const better =
+    !existing ||
+    (direction === 'higher' ? value > existing.value : value < existing.value)
+  if (existing && !better) {
+    return { metric, value: existing.value, kept: true }
+  }
+  db.prepare(
+    `INSERT INTO final_performance_scores
+       (user_id, metric, value, direction, unit, evidence_run_id, note, submitted_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, metric) DO UPDATE SET
+       value = excluded.value,
+       direction = excluded.direction,
+       unit = excluded.unit,
+       evidence_run_id = excluded.evidence_run_id,
+       note = excluded.note,
+       submitted_at = excluded.submitted_at`,
+  ).run(userId, metric, value, direction, unit, evidenceRunId, note, now())
+  return { metric, value, kept: false }
+}
+
+/** 学生提交一次性能打榜成绩；同一指标只保留更优值。 */
+export function submitFinalPerformance(userId, input) {
+  const metric = String(input?.metric || '').trim().slice(0, 40)
+  const value = Number(input?.value)
+  const direction = String(input?.direction || '').trim()
+  const unit = String(input?.unit || '').trim().slice(0, 20)
+  const evidenceRunId = String(input?.evidenceRunId || '').trim().slice(0, 80)
+  const note = String(input?.note || '').trim().slice(0, 500)
+  if (!metric || !Number.isFinite(value) || !FINAL_PERFORMANCE_DIRECTIONS.has(direction)) {
+    return { ok: false, error: '指标、数值或方向无效' }
+  }
+  if (!unit || !evidenceRunId) {
+    return { ok: false, error: '需要填写单位并选择一条运行记录作为证据' }
+  }
+  const run = db
+    .prepare('SELECT status, exit_code FROM runs WHERE id = ? AND user_id = ?')
+    .get(evidenceRunId, userId)
+  if (!run) return { ok: false, error: '运行记录不存在或不属于当前账号' }
+  if (run.status !== 'finished' || run.exit_code !== 0) {
+    return { ok: false, error: '只能引用成功结束（exit 0）的运行记录' }
+  }
+
+  const result = upsertFinalPerformanceScore(
+    userId,
+    metric,
+    value,
+    direction,
+    unit,
+    evidenceRunId,
+    note,
+  )
+  return { ok: true, ...result }
+}
+
+/** 一次运行同时提交五个指标，生成/更新五个榜单。 */
+export function submitFinalPerformanceBatch(userId, input) {
+  const evidenceRunId = String(input?.evidenceRunId || '').trim().slice(0, 80)
+  const note = String(input?.note || '').trim().slice(0, 500)
+  const scores = Array.isArray(input?.scores) ? input.scores : []
+  if (!evidenceRunId) return { ok: false, error: '需要选择一条运行记录作为证据' }
+  if (!scores.length) return { ok: false, error: '需要至少一个指标成绩' }
+  const run = db
+    .prepare('SELECT status, exit_code FROM runs WHERE id = ? AND user_id = ?')
+    .get(evidenceRunId, userId)
+  if (!run) return { ok: false, error: '运行记录不存在或不属于当前账号' }
+  if (run.status !== 'finished' || run.exit_code !== 0) {
+    return { ok: false, error: '只能引用成功结束（exit 0）的运行记录' }
+  }
+  const results = []
+  for (const [index, item] of scores.entries()) {
+    const metric = String(item?.metric || '').trim().slice(0, 40)
+    const value = Number(item?.value)
+    const direction = String(item?.direction || '').trim()
+    const unit = String(item?.unit || '').trim().slice(0, 20)
+    if (!metric || !Number.isFinite(value) || !FINAL_PERFORMANCE_DIRECTIONS.has(direction) || !unit) {
+      return { ok: false, error: `第 ${index + 1} 项指标无效` }
+    }
+    results.push(
+      upsertFinalPerformanceScore(
+        userId,
+        metric,
+        value,
+        direction,
+        unit,
+        evidenceRunId,
+        note,
+      ),
+    )
+  }
+  return { ok: true, results }
+}
+
+/** 教师端打榜视图：按指标分组，越高/越低越靠前。 */
+export function listFinalPerformance(metric = '') {
+  const rows = db
+    .prepare(
+      `SELECT u.username AS user, u.class_name AS className,
+              s.metric, s.value, s.direction, s.unit,
+              s.evidence_run_id AS evidenceRunId, s.note, s.submitted_at AS submittedAt,
+              r.verified AS verified, r.trusted AS trusted, r.status AS runStatus
+       FROM final_performance_scores s
+       JOIN users u ON u.id = s.user_id
+       JOIN runs r ON r.id = s.evidence_run_id
+       ${metric ? 'WHERE s.metric = ?' : ''}
+       ORDER BY s.metric,
+         CASE WHEN s.direction = 'higher' THEN -s.value ELSE s.value END ASC`,
+    )
+    .all(...(metric ? [metric] : []))
+  let lastMetric = ''
+  let rank = 0
+  return rows.map((row) => {
+    if (row.metric !== lastMetric) {
+      lastMetric = row.metric
+      rank = 0
+    }
+    rank += 1
+    return { ...row, rank }
+  })
+}
+
+/** 学生端回显自己已提交的打榜成绩。 */
+export function listMyFinalPerformance(userId) {
+  return db
+    .prepare(
+      `SELECT metric, value, direction, unit,
+              evidence_run_id AS evidenceRunId, note, submitted_at AS submittedAt
+       FROM final_performance_scores WHERE user_id = ? ORDER BY metric`,
+    )
+    .all(userId)
 }
 
 export function getRunDiagnostics(userId, runId) {

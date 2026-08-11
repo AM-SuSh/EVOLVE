@@ -23,6 +23,7 @@ import {
 } from 'lucide-vue-next'
 import { buildXlsxBlob } from '../../../export-xlsx.mjs'
 import { authHeaders, type TutorLab } from '../tutor-model'
+import FinalProjectEditor, { type FinalProjectDraft } from './FinalProjectEditor.vue'
 import {
   DEFAULT_REPORT_TEMPLATE,
   cloneTemplate,
@@ -60,15 +61,6 @@ interface TeacherLlmConfig {
   baseUrl: string
   model: string
   apiKey: string
-}
-
-interface FinalProjectDraft {
-  title: string
-  kind: string
-  description: string
-  mechanisms: string[]
-  verificationCommand: string
-  rubric: string[]
 }
 
 interface Overview {
@@ -119,14 +111,6 @@ const llmConnection = ref<'idle' | 'connected' | 'offline'>('idle')
 const llmDetail = ref('')
 const llmActiveModel = ref('')
 
-const finalProjectDraft = ref<FinalProjectDraft>({
-  title: '期末探索实验',
-  kind: 'open',
-  description: '',
-  mechanisms: [],
-  verificationCommand: '',
-  rubric: ['提案质量', '机制运用', '可信证据', '反思与迁移'],
-})
 const finalProjectScope = ref('')
 
 /** 当前 Lab 的报告版式草稿（全局布置，学生端拉取）。 */
@@ -202,25 +186,6 @@ const openTargetCount = computed(() => {
   ]
   return entries.filter((entry) => isOpen(entry)).length
 })
-const finalMechanismsText = computed({
-  get: () => finalProjectDraft.value.mechanisms.join('\n'),
-  set: (value: string) => {
-    finalProjectDraft.value.mechanisms = value
-      .split(/\n+/)
-      .map((item) => item.trim())
-      .filter(Boolean)
-  },
-})
-const finalRubricText = computed({
-  get: () => finalProjectDraft.value.rubric.join('\n'),
-  set: (value: string) => {
-    finalProjectDraft.value.rubric = value
-      .split(/\n+/)
-      .map((item) => item.trim())
-      .filter(Boolean)
-  },
-})
-
 function labIndex(labId: string) {
   return (overview.value?.labs || []).indexOf(labId)
 }
@@ -327,7 +292,6 @@ async function load() {
       scheduleUnlock.value = toLocalInput(currentSchedule?.unlockAt)
       scheduleLock.value = toLocalInput(currentSchedule?.lockAt)
       seedVariantHint()
-      seedFinalProjectDraft()
       if (!noticeScope.value) noticeDraft.value = overview.value?.config.notice || ''
       await loadReportTemplate()
     } else {
@@ -457,9 +421,9 @@ function finalProjectFor(scopeKey: string): FinalProjectDraft | null | undefined
   return overview.value.config.finalProject
 }
 
-function seedFinalProjectDraft(scopeKey = finalProjectScope.value) {
-  const current = finalProjectFor(scopeKey)
-  finalProjectDraft.value = {
+const finalProjectSeed = computed<FinalProjectDraft>(() => {
+  const current = finalProjectFor(finalProjectScope.value)
+  return {
     title: current?.title || '期末探索实验',
     kind: current?.kind || 'open',
     description: current?.description || '',
@@ -469,19 +433,16 @@ function seedFinalProjectDraft(scopeKey = finalProjectScope.value) {
       Array.isArray(current?.rubric) && current.rubric.length
         ? [...current.rubric]
         : ['提案质量', '机制运用', '可信证据', '反思与迁移'],
+    leaderboard: current?.leaderboard
+      ? {
+          metrics: current.leaderboard.metrics.map((metric) => ({ ...metric })),
+        }
+      : undefined,
   }
-}
+})
 
-async function publishFinalProject() {
+async function publishFinalProject(draft: FinalProjectDraft) {
   if (busy.value) return
-  const draft: FinalProjectDraft = {
-    title: finalProjectDraft.value.title.trim(),
-    kind: finalProjectDraft.value.kind,
-    description: finalProjectDraft.value.description.trim(),
-    mechanisms: finalProjectDraft.value.mechanisms.map((item) => item.trim()).filter(Boolean).slice(0, 12),
-    verificationCommand: finalProjectDraft.value.verificationCommand.trim(),
-    rubric: finalProjectDraft.value.rubric.map((item) => item.trim()).filter(Boolean).slice(0, 10),
-  }
   if (!draft.title || !draft.description) {
     note.value = '期末探索任务至少需要名称和任务书。'
     noteOk.value = false
@@ -820,10 +781,6 @@ watch(selectedClass, () => {
   const currentSchedule = labSchedule(selectedClass.value ? classEntry(selectedClass.value) : undefined)
   scheduleUnlock.value = toLocalInput(currentSchedule?.unlockAt)
   scheduleLock.value = toLocalInput(currentSchedule?.lockAt)
-})
-
-watch(finalProjectScope, () => {
-  seedFinalProjectDraft()
 })
 
 watch(
@@ -1222,69 +1179,14 @@ onMounted(load)
           </select>
         </div>
 
-        <label class="ws-pub-final-field">
-          <span>任务名称</span>
-          <input v-model="finalProjectDraft.title" type="text" maxlength="80" placeholder="例如：我的内核性能画像" />
-        </label>
+        <FinalProjectEditor
+          :key="finalProjectScope"
+          :initial="finalProjectSeed"
+          :busy="busy"
+          @save="publishFinalProject"
+          @clear="clearFinalProject"
+        />
 
-        <label class="ws-pub-final-field">
-          <span>探索方向</span>
-          <select v-model="finalProjectDraft.kind" aria-label="期末探索任务方向">
-            <option value="performance">性能画像与调优</option>
-            <option value="app">终端小应用</option>
-            <option value="debug">故障注入与排障</option>
-            <option value="open">开放课题</option>
-            <option value="custom">自定义探索</option>
-          </select>
-        </label>
-
-        <label class="ws-pub-final-field">
-          <span>任务书（Markdown）</span>
-          <textarea
-            v-model="finalProjectDraft.description"
-            rows="8"
-            placeholder="写明期末任务的背景、目标、可选方向与交付要求。学生端会原样渲染 Markdown。"
-          />
-        </label>
-
-        <label class="ws-pub-final-field">
-          <span>必须用到的系统机制（每行一条）</span>
-          <textarea
-            v-model="finalMechanismsText"
-            rows="3"
-            placeholder="fork/exec/pipe&#10;signal/dup&#10;threads/mutex/condvar&#10;文件系统"
-          />
-        </label>
-
-        <label class="ws-pub-final-field">
-          <span>验证命令（可选）</span>
-          <input
-            v-model="finalProjectDraft.verificationCommand"
-            type="text"
-            placeholder="例如：cargo build -p user --bin final_project --release"
-          />
-        </label>
-
-        <label class="ws-pub-final-field">
-          <span>评分维度（每行一条）</span>
-          <textarea v-model="finalRubricText" rows="4" />
-        </label>
-
-        <div class="ws-pub-final-actions">
-          <button type="button" class="ghost" :disabled="busy" @click="clearFinalProject">
-            <Trash2 :size="14" aria-hidden="true" />清除发布
-          </button>
-          <button
-            type="button"
-            :disabled="busy || !finalProjectDraft.title.trim() || !finalProjectDraft.description.trim()"
-            @click="publishFinalProject"
-          >
-            <Save :size="14" aria-hidden="true" />保存并发布
-          </button>
-        </div>
-        <p class="ws-pub-final-hint">
-          学生端「系统构建路径」会显示期末任务节点；仅当 Lab8 完成且本范围已发布任务时解锁。
-        </p>
       </section>
     </div>
 
@@ -2256,32 +2158,6 @@ onMounted(load)
   flex: 1 1 auto;
 }
 
-.ws-pub-final-field {
-  display: grid;
-  gap: 4px;
-  margin-bottom: var(--ws-space-3);
-}
-
-.ws-pub-final-field > span {
-  color: var(--ws-ink-muted);
-  font-size: var(--ws-text-xs);
-  font-weight: var(--ws-weight-semibold);
-}
-
-.ws-pub-final-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--ws-space-2);
-  margin-top: var(--ws-space-2);
-}
-
-.ws-pub-final-hint {
-  margin: var(--ws-space-2) 0 0;
-  color: var(--ws-ink-faint);
-  font-size: var(--ws-text-xs);
-  line-height: var(--ws-leading-normal);
-}
-
 @media (max-width: 1180px) {
   .ws-pub-class-picker {
     grid-template-columns: minmax(0, 1fr);
@@ -2338,12 +2214,5 @@ onMounted(load)
     flex: 1 1 auto;
   }
 
-  .ws-pub-final-actions {
-    flex-wrap: wrap;
-  }
-
-  .ws-pub-final-actions button {
-    flex: 1 1 auto;
-  }
 }
 </style>

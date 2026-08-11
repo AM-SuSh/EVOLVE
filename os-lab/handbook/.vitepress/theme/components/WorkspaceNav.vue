@@ -16,7 +16,9 @@ function togglePanel(key: WorkspacePanelKey) {
     <JourneyRail
       :journey="workspaceNavState.journey"
       :applied-labs="workspaceNavState.appliedLabs"
+      :final-project="workspaceNavState.finalProject"
       @enter-lab="workspaceNavState.enterLab?.($event)"
+      @enter-final="workspaceNavState.enterFinal?.()"
       @export-growth="workspaceNavState.exportGrowth?.()"
     />
     <button

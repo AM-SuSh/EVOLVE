@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import type { LabJourneyItem, TutorLabId } from './tutor-model'
+import type { FinalProjectAccess, LabJourneyItem, TutorLabId } from './tutor-model'
 
 export type WorkspacePanelKey = 'manual' | 'practice' | 'terminal'
 
@@ -11,8 +11,10 @@ interface WorkspaceNavState {
   panels: Record<WorkspacePanelKey, boolean>
   journey: LabJourneyItem[]
   appliedLabs: TutorLabId[]
+  finalProject: FinalProjectAccess | null
   togglePanel?: (key: WorkspacePanelKey) => void
   enterLab?: (labId: TutorLabId) => void
+  enterFinal?: () => void
   exportGrowth?: () => void
 }
 
@@ -22,6 +24,7 @@ export const workspaceNavState = reactive<WorkspaceNavState>({
   panels: { manual: true, practice: true, terminal: true },
   journey: [],
   appliedLabs: [],
+  finalProject: null,
 })
 
 export function updateWorkspaceNav(next: Omit<WorkspaceNavState, 'active'>) {
@@ -30,8 +33,10 @@ export function updateWorkspaceNav(next: Omit<WorkspaceNavState, 'active'>) {
   workspaceNavState.panels = next.panels
   workspaceNavState.journey = next.journey
   workspaceNavState.appliedLabs = next.appliedLabs
+  workspaceNavState.finalProject = next.finalProject
   workspaceNavState.togglePanel = next.togglePanel
   workspaceNavState.enterLab = next.enterLab
+  workspaceNavState.enterFinal = next.enterFinal
   workspaceNavState.exportGrowth = next.exportGrowth
 }
 
@@ -41,8 +46,10 @@ export function clearWorkspaceNav() {
   workspaceNavState.panels = { manual: true, practice: true, terminal: true }
   workspaceNavState.journey = []
   workspaceNavState.appliedLabs = []
+  workspaceNavState.finalProject = null
   workspaceNavState.togglePanel = undefined
   workspaceNavState.enterLab = undefined
+  workspaceNavState.enterFinal = undefined
   workspaceNavState.exportGrowth = undefined
 }
 

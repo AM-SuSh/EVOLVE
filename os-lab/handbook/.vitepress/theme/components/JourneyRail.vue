@@ -20,6 +20,7 @@ import {
   type LabJourneyItem,
   type TutorLabId,
 } from '../tutor-model'
+import KernelBuildStage from './KernelBuildStage.vue'
 
 /**
  * 系统构建路径。
@@ -47,32 +48,10 @@ const open = ref(false)
 const appliedLabs = computed(() => props.appliedLabs || [])
 
 const completedCount = computed(() => props.journey.filter((item) => item.completed).length)
-const progress = computed(() => Math.round((completedCount.value / tutorLabs.length) * 100))
-const allLabsComplete = computed(() => props.journey.every((item) => item.completed))
 const finalUnlocked = computed(() => props.finalProject?.unlocked === true)
 const builtLayers = computed(() =>
   props.journey.filter((item) => item.completed).map((item) => item.lab.systemLayer),
 )
-const bootLines = computed(() => [
-  ...props.journey.map((item) => ({
-    key: item.lab.id,
-    code: item.completed ? ' OK ' : item.unlocked ? ' .. ' : ' -- ',
-    label: item.lab.systemLayer,
-    title: item.lab.title,
-    complete: item.completed,
-    unlocked: item.unlocked,
-    current: item.current,
-  })),
-  {
-    key: 'final',
-    code: finalUnlocked.value ? ' OK ' : ' -- ',
-    label: '期末探索任务',
-    title: props.finalProject?.title || '完整小系统探索实验',
-    complete: false,
-    unlocked: finalUnlocked.value,
-    current: false,
-  },
-])
 
 function enter(item: LabJourneyItem) {
   if (!item.unlocked) return
@@ -107,13 +86,14 @@ function formatTime(value?: string | null) {
     >
       <Waypoints :size="16" aria-hidden="true" />
       <span class="ws-journey-trigger-text">系统构建路径</span>
-      <ol class="ws-journey-dots" aria-hidden="true">
-        <li
+      <span class="ws-journey-mini" aria-hidden="true">
+        <i
           v-for="item in journey"
           :key="item.lab.id"
           :class="{ complete: item.completed, current: item.current, locked: !item.unlocked }"
         />
-      </ol>
+        <i :class="{ unlocked: finalUnlocked }" class="final" />
+      </span>
       <strong>{{ completedCount }}/{{ tutorLabs.length }}</strong>
     </button>
 
@@ -136,26 +116,11 @@ function formatTime(value?: string | null) {
           </button>
         </header>
 
-        <div class="ws-journey-stack ws-boot">
-          <div class="ws-boot-head">
-            <span>系统启动日志</span>
-            <strong>{{ completedCount }}/{{ tutorLabs.length }} 层已点亮 · {{ progress }}%</strong>
-          </div>
-          <ol class="ws-boot-lines">
-            <li
-              v-for="line in bootLines"
-              :key="line.key"
-              :class="{ complete: line.complete, unlocked: line.unlocked, current: line.current }"
-            >
-              <code>{{ line.code }}</code>
-              <span>{{ line.label }}</span>
-              <small>{{ line.title }}</small>
-            </li>
-          </ol>
-          <p v-if="allLabsComplete" class="ws-boot-done">
-            <Rocket :size="14" aria-hidden="true" />你的小系统已启动，可以进入期末探索任务。
-          </p>
-        </div>
+        <KernelBuildStage
+          :journey="journey"
+          :final-project="finalProject"
+          :final-unlocked="finalUnlocked"
+        />
 
         <div class="ws-journey-summary">
           <div>
@@ -258,7 +223,7 @@ function formatTime(value?: string | null) {
               :disabled="!finalUnlocked"
               @click="emit('enter-final')"
             >
-              进入期末任务
+              查看任务书
               <ChevronRight v-if="finalUnlocked" :size="15" aria-hidden="true" />
             </button>
           </li>
@@ -323,6 +288,65 @@ function formatTime(value?: string | null) {
   opacity: 0.4;
 }
 
+.ws-journey-mini {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+}
+
+.ws-journey-mini i {
+  display: inline-block;
+  width: 16px;
+  height: 6px;
+  font-style: normal;
+  border-radius: 2px;
+  background: var(--ws-line);
+  transition:
+    width 180ms ease,
+    background 240ms ease,
+    box-shadow 240ms ease;
+}
+
+.ws-journey-mini i.complete {
+  background: var(--ws-accent);
+  box-shadow: 0 0 6px var(--ws-accent);
+}
+
+.ws-journey-mini i.current {
+  width: 22px;
+  background: var(--ws-accent);
+  animation: ws-mini-pulse 1.6s ease-in-out infinite;
+}
+
+.ws-journey-mini i.locked {
+  opacity: 0.45;
+}
+
+.ws-journey-mini i.final {
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--ws-line-strong);
+  border-radius: var(--ws-radius-full);
+}
+
+.ws-journey-mini i.final.unlocked {
+  border-color: var(--ws-accent);
+  background: var(--ws-accent);
+  box-shadow: 0 0 7px var(--ws-accent);
+}
+
+@keyframes ws-mini-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 4px var(--ws-accent);
+  }
+  50% {
+    box-shadow: 0 0 10px var(--ws-accent);
+  }
+}
+
 .ws-journey-trigger strong {
   color: var(--ws-accent);
   font-variant-numeric: tabular-nums;
@@ -341,8 +365,8 @@ function formatTime(value?: string | null) {
 }
 
 .ws-journey-dialog {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   width: min(940px, 100%);
   max-height: min(780px, calc(100dvh - 2 * var(--ws-space-5)));
   color: var(--ws-ink);
@@ -350,7 +374,7 @@ function formatTime(value?: string | null) {
   border-radius: var(--ws-radius-lg);
   background: var(--ws-surface);
   box-shadow: var(--ws-shadow-3);
-  overflow: hidden;
+  overflow-y: auto;
   text-align: left;
 }
 
@@ -403,6 +427,22 @@ function formatTime(value?: string | null) {
 
 .ws-journey-stack {
   padding: 0 var(--ws-space-6) var(--ws-space-4);
+}
+
+.ws-boot-log {
+  margin: 0 var(--ws-space-6) var(--ws-space-4);
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-boot-log summary {
+  cursor: pointer;
+  color: var(--ws-accent);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-boot-log .ws-journey-stack {
+  padding: var(--ws-space-2) 0 0;
 }
 
 .ws-boot-head {
@@ -589,7 +629,7 @@ function formatTime(value?: string | null) {
   min-height: 0;
   margin: 0;
   padding: var(--ws-space-2) var(--ws-space-6) var(--ws-space-5);
-  overflow-y: auto;
+  overflow: visible;
   list-style: none;
 }
 
@@ -811,6 +851,7 @@ function formatTime(value?: string | null) {
 
   .ws-journey-dialog {
     width: 100%;
+    height: 100%;
     max-height: none;
     border: 0;
     border-radius: 0;
@@ -818,9 +859,14 @@ function formatTime(value?: string | null) {
 
   .ws-journey-header,
   .ws-journey-stack,
+  .ws-boot-log,
   .ws-journey-summary,
   .ws-journey-list {
     padding-inline: var(--ws-space-4);
+  }
+
+  .ws-boot-log {
+    margin-inline: 0;
   }
 
   /* 8 个层名在窄屏挤不下，进度条本身已表达进度。 */

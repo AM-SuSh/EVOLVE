@@ -70,6 +70,21 @@ export function normalizeFinalProject(value) {
         .filter(Boolean)
         .slice(0, 10)
     : []
+  const leaderboardMetrics = Array.isArray(value.leaderboard?.metrics)
+    ? value.leaderboard.metrics
+        .map((metric) => {
+          if (!metric || typeof metric !== 'object') return null
+          const id = String(metric.id || '').trim().slice(0, 40)
+          const label = String(metric.label || '').trim().slice(0, 80)
+          const unit = String(metric.unit || '').trim().slice(0, 20)
+          const direction = String(metric.direction || '')
+          if (!id || !label || !unit || !['higher', 'lower'].includes(direction)) return null
+          return { id, label, unit, direction }
+        })
+        .filter(Boolean)
+        .slice(0, 10)
+    : []
+  const leaderboard = leaderboardMetrics.length ? { metrics: leaderboardMetrics } : undefined
   return {
     id: 'final',
     title,
@@ -79,6 +94,7 @@ export function normalizeFinalProject(value) {
     mechanisms,
     verificationCommand,
     rubric,
+    leaderboard,
     updatedAt: new Date().toISOString(),
   }
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeMount, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
 import { useData, useRoute, useRouter, withBase } from 'vitepress'
-import { BookOpen, CheckCircle2, ChevronDown, ChevronUp, CircleSlash, Clock, Code2, LockKeyhole, Maximize2, MessageSquarePlus, MessagesSquare, Minimize2, PanelLeftClose, Play, RotateCcw, TableOfContents, XCircle } from 'lucide-vue-next'
+import { BookOpen, CheckCircle2, ChevronDown, ChevronUp, CircleSlash, Clock, Code2, LockKeyhole, Maximize2, MessageSquarePlus, MessagesSquare, Minimize2, PanelLeftClose, Play, Rocket, RotateCcw, TableOfContents, XCircle } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
 import FinalProjectPane from './FinalProjectPane.vue'
 import TutorPane from './TutorPane.vue'
@@ -203,7 +203,11 @@ async function doLogout() {
 const { isDark } = useData()
 const router = useRouter()
 const route = useRoute()
-const finalMode = ref(route.query?.final === '1')
+const FINAL_MODE_KEY = 'os-lab-final-mode'
+const finalMode = ref(
+  route.query?.final === '1' ||
+    (typeof window !== 'undefined' && window.sessionStorage.getItem(FINAL_MODE_KEY) === '1'),
+)
 
 watch(
   () => route.query?.final,
@@ -2696,6 +2700,7 @@ function submitReflection(content: string) {
 /* -- 导航与导出 ------------------------------------------------------------- */
 
 function enterLab(labId: TutorLabId) {
+  if (typeof window !== 'undefined') window.sessionStorage.removeItem(FINAL_MODE_KEY)
   void (async () => {
     const issued = await ensureScaffoldIssued(labId)
     if (!issued) return
@@ -2715,6 +2720,7 @@ function enterFinal() {
     }
     const issued = await ensureScaffoldIssued('lab8')
     if (!issued) return
+    if (typeof window !== 'undefined') window.sessionStorage.setItem(FINAL_MODE_KEY, '1')
     const target = withBase('/learn/lab8?final=1')
     const current = `${window.location.pathname}${window.location.search}`
     if (current !== target) window.location.assign(target)
@@ -3623,6 +3629,15 @@ onBeforeUnmount(() => {
     <div v-if="teacherNotice && !noticeDismissed" class="ws-teacher-notice" role="status">
       <span>📢 老师公告：{{ teacherNotice }}</span>
       <button type="button" aria-label="关闭公告" @click="noticeDismissed = true">×</button>
+    </div>
+
+    <div
+      v-if="!isTeacherRole && !finalMode && finalProjectAccess?.unlocked && props.labId === 'lab8'"
+      class="ws-final-banner"
+    >
+      <span><Rocket :size="15" aria-hidden="true" />期末任务已解锁</span>
+      <p>{{ finalProjectAccess.title }}</p>
+      <button type="button" @click="enterFinal">进入期末任务</button>
     </div>
 
     <Teleport to="body">
@@ -5367,6 +5382,63 @@ onBeforeUnmount(() => {
 .ws-teacher-notice button:hover {
   color: var(--ws-accent);
   background: var(--ws-surface);
+}
+
+/* -- 期末任务解锁横幅 ------------------------------------------------------- */
+.ws-final-banner {
+  position: fixed;
+  top: calc(var(--vp-nav-height) + var(--ws-space-8));
+  left: 50%;
+  z-index: var(--ws-z-notice);
+  display: flex;
+  align-items: center;
+  gap: var(--ws-space-3);
+  max-width: min(760px, calc(100vw - 2 * var(--ws-space-4)));
+  padding: var(--ws-space-2) var(--ws-space-4);
+  color: var(--ws-ink);
+  border: 1px solid var(--ws-ok);
+  border-radius: var(--ws-radius-md);
+  background: color-mix(in srgb, var(--ws-ok) 12%, var(--ws-surface));
+  box-shadow: var(--ws-shadow-2);
+  font-size: var(--ws-text-sm);
+  transform: translateX(-50%);
+}
+
+.ws-final-banner > span {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 6px;
+  color: var(--ws-ok);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-final-banner p {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-final-banner button {
+  flex: 0 0 auto;
+  min-height: var(--ws-control-sm);
+  padding: var(--ws-space-1) var(--ws-space-3);
+  color: var(--ws-accent-contrast);
+  border: 1px solid var(--ws-ok);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-ok);
+  font: inherit;
+  font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-semibold);
+  cursor: pointer;
+}
+
+.ws-final-banner button:hover {
+  filter: brightness(1.05);
 }
 
 /* -- 模型设置弹窗 ---------------------------------------------------------- */

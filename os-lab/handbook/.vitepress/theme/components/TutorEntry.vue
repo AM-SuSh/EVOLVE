@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { withBase } from 'vitepress'
-import { ArrowRight, ClipboardCheck, LogIn, PencilLine, RefreshCw } from 'lucide-vue-next'
+import { ArrowRight, ClipboardCheck, FlaskConical, LogIn, PencilLine, RefreshCw } from 'lucide-vue-next'
 import { authHeaders, loadAuth, tutorLabs, type LearningAccessItem } from '../tutor-model'
 import TeacherBatchOpen from './TeacherBatchOpen.vue'
 
@@ -67,7 +67,7 @@ onMounted(() => {
           <h2>备课、发布与验收，围绕每个实验完成</h2>
           <p>
             选择一个实验进入双栏工作台：左侧预览或编辑实验手册，右侧安排分发范围、任务类型和班级公告。
-            学生提交后统一进入实验验收。
+            学生提交后统一进入实验验收；期末探索任务可在独立页面按全局、班级或单个学生发布。
           </p>
           <div class="ws-entry-cta">
             <a class="primary" :href="withBase('/learn/lab1')">
@@ -75,6 +75,9 @@ onMounted(() => {
             </a>
             <a :href="withBase('/teacher-review')">
               <ClipboardCheck :size="16" aria-hidden="true" />实验验收
+            </a>
+            <a :href="withBase('/teacher/final-project')">
+              <FlaskConical :size="16" aria-hidden="true" />期末探索
             </a>
           </div>
         </div>

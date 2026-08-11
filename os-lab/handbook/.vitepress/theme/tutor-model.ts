@@ -929,6 +929,17 @@ export interface LabJourneyItem {
 
 export type FinalProjectKind = 'performance' | 'app' | 'debug' | 'open' | 'custom'
 
+export interface FinalProjectLeaderboardMetric {
+  id: string
+  label: string
+  unit: string
+  direction: 'higher' | 'lower'
+}
+
+export interface FinalProjectLeaderboard {
+  metrics: FinalProjectLeaderboardMetric[]
+}
+
 export interface FinalProjectInfo {
   id: string
   title: string
@@ -938,6 +949,7 @@ export interface FinalProjectInfo {
   mechanisms: string[]
   verificationCommand: string
   rubric: string[]
+  leaderboard?: FinalProjectLeaderboard
   updatedAt?: string
 }
 
