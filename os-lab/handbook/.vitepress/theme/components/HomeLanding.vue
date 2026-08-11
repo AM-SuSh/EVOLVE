@@ -12,16 +12,15 @@ import { ArrowRight, Check, Play } from 'lucide-vue-next'
           <span class="os-status-dot" aria-hidden="true"></span>
           Rust · RISC-V 64 · QEMU
         </div>
-        <h1 id="os-home-title" class="os-brand os-reveal os-delay-1">os-lab</h1>
-        <p class="os-hero-statement os-reveal os-delay-2">
-          把操作系统，<span>一层一层跑出来。</span>
-        </p>
-        <p class="os-hero-copy os-reveal os-delay-3">
-          从第一行裸机输出，到能处理虚存、文件、进程与线程的内核。
-          手册、代码、验证、Trace 和 AI 导师都在同一个实验工作台里。
-        </p>
+        <h1 id="os-home-title" class="os-brand os-reveal os-delay-1">
+          <span class="os-brand-mark">EVOlVE</span>
+          <span class="os-brand-expand">
+            <span class="os-brand-expand-line">Evolving Virtual OS Learning</span>
+            <span class="os-brand-expand-line">&amp; Verification Environment</span>
+          </span>
+        </h1>
 
-        <div class="os-hero-actions os-reveal os-delay-4">
+        <div class="os-hero-actions os-reveal os-delay-2">
           <a class="os-button os-button-primary" href="/guide/ai-tutor">
             <Play :size="18" fill="currentColor" aria-hidden="true" />
             开始当前实验
@@ -32,7 +31,7 @@ import { ArrowRight, Check, Play } from 'lucide-vue-next'
           </a>
         </div>
 
-        <div class="os-proof os-reveal os-delay-4" aria-label="平台特性">
+        <div class="os-proof os-reveal os-delay-2" aria-label="平台特性">
           <span><Check :size="15" aria-hidden="true" /> 8 个渐进式 Lab</span>
           <span><Check :size="15" aria-hidden="true" /> 真实 QEMU 验证</span>
           <span><Check :size="15" aria-hidden="true" /> 证据驱动辅导</span>

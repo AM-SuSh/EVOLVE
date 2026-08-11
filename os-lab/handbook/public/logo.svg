@@ -1,4 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <rect width="64" height="64" rx="12" fill="#1565c0"/>
-  <text x="32" y="40" text-anchor="middle" fill="#fff" font-family="system-ui,sans-serif" font-size="22" font-weight="700">OS</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="EVOlVE">
+  <rect width="64" height="64" rx="14" fill="#126a73"/>
+  <text
+    x="32"
+    y="41"
+    text-anchor="middle"
+    fill="#ffffff"
+    font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+    font-size="22"
+    font-weight="760"
+    letter-spacing="0.04em"
+  >EV</text>
 </svg>

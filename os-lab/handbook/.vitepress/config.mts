@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url'
 const handbookRoot = fileURLToPath(new URL('..', import.meta.url))
 
 export default withMermaid(defineConfig({
-  title: 'os-lab 学习手册',
-  description: 'Rust + RISC-V 操作系统教学实验 · 单内核渐进式学习路径',
+  title: 'EVOlVE',
+  description: 'Evolving Virtual OS Learning & Verification Environment',
   lang: 'zh-CN',
   srcDir: '.',
   outDir: resolve(handbookRoot, '.vitepress/dist'),

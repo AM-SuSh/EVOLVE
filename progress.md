@@ -1,5 +1,93 @@
 # os-lab 项目进度总览
 
+## 2026-08-11 - Task: 首页全称两行排版
+
+### What was done
+- 首页全称改为两行：`Evolving Virtual OS Learning` / `& Verification Environment`，避免挤在一行。
+
+### Testing
+- 刷新首页目视确认两行对齐；窄屏允许第二行自然换行。
+
+### Notes
+- 改动：`HomeLanding.vue`；`home.css`；`progress.md`
+- 回滚：还原为单行全称。
+
+---
+
+## 2026-08-11 - Task: 入门指南产品名改为 EVOLVE
+
+### What was done
+- `guide/start.md` 中面向读者的产品名由 os-lab 改为 EVOLVE（欢迎语、章节标题与正文介绍）。
+- 仓库路径、`cd os-lab` 以及内核真实输出字符串仍保留 `os-lab`，避免命令与实测不符。
+
+### Testing
+- 全文检索 `start.md`：产品叙述为 EVOLVE；命令块仍为 `cd os-lab`，预期输出仍与 `kernel/src/main.rs` 一致。
+
+### Notes
+- 改动：`os-lab/handbook/guide/start.md`；`progress.md`
+- 回滚：还原 start.md 产品名表述。
+
+---
+
+## 2026-08-11 - Task: 顶栏 logo 改为 EVOlVE 品牌标
+
+### What was done
+- 将 `public/logo.svg` 由蓝色「OS」方标改为品牌色 `#126a73` 的「EV」方标，与 EVOlVE 顶栏名称配套。
+
+### Testing
+- 刷新前端后核对左上角图标；若浏览器缓存旧 SVG，硬刷新或清缓存后再看。
+
+### Notes
+- 改动：`os-lab/handbook/public/logo.svg`；`progress.md`
+- 回滚：还原 logo.svg 为原 OS 蓝标。
+
+---
+
+## 2026-08-11 - Task: 顶栏站点名改为 EVOlVE 并再放大全称
+
+### What was done
+- VitePress 顶栏/站点标题由「os-lab 学习手册」改为 `EVOlVE`，description 改为全称。
+- 首页全称字号再放大（桌面约 36px）。
+
+### Testing
+- 刷新站点后核对左上角标题与首页全称字号。
+
+### Notes
+- 改动：`os-lab/handbook/.vitepress/config.mts`；`home.css`；`progress.md`
+- 回滚：还原上述文件。
+
+---
+
+## 2026-08-11 - Task: 首页去掉中文口号并放大 EVOlVE 全称
+
+### What was done
+- 删除首页「把操作系统，一层一层跑出来。」
+- 将全称 Evolving Virtual OS Learning & Verification Environment 放大为次级主文案。
+
+### Testing
+- 对照 `HomeLanding.vue`：口号段落已移除；全称仍挂在品牌标题下。刷新首页目视确认字号。
+
+### Notes
+- 改动：`HomeLanding.vue`；`home.css`；`progress.md`
+- 回滚：还原上述文件。
+
+---
+
+## 2026-08-11 - Task: 首页品牌更名为 EVOlVE
+
+### What was done
+- 首页主标题由 `os-lab` 改为 `EVOlVE`，并展示全称 Evolving Virtual OS Learning & Verification Environment。
+- 删除首页介绍句「从第一行裸机输出…同一个实验工作台里」。
+
+### Testing
+- 对照改后的 `HomeLanding.vue` / `index.md`：标题与全称在场，目标介绍段落已移除；本地 VitePress 刷新首页即可目视确认。
+
+### Notes
+- 改动：`os-lab/handbook/.vitepress/theme/components/HomeLanding.vue`；`os-lab/handbook/.vitepress/theme/styles/home.css`；`os-lab/handbook/index.md`；`progress.md`
+- 回滚：还原上述文件至改名前版本。
+
+---
+
 ## 2026-08-11 - Task: Lab6 前端相关文件列表对齐 Lab7 精简标准
 
 ### What was done

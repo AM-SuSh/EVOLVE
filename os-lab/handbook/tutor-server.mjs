@@ -56,6 +56,7 @@ import { decideTutorTurn, enforceTutorOutput, tutorPolicyPrompt } from '../tutor
 import {
   identifyTutorTopic,
   planTutorTurn,
+  tutorResponseModes,
   tutorTurnIntents,
   tutorTurnPolicyPrompt,
 } from '../tutor/turn-policy.mjs'
@@ -893,6 +894,9 @@ function frameworkFor(labId, tutorState, reading, codeContext, policyPrompt = ''
   const safeStage = stageIds.has(tutorState?.stage) ? tutorState.stage : 'orient'
   const routingMode = tutorState?.routingMode === 'stage' ? 'stage' : 'intent'
   const safeIntent = tutorTurnIntents.includes(tutorState?.intent) ? tutorState.intent : 'concept'
+  const responseMode = tutorResponseModes.includes(tutorState?.responseMode)
+    ? tutorState.responseMode
+    : 'answer-first'
   const reading_ = readingLayer(reading)
   const workspaceContext = workspaceContextLayer(codeContext)
   const publishedContext = publishedContentPath(safeLabId, 'tutorContext', '')
@@ -931,6 +935,7 @@ function frameworkFor(labId, tutorState, reading, codeContext, policyPrompt = ''
     labId: safeLabId,
     stage: safeStage,
     intent: routingMode === 'intent' ? safeIntent : undefined,
+    responseMode,
     layers,
     prompt: [systemPrompt, labPrompt, strategyPrompt, reading_, workspaceContext, policyPrompt, retrievedKnowledge]
       .filter(Boolean)

@@ -19,7 +19,29 @@ const props = defineProps<{
 }>()
 
 const markdown = new MarkdownIt({ html: true, linkify: true })
+const defaultLinkOpen = markdown.renderer.rules.link_open
+markdown.renderer.rules.link_open = (tokens, index, options, env, self) => {
+  tokens[index].attrSet('target', '_blank')
+  tokens[index].attrSet('rel', 'noopener noreferrer')
+  return defaultLinkOpen
+    ? defaultLinkOpen(tokens, index, options, env, self)
+    : self.renderToken(tokens, index, options)
+}
 const descriptionHtml = computed(() => markdown.render(String(props.project?.description || '')))
+const updatedAt = computed(() => formatDate(props.project?.updatedAt))
+
+function formatDate(value?: string) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
 
 interface RunOption {
   runId: string
@@ -188,6 +210,7 @@ watch(
       <p v-if="project.kindLabel || project.kind" class="fp-kind">
         {{ project.kindLabel || finalProjectKindLabel(project.kind) }}
       </p>
+      <small v-if="updatedAt" class="fp-updated">更新于 {{ updatedAt }}</small>
 
       <div class="fp-markdown" v-html="descriptionHtml" />
 
@@ -392,6 +415,12 @@ watch(
   background: var(--ws-accent-soft);
   font-size: var(--ws-text-xs);
   font-weight: var(--ws-weight-semibold);
+}
+
+.fp-updated {
+  display: block;
+  color: var(--ws-ink-faint);
+  font-size: var(--ws-text-xs);
 }
 
 .fp-markdown {

@@ -59,7 +59,7 @@
 - 空态：尚未收到服务端 `tutorState` 时用本地 `activeStage` +「还没有服务端证据摘要…」，**不 mock** run / 断言；无 `latestRun.verified` 时不出现「已验证通过」话术。
 - 新对话清空证据条状态。
 
-## AI 导师 · 证据引用跳转（Day3）
+## AI 导师 · 证据引用跳转
 
 - 正文中的 `run:<id>` / `trace:<id>` 渲染为可点链接；助手消息与证据条展示可点 chips（过滤 `event:`）。
 - 导航由 `LabWorkspace.navigateEvidenceRef` 统一处理：
@@ -134,7 +134,7 @@
 - **预览最终稿**：与导出 / `POST /reports` 使用同一份 Markdown。
 - **教师布置 UI**：弹窗编辑；可导入 Markdown；无需配置「用途 / 行数」。
 
-## 评分 v3 · 学生得分区
+## 评分· 学生得分区
 
 挂载位置：学习支持 · **学习评价**页签（与实验报告同级；`AssessmentPane` → `AssessmentScorePanel`）。
 
@@ -154,7 +154,7 @@ V3 的过程评分观察 `judgment`、`evidence`、`hypothesis`、`verification`
 - **AI 点评**：把报告发给 AI 助手（浮层对话），不是真人老师。
 - **提交给老师**：提交前弹窗二次确认；重复提交覆盖本实验上一份。
 
-## 评分 v3 · 教师评分复核
+## 评分 · 教师评分复核
 
 挂载：`/guide/teacher-report`（`TeacherReport`）。与「实验验收」页（`TeacherReview` / 报告批语）不同入口。
 
@@ -163,7 +163,7 @@ V3 的过程评分观察 `judgment`、`evidence`、`hypothesis`、`verification`
 - **引用**：教师页无学生工作台；点击 evidenceRefs 复制引用并提示，不假装跳进 IDE。
 - **改分留痕（Day5）**：`pending` 项可提交 `POST /teacher/review`（`confirmed` / `corrected` / `dismissed` + 必填 `rationale` + 合法 `evidenceRefs`；`corrected` 时带维度总分 `correctedResult`）。`automaticResult` 只读不变；`decisions[]` 作审计时间线。导航「评分复核」指向本页。
 
-## 教学安排直接下发（Lab 工厂已从前端移除）
+## 教学安排直接下发
 
 Lab 工厂页面与入口已从前端移除，教师只通过工作台右栏「教学安排」（`TeacherPublishPanel`）完成班级创建、按班级/学生/全局范围分发与任务变体下发，不再需要先走包校验/发布流程。学生注册时只能从老师已创建的班级下拉中选择，不能自行填写班级。
 
@@ -178,7 +178,7 @@ Lab 工厂页面与入口已从前端移除，教师只通过工作台右栏「�
 - **文件要求**：变体任务文件（如 `kernel/src/mm.rs`、`kernel/src/process.rs`）必须存在于 `scaffold/exercises/` 对应路径；当前 Lab2–8 的 fill/debug/remedial 变体文件均已核对齐全。
 - **门控**：非教师 / 未登录显示「需要教师账号」；连不上 tutor 时说明原因。
 
-## 期末探索任务（Lab9 终节点）
+## 期末探索任务
 
 教师端「教学安排」新增 **07 期末探索任务**，可按全局 / 班级 / 单个学生创建并发布任务书：
 
@@ -199,7 +199,7 @@ Lab 工厂页面与入口已从前端移除，教师只通过工作台右栏「�
 - SSE `output` 帧原样 `write` 到 xterm，保留 ANSI；`scrollback` 默认 5000 行；停止/超时写入醒目提示行。
 - 仍非 PTY：输入被解析为工作台命令提交，不模拟真实 shell 会话。
 
-## 事件（与成员 C 契约）
+## 事件
 
 | 用户动作 | 目标事件（v2） |
 | --- | --- |

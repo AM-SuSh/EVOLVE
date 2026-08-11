@@ -36,18 +36,20 @@ class QualityFilterTest(unittest.TestCase):
         self.assertIn("扩展阅读", cleaned)
 
     def test_platform_concepts_are_projected_to_semantic_blocks(self):
-        files = sorted(Path("os-lab/lab-packages").glob("lab[2-8]/concepts/*.yaml"))
+        workspace_root = Path(__file__).resolve().parents[3]
+        files = sorted((workspace_root / "os-lab" / "lab-packages").glob("lab[2-8]/concepts/*.yaml"))
+        self.assertTrue(files, "expected Lab2-Lab8 concept specifications")
         total = 0
         texts = []
         for path in files:
             document = normalize_file(path, "platform-lab-packages")
-            document["metadata"]["sourcePath"] = path.as_posix()
+            document["metadata"]["sourcePath"] = path.relative_to(workspace_root).as_posix()
             projected, _ = filter_document(document)
             total += len(projected["blocks"])
             texts.extend(item["text"] for item in projected["blocks"])
             self.assertTrue(all(item["locator"].get("conceptId") for item in projected["blocks"]))
         joined = "\n".join(texts)
-        self.assertEqual(total, 19)
+        self.assertEqual(total, 20)
         self.assertNotIn("source_anchors:", joined)
         self.assertNotIn("practice_tasks:", joined)
         self.assertIn("Sv39", joined)

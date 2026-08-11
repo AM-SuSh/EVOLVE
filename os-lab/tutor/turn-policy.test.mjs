@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   inferQuestionCategory,
   inferTutorIntent,
+  inferTutorResponseMode,
   identifyTutorTopic,
   planTutorTurn,
   tutorTurnPolicyPrompt,
@@ -36,6 +37,39 @@ test('intent and teaching actions are invariant across UI stages', () => {
     assert.equal(plan.gate, 'intent-routed')
   }
   assert.deepEqual(plans.map((plan) => plan.stage), ['orient', 'read', 'run', 'debug', 'reflect', 'transfer'])
+})
+
+test('definition questions answer the term before Socratic follow-up', () => {
+  assert.equal(inferTutorResponseMode('fd是什么？'), 'definition-first')
+  assert.equal(inferTutorResponseMode('sepc 在 trap 返回中起什么作用？'), 'definition-first')
+
+  const plan = planTutorTurn({
+    currentStage: 'orient',
+    requestedStage: 'debug',
+    message: 'fd是什么？',
+    evidence: {},
+  })
+  assert.equal(plan.intent, 'concept')
+  assert.equal(plan.responseMode, 'definition-first')
+  assert.match(tutorTurnPolicyPrompt(plan), /先直接定义学生问到的术语/)
+  assert.match(tutorTurnPolicyPrompt(plan), /不得以阶段、边界或反问开头/)
+})
+
+test('a definition question does not inherit the previous generic topic', () => {
+  const previous = identifyTutorTopic({
+    message: '页表为什么要分三级？',
+    reading: { h2: '内存与虚拟内存' },
+  })
+  const next = identifyTutorTopic({
+    message: '这个是什么？',
+    reading: { h2: '内存与虚拟内存' },
+    previousTopicKey: previous.topicKey,
+    previousIntent: previous.topicIntent,
+    previousTopicAnchor: previous.topicAnchor,
+  })
+  assert.equal(next.responseMode, 'definition-first')
+  assert.notEqual(next.topicKey, previous.topicKey)
+  assert.equal(next.topicChanged, true)
 })
 
 test('turn policy keeps evidence authority without injecting a required stage action', () => {

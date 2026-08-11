@@ -7,7 +7,7 @@
 ```text
 学生消息 + 当前 Lab + 阶段遥测 + 阅读/代码/运行上下文
   -> handbook/tutor-server.mjs 身份与权限校验
-  -> turn-policy.mjs 识别本轮意图和问题线程
+  -> turn-policy.mjs 识别本轮意图、回应模式和问题线程
   -> learning/db.mjs 读取当前 topicKey 的提示等级与可信证据摘要
   -> system + Lab context + intent strategy + current context + RAG
   -> 上游模型或离线回退
@@ -39,11 +39,13 @@
 
 问题意图由 `tutor/turn-policy.mjs` 的 `inferTutorIntent()` 识别，策略动作由 `planTutorTurn()` 生成。前端使用同一模块中的 `inferQuestionCategory()` 做旧 UI 分析分类，避免前后端规则漂移。
 
+意图不等于回答顺序。`inferTutorResponseMode()` 另外判定本轮的首要回应方式：`definition-first` 用于“X 是什么 / X 有什么作用”等术语问题，必须先给定义或作用；`evidence-first` 用于现象和验证问题，必须先回应现象或验证目标；`answer-first` 是普通概念问题的默认方式；`guardrail` 用于完整实现请求。阶段只提供阅读和实验上下文，不能覆盖这些回答优先级。
+
 ## 3. 文件职责与 Prompt 层次
 
 | 文件或目录 | 当前职责 |
 | --- | --- |
-| `tutor/turn-policy.mjs` | 本轮意图、问题线程、提示等级和教学动作 |
+| `tutor/turn-policy.mjs` | 本轮意图、回应模式、问题线程、提示等级和教学动作 |
 | `tutor/prompts/system.md` | 全局教学边界、回答风格、引导原则和答案保护 |
 | `tutor/prompts/<lab>/context.md` | 当前 Lab 的机制、允许讨论范围和验证标准 |
 | `tutor/prompts/strategies/*.md` | 七类意图的回答策略与引导动作 |
