@@ -8,14 +8,22 @@ const INTENTS = new Set([
   'direct-answer',
 ])
 
+const RESPONSE_MODES = new Set([
+  'answer-first',
+  'definition-first',
+  'evidence-first',
+  'guardrail',
+])
+
 const DIRECT_ANSWER_RE = /(完整代码|直接.*答案|直接.*实现|可提交.*patch|替我写完|最终代码)/i
+const TERM_DEFINITION_RE = /(?:什么是|.+(?:是什么|是啥|指什么|什么意思|什么作用|有什么用|怎么理解|如何理解))(?:[?？。！!])?$/i
 const REFLECTION_RE = /(复盘|反思|总结|收获|报告|答辩|我学到|理解变化)/i
 const TRANSFER_RE = /(区别|对比|相比|迁移|类似|换成|改成|改变.*条件|边界条件|推广|(?:如果|假如).*(?:变化|成立|怎样|如何|会))/i
 const DEBUG_RE = /(现象|乱码|报错|错误|失败|崩溃|panic|卡住|不工作|异常|输出不对|根因|定位|修复)/i
 const VERIFICATION_RE = /(实验|验证|测试|尝试|观察|运行|预期|断言|QEMU|cargo|trace|日志)/i
 const CODE_RE = /(?:\.[a-z0-9]+\b|函数|字段|源码|代码|调用链|控制流|数据流|实现位置|寄存器|结构体)/i
 const GENERIC_FOLLOW_UP_RE = /^(?:请)?(?:再|继续|然后|那|这个|这里|还是|能否|可以)?(?:给|说|讲|解释|具体|详细|看|帮|提示|一点|一下|呢|吗|？|\?|，|。|\s){1,24}$/i
-const TOPIC_TERM_RE = /(sepc|sscratch|scause|stvec|sstatus|satp|sret|ecall|trap|syscall|panic|页表|地址空间|虚拟内存|物理内存|调度器|任务切换|上下文切换|进程|线程|文件系统|磁盘|inode|管道|信号|互斥锁|自旋锁|死锁|中断|异常|特权级|系统调用)/gi
+const TOPIC_TERM_RE = /(\bfd\b|fd表|文件描述符|file descriptor|fdtype|offset|sepc|sscratch|scause|stvec|sstatus|satp|sret|ecall|trap|syscall|panic|页表|地址空间|虚拟内存|物理内存|调度器|任务切换|上下文切换|进程|线程|文件系统|磁盘|inode|管道|信号|互斥锁|自旋锁|死锁|中断|异常|特权级|系统调用)/gi
 
 const INTENT_ACTIONS = Object.freeze({
   concept: ['answer-focused-concept', 'ask-for-judgment'],
@@ -28,6 +36,7 @@ const INTENT_ACTIONS = Object.freeze({
 })
 
 export const tutorTurnIntents = Object.freeze([...INTENTS])
+export const tutorResponseModes = Object.freeze([...RESPONSE_MODES])
 
 /** Keep the old UI analytics taxonomy in one shared implementation. */
 export function inferQuestionCategory(message) {
@@ -49,6 +58,19 @@ export function inferTutorIntent(input) {
   if (VERIFICATION_RE.test(message)) return 'verification'
   if (CODE_RE.test(message)) return 'code-reading'
   return 'concept'
+}
+
+/**
+ * Intent describes the learning task. Response mode describes the first
+ * response move, so a concept question is not turned into a question before
+ * it receives its basic answer.
+ */
+export function inferTutorResponseMode(input) {
+  const message = String(typeof input === 'string' ? input : input?.message || '').trim()
+  if (DIRECT_ANSWER_RE.test(message)) return 'guardrail'
+  if (TERM_DEFINITION_RE.test(message)) return 'definition-first'
+  if (DEBUG_RE.test(message) || VERIFICATION_RE.test(message)) return 'evidence-first'
+  return 'answer-first'
 }
 
 function cleanContextText(value, max = 160) {
@@ -75,10 +97,11 @@ export function identifyTutorTopic(input) {
   const previousTopicKey = cleanContextText(input?.previousTopicKey, 120)
   const previousIntent = INTENTS.has(input?.previousIntent) ? input.previousIntent : ''
   const previousAnchor = cleanContextText(input?.previousTopicAnchor, 240)
-  const followUp = GENERIC_FOLLOW_UP_RE.test(message)
   const inferredIntent = inferTutorIntent(message)
-  const intent = followUp && previousIntent ? previousIntent : inferredIntent
   const explicitTerms = topicTerms(message)
+  const responseMode = inferTutorResponseMode(message)
+  const followUp = GENERIC_FOLLOW_UP_RE.test(message) && !explicitTerms.length && responseMode === 'answer-first'
+  const intent = followUp && previousIntent ? previousIntent : inferredIntent
   const codeFile = cleanContextText(input?.codeContext?.file, 240).replace(/\\/g, '/')
   const reading = [cleanContextText(input?.reading?.h2, 120), cleanContextText(input?.reading?.h3, 120)]
     .filter(Boolean)
@@ -93,6 +116,7 @@ export function identifyTutorTopic(input) {
       topicKey: previousTopicKey,
       topicIntent: intent,
       topicAnchor: previousAnchor,
+      responseMode,
       topicChanged: false,
       topicChangeReason: 'follow-up',
     }
@@ -103,7 +127,9 @@ export function identifyTutorTopic(input) {
     : reading || codeFile
   const anchorParts = explicitTerms.length
     ? explicitTerms
-    : [contextualAnchor || message.toLowerCase().replace(/\s+/g, '').slice(0, 48)]
+    : [responseMode === 'definition-first'
+      ? message.toLowerCase().replace(/\s+/g, '').slice(0, 48)
+      : contextualAnchor || message.toLowerCase().replace(/\s+/g, '').slice(0, 48)]
   if (intent === 'debug' && diagnosticKeys.length) anchorParts.push(...diagnosticKeys)
   const topicAnchor = anchorParts.filter(Boolean).join('|') || 'general'
   const topicKey = `topic:${stableTopicHash(`${intent}|${topicAnchor}`)}`
@@ -115,6 +141,7 @@ export function identifyTutorTopic(input) {
     topicKey,
     topicIntent: intent,
     topicAnchor,
+    responseMode,
     topicChanged: Boolean(previousTopicKey && previousTopicKey !== topicKey),
     topicChangeReason,
   }
@@ -138,6 +165,9 @@ export function planTutorTurn(input) {
   const requestedStage = safeStage(input?.requestedStage)
   const topic = input?.topic || identifyTutorTopic({ ...input, evidence })
   const intent = INTENTS.has(topic.topicIntent) ? topic.topicIntent : inferTutorIntent({ message, evidence })
+  const responseMode = RESPONSE_MODES.has(topic.responseMode)
+    ? topic.responseMode
+    : inferTutorResponseMode(message)
   const previousHintLevel = Number.isInteger(input?.topicHintLevel)
     ? input.topicHintLevel
     : Number.isInteger(input?.hintLevel) ? input.hintLevel : 0
@@ -150,6 +180,7 @@ export function planTutorTurn(input) {
     version: 'turn-policy-v2',
     routingMode: 'intent',
     intent: INTENTS.has(intent) ? intent : 'concept',
+    responseMode,
     stage: requestedStage,
     previousStage,
     requestedStage,
@@ -176,11 +207,18 @@ export function tutorTurnPolicyPrompt(decision) {
   return [
     '本轮教学计划（服务端权威）：',
     `- 问题意图：${decision.intent}`,
+    `- 回应模式：${decision.responseMode || 'answer-first'}`,
     `- 问题线程：${decision.topicKey}`,
     `- 当前提示层级：L${decision.hintLevel}`,
     `- 教学动作：${decision.actions.join(', ')}`,
     `- 可引用证据：${decision.evidenceRefs.join(', ') || '无'}`,
     `- 可信工具摘要：${JSON.stringify(decision.toolContext)}`,
-    '先回应学生当前问题，再执行至多一个最有价值的引导动作。不得声称执行了工具摘要中不存在的运行、诊断或 Trace。',
+    decision.responseMode === 'definition-first'
+      ? '回答顺序：先直接定义学生问到的术语，并补充一个与当前实验相关的作用或边界；不得以阶段、边界或反问开头。回答完成后至多追问一个问题。'
+      : decision.responseMode === 'guardrail'
+        ? '回答顺序：先用一句话说明不能交付完整实现，再回答学生实际问到的机制或卡点；最后至多追问一个与其已有尝试有关的问题。'
+        : decision.responseMode === 'evidence-first'
+          ? '回答顺序：先回应学生描述的现象或验证目标，再提出至多一个最小证据动作。不得用阶段要求替代对当前问题的回应。'
+          : '先回应学生当前问题，再执行至多一个最有价值的引导动作。不得声称执行了工具摘要中不存在的运行、诊断或 Trace。',
   ].join('\n')
 }

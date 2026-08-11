@@ -1,16 +1,17 @@
 # EVOLVE: Evolving Virtual OS Learning & Verification Environment
 
-分块产物生成
+EVOLVE 是一套面向操作系统课程的渐进式实验、可信验证与智能辅导环境。系统以 Rust + RISC-V 64 教学内核为基础，覆盖 Lab1-Lab8，并提供学生隔离工作区、受控运行、行为断言、编译诊断、Trace、AI 导师、知识库、学习评价和教师管理。
 
-```
-cd os-lab
-python learning/knowledge/build_lab_chunks.py
-```
+## 仓库总览
 
+本仓库汇总 EVOLVE 当前阶段的源码、实验内容、技术文档和答辩材料。
 
-# 仓库总览
-
-本仓库汇总操作系统课程赛题交付材料。
+| 阶段性材料 | 说明 |
+| --- | --- |
+| [8.12阶段性实验技术文档.md](8.12阶段性实验技术文档.md) | **阶段性技术文档**：架构、内核、教学平台、AI/RAG、评价、测试、分工与比赛收获 |
+| [8.12阶段性PPT.pptx](8.12阶段性PPT.pptx) | **阶段性答辩演示文稿** |
+| [os-lab/](os-lab/) | EVOLVE 当前实现源码、实验手册、教学服务与测试 |
+| [progress.md](progress.md) | 开发过程和阶段记录 |
 
 ## 项目基线
 
@@ -20,16 +21,16 @@ python learning/knowledge/build_lab_chunks.py
 | --- | --- |
 | 参考环境 | `tg-rcore-tutorial`（branch `test`，commit `d6330a6`） |
 | 30% 练习 | 在参考环境 ch3/ch4/ch5/ch6/ch8 完成 exercise，补丁见 [reference-patches/](reference-patches/) |
-| 70% 自研 | 独立实现 `os-lab/` 教学实验环境，不修改上游参考仓库 |
+| 70% 自研 | 独立实现 EVOLVE；源码位于 `os-lab/`，不修改上游参考仓库 |
 
-项目总报告与对比分析中的基线描述与上表一致，见 [项目总报告.md](项目总报告.md)、[os-lab/docs/design-report.md](os-lab/docs/design-report.md)、[docs/reference-report.md](docs/reference-report.md)。
+当前实现与技术边界以 [8.12阶段性实验技术文档.md](8.12阶段性实验技术文档.md) 为准；参考环境的复现过程见 [docs/reference-report.md](docs/reference-report.md)。
 
 ## 许可证
 
 | 范围 | 许可证 | 文件 |
 | --- | --- | --- |
 | 技术文档（`docs/`、`os-lab/docs/`、`os-lab/labs/` 等 Markdown） | **CC BY-SA 4.0** | [docs/LICENSE](docs/LICENSE) |
-| 自研源码（`os-lab/` workspace） | **BSD-3-Clause** | [os-lab/LICENSE](os-lab/LICENSE)、[os-lab/Cargo.toml](os-lab/Cargo.toml) |
+| EVOLVE 自研源码（`os-lab/` workspace） | **BSD-3-Clause** | [os-lab/LICENSE](os-lab/LICENSE)、[os-lab/Cargo.toml](os-lab/Cargo.toml) |
 
 `docs/` 目录及其子目录中的 Markdown 技术文档采用 **[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)** 许可：署名 OS Lab Team；再发布或演绎时须以相同许可（BY-SA）共享。许可证全文见 [docs/LICENSE](docs/LICENSE)。
 
@@ -39,53 +40,46 @@ python learning/knowledge/build_lab_chunks.py
 
 | 文档 | 说明 |
 | --- | --- |
-| [docs/reference-report.md](docs/reference-report.md) | **参考环境报告**（base 测试、exercise 实现、checker 结果、复现命令） |
-| [reference-patches/](reference-patches/) | 练习实现 `.patch`（相对基线 `d6330a6` 的可审阅 diff） |
+| [docs/reference-report.md](docs/reference-report.md) | 参考环境 base/exercise、checker 结果与复现命令 |
+| [reference-patches/](reference-patches/) | 相对基线 `d6330a6` 的练习实现补丁 |
 
-### 70%：自研 os-lab
+### 70%：EVOLVE 自研系统
 
-| 文档 | 说明 |
+| 文档或目录 | 说明 |
 | --- | --- |
-| [docs/os-lab.md](docs/os-lab.md) | **自研环境统一入口**（概览、验证、手册） |
-| [os-lab/docs/design-report.md](os-lab/docs/design-report.md) | **教学实验环境设计总结报告** |
-| [os-lab/docs/architecture.md](os-lab/docs/architecture.md) | 架构、feature 依赖、Lab 数据流 |
-| [os-lab/docs/comparison.md](os-lab/docs/comparison.md) | 本校 / 参考 / 自研三方对比与学习效率评估 |
-| [os-lab/docs/comparison-data.md](os-lab/docs/comparison-data.md) | 对比原始数据与采集说明 |
-| [os-lab/docs/ai-collaboration.md](os-lab/docs/ai-collaboration.md) | AI 协作过程记录 |
+| [8.12阶段性实验技术文档.md](8.12阶段性实验技术文档.md) | **当前阶段完整技术说明与实现边界** |
+| [docs/os-lab.md](docs/os-lab.md) | 环境验证、复现和 Web 学习手册入口 |
+| [os-lab/docs/agent-system-technical.md](os-lab/docs/agent-system-technical.md) | AI 导师、证据门控、RAG 与评价技术说明 |
+| [os-lab/handbook/docs/workbench-ui.md](os-lab/handbook/docs/workbench-ui.md) | 学生工作台和教师端交互契约 |
+| [os-lab/docs/deployment-and-recovery.md](os-lab/docs/deployment-and-recovery.md) | 部署、安全、备份与恢复 |
+| [os-lab/lab-packages/](os-lab/lab-packages/) | Lab1-Lab8 机器可读规格和任务变体 |
 
 ## 验证与交付
 
-| 文档 | 说明 |
+| 入口 | 说明 |
 | --- | --- |
-| [项目总报告.md](项目总报告.md) | **项目总报告 / 完整技术方案**（大赛提交用） |
-| [docs/os-lab.md](docs/os-lab.md) | **自研环境验证与复现**、Web 学习手册说明 |
+| [8.12阶段性实验技术文档.md](8.12阶段性实验技术文档.md) | 当前测试结果、实现说明和团队分工 |
+| [8.12阶段性PPT.pptx](8.12阶段性PPT.pptx) | 当前阶段答辩材料 |
 | [docs/environment_setup.md](docs/environment_setup.md) | Rust、QEMU、Git 安装与配置 |
-| [progress.md](progress.md) | **项目阶段计划**与开发过程记录 |
-
-## 教学实验（学生向）
-
-位于 `os-lab/labs/`：
-
-| 类型 | 路径 |
-| --- | --- |
-| 总览 | [os-lab/labs/overview.md](os-lab/labs/overview.md) |
-| **Web 学习手册** | [docs/os-lab.md](docs/os-lab.md) → `os-lab/handbook/` |
-| 指导 lab1–5 | `os-lab/labs/lab*-*.md`（【任务二】为阅读理解题） |
-| 参考答案 | [os-lab/labs/answers/](os-lab/labs/answers/) |
-| 测试说明 | [os-lab/tests/README.md](os-lab/tests/README.md) |
+| [.github/workflows/os-lab-ci.yml](.github/workflows/os-lab-ci.yml) | Node、Python、Rust、QEMU 与 VitePress CI |
+| [progress.md](progress.md) | 研发过程、验证记录和阶段收口 |
 
 ## 附录
 
 | 文档 | 说明 |
 | --- | --- |
-| [Task.md](Task.md) | 赛题原文 |
 | [progress.md](progress.md) | 开发过程记录 |
 | [docs/LICENSE](docs/LICENSE) | 技术文档许可证 |
+| [初赛项目总报告.md](初赛项目总报告.md) | 初赛项目报告归档，不作为本次阶段性技术说明 |
+| [初赛PPT.pptx](初赛PPT.pptx) | 初赛答辩材料归档 |
 
 ## 代码入口
 
 | 路径 | 说明 |
 | --- | --- |
-| [os-lab/README.md](os-lab/README.md) | 自研环境快速开始、目录结构 |
-| [os-lab/](os-lab/) | 自研 workspace（kernel + 6 组件 crate + user） |
-| `reference/`（本地 clone，可选） | 完整参考仓库；练习 diff 已提交至 [reference-patches/](reference-patches/) |
+| [os-lab/Cargo.toml](os-lab/Cargo.toml) | 10 成员 Cargo Workspace：kernel、user 与 8 个组件 crate |
+| [os-lab/kernel/](os-lab/kernel/) | Lab1-Lab8 渐进式 RISC-V 教学内核 |
+| [os-lab/handbook/](os-lab/handbook/) | VitePress/Vue 教学工作台与 Tutor Server |
+| [os-lab/tutor/](os-lab/tutor/) | 可信 recipe、Tutor 策略、证据契约与评测 |
+| [os-lab/learning/](os-lab/learning/) | 学习数据、评价、复核和知识库 |
+| `reference/`（本地 clone，可选） | 上游参考仓库；练习 diff 已提交至 [reference-patches/](reference-patches/) |
