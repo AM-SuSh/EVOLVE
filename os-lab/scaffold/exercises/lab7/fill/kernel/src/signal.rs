@@ -73,7 +73,7 @@ pub fn sys_sigreturn(cx: &mut TrapContext) -> isize {
     })
 }
 
-/// 【Lab7 任务：补全】实现 `handle_pending` 中「默认动作 + 构造信号帧」部分。
+/// 【Lab7 任务：fill】实现 `handle_pending` 中「默认动作 + 构造信号帧」部分。
 ///
 /// 思路提示（先自己想清楚再动手）：
 /// 1. `take_deliverable()` 已经从 pending 取走一个可交付信号（SIGKILL 可绕过 mask）；

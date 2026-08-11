@@ -113,7 +113,7 @@ const labFiles = computed(() => {
       if (/\.(rs|asm|ld|toml)$/.test(p)) seen.add(p)
     }
   }
-  // Lab6 等实验含完整用户测例链，放宽上限以免测例/内核文件被截断。
+  // 快捷区聚合各阶段 paths；上限覆盖 Lab7 风格精简列表，并兼容稍长的 Lab。
   return [...seen].filter((path) => existingFiles.value.has(path)).slice(0, 24)
 })
 
