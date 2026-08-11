@@ -19,10 +19,10 @@
 
 /* 旧版只在 :root 覆盖了品牌色，暗色模式下深青色落在深色背景上几乎不可读。 */
 .dark {
-  --vp-c-brand-1: #63c3bd;
-  --vp-c-brand-2: #4bb0aa;
-  --vp-c-brand-3: #2c807e;
-  --vp-c-brand-soft: rgba(75, 176, 170, 0.16);
+  --vp-c-brand-1: #6fd6cf;
+  --vp-c-brand-2: #4bb8b2;
+  --vp-c-brand-3: #2e918c;
+  --vp-c-brand-soft: rgba(111, 214, 207, 0.15);
 }
 
 :root {
@@ -87,6 +87,8 @@
   --ws-control-sm: 28px;
   --ws-control-md: 34px;
   --ws-control-lg: 40px;
+  --ws-select-chevron: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='none' stroke='%235b6470' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --ws-select-chevron-hover: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='none' stroke='%23126a73' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 
   /* -- 阴影 ---------------------------------------------------------------- */
   --ws-shadow-1: 0 1px 2px rgba(16, 28, 32, 0.06);
@@ -146,8 +148,20 @@
 }
 
 .dark {
-  /* 浅青强调色上放白字对比度不足，暗色下改用底色作反色。 */
-  --ws-accent-contrast: #0b1416;
+  /* 暗色下用更暖的蓝绿分层：页面、浮层、控件各有可辨但不过亮的表面。 */
+  --ws-accent-contrast: #081114;
+  --ws-select-chevron: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='none' stroke='%23a9bdc6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --ws-select-chevron-hover: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='16' height='16' fill='none' stroke='%236fd6cf' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+
+  --vp-c-bg: #0f1619;
+  --vp-c-bg-soft: #151f23;
+  --vp-c-bg-alt: #0b1113;
+  --vp-c-bg-elv: #1a272b;
+  --vp-c-divider: rgba(162, 191, 199, 0.12);
+  --vp-c-border: rgba(162, 191, 199, 0.24);
+  --vp-c-text-1: #e4eff1;
+  --vp-c-text-2: #a8bdc3;
+  --vp-c-text-3: #7a9098;
 
   --ws-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
   --ws-shadow-2: 0 4px 16px rgba(0, 0, 0, 0.45);

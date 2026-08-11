@@ -186,7 +186,7 @@ onMounted(async () => {
   display: grid;
   width: 34px;
   height: 34px;
-  color: #fff;
+  color: var(--ws-accent-contrast);
   border-radius: 8px;
   background: var(--vp-c-brand-1);
   place-items: center;
@@ -218,7 +218,7 @@ onMounted(async () => {
   padding: 9px 12px;
   border: 1px solid var(--vp-c-divider);
   border-radius: 8px;
-  background: var(--vp-c-bg);
+  background-color: var(--ws-surface-soft);
   font: inherit;
   transition: border-color 160ms ease-out, box-shadow 160ms ease-out;
 }
@@ -247,7 +247,7 @@ onMounted(async () => {
   width: 100%;
   margin-top: 6px;
   padding: 10px;
-  color: #fff;
+  color: var(--ws-accent-contrast);
   border: 0;
   border-radius: 8px;
   background: linear-gradient(180deg, var(--vp-c-brand-2) 0%, var(--vp-c-brand-1) 60%);

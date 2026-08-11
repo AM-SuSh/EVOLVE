@@ -171,9 +171,7 @@ function resetFormFromActive() {
 }
 
 function formatReview(review: AssessmentReview) {
-  const when = review.createdAt ? new Date(review.createdAt).toLocaleString('zh-CN') : '未知时间'
-  const cls = review.className ? ` · ${review.className}` : ''
-  return `${review.student}${cls} · ${review.labId.toUpperCase()} · ${review.automaticResult.total} 分 · ${when}`
+  return `${review.className || '未分班'} · ${review.student}`
 }
 
 function formatDecisionTime(iso?: string) {
@@ -340,27 +338,33 @@ onMounted(() => {
         </p>
       </div>
       <div class="teacher-report-actions">
-        <label for="teacher-review-filter">队列筛选</label>
-        <select id="teacher-review-filter" v-model="statusFilter" :disabled="!authed">
-          <option value="pending">待复核</option>
-          <option value="all">全部</option>
-        </select>
-        <label for="teacher-review-session">评价条目</label>
-        <select
-          id="teacher-review-session"
-          v-model="selectedId"
-          :disabled="!filtered.length"
-        >
-          <option v-for="review in filtered" :key="review.reviewId" :value="review.reviewId">
-            {{ formatReview(review) }}
-          </option>
-        </select>
-        <button type="button" :disabled="loading" title="刷新复核队列" @click="load">
-          <RefreshCw :size="15" aria-hidden="true" />刷新
-        </button>
-        <button type="button" :disabled="!assessment" @click="exportAssessment">
-          <Download :size="15" aria-hidden="true" />导出评价
-        </button>
+        <label class="teacher-report-field">
+          <span>队列筛选</span>
+          <select id="teacher-review-filter" v-model="statusFilter" :disabled="!authed">
+            <option value="pending">待复核</option>
+            <option value="all">全部</option>
+          </select>
+        </label>
+        <label class="teacher-report-field">
+          <span>评价条目</span>
+          <select
+            id="teacher-review-session"
+            v-model="selectedId"
+            :disabled="!filtered.length"
+          >
+            <option v-for="review in filtered" :key="review.reviewId" :value="review.reviewId">
+              {{ formatReview(review) }}
+            </option>
+          </select>
+        </label>
+        <div class="teacher-report-buttons">
+          <button type="button" :disabled="loading" title="刷新复核队列" @click="load">
+            <RefreshCw :size="15" aria-hidden="true" />刷新
+          </button>
+          <button type="button" :disabled="!assessment" @click="exportAssessment">
+            <Download :size="15" aria-hidden="true" />导出评价
+          </button>
+        </div>
       </div>
     </header>
 
@@ -533,6 +537,7 @@ onMounted(() => {
 
 .teacher-report-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--ws-space-8);
@@ -544,6 +549,11 @@ onMounted(() => {
   color: var(--ws-accent);
   font-size: var(--ws-text-xs);
   font-weight: var(--ws-weight-bold);
+}
+
+.teacher-report-header > div:first-child {
+  flex: 1 1 340px;
+  min-width: 0;
 }
 
 .teacher-report-header h1 {
@@ -559,54 +569,61 @@ onMounted(() => {
 }
 
 .teacher-report-actions {
-  display: grid;
-  grid-template-columns: minmax(160px, 0.7fr) minmax(240px, 1.2fr) auto auto;
-  gap: var(--ws-space-2);
+  display: flex;
+  flex-wrap: wrap;
   align-items: end;
+  justify-content: flex-end;
+  gap: var(--ws-space-2) var(--ws-space-3);
+  min-width: min(520px, 100%);
 }
 
-.teacher-report-actions label {
-  grid-column: span 1;
+.teacher-report-field {
+  display: grid;
+  flex: 1 1 170px;
+  min-width: 170px;
+  gap: var(--ws-space-1);
   color: var(--ws-ink-muted);
   font-size: var(--ws-text-xs);
 }
 
-.teacher-report-actions label:nth-of-type(1) {
-  grid-column: 1;
-  grid-row: 1;
-}
-
-.teacher-report-actions label:nth-of-type(2) {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.teacher-report-actions select,
-.teacher-report-actions button {
+.teacher-report-field select,
+.teacher-report-buttons button {
   min-height: var(--ws-control-lg);
   padding: var(--ws-space-2) var(--ws-space-3);
   color: var(--ws-ink);
   border: 1px solid var(--ws-line-strong);
   border-radius: var(--ws-radius-md);
-  background: var(--ws-surface);
+  background-color: var(--ws-surface-soft);
   font: inherit;
   font-size: var(--ws-text-sm);
   cursor: pointer;
 }
 
-.teacher-report-actions button {
+.teacher-report-field select {
+  width: 100%;
+}
+
+.teacher-report-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--ws-space-2);
+  margin-left: auto;
+}
+
+.teacher-report-buttons button {
   display: inline-flex;
   align-items: center;
   gap: var(--ws-space-2);
+  white-space: nowrap;
 }
 
-.teacher-report-actions button:hover:not(:disabled),
-.teacher-report-actions select:hover {
+.teacher-report-buttons button:hover:not(:disabled),
+.teacher-report-field select:hover {
   border-color: var(--ws-accent);
 }
 
-.teacher-report-actions button:disabled,
-.teacher-report-actions select:disabled {
+.teacher-report-buttons button:disabled,
+.teacher-report-field select:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
@@ -869,7 +886,7 @@ onMounted(() => {
 .teacher-submit {
   min-height: var(--ws-control-lg);
   padding: var(--ws-space-2) var(--ws-space-4);
-  color: #fff;
+  color: var(--ws-accent-contrast);
   border: 0;
   border-radius: var(--ws-radius-md);
   background: var(--ws-accent);
@@ -954,7 +971,7 @@ onMounted(() => {
 @media (max-width: 900px) {
   .teacher-report-actions {
     width: 100%;
-    grid-template-columns: 1fr 1fr;
+    min-width: 100%;
   }
 
   .teacher-layout {

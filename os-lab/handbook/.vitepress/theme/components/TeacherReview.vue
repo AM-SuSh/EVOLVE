@@ -384,7 +384,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   padding: 5px 8px;
   border: 1px solid var(--vp-c-divider);
   border-radius: 6px;
-  background: var(--vp-c-bg);
+  background-color: var(--vp-c-bg-soft);
 }
 
 .tr-count {
@@ -398,7 +398,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   border: 1px solid var(--vp-c-brand-1);
   border-radius: 6px;
   background: var(--vp-c-brand-1);
-  color: #fff;
+  color: var(--ws-accent-contrast);
   cursor: pointer;
 }
 
@@ -701,12 +701,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 .tr-filters select {
   min-width: 0;
-  height: var(--ws-control-sm);
-  padding: 0 var(--ws-space-2);
-  color: var(--ws-ink-muted);
-  border: 1px solid var(--ws-line);
+  height: var(--ws-control-md);
+  padding: var(--ws-space-1) var(--ws-space-3);
+  color: var(--ws-ink);
+  border: 1px solid var(--ws-line-strong);
   border-radius: var(--ws-radius-md);
-  background: var(--ws-surface);
+  background-color: var(--ws-surface-soft);
   font: inherit;
   font-size: var(--ws-text-xs);
 }

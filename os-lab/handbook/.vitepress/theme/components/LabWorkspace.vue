@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeMount, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
-import { useData, useRouter, withBase } from 'vitepress'
+import { useData, useRoute, useRouter, withBase } from 'vitepress'
 import { BookOpen, CheckCircle2, ChevronDown, ChevronUp, CircleSlash, Clock, Code2, LockKeyhole, Maximize2, MessageSquarePlus, MessagesSquare, Minimize2, PanelLeftClose, Play, RotateCcw, TableOfContents, XCircle } from 'lucide-vue-next'
 import ManualPane from './ManualPane.vue'
+import FinalProjectPane from './FinalProjectPane.vue'
 import TutorPane from './TutorPane.vue'
 import TerminalPanel from './TerminalPanel.vue'
 import ReportPanel from './ReportPanel.vue'
@@ -53,6 +54,7 @@ import {
   tutorStages,
   type LearningEvent,
   type LearningAccessItem,
+  type FinalProjectAccess,
   type LlmConfig,
   type TutorLabId,
   type TutorMessage,
@@ -192,6 +194,7 @@ async function doLogout() {
   saveAuth(null)
   scaffold.value = null
   learningAccess.value = []
+  finalProjectAccess.value = null
   manualKey.value += 1
   showIdentity.value = true
   toast('已退出登录，请重新登录后再使用工作台。')
@@ -199,6 +202,15 @@ async function doLogout() {
 
 const { isDark } = useData()
 const router = useRouter()
+const route = useRoute()
+const finalMode = ref(route.query?.final === '1')
+
+watch(
+  () => route.query?.final,
+  (value) => {
+    finalMode.value = value === '1'
+  },
+)
 
 const sessionId = ref('')
 const activeStage = ref<TutorStageId>('orient')
@@ -1418,11 +1430,13 @@ const scaffoldBusy = ref(false)
 const scaffoldLog = ref<string[]>([])
 const newBinName = ref('')
 const learningAccess = ref<LearningAccessItem[]>([])
+const finalProjectAccess = ref<FinalProjectAccess | null>(null)
 const accessLoading = ref(true)
 
 async function refreshLearningAccess() {
   if (!auth.value) {
     learningAccess.value = []
+    finalProjectAccess.value = null
     accessLoading.value = false
     return
   }
@@ -1431,8 +1445,10 @@ async function refreshLearningAccess() {
     const response = await fetch(apiUrl('/learning/access'), { headers: authHeaders() })
     const payload = await response.json().catch(() => ({}))
     learningAccess.value = response.ok && Array.isArray(payload.labs) ? payload.labs : []
+    finalProjectAccess.value = response.ok && payload.finalProject ? payload.finalProject : null
   } catch {
     learningAccess.value = []
+    finalProjectAccess.value = null
   } finally {
     accessLoading.value = false
   }
@@ -2691,6 +2707,20 @@ function enterLab(labId: TutorLabId) {
   })()
 }
 
+function enterFinal() {
+  void (async () => {
+    if (!finalProjectAccess.value?.unlocked) {
+      toast(finalProjectAccess.value?.reason || '期末探索任务尚未解锁。')
+      return
+    }
+    const issued = await ensureScaffoldIssued('lab8')
+    if (!issued) return
+    const target = withBase('/learn/lab8?final=1')
+    const current = `${window.location.pathname}${window.location.search}`
+    if (current !== target) window.location.assign(target)
+  })()
+}
+
 function exportGrowth() {
   exportEventsAsJsonl(
     events.value,
@@ -2705,8 +2735,10 @@ function syncWorkspaceNavState() {
     panels: panelOpen.value,
     journey: journey.value,
     appliedLabs: (scaffold.value?.applied || []) as TutorLabId[],
+    finalProject: finalProjectAccess.value,
     togglePanel,
     enterLab,
+    enterFinal,
     exportGrowth,
   })
 }
@@ -2838,8 +2870,9 @@ onBeforeUnmount(() => {
         :class="{ 'ws-mobile-hidden': isMobileLayout && mobileView !== 'manual' }"
       >
         <header class="ws-zone-head">
-          <span class="ws-zone-title"><BookOpen :size="14" aria-hidden="true" />实验手册</span>
+          <span class="ws-zone-title"><BookOpen :size="14" aria-hidden="true" />{{ finalMode ? '期末探索任务' : '实验手册' }}</span>
           <button
+            v-if="!finalMode"
             type="button"
             class="ws-zone-toggle"
             :class="{ active: manualTocOpen }"
@@ -2863,7 +2896,13 @@ onBeforeUnmount(() => {
           </button>
         </header>
         <div class="ws-zone-body">
+          <FinalProjectPane
+            v-if="finalMode && !isTeacherRole"
+            :endpoint="endpoint"
+            :project="finalProjectAccess"
+          />
           <ManualPane
+            v-else
             ref="manualPaneRef"
             :key="manualKey"
             :lab="lab"
@@ -5441,7 +5480,7 @@ onBeforeUnmount(() => {
   color: var(--ws-ink);
   border: 1px solid var(--ws-line);
   border-radius: var(--ws-radius-md);
-  background: var(--ws-surface-alt);
+  background-color: var(--ws-surface-soft);
   font: inherit;
   font-size: var(--ws-text-sm);
 }

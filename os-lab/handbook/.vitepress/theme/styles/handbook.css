@@ -85,6 +85,53 @@
   }
 }
 
+/* -- 原生下拉控件：去掉浏览器默认箭头，统一使用主题描边与自绘 chevron ------- */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: var(--ws-control-md);
+  padding: var(--ws-space-1) var(--ws-space-3);
+  padding-right: 34px !important;
+  color: var(--ws-ink);
+  background-color: var(--ws-surface-soft);
+  background-image: var(--ws-select-chevron);
+  background-position: right 9px center;
+  background-repeat: no-repeat;
+  background-size: 16px 16px;
+  border: 1px solid var(--ws-line-strong);
+  border-radius: var(--ws-radius-sm);
+  font: inherit;
+  font-size: var(--ws-text-sm);
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+select:hover:not(:disabled) {
+  border-color: var(--ws-accent);
+  background-color: color-mix(in srgb, var(--ws-accent) 6%, var(--ws-surface-soft));
+  background-image: var(--ws-select-chevron-hover);
+}
+
+select:focus {
+  border-color: var(--ws-accent);
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--ws-accent-soft);
+}
+
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+select::-ms-expand {
+  display: none;
+}
+
+option {
+  color: var(--ws-ink);
+  background-color: var(--ws-surface-raised);
+}
+
 /* -- mermaid ---------------------------------------------------------------
    正文里的知识地图与控制流图。旧版没装插件，这些图曾以源码形式暴露给学生。 */
 .vp-doc .mermaid {

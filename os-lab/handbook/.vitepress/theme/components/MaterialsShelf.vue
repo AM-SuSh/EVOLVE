@@ -388,12 +388,12 @@ onMounted(() => {
 .ms-btn.primary {
   border-color: transparent;
   background: var(--vp-c-brand-1);
-  color: #fff;
+  color: var(--ws-accent-contrast);
 }
 
 .ms-btn.primary:hover:not(:disabled) {
   filter: brightness(1.05);
-  color: #fff;
+  color: var(--ws-accent-contrast);
 }
 
 .ms-btn.danger:hover:not(:disabled) {

@@ -3,10 +3,12 @@ import { computed, onMounted, ref, watch } from 'vue'
 import {
   ArrowDown,
   ArrowUp,
+  CalendarClock,
   Download,
   Eye,
   EyeOff,
   FileText,
+  FlaskConical,
   Megaphone,
   Plus,
   RefreshCw,
@@ -41,10 +43,17 @@ import {
 const props = defineProps<{ lab: TutorLab; endpoint: string; variantHint?: string }>()
 const emit = defineEmits<{ (event: 'notice', text: string): void }>()
 
+interface ScheduleEntry {
+  unlockAt?: string | null
+  lockAt?: string | null
+}
+
 interface ScopeConfig {
   openLab?: string
   assignments?: Record<string, string>
   notice?: string
+  schedules?: Record<string, ScheduleEntry>
+  finalProject?: FinalProjectDraft | null
 }
 
 interface TeacherLlmConfig {
@@ -53,11 +62,21 @@ interface TeacherLlmConfig {
   apiKey: string
 }
 
+interface FinalProjectDraft {
+  title: string
+  kind: string
+  description: string
+  mechanisms: string[]
+  verificationCommand: string
+  rubric: string[]
+}
+
 interface Overview {
   config: {
     openLab: string
     assignments: Record<string, string>
     notice: string
+    schedules?: Record<string, ScheduleEntry>
     classes: Record<string, ScopeConfig>
     students: Record<string, ScopeConfig>
     allowStudentLlm?: boolean
@@ -68,6 +87,10 @@ interface Overview {
   labs: string[]
   exercises: Record<string, { default: string; variants: Array<{ name: string; label: string }> }>
 }
+
+type PublishScope =
+  | { type: 'global' | 'class' | 'student'; id: string }
+  | { type: 'batch'; id: string; ids: string[]; includeGlobal?: boolean }
 
 const overview = ref<Overview | null>(null)
 const busy = ref(false)
@@ -81,6 +104,11 @@ const selectedClass = ref('')
 const newClassName = ref('')
 const noticeScope = ref('')
 const noticeDraft = ref('')
+const batchClasses = ref<string[]>([])
+const batchIncludeGlobal = ref(false)
+const batchVariant = ref('')
+const scheduleUnlock = ref('')
+const scheduleLock = ref('')
 
 const llmDraft = ref<TeacherLlmConfig>({ baseUrl: '', model: '', apiKey: '' })
 const llmKeyConfigured = ref(false)
@@ -90,6 +118,16 @@ const llmChecking = ref(false)
 const llmConnection = ref<'idle' | 'connected' | 'offline'>('idle')
 const llmDetail = ref('')
 const llmActiveModel = ref('')
+
+const finalProjectDraft = ref<FinalProjectDraft>({
+  title: '期末探索实验',
+  kind: 'open',
+  description: '',
+  mechanisms: [],
+  verificationCommand: '',
+  rubric: ['提案质量', '机制运用', '可信证据', '反思与迁移'],
+})
+const finalProjectScope = ref('')
 
 /** 当前 Lab 的报告版式草稿（全局布置，学生端拉取）。 */
 const reportDraft = ref<ReportTemplate>(cloneTemplate(DEFAULT_REPORT_TEMPLATE))
@@ -137,6 +175,13 @@ const studentList = computed(() => {
   if (!selectedClass.value) return students.map((s) => s.user)
   return students.filter((s) => s.className === selectedClass.value).map((s) => s.user)
 })
+const batchAll = computed({
+  get: () => classList.value.length > 0 && classList.value.every((name) => batchClasses.value.includes(name)),
+  set: (on: boolean) => {
+    batchClasses.value = on ? [...classList.value] : []
+  },
+})
+const hasBatchSelection = computed(() => batchClasses.value.length > 0 || batchIncludeGlobal.value)
 const defaultVariant = computed(() => overview.value?.exercises?.[props.lab.id]?.default || '')
 const variants = computed(() =>
   (overview.value?.exercises?.[props.lab.id]?.variants || []).map((v) => ({
@@ -156,6 +201,24 @@ const openTargetCount = computed(() => {
     ...classList.value.map((name) => classEntry(name)),
   ]
   return entries.filter((entry) => isOpen(entry)).length
+})
+const finalMechanismsText = computed({
+  get: () => finalProjectDraft.value.mechanisms.join('\n'),
+  set: (value: string) => {
+    finalProjectDraft.value.mechanisms = value
+      .split(/\n+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  },
+})
+const finalRubricText = computed({
+  get: () => finalProjectDraft.value.rubric.join('\n'),
+  set: (value: string) => {
+    finalProjectDraft.value.rubric = value
+      .split(/\n+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  },
 })
 
 function labIndex(labId: string) {
@@ -255,7 +318,16 @@ async function load() {
       llmDetail.value = ''
       llmActiveModel.value = ''
       if (selectedClass.value && !classList.value.includes(selectedClass.value)) selectedClass.value = ''
+      if (!batchVariant.value && overview.value?.exercises?.[props.lab.id]?.default) {
+        batchVariant.value = overview.value.exercises[props.lab.id].default
+      }
+      const currentSchedule = labSchedule(
+        selectedClass.value ? classEntry(selectedClass.value) : undefined,
+      )
+      scheduleUnlock.value = toLocalInput(currentSchedule?.unlockAt)
+      scheduleLock.value = toLocalInput(currentSchedule?.lockAt)
       seedVariantHint()
+      seedFinalProjectDraft()
       if (!noticeScope.value) noticeDraft.value = overview.value?.config.notice || ''
       await loadReportTemplate()
     } else {
@@ -276,7 +348,7 @@ function seedVariantHint() {
 }
 
 async function publish(
-  scope: { type: 'global' | 'class' | 'student'; id: string },
+  scope: PublishScope,
   extra: Record<string, unknown>,
   okText: string,
 ) {
@@ -369,6 +441,69 @@ async function clearTeacherLlm() {
   if (ok) await checkTeacherLlmConnection()
 }
 
+/** 期末任务按作用域就近读取：学生 > 班级 > 全局；未设置时回落上一级。 */
+function finalProjectFor(scopeKey: string): FinalProjectDraft | null | undefined {
+  if (!overview.value) return null
+  if (scopeKey.startsWith('student:')) {
+    const user = scopeKey.slice(8)
+    const own = overview.value.config.students[user]?.finalProject
+    if (own) return own
+    const student = overview.value.students.find((item) => item.user === user)
+    const className = String(student?.className || '').trim()
+    const classProject = className ? overview.value.config.classes[className]?.finalProject : null
+    return classProject || overview.value.config.finalProject
+  }
+  if (scopeKey) return overview.value.config.classes[scopeKey]?.finalProject || overview.value.config.finalProject
+  return overview.value.config.finalProject
+}
+
+function seedFinalProjectDraft(scopeKey = finalProjectScope.value) {
+  const current = finalProjectFor(scopeKey)
+  finalProjectDraft.value = {
+    title: current?.title || '期末探索实验',
+    kind: current?.kind || 'open',
+    description: current?.description || '',
+    mechanisms: Array.isArray(current?.mechanisms) ? [...current.mechanisms] : [],
+    verificationCommand: current?.verificationCommand || '',
+    rubric:
+      Array.isArray(current?.rubric) && current.rubric.length
+        ? [...current.rubric]
+        : ['提案质量', '机制运用', '可信证据', '反思与迁移'],
+  }
+}
+
+async function publishFinalProject() {
+  if (busy.value) return
+  const draft: FinalProjectDraft = {
+    title: finalProjectDraft.value.title.trim(),
+    kind: finalProjectDraft.value.kind,
+    description: finalProjectDraft.value.description.trim(),
+    mechanisms: finalProjectDraft.value.mechanisms.map((item) => item.trim()).filter(Boolean).slice(0, 12),
+    verificationCommand: finalProjectDraft.value.verificationCommand.trim(),
+    rubric: finalProjectDraft.value.rubric.map((item) => item.trim()).filter(Boolean).slice(0, 10),
+  }
+  if (!draft.title || !draft.description) {
+    note.value = '期末探索任务至少需要名称和任务书。'
+    noteOk.value = false
+    return
+  }
+  await publish(
+    scopeOf(finalProjectScope.value),
+    { finalProject: draft },
+    `${scopeName(finalProjectScope.value)}：期末探索任务已发布。`,
+  )
+}
+
+async function clearFinalProject() {
+  if (busy.value) return
+  if (!window.confirm(`确认清除「${scopeName(finalProjectScope.value)}」的期末探索任务？`)) return
+  await publish(
+    scopeOf(finalProjectScope.value),
+    { clearFinalProject: true },
+    `${scopeName(finalProjectScope.value)}：已清除期末探索任务。`,
+  )
+}
+
 async function createClass() {
   const name = newClassName.value.trim()
   if (!name) return
@@ -435,6 +570,108 @@ async function openAndDistributeVariant() {
   if (!hint || busy.value) return
   await openTo('')
   if (noteOk.value && variantDrafts.value['']) await assignTo('')
+}
+
+function toggleBatchClass(name: string) {
+  batchClasses.value = batchClasses.value.includes(name)
+    ? batchClasses.value.filter((item) => item !== name)
+    : [...batchClasses.value, name]
+}
+
+function batchScope(): PublishScope {
+  return { type: 'batch', id: '', ids: [...batchClasses.value], includeGlobal: batchIncludeGlobal.value }
+}
+
+function labSchedule(entry?: ScopeConfig): ScheduleEntry | null {
+  const own = entry?.schedules?.[props.lab.id]
+  if (own?.unlockAt || own?.lockAt) return own
+  const global = overview.value?.config.schedules?.[props.lab.id]
+  if (global?.unlockAt || global?.lockAt) return global
+  return null
+}
+
+function formatScheduleTime(value?: string | null) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function toLocalInput(value?: string | null) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+async function batchOpen() {
+  if (!hasBatchSelection.value) return false
+  const scopeCount = batchClasses.value.length + (batchIncludeGlobal.value ? 1 : 0)
+  return publish(
+    batchScope(),
+    { openLab: props.lab.id },
+    `已批量解锁到 ${props.lab.id}（${scopeCount} 个范围）。`,
+  )
+}
+
+async function batchAssign() {
+  if (!hasBatchSelection.value || !batchVariant.value) return false
+  if (batchVariant.value === RANDOM_VARIANT) {
+    if (!batchClasses.value.length) {
+      note.value = '批量随机下发至少需要一个班级。'
+      noteOk.value = false
+      return false
+    }
+    return publish(
+      { ...batchScope(), includeGlobal: false },
+      { randomAssignment: { labId: props.lab.id } },
+      `已为 ${batchClasses.value.length} 个班级随机下发任务。`,
+    )
+  }
+  const scopeCount = batchClasses.value.length + (batchIncludeGlobal.value ? 1 : 0)
+  return publish(
+    batchScope(),
+    { assignment: { labId: props.lab.id, variant: batchVariant.value } },
+    `已为 ${scopeCount} 个范围下发任务。`,
+  )
+}
+
+async function batchOpenAndAssign() {
+  if (!hasBatchSelection.value || !batchVariant.value) return
+  const ok = await batchOpen()
+  if (ok) await batchAssign()
+}
+
+async function batchSetSchedule() {
+  if (!hasBatchSelection.value) return
+  if (!scheduleUnlock.value && !scheduleLock.value) {
+    note.value = '请至少填写解锁或截止时间。'
+    noteOk.value = false
+    return
+  }
+  const scopeCount = batchClasses.value.length + (batchIncludeGlobal.value ? 1 : 0)
+  await publish(
+    batchScope(),
+    {
+      schedule: {
+        labId: props.lab.id,
+        unlockAt: scheduleUnlock.value ? new Date(scheduleUnlock.value).toISOString() : '',
+        lockAt: scheduleLock.value ? new Date(scheduleLock.value).toISOString() : '',
+      },
+    },
+    `已设置 ${props.lab.id} 的任务时间（${scopeCount} 个范围）。`,
+  )
+}
+
+async function batchClearSchedule() {
+  if (!hasBatchSelection.value) return
+  await publish(
+    batchScope(),
+    { schedule: { labId: props.lab.id, unlockAt: '', lockAt: '' } },
+    `已清除 ${props.lab.id} 的任务时间。`,
+  )
 }
 
 /** 导出当前班级每位学生及其任务分配（.xlsx）。 */
@@ -580,6 +817,13 @@ watch(noticeScope, (scope) => {
 
 watch(selectedClass, () => {
   if (studentSel.value && !studentList.value.includes(studentSel.value)) studentSel.value = ''
+  const currentSchedule = labSchedule(selectedClass.value ? classEntry(selectedClass.value) : undefined)
+  scheduleUnlock.value = toLocalInput(currentSchedule?.unlockAt)
+  scheduleLock.value = toLocalInput(currentSchedule?.lockAt)
+})
+
+watch(finalProjectScope, () => {
+  seedFinalProjectDraft()
 })
 
 watch(
@@ -628,6 +872,10 @@ onMounted(load)
               {{ isOpen(undefined) ? '本实验已分发' : `当前分发到 ${effectiveOpenLab(undefined) || '—'}` }}
             </span>
             <small>当前任务：{{ assignedVariant(undefined)[0] }}<template v-if="variantLabel(assignedVariant(undefined)[0])"> · {{ variantLabel(assignedVariant(undefined)[0]) }}</template></small>
+            <small v-if="labSchedule(undefined)" class="ws-pub-schedule">
+              <template v-if="labSchedule(undefined)?.unlockAt">解锁 {{ formatScheduleTime(labSchedule(undefined)?.unlockAt) }}</template>
+              <template v-if="labSchedule(undefined)?.lockAt"> · 截止 {{ formatScheduleTime(labSchedule(undefined)?.lockAt) }}</template>
+            </small>
           </div>
           <div class="ws-pub-target-actions">
             <template v-if="variants.length">
@@ -697,6 +945,10 @@ onMounted(load)
               {{ isOpen(classEntry(selectedClass)) ? '本实验已分发' : `当前分发到 ${effectiveOpenLab(classEntry(selectedClass)) || '—'}` }}
             </span>
             <small>当前任务：{{ assignedVariant(classEntry(selectedClass))[0] }} · {{ assignedVariant(classEntry(selectedClass))[1] ? '本班设置' : '跟随默认' }}</small>
+            <small v-if="labSchedule(classEntry(selectedClass))" class="ws-pub-schedule">
+              <template v-if="labSchedule(classEntry(selectedClass))?.unlockAt">解锁 {{ formatScheduleTime(labSchedule(classEntry(selectedClass))?.unlockAt) }}</template>
+              <template v-if="labSchedule(classEntry(selectedClass))?.lockAt"> · 截止 {{ formatScheduleTime(labSchedule(classEntry(selectedClass))?.lockAt) }}</template>
+            </small>
           </div>
           <div class="ws-pub-target-actions">
             <template v-if="variants.length">
@@ -721,9 +973,83 @@ onMounted(load)
         </details>
       </section>
 
-      <section class="ws-pub-block">
+      <section class="ws-pub-block ws-pub-batch">
         <div class="ws-pub-section-title">
           <span>02</span>
+          <div><h3>批量操作</h3><p>多选班级后统一解锁、下发任务或设置任务时间。</p></div>
+        </div>
+        <div class="ws-pub-batch-scope">
+          <label class="ws-pub-batch-toggle">
+            <input v-model="batchAll" type="checkbox" /> 全选班级
+          </label>
+          <label class="ws-pub-batch-toggle">
+            <input v-model="batchIncludeGlobal" type="checkbox" /> 同时应用到全局默认
+          </label>
+          <div class="ws-pub-batch-classes">
+            <label
+              v-for="name in classList"
+              :key="name"
+              :class="{ active: batchClasses.includes(name) }"
+            >
+              <input
+                type="checkbox"
+                :checked="batchClasses.includes(name)"
+                @change="toggleBatchClass(name)"
+              />
+              {{ name }}
+            </label>
+            <p v-if="!classList.length" class="ws-pub-empty">还没有班级可批量操作。</p>
+          </div>
+        </div>
+        <div class="ws-pub-batch-actions">
+          <select v-model="batchVariant" :disabled="!variants.length" aria-label="批量任务类型">
+            <option value="" disabled>选择任务类型</option>
+            <option v-for="v in taskOptions" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
+          </select>
+          <button type="button" :disabled="busy || !hasBatchSelection" @click="batchOpen">
+            <Unlock :size="14" aria-hidden="true" />解锁
+          </button>
+          <button
+            type="button"
+            :disabled="busy || !hasBatchSelection || !batchVariant"
+            @click="batchAssign"
+          >
+            <Send :size="14" aria-hidden="true" />下发任务
+          </button>
+          <button
+            type="button"
+            :disabled="busy || !hasBatchSelection || !batchVariant"
+            @click="batchOpenAndAssign"
+          >
+            <Unlock :size="14" aria-hidden="true" />解锁并下发
+          </button>
+        </div>
+        <div class="ws-pub-batch-schedule">
+          <label>
+            <span>解锁时间</span>
+            <input v-model="scheduleUnlock" type="datetime-local" aria-label="批量解锁时间" />
+          </label>
+          <label>
+            <span>截止时间</span>
+            <input v-model="scheduleLock" type="datetime-local" aria-label="批量截止时间" />
+          </label>
+          <button type="button" :disabled="busy || !hasBatchSelection" @click="batchSetSchedule">
+            <CalendarClock :size="14" aria-hidden="true" />设置任务时间
+          </button>
+          <button
+            type="button"
+            class="ghost"
+            :disabled="busy || !hasBatchSelection"
+            @click="batchClearSchedule"
+          >
+            <Trash2 :size="14" aria-hidden="true" />清除时间
+          </button>
+        </div>
+      </section>
+
+      <section class="ws-pub-block">
+        <div class="ws-pub-section-title">
+          <span>03</span>
           <div><h3>个别调整</h3><p>从下拉框选择学生后查看具体分发情况并单独调整；上方已选班级时只显示该班学生。</p></div>
         </div>
         <div v-if="studentList.length" class="ws-pub-student-picker">
@@ -767,7 +1093,7 @@ onMounted(load)
 
       <section class="ws-pub-block">
         <div class="ws-pub-section-title">
-          <span>03</span>
+          <span>04</span>
           <div><h3>学习公告</h3><p>发布后显示在学生工作台顶部。</p></div>
         </div>
         <div class="ws-pub-notice-scope">
@@ -787,7 +1113,7 @@ onMounted(load)
 
       <section class="ws-pub-block">
         <div class="ws-pub-section-title">
-          <span>04</span>
+          <span>05</span>
           <div>
             <h3>报告版式布置</h3>
             <p>在弹窗里编辑章节与填写提示，也可直接导入 Markdown 大纲。</p>
@@ -806,7 +1132,7 @@ onMounted(load)
 
       <section class="ws-pub-block">
         <div class="ws-pub-section-title">
-          <span>05</span>
+          <span>06</span>
           <div>
             <h3>统一 AI 模型</h3>
             <p>配置教师统一使用的 OpenAI 兼容接口，并控制学生能否使用本机模型设置。</p>
@@ -876,6 +1202,89 @@ onMounted(load)
             </button>
           </div>
         </div>
+      </section>
+
+      <section class="ws-pub-block">
+        <div class="ws-pub-section-title">
+          <span>07</span>
+          <div>
+            <h3>期末探索任务</h3>
+            <p>创建并发布 Lab9 探索实验；学生完成 Lab8 后自动解锁该节点。</p>
+          </div>
+        </div>
+
+        <div class="ws-pub-final-scope">
+          <FlaskConical :size="15" aria-hidden="true" />
+          <select v-model="finalProjectScope" aria-label="期末探索任务发布范围">
+            <option value="">全体学生</option>
+            <option v-for="c in classList" :key="c" :value="c">仅 {{ c }}</option>
+            <option v-if="studentSel" :value="`student:${studentSel}`">仅 {{ studentSel }}</option>
+          </select>
+        </div>
+
+        <label class="ws-pub-final-field">
+          <span>任务名称</span>
+          <input v-model="finalProjectDraft.title" type="text" maxlength="80" placeholder="例如：我的内核性能画像" />
+        </label>
+
+        <label class="ws-pub-final-field">
+          <span>探索方向</span>
+          <select v-model="finalProjectDraft.kind" aria-label="期末探索任务方向">
+            <option value="performance">性能画像与调优</option>
+            <option value="app">终端小应用</option>
+            <option value="debug">故障注入与排障</option>
+            <option value="open">开放课题</option>
+            <option value="custom">自定义探索</option>
+          </select>
+        </label>
+
+        <label class="ws-pub-final-field">
+          <span>任务书（Markdown）</span>
+          <textarea
+            v-model="finalProjectDraft.description"
+            rows="8"
+            placeholder="写明期末任务的背景、目标、可选方向与交付要求。学生端会原样渲染 Markdown。"
+          />
+        </label>
+
+        <label class="ws-pub-final-field">
+          <span>必须用到的系统机制（每行一条）</span>
+          <textarea
+            v-model="finalMechanismsText"
+            rows="3"
+            placeholder="fork/exec/pipe&#10;signal/dup&#10;threads/mutex/condvar&#10;文件系统"
+          />
+        </label>
+
+        <label class="ws-pub-final-field">
+          <span>验证命令（可选）</span>
+          <input
+            v-model="finalProjectDraft.verificationCommand"
+            type="text"
+            placeholder="例如：cargo build -p user --bin final_project --release"
+          />
+        </label>
+
+        <label class="ws-pub-final-field">
+          <span>评分维度（每行一条）</span>
+          <textarea v-model="finalRubricText" rows="4" />
+        </label>
+
+        <div class="ws-pub-final-actions">
+          <button type="button" class="ghost" :disabled="busy" @click="clearFinalProject">
+            <Trash2 :size="14" aria-hidden="true" />清除发布
+          </button>
+          <button
+            type="button"
+            :disabled="busy || !finalProjectDraft.title.trim() || !finalProjectDraft.description.trim()"
+            @click="publishFinalProject"
+          >
+            <Save :size="14" aria-hidden="true" />保存并发布
+          </button>
+        </div>
+        <p class="ws-pub-final-hint">
+          学生端「系统构建路径」会显示期末任务节点；仅当 Lab8 完成且本范围已发布任务时解锁。
+        </p>
       </section>
     </div>
 
@@ -1152,14 +1561,14 @@ onMounted(load)
 .ws-pub-class-select select,
 .ws-pub-create-class input {
   width: 100%;
-  min-height: var(--ws-control-sm);
-  padding: var(--ws-space-1) var(--ws-space-2);
+  min-height: var(--ws-control-md);
+  padding: var(--ws-space-1) var(--ws-space-3);
   color: var(--ws-ink);
-  border: 1px solid var(--ws-line);
+  border: 1px solid var(--ws-line-strong);
   border-radius: var(--ws-radius-md);
-  background: var(--ws-surface-alt);
+  background-color: var(--ws-surface-soft);
   font: inherit;
-  font-size: var(--ws-text-xs);
+  font-size: var(--ws-text-sm);
 }
 
 .ws-pub-create-class {
@@ -1172,6 +1581,92 @@ onMounted(load)
 .ws-pub-class-actions {
   display: flex;
   padding: var(--ws-space-2) 0;
+}
+
+.ws-pub-batch-scope {
+  display: grid;
+  gap: var(--ws-space-2);
+  padding: var(--ws-space-2) 0;
+}
+
+.ws-pub-batch-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ws-space-2);
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+  cursor: pointer;
+}
+
+.ws-pub-batch-toggle input,
+.ws-pub-batch-classes input {
+  accent-color: var(--ws-accent);
+}
+
+.ws-pub-batch-classes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ws-space-1);
+}
+
+.ws-pub-batch-classes label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ws-space-1);
+  padding: var(--ws-space-1) var(--ws-space-2);
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  font-size: var(--ws-text-xs);
+  cursor: pointer;
+}
+
+.ws-pub-batch-classes label.active {
+  color: var(--ws-accent);
+  border-color: var(--ws-accent);
+  background: var(--ws-accent-soft);
+}
+
+.ws-pub-batch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ws-space-1);
+  padding: var(--ws-space-2) 0;
+}
+
+.ws-pub-batch-actions select {
+  width: min(220px, 100%);
+}
+
+.ws-pub-batch-schedule {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto auto;
+  align-items: end;
+  gap: var(--ws-space-2);
+  padding: var(--ws-space-2) 0;
+}
+
+.ws-pub-batch-schedule label {
+  display: grid;
+  gap: var(--ws-space-1);
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-pub-batch-schedule input {
+  min-height: var(--ws-control-sm);
+  padding: var(--ws-space-1) var(--ws-space-2);
+  color: var(--ws-ink);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+  font: inherit;
+  font-size: var(--ws-text-xs);
+}
+
+.ws-pub-schedule {
+  margin-top: var(--ws-space-1);
 }
 
 .ws-pub-target {
@@ -1303,14 +1798,14 @@ onMounted(load)
 
 .ws-pub select {
   max-width: 100%;
-  min-height: var(--ws-control-sm);
-  padding: var(--ws-space-1) var(--ws-space-2);
+  min-height: var(--ws-control-md);
+  padding: var(--ws-space-1) var(--ws-space-3);
   color: var(--ws-ink);
-  border: 1px solid var(--ws-line);
+  border: 1px solid var(--ws-line-strong);
   border-radius: var(--ws-radius-md);
-  background: var(--ws-surface-alt);
+  background-color: var(--ws-surface-soft);
   font: inherit;
-  font-size: var(--ws-text-xs);
+  font-size: var(--ws-text-sm);
 }
 
 .ws-pub textarea {
@@ -1608,7 +2103,7 @@ onMounted(load)
   color: var(--ws-ink);
   border: 1px solid var(--ws-line);
   border-radius: var(--ws-radius-md);
-  background: var(--ws-surface);
+  background-color: var(--ws-surface-soft);
   font: inherit;
   font-size: var(--ws-text-sm);
 }
@@ -1744,6 +2239,49 @@ onMounted(load)
   line-height: 1.5;
 }
 
+.ws-pub-final-scope {
+  display: flex;
+  align-items: center;
+  gap: var(--ws-space-2);
+  margin-bottom: var(--ws-space-3);
+  color: var(--ws-ink-muted);
+}
+
+.ws-pub-final-scope svg {
+  flex: 0 0 auto;
+  color: var(--ws-accent);
+}
+
+.ws-pub-final-scope select {
+  flex: 1 1 auto;
+}
+
+.ws-pub-final-field {
+  display: grid;
+  gap: 4px;
+  margin-bottom: var(--ws-space-3);
+}
+
+.ws-pub-final-field > span {
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-pub-final-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ws-space-2);
+  margin-top: var(--ws-space-2);
+}
+
+.ws-pub-final-hint {
+  margin: var(--ws-space-2) 0 0;
+  color: var(--ws-ink-faint);
+  font-size: var(--ws-text-xs);
+  line-height: var(--ws-leading-normal);
+}
+
 @media (max-width: 1180px) {
   .ws-pub-class-picker {
     grid-template-columns: minmax(0, 1fr);
@@ -1774,6 +2312,15 @@ onMounted(load)
     width: 100%;
   }
 
+  .ws-pub-batch-actions select {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  .ws-pub-batch-schedule {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .ws-pub-llm-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1788,6 +2335,14 @@ onMounted(load)
   }
 
   .ws-pub-llm-actions button {
+    flex: 1 1 auto;
+  }
+
+  .ws-pub-final-actions {
+    flex-wrap: wrap;
+  }
+
+  .ws-pub-final-actions button {
     flex: 1 1 auto;
   }
 }

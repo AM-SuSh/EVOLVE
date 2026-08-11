@@ -2039,7 +2039,7 @@ const modeLabel = computed(() =>
   color: var(--ws-ink);
   border: 1px solid var(--ws-line);
   border-radius: var(--ws-radius-md);
-  background: var(--ws-surface);
+  background-color: var(--ws-surface-soft);
   font: inherit;
   font-size: var(--ws-text-xs);
   cursor: pointer;

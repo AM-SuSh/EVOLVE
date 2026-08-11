@@ -317,7 +317,7 @@ const hasEvents = computed(() => allEvents.value.length > 0)
 .ws-trace-ctrl:disabled { opacity: 0.45; cursor: not-allowed; }
 .ws-trace-ctrl:hover:not(:disabled) { border-color: var(--ws-accent); color: var(--ws-accent); }
 .ws-trace-speed { display: inline-flex; align-items: center; gap: 3px; color: var(--ws-ink-muted); font-size: var(--ws-text-xs); white-space: nowrap; }
-.ws-trace-speed select { height: 28px; padding: 2px 3px; border: 1px solid var(--ws-line); border-radius: var(--ws-radius-sm); background: var(--ws-surface); color: var(--ws-ink); font: inherit; font-size: var(--ws-text-xs); }
+.ws-trace-speed select { height: 28px; padding: 2px 8px; border: 1px solid var(--ws-line); border-radius: var(--ws-radius-sm); background-color: var(--ws-surface-soft); color: var(--ws-ink); font: inherit; font-size: var(--ws-text-xs); }
 .ws-trace-pos { margin-left: auto; color: var(--ws-ink-faint); font-family: var(--ws-font-mono); white-space: nowrap; }
 .ws-trace-icon-ctrl { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--ws-line); border-radius: var(--ws-radius-sm); background: var(--ws-surface); color: var(--ws-ink-muted); cursor: pointer; }
 .ws-trace-icon-ctrl:hover { border-color: var(--ws-accent); color: var(--ws-accent); }
