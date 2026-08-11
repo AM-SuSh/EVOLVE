@@ -1,5 +1,47 @@
 # os-lab 项目进度总览
 
+## 2026-08-11 - Task: 按开篇三点理顺 Lab8 背景知识叙述流
+
+### What was done
+- 重排 `labs/lab8-thread-sync.md` 第二节：以开篇三条主线为纲，补路线图与阅读顺序，将 2.1–2.6 标成「加线程 / 阻塞核心·对照·扩展 / 死锁 / 测例收束」，并加强小节间过渡。
+
+### Testing
+- 通读第二节标题链与开篇三点一一对应；任务动手点仍落在 `sync_syscall.rs`。
+
+### Notes
+- 改动：`os-lab/labs/lab8-thread-sync.md`；`progress.md`
+- 回滚：还原第二节至上一版结构。
+
+---
+
+## 2026-08-11 - Task: 展开 Lab8 手册背景知识开篇句
+
+### What was done
+- 将 `labs/lab8-thread-sync.md` 第二节开篇浓缩句改写成「保留 PCB + 阻塞等待 + 死锁命名」三点说明。
+
+### Testing
+- 通读开篇与 2.1 衔接，语义一致。
+
+### Notes
+- 改动：`os-lab/labs/lab8-thread-sync.md`；`progress.md`
+- 回滚：还原第二节开篇为上一版单句。
+
+---
+
+## 2026-08-11 - Task: 改写 Lab8 手册线程动机表述
+
+### What was done
+- 将 `labs/lab8-thread-sync.md` 问题场景中「浏览器标签页…交错推进」一句改写为更直白的线程动机说明。
+
+### Testing
+- 通读改写句，语义与后文「同进程多执行流」一致。
+
+### Notes
+- 改动：`os-lab/labs/lab8-thread-sync.md`；`progress.md`
+- 回滚：还原该段为上一版表述。
+
+---
+
 ## 2026-08-10 - Task: 加厚 Lab8 手册背景知识（对齐 Lab6/7 走读风格）
 
 ### What was done

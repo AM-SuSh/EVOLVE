@@ -69,8 +69,6 @@ Lab5 与本实验对照如下：
 
 ## 二、背景知识
 
-
-
 ### 2.1 启动时如何切到磁盘 FS
 
 Lab5 在 `kernel/src/fs/mod.rs` 里走 `embedded` 模块；打开 `lab6` feature 后，同一入口改为导出 `disk`：

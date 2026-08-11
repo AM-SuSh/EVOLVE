@@ -21,9 +21,9 @@
    qemu-system-riscv64 --version   # 预期：QEMU emulator version ...
   ```
 3. **建议先读书**：OSTEP 第 5 章（进程 API）、第 39 章（文件与管道直觉）、第 33 章（事件何时介入执行流）。带着「管道和信号差在哪」「信号什么时候真正执行」进来即可。Lab7 对应 feature 为 `lab7`（依赖 `lab6`）。
+
 > Lab7 需要 VirtIO 与磁盘镜像 `fs.img`。直接跑 `make test-lab7` 即可：编内核时 `build.rs` 会自动打包用户程序与 `fs.img`（`initproc` 为 `lab7_usertest`）；也可用 `make check-fs-img` 校验镜像。  
 > **请勿**使用裸的 `cargo run -p kernel --features lab7`，否则往往挂不上块设备。
-
 
 ## 一、问题场景
 
