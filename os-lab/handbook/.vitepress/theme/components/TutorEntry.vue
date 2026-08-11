@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { withBase } from 'vitepress'
 import { ArrowRight, ClipboardCheck, LogIn, PencilLine, RefreshCw } from 'lucide-vue-next'
 import { authHeaders, loadAuth, tutorLabs, type LearningAccessItem } from '../tutor-model'
+import TeacherBatchOpen from './TeacherBatchOpen.vue'
 
 /**
  * “引导式学习”只是一条角色分流路由：学生直接进入当前 Lab，
@@ -84,6 +85,8 @@ onMounted(() => {
           <i><b /></i>
         </div>
       </section>
+
+      <TeacherBatchOpen />
 
       <section class="ws-teacher-labs" aria-labelledby="teacher-labs-title">
         <header>

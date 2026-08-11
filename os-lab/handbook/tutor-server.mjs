@@ -69,6 +69,8 @@ import {
   effectiveConfigFor,
   getExerciseCatalog,
   listStudents,
+  normalizeFinalProject,
+  normalizeSchedule,
   readTeacherConfig,
   resetLab,
   sanitizeUser,
@@ -171,6 +173,7 @@ async function learningContextFor(session, effectiveOverride) {
     openLab: effective.openLab,
     applied: status.applied || [],
     evidence: session.role === 'student' ? getLearningEvidence(session.id) : [],
+    schedules: effective.schedules || {},
   })
   const nextAccess = status.next ? accessForLab(access, status.next) : null
   return {
@@ -2091,8 +2094,23 @@ const server = http.createServer(async (request, response) => {
         json(response, 401, { error: '请先登录后进入引导式学习' }, origin)
         return
       }
-      const { access } = await learningContextFor(session)
-      json(response, 200, { ok: true, ...access }, origin)
+      const { access, effective } = await learningContextFor(session)
+      const lab8 = accessForLab(access, 'lab8')
+      const finalProject = effective.finalProject || null
+      json(response, 200, {
+        ok: true,
+        ...access,
+        finalProject: {
+          ...(finalProject || {}),
+          unlocked:
+            session.role === 'teacher' || Boolean(finalProject && lab8?.completed),
+          reason: finalProject
+            ? session.role === 'teacher' || lab8?.completed
+              ? ''
+              : '先完成 Lab8 的可信验证与学习复盘'
+            : '老师尚未发布期末探索任务',
+        },
+      }, origin)
       return
     }
 
@@ -3115,8 +3133,27 @@ const server = http.createServer(async (request, response) => {
       }
       if (request.method === 'POST' && pathname === '/teacher/config') {
         const body = await readBody(request)
-        const scopeType = body.scope?.type === 'class' || body.scope?.type === 'student' ? body.scope.type : 'global'
+        const isBatch = body.scope?.type === 'batch'
+        const scopeType = body.scope?.type === 'class' || body.scope?.type === 'student'
+          ? body.scope.type
+          : isBatch
+            ? 'batch'
+            : 'global'
         const scopeId = String(body.scope?.id || '').trim()
+        const batchIds = isBatch
+          ? [...new Set((Array.isArray(body.scope?.ids) ? body.scope.ids : []).map((id) => String(id).trim()).filter(Boolean))]
+          : []
+        const batchIncludeGlobal = isBatch && body.scope?.includeGlobal === true
+
+        let schedulePatch = null
+        if (body.schedule && typeof body.schedule === 'object') {
+          const scheduleLabId = String(body.schedule.labId || '')
+          if (!labIds.has(scheduleLabId)) {
+            json(response, 400, { error: '任务时间缺少有效 labId' }, origin)
+            return
+          }
+          schedulePatch = { labId: scheduleLabId, value: normalizeSchedule(body.schedule) }
+        }
 
         // 变体校验（各级通用）
         if (body.assignment && typeof body.assignment === 'object') {
@@ -3139,11 +3176,19 @@ const server = http.createServer(async (request, response) => {
             json(response, 400, { error: `随机下发需要至少两种任务变体（${labId}）` }, origin)
             return
           }
-          if (scopeType !== 'global' && !scopeId) {
+          if (scopeType === 'batch') {
+            if (!batchIds.length) {
+              json(response, 400, { error: '批量随机下发至少需要一个班级' }, origin)
+              return
+            }
+            if (batchIds.some((id) => !CLASS_NAME_RE.test(id))) {
+              json(response, 400, { error: '班级名需为 1-32 位字母、数字、中文、_ 或 -' }, origin)
+              return
+            }
+          } else if (scopeType !== 'global' && !scopeId) {
             json(response, 400, { error: '缺少班级名/学生名' }, origin)
             return
-          }
-          if (scopeType !== 'global' && !CLASS_NAME_RE.test(scopeId)) {
+          } else if (scopeType !== 'global' && !CLASS_NAME_RE.test(scopeId)) {
             json(response, 400, { error: '班级名需为 1-32 位字母、数字、中文、_ 或 -' }, origin)
             return
           }
@@ -3157,6 +3202,7 @@ const server = http.createServer(async (request, response) => {
           let targets = [...known.keys()]
           if (scopeType === 'class') targets = targets.filter((user) => known.get(user) === scopeId)
           if (scopeType === 'student') targets = targets.filter((user) => user === scopeId)
+          if (scopeType === 'batch') targets = targets.filter((user) => batchIds.includes(known.get(user)))
           if (!targets.length) {
             json(response, 400, { error: '该范围还没有学生，暂不能随机下发' }, origin)
             return
@@ -3169,6 +3215,72 @@ const server = http.createServer(async (request, response) => {
             students[user] = entry
           }
           const next = await writeTeacherConfig({ students })
+          json(
+            response,
+            200,
+            {
+              ok: true,
+              config: { ...next, llm: { ...next.llm, apiKey: next.llm?.apiKey ? '（已设置）' : '' } },
+            },
+            origin,
+          )
+          return
+        }
+
+        if (scopeType === 'batch') {
+          if (!batchIds.length && !batchIncludeGlobal) {
+            json(response, 400, { error: '批量操作至少需要一个班级或全局默认' }, origin)
+            return
+          }
+          if (batchIds.some((id) => !CLASS_NAME_RE.test(id))) {
+            json(response, 400, { error: '班级名需为 1-32 位字母、数字、中文、_ 或 -' }, origin)
+            return
+          }
+          const config = await readTeacherConfig()
+          const classes = { ...(config.classes || {}) }
+          const patch = { classes }
+          for (const classId of batchIds) {
+            const entry = {
+              ...(classes[classId] || {}),
+              assignments: { ...(classes[classId]?.assignments || {}) },
+              schedules: { ...(classes[classId]?.schedules || {}) },
+            }
+            if (LAB_ORDER.includes(body.openLab)) entry.openLab = body.openLab
+            if (body.openLab === '') delete entry.openLab
+            if (typeof body.notice === 'string') entry.notice = body.notice.trim().slice(0, 2000)
+            if (body.clearFinalProject === true) delete entry.finalProject
+            else if (body.finalProject) entry.finalProject = normalizeFinalProject(body.finalProject)
+            if (body.assignment) {
+              entry.assignments[String(body.assignment.labId)] = String(body.assignment.variant)
+            }
+            if (schedulePatch) {
+              if (schedulePatch.value.unlockAt || schedulePatch.value.lockAt) {
+                entry.schedules[schedulePatch.labId] = schedulePatch.value
+              } else {
+                delete entry.schedules[schedulePatch.labId]
+              }
+            }
+            classes[classId] = entry
+          }
+          if (batchIncludeGlobal) {
+            if (LAB_ORDER.includes(body.openLab)) patch.openLab = body.openLab
+            if (typeof body.notice === 'string') patch.notice = body.notice.trim().slice(0, 2000)
+            if (body.clearFinalProject === true) patch.finalProject = null
+            else if (body.finalProject) patch.finalProject = normalizeFinalProject(body.finalProject)
+            if (body.assignment) {
+              patch.assignments = { ...(config.assignments || {}) }
+              patch.assignments[String(body.assignment.labId)] = String(body.assignment.variant)
+            }
+            if (schedulePatch) {
+              patch.schedules = { ...(config.schedules || {}) }
+              if (schedulePatch.value.unlockAt || schedulePatch.value.lockAt) {
+                patch.schedules[schedulePatch.labId] = schedulePatch.value
+              } else {
+                delete patch.schedules[schedulePatch.labId]
+              }
+            }
+          }
+          const next = await writeTeacherConfig(patch)
           json(
             response,
             200,
@@ -3200,6 +3312,17 @@ const server = http.createServer(async (request, response) => {
                     ? body.llm.apiKey.trim()
                     : current.apiKey || '',
             }
+          }
+          if (body.clearFinalProject === true) patch.finalProject = null
+          else if (body.finalProject) patch.finalProject = normalizeFinalProject(body.finalProject)
+          if (schedulePatch) {
+            const schedules = { ...((await readTeacherConfig()).schedules || {}) }
+            if (schedulePatch.value.unlockAt || schedulePatch.value.lockAt) {
+              schedules[schedulePatch.labId] = schedulePatch.value
+            } else {
+              delete schedules[schedulePatch.labId]
+            }
+            patch.schedules = schedules
           }
           if (body.assignment) {
             await writeAssignment(String(body.assignment.labId), String(body.assignment.variant))
@@ -3242,6 +3365,16 @@ const server = http.createServer(async (request, response) => {
         if (LAB_ORDER.includes(body.openLab)) entry.openLab = body.openLab
         if (body.openLab === '') delete entry.openLab // 清除覆盖，回落上一级
         if (typeof body.notice === 'string') entry.notice = body.notice.trim().slice(0, 2000)
+        if (body.clearFinalProject === true) delete entry.finalProject
+        else if (body.finalProject) entry.finalProject = normalizeFinalProject(body.finalProject)
+        if (schedulePatch) {
+          entry.schedules = { ...(entry.schedules || {}) }
+          if (schedulePatch.value.unlockAt || schedulePatch.value.lockAt) {
+            entry.schedules[schedulePatch.labId] = schedulePatch.value
+          } else {
+            delete entry.schedules[schedulePatch.labId]
+          }
+        }
         if (body.assignment) {
           entry.assignments = entry.assignments || {}
           entry.assignments[String(body.assignment.labId)] = String(body.assignment.variant)

@@ -2,16 +2,24 @@
 import { computed, ref } from 'vue'
 import {
   ArrowRight,
+  CalendarClock,
   Check,
   CheckCircle2,
   ChevronRight,
   Circle,
   Download,
   LockKeyhole,
+  Rocket,
   Waypoints,
   X,
 } from 'lucide-vue-next'
-import { tutorLabs, type LabJourneyItem, type TutorLabId } from '../tutor-model'
+import {
+  finalProjectKindLabel,
+  tutorLabs,
+  type FinalProjectAccess,
+  type LabJourneyItem,
+  type TutorLabId,
+} from '../tutor-model'
 
 /**
  * 系统构建路径。
@@ -24,11 +32,14 @@ const props = defineProps<{
   journey: LabJourneyItem[]
   /** 已发放到「我的系统」的 Lab；未发放的解锁层显示「点击解锁」。 */
   appliedLabs?: TutorLabId[]
+  /** 期末探索任务访问状态；未发布也会返回锁定节点。 */
+  finalProject?: FinalProjectAccess | null
   compact?: boolean
 }>()
 
 const emit = defineEmits<{
   (event: 'enter-lab', labId: TutorLabId): void
+  (event: 'enter-final'): void
   (event: 'export-growth'): void
 }>()
 
@@ -37,9 +48,31 @@ const appliedLabs = computed(() => props.appliedLabs || [])
 
 const completedCount = computed(() => props.journey.filter((item) => item.completed).length)
 const progress = computed(() => Math.round((completedCount.value / tutorLabs.length) * 100))
+const allLabsComplete = computed(() => props.journey.every((item) => item.completed))
+const finalUnlocked = computed(() => props.finalProject?.unlocked === true)
 const builtLayers = computed(() =>
   props.journey.filter((item) => item.completed).map((item) => item.lab.systemLayer),
 )
+const bootLines = computed(() => [
+  ...props.journey.map((item) => ({
+    key: item.lab.id,
+    code: item.completed ? ' OK ' : item.unlocked ? ' .. ' : ' -- ',
+    label: item.lab.systemLayer,
+    title: item.lab.title,
+    complete: item.completed,
+    unlocked: item.unlocked,
+    current: item.current,
+  })),
+  {
+    key: 'final',
+    code: finalUnlocked.value ? ' OK ' : ' -- ',
+    label: '期末探索任务',
+    title: props.finalProject?.title || '完整小系统探索实验',
+    complete: false,
+    unlocked: finalUnlocked.value,
+    current: false,
+  },
+])
 
 function enter(item: LabJourneyItem) {
   if (!item.unlocked) return
@@ -53,6 +86,14 @@ function actionLabel(item: LabJourneyItem) {
   if (item.current) return '回到学习'
   if (item.started) return '继续学习'
   return '开始构建'
+}
+
+function formatTime(value?: string | null) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 </script>
 
@@ -88,22 +129,32 @@ function actionLabel(item: LabJourneyItem) {
           <div>
             <span><Waypoints :size="16" aria-hidden="true" />你的系统构建路径</span>
             <h2 id="ws-journey-title">从启动代码，逐层构建一个完整小系统</h2>
-            <p>每一层都要留下提问、验证和复盘证据。完成当前层后，仍需老师按范围手动分发下一层才会解锁。</p>
+            <p>每一层都要留下提问、验证和复盘证据。老师按范围分发后，任务会在设定时间自动解锁与截止。</p>
           </div>
           <button type="button" aria-label="关闭系统构建路径" @click="open = false">
             <X :size="19" aria-hidden="true" />
           </button>
         </header>
 
-        <div class="ws-journey-stack">
-          <div class="ws-journey-track"><span :style="{ width: `${progress}%` }" /></div>
-          <div class="ws-journey-layers">
-            <span
-              v-for="item in journey"
-              :key="item.lab.id"
-              :class="{ complete: item.completed }"
-            >{{ item.lab.systemLayer }}</span>
+        <div class="ws-journey-stack ws-boot">
+          <div class="ws-boot-head">
+            <span>系统启动日志</span>
+            <strong>{{ completedCount }}/{{ tutorLabs.length }} 层已点亮 · {{ progress }}%</strong>
           </div>
+          <ol class="ws-boot-lines">
+            <li
+              v-for="line in bootLines"
+              :key="line.key"
+              :class="{ complete: line.complete, unlocked: line.unlocked, current: line.current }"
+            >
+              <code>{{ line.code }}</code>
+              <span>{{ line.label }}</span>
+              <small>{{ line.title }}</small>
+            </li>
+          </ol>
+          <p v-if="allLabsComplete" class="ws-boot-done">
+            <Rocket :size="14" aria-hidden="true" />你的小系统已启动，可以进入期末探索任务。
+          </p>
         </div>
 
         <div class="ws-journey-summary">
@@ -148,6 +199,11 @@ function actionLabel(item: LabJourneyItem) {
               <p v-if="item.lockReason" class="ws-journey-lock">
                 <LockKeyhole :size="13" aria-hidden="true" />{{ item.lockReason }}
               </p>
+              <p v-if="item.unlockAt || item.lockAt" class="ws-journey-time">
+                <CalendarClock :size="13" aria-hidden="true" />
+                <template v-if="item.unlockAt">解锁 {{ formatTime(item.unlockAt) }}</template>
+                <template v-if="item.lockAt"> · 截止 {{ formatTime(item.lockAt) }}</template>
+              </p>
               <div class="ws-journey-evidence">
                 <span :class="{ done: item.passedVerification }">
                   <Check v-if="item.passedVerification" :size="14" aria-hidden="true" />
@@ -169,6 +225,41 @@ function actionLabel(item: LabJourneyItem) {
             >
               {{ actionLabel(item) }}
               <ChevronRight v-if="item.unlocked" :size="15" aria-hidden="true" />
+            </button>
+          </li>
+          <li
+            v-if="finalProject"
+            class="ws-journey-final"
+            :class="{ unlocked: finalUnlocked }"
+          >
+            <div class="ws-journey-rail" aria-hidden="true">
+              <span>
+                <Rocket v-if="finalUnlocked" :size="18" />
+                <LockKeyhole v-else :size="18" />
+              </span>
+              <i />
+            </div>
+            <div class="ws-journey-lab">
+              <span>期末任务</span>
+              <strong>完整小系统</strong>
+              <small>{{ finalUnlocked ? '待探索' : '未解锁' }}</small>
+            </div>
+            <div class="ws-journey-outcome">
+              <h3>{{ finalProject.title || '期末探索任务' }}</h3>
+              <p>{{ finalProject.kindLabel || finalProjectKindLabel(finalProject.kind) }}</p>
+              <p class="ws-journey-final-desc">{{ finalProject.description || '完成 Lab1-8 后，围绕你的小内核做一次个性化探索实验。' }}</p>
+              <p v-if="!finalUnlocked" class="ws-journey-lock">
+                <LockKeyhole :size="13" aria-hidden="true" />{{ finalProject.reason || '等待老师发布期末探索任务' }}
+              </p>
+            </div>
+            <button
+              class="ws-journey-action"
+              type="button"
+              :disabled="!finalUnlocked"
+              @click="emit('enter-final')"
+            >
+              进入期末任务
+              <ChevronRight v-if="finalUnlocked" :size="15" aria-hidden="true" />
             </button>
           </li>
         </ol>
@@ -314,6 +405,90 @@ function actionLabel(item: LabJourneyItem) {
   padding: 0 var(--ws-space-6) var(--ws-space-4);
 }
 
+.ws-boot-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ws-space-2);
+  margin-bottom: var(--ws-space-2);
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-boot-head span {
+  color: var(--ws-accent);
+  font-weight: var(--ws-weight-bold);
+}
+
+.ws-boot-head strong {
+  color: var(--ws-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ws-boot-lines {
+  display: grid;
+  gap: 3px;
+  max-height: 196px;
+  margin: 0;
+  padding: var(--ws-space-3);
+  overflow-y: auto;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-soft);
+  list-style: none;
+  font-family: var(--ws-font-mono);
+}
+
+.ws-boot-lines li {
+  display: grid;
+  grid-template-columns: 46px minmax(0, auto) minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--ws-space-2);
+  min-width: 0;
+  padding: 2px var(--ws-space-2);
+  color: var(--ws-ink-muted);
+  border-radius: var(--ws-radius-sm);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-boot-lines li.current {
+  background: var(--ws-accent-soft);
+}
+
+.ws-boot-lines code {
+  color: var(--ws-ink-faint);
+  font-family: inherit;
+}
+
+.ws-boot-lines li.unlocked code {
+  color: var(--ws-accent);
+}
+
+.ws-boot-lines li.complete code {
+  color: var(--ws-ok);
+}
+
+.ws-boot-lines li span {
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-boot-lines li small {
+  overflow: hidden;
+  color: var(--ws-ink-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-boot-done {
+  display: flex;
+  align-items: center;
+  gap: var(--ws-space-1);
+  margin: var(--ws-space-2) 0 0;
+  color: var(--ws-ok);
+  font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-semibold);
+}
+
 .ws-journey-track {
   height: 8px;
   border-radius: var(--ws-radius-full);
@@ -442,6 +617,19 @@ function actionLabel(item: LabJourneyItem) {
   opacity: 0.7;
 }
 
+.ws-journey-list li.ws-journey-final.unlocked .ws-journey-rail > span {
+  color: var(--ws-accent-contrast);
+  border-color: var(--ws-accent);
+  background: var(--ws-accent);
+}
+
+.ws-journey-final-desc {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .ws-journey-rail {
   position: relative;
   align-self: stretch;
@@ -551,6 +739,15 @@ function actionLabel(item: LabJourneyItem) {
   color: var(--ws-warn) !important;
   border-radius: var(--ws-radius-sm);
   background: var(--ws-warn-soft);
+  font-size: var(--ws-text-xs) !important;
+}
+
+.ws-journey-time {
+  display: flex !important;
+  align-items: center;
+  gap: var(--ws-space-1);
+  margin-top: var(--ws-space-2) !important;
+  color: var(--ws-accent) !important;
   font-size: var(--ws-text-xs) !important;
 }
 

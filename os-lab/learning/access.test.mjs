@@ -39,3 +39,56 @@ test('already issued labs remain readable and teachers can preview every manual'
   assert.equal(teacher.labs.every((item) => item.unlocked), true)
   assert.equal(accessForLab(teacher, 'lab8').published, false)
 })
+
+test('scheduled unlock and lock windows gate student access', () => {
+  const schedules = {
+    lab2: {
+      unlockAt: '2026-08-11T09:00:00.000Z',
+      lockAt: '2026-08-11T18:00:00.000Z',
+    },
+  }
+  const beforeOpen = buildLearningAccess({
+    role: 'student',
+    openLab: 'lab2',
+    applied: ['lab1', 'lab2'],
+    schedules,
+    now: Date.parse('2026-08-11T08:30:00.000Z'),
+  })
+  assert.equal(accessForLab(beforeOpen, 'lab2').unlocked, false)
+  assert.equal(accessForLab(beforeOpen, 'lab2').state, 'waiting_unlock')
+  assert.match(accessForLab(beforeOpen, 'lab2').reason, /解锁时间/)
+
+  const insideWindow = buildLearningAccess({
+    role: 'student',
+    openLab: 'lab2',
+    applied: ['lab1', 'lab2'],
+    schedules,
+    now: Date.parse('2026-08-11T12:00:00.000Z'),
+  })
+  assert.equal(accessForLab(insideWindow, 'lab2').unlocked, true)
+
+  const afterLock = buildLearningAccess({
+    role: 'student',
+    openLab: 'lab2',
+    applied: ['lab1', 'lab2'],
+    schedules,
+    now: Date.parse('2026-08-11T19:00:00.000Z'),
+  })
+  assert.equal(accessForLab(afterLock, 'lab2').unlocked, false)
+  assert.equal(accessForLab(afterLock, 'lab2').state, 'locked')
+  assert.match(accessForLab(afterLock, 'lab2').reason, /截止/)
+})
+
+test('teacher preview ignores time windows while still exposing them', () => {
+  const access = buildLearningAccess({
+    role: 'teacher',
+    openLab: 'lab2',
+    schedules: {
+      lab2: { unlockAt: '2026-08-11T09:00:00.000Z', lockAt: '2026-08-11T18:00:00.000Z' },
+    },
+    now: Date.parse('2026-08-11T08:30:00.000Z'),
+  })
+  assert.equal(accessForLab(access, 'lab2').unlocked, true)
+  assert.equal(accessForLab(access, 'lab2').unlockAt, '2026-08-11T09:00:00.000Z')
+  assert.equal(accessForLab(access, 'lab2').lockAt, '2026-08-11T18:00:00.000Z')
+})

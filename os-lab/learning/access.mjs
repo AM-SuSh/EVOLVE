@@ -24,11 +24,33 @@ function evidenceMap(rows) {
   )
 }
 
+function scheduleText(iso) {
+  if (!iso) return ''
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime())
+    ? iso
+    : date.toLocaleString('zh-CN', {
+        hour12: false,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+}
+
 /**
  * Manual access is derived only from trusted server-side state. Browser events
  * are intentionally excluded because students can edit localStorage.
  */
-export function buildLearningAccess({ role = 'student', openLab = 'lab1', applied = [], evidence = [] }) {
+export function buildLearningAccess({
+  role = 'student',
+  openLab = 'lab1',
+  applied = [],
+  evidence = [],
+  schedules = {},
+  now = Date.now(),
+} = {}) {
   const teacher = role === 'teacher'
   const openIndex = LEARNING_LABS.includes(openLab) ? LEARNING_LABS.indexOf(openLab) : 0
   const appliedSet = new Set(applied.filter((labId) => LEARNING_LABS.includes(labId)))
@@ -42,7 +64,13 @@ export function buildLearningAccess({ role = 'student', openLab = 'lab1', applie
     const published = index <= openIndex
     const alreadyIssued = appliedSet.has(labId)
     const prerequisiteComplete = index === 0 || Boolean(previous?.verified && previous?.reflected)
-    const unlocked = teacher || (published && (prerequisiteComplete || alreadyIssued))
+    const schedule = schedules[labId] || {}
+    const unlockAt = schedule.unlockAt || null
+    const lockAt = schedule.lockAt || null
+    const notYetUnlocked = unlockAt ? now < Date.parse(unlockAt) : false
+    const alreadyLocked = lockAt ? now >= Date.parse(lockAt) : false
+    const scheduleBlocks = Boolean(notYetUnlocked || alreadyLocked)
+    const unlocked = teacher || (!scheduleBlocks && published && (prerequisiteComplete || alreadyIssued))
 
     let state = 'current'
     let reason = ''
@@ -50,6 +78,12 @@ export function buildLearningAccess({ role = 'student', openLab = 'lab1', applie
     else if (!published) {
       state = 'waiting_teacher'
       reason = `教师尚未手动分发该实验（当前分发到 ${openLab.toUpperCase()}）`
+    } else if (notYetUnlocked) {
+      state = 'waiting_unlock'
+      reason = `教师已开放，尚未到解锁时间（${scheduleText(unlockAt)}）`
+    } else if (alreadyLocked) {
+      state = 'locked'
+      reason = `任务已截止（${scheduleText(lockAt)}），已自动加锁`
     } else if (!unlocked) {
       state = 'waiting_prerequisite'
       reason = `先完成 ${previousId.toUpperCase()} 的可信验证与学习复盘`
@@ -66,6 +100,8 @@ export function buildLearningAccess({ role = 'student', openLab = 'lab1', applie
       alreadyIssued,
       state,
       reason,
+      unlockAt,
+      lockAt,
     }
   })
 

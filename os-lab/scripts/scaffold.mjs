@@ -39,6 +39,50 @@ const STATE_FILE = '.scaffold-state.json'
 
 export const LAB_ORDER = ['lab1', 'lab2', 'lab3', 'lab4', 'lab5', 'lab6', 'lab7', 'lab8']
 
+/** 期末探索任务允许的方向；教师端发布时二选一或自定义。 */
+export const FINAL_PROJECT_KINDS = ['performance', 'app', 'debug', 'open', 'custom']
+
+export const FINAL_PROJECT_KIND_LABELS = {
+  performance: '性能画像与调优',
+  app: '终端小应用',
+  debug: '故障注入与排障',
+  open: '开放课题',
+  custom: '自定义探索',
+}
+
+/** 统一期末探索任务的结构；教师可多级发布，学生按作用域就近生效。 */
+export function normalizeFinalProject(value) {
+  if (!value || typeof value !== 'object') return null
+  const title = String(value.title || '').trim().slice(0, 80)
+  const description = String(value.description || '').trim().slice(0, 20000)
+  if (!title || !description) return null
+  const kind = FINAL_PROJECT_KINDS.includes(value.kind) ? value.kind : 'open'
+  const mechanisms = Array.isArray(value.mechanisms)
+    ? value.mechanisms
+        .map((item) => String(item || '').trim().slice(0, 80))
+        .filter(Boolean)
+        .slice(0, 12)
+    : []
+  const verificationCommand = String(value.verificationCommand || '').trim().slice(0, 500)
+  const rubric = Array.isArray(value.rubric)
+    ? value.rubric
+        .map((item) => String(item || '').trim().slice(0, 200))
+        .filter(Boolean)
+        .slice(0, 10)
+    : []
+  return {
+    id: 'final',
+    title,
+    kind,
+    kindLabel: FINAL_PROJECT_KIND_LABELS[kind] || '开放课题',
+    description,
+    mechanisms,
+    verificationCommand,
+    rubric,
+    updatedAt: new Date().toISOString(),
+  }
+}
+
 /** 学号/昵称只允许安全字符，防止路径注入。 */
 export function sanitizeUser(user) {
   const value = String(user || '').trim()
@@ -249,6 +293,29 @@ function validStudentVariants(value) {
   return validAssignments(value)
 }
 
+/** 规范化单个 Lab 的开放时间窗：空值/非法时间会丢弃，合法时间统一存 ISO。 */
+export function normalizeSchedule(value) {
+  if (!value || typeof value !== 'object') return {}
+  const out = {}
+  if (typeof value.unlockAt === 'string' && value.unlockAt && !Number.isNaN(Date.parse(value.unlockAt))) {
+    out.unlockAt = new Date(value.unlockAt).toISOString()
+  }
+  if (typeof value.lockAt === 'string' && value.lockAt && !Number.isNaN(Date.parse(value.lockAt))) {
+    out.lockAt = new Date(value.lockAt).toISOString()
+  }
+  return out
+}
+
+function validScheduleMap(value) {
+  if (!value || typeof value !== 'object') return {}
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([labId, entry]) => LAB_ORDER.includes(labId) && entry && typeof entry === 'object')
+      .map(([labId, entry]) => [labId, normalizeSchedule(entry)])
+      .filter(([, entry]) => entry.unlockAt || entry.lockAt),
+  )
+}
+
 export async function readTeacherConfig() {
   let raw = {}
   try {
@@ -260,6 +327,8 @@ export async function readTeacherConfig() {
     openLab: LAB_ORDER.includes(value?.openLab) ? value.openLab : undefined,
     assignments: validAssignments(value?.assignments),
     notice: typeof value?.notice === 'string' ? value.notice : undefined,
+    finalProject: normalizeFinalProject(value?.finalProject),
+    schedules: validScheduleMap(value?.schedules),
   })
   const mapOf = (value) =>
     value && typeof value === 'object'
@@ -271,6 +340,9 @@ export async function readTeacherConfig() {
     llm: raw.llm && typeof raw.llm === 'object' ? raw.llm : {},
     allowStudentLlm: raw.allowStudentLlm !== false,
     notice: typeof raw.notice === 'string' ? raw.notice : '',
+    finalProject: normalizeFinalProject(raw.finalProject),
+    /** 各 Lab 的开放时间窗：{ labId: { unlockAt?, lockAt? } }。 */
+    schedules: validScheduleMap(raw.schedules),
     /** 各 Lab 实验报告版式与填写提示（教师布置）。 */
     reportTemplates:
       raw.reportTemplates && typeof raw.reportTemplates === 'object' ? raw.reportTemplates : {},
@@ -289,11 +361,18 @@ export function effectiveConfigFor(config, username, className) {
   const layers = [
     config.students[username] || {},
     (className && config.classes[className]) || {},
-    { openLab: config.openLab, assignments: config.assignments, notice: config.notice },
+    {
+      openLab: config.openLab,
+      assignments: config.assignments,
+      notice: config.notice,
+      schedules: config.schedules,
+      finalProject: config.finalProject,
+    },
   ]
   const openLab = layers.find((l) => l.openLab)?.openLab || config.openLab
   const notice = layers.find((l) => typeof l.notice === 'string' && l.notice !== undefined)?.notice ?? ''
   const assignments = {}
+  const schedules = {}
   for (const lab of LAB_ORDER) {
     for (const layer of layers) {
       if (layer.assignments && layer.assignments[lab]) {
@@ -301,19 +380,42 @@ export function effectiveConfigFor(config, username, className) {
         break
       }
     }
+    for (const layer of layers) {
+      const entry = layer.schedules?.[lab]
+      if (entry) schedules[lab] = { ...(schedules[lab] || {}), ...entry }
+    }
   }
-  return { openLab, assignments, notice }
+  const finalProject = normalizeFinalProject(layers.find((layer) => layer.finalProject)?.finalProject || null)
+  return { openLab, assignments, notice, finalProject, schedules }
 }
 
 export async function writeTeacherConfig(patch) {
   const current = await readTeacherConfig()
   const next = { ...current, ...patch }
   next.assignments = validAssignments(next.assignments)
+  next.finalProject = normalizeFinalProject(next.finalProject)
+  next.schedules = validScheduleMap(next.schedules)
   next.classes = Object.fromEntries(
-    Object.entries(next.classes || {}).map(([name, value]) => [name, { ...value, assignments: validAssignments(value?.assignments) }]),
+    Object.entries(next.classes || {}).map(([name, value]) => [
+      name,
+      {
+        ...value,
+        assignments: validAssignments(value?.assignments),
+        finalProject: normalizeFinalProject(value?.finalProject),
+        schedules: validScheduleMap(value?.schedules),
+      },
+    ]),
   )
   next.students = Object.fromEntries(
-    Object.entries(next.students || {}).map(([name, value]) => [name, { ...value, assignments: validAssignments(value?.assignments) }]),
+    Object.entries(next.students || {}).map(([name, value]) => [
+      name,
+      {
+        ...value,
+        assignments: validAssignments(value?.assignments),
+        finalProject: normalizeFinalProject(value?.finalProject),
+        schedules: validScheduleMap(value?.schedules),
+      },
+    ]),
   )
   if (!LAB_ORDER.includes(next.openLab)) next.openLab = current.openLab
   await mkdir(path.dirname(TEACHER_FILE), { recursive: true })

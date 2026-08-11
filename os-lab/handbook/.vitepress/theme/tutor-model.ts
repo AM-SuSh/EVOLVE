@@ -922,6 +922,41 @@ export interface LabJourneyItem {
   status: string
   /** 未解锁时给学生看的常驻文字说明，替代旧版一闪而过的 toast。 */
   lockReason: string
+  /** 教师设置的开放/截止时间（ISO），学生端展示任务时间。 */
+  unlockAt?: string | null
+  lockAt?: string | null
+}
+
+export type FinalProjectKind = 'performance' | 'app' | 'debug' | 'open' | 'custom'
+
+export interface FinalProjectInfo {
+  id: string
+  title: string
+  kind: FinalProjectKind | string
+  kindLabel: string
+  description: string
+  mechanisms: string[]
+  verificationCommand: string
+  rubric: string[]
+  updatedAt?: string
+}
+
+/** /learning/access 返回的期末任务状态；未发布时仍返回对象以支持锁定节点。 */
+export interface FinalProjectAccess extends Partial<FinalProjectInfo> {
+  unlocked: boolean
+  reason: string
+}
+
+export const FINAL_PROJECT_KIND_LABELS: Record<string, string> = {
+  performance: '性能画像与调优',
+  app: '终端小应用',
+  debug: '故障注入与排障',
+  open: '开放课题',
+  custom: '自定义探索',
+}
+
+export function finalProjectKindLabel(kind: string | undefined): string {
+  return FINAL_PROJECT_KIND_LABELS[String(kind || '')] || '开放课题'
 }
 
 export interface LearningAccessItem {
@@ -932,8 +967,18 @@ export interface LearningAccessItem {
   verified: boolean
   reflected: boolean
   alreadyIssued: boolean
-  state: 'completed' | 'review' | 'current' | 'teacher' | 'waiting_teacher' | 'waiting_prerequisite'
+  state:
+    | 'completed'
+    | 'review'
+    | 'current'
+    | 'teacher'
+    | 'waiting_teacher'
+    | 'waiting_unlock'
+    | 'locked'
+    | 'waiting_prerequisite'
   reason: string
+  unlockAt?: string | null
+  lockAt?: string | null
 }
 
 export function buildLabJourney(
@@ -980,6 +1025,10 @@ export function buildLabJourney(
           ? '已发放 · 可回看'
           : trusted?.state === 'waiting_teacher'
             ? '待教师分发'
+            : trusted?.state === 'waiting_unlock'
+              ? '等待开放'
+              : trusted?.state === 'locked'
+                ? '已截止'
             : trusted?.state === 'waiting_prerequisite'
               ? '待完成前置'
         : item.started && unlocked
@@ -992,6 +1041,8 @@ export function buildLabJourney(
       lockReason: unlocked
         ? ''
         : trusted?.reason || (index === 0 ? '尚未开始' : `等待老师按范围手动分发 ${item.lab.label}`),
+      unlockAt: trusted?.unlockAt || null,
+      lockAt: trusted?.lockAt || null,
     }
   })
 }
