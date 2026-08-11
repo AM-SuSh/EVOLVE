@@ -48,6 +48,12 @@
 
 各方向文件开头都标注了“初赛基线”与“本次新增”，可直接单独阅读。
 
+## 最近同步记录
+
+- 2026-08-10：Lab8 fill/debug 动手点从 `user/src/bin/lab8_integration_test.rs` 迁至 `kernel/src/sync_syscall.rs`，已同步到 [03-教师端与教学管理.md](03-教师端与教学管理.md)。
+- 2026-08-10：修复 GitHub CI 的 Lab7 Lab Factory source assertion，`npm test` 从 94/95 更新为 97/97，已同步到 [08-工程质量测试与CI.md](08-工程质量测试与CI.md)。
+- 2026-08-11：本目录与 `PPT答辩文字材料与大纲.md`、`复赛PPT.pptx` 已入库。
+
 ## 总览与基线对比
 
 不属于单一方向的总览、基线对比、文件变更分布、重构说明、答辩关系与后续清单，保存在：
