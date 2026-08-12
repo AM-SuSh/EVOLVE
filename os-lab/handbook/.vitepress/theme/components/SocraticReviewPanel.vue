@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   Bot,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   CircleAlert,
   ClipboardCheck,
   FileCheck2,
@@ -42,15 +44,23 @@ const emit = defineEmits<{
 
 type ReviewAction = 'load' | 'start' | 'answer' | 'resume' | 'summary' | ''
 
+/** 进行中的复盘按“书页”组织：每道已提出的题一页，队尾可能跟补证页或总结页。 */
+type ReviewPage =
+  | { kind: 'turn'; turn: SocraticReviewTurn }
+  | { kind: 'evidence' }
+  | { kind: 'summary' }
+
 const review = ref<SocraticReview | null>(null)
 const action = ref<ReviewAction>('')
 const error = ref('')
 const answerDraft = ref('')
 const summaryDraft = ref('')
+const viewIndex = ref(0)
 const mounted = ref(false)
 let loadSequence = 0
 let activeQuestionId = ''
 let completedEmittedId = ''
+let draftPersistTimer: ReturnType<typeof setTimeout> | null = null
 
 const apiBase = computed(() => props.endpoint.replace(/\/$/, ''))
 const readyToLoad = computed(
@@ -64,10 +74,6 @@ const askedTurns = computed(() =>
 const currentTurn = computed<SocraticReviewTurn | null>(
   () => askedTurns.value.find((turn) => !turn.answeredAt) || null,
 )
-const currentNumber = computed(() => {
-  if (!currentTurn.value) return Math.min(askedTurns.value.length, 5)
-  return askedTurns.value.findIndex((turn) => turn.questionId === currentTurn.value?.questionId) + 1
-})
 const latestAnsweredTurn = computed<SocraticReviewTurn | null>(() =>
   [...askedTurns.value].reverse().find((turn) => Boolean(turn.answeredAt)) || null,
 )
@@ -88,6 +94,36 @@ const canSubmitSummary = computed(
   () => Boolean(summaryReady.value && summaryDraft.value.trim() && !action.value),
 )
 
+const pages = computed<ReviewPage[]>(() => {
+  const value = review.value
+  if (!value || value.status === 'review_completed' || value.status === 'deferred') return []
+  const list: ReviewPage[] = askedTurns.value.map((turn) => ({ kind: 'turn', turn }))
+  if (value.status === 'awaiting_evidence') list.push({ kind: 'evidence' })
+  else if (summaryReady.value) list.push({ kind: 'summary' })
+  return list
+})
+const activePage = computed(() => pages.value[viewIndex.value] || null)
+/** “当前页”：第一个待作答的题目页，否则是队尾的补证 / 总结页。 */
+const actionPageIndex = computed(() => {
+  const index = pages.value.findIndex((page) => page.kind !== 'turn' || !page.turn.answeredAt)
+  return index === -1 ? Math.max(pages.value.length - 1, 0) : index
+})
+const forwardLabel = computed(() => {
+  const next = pages.value[viewIndex.value + 1]
+  if (!next) return ''
+  if (next.kind === 'evidence') return '查看补证要求'
+  if (next.kind === 'summary') return '写最终总结'
+  return '继续下一题'
+})
+const composerVisible = computed(() => {
+  const page = activePage.value
+  return Boolean(
+    page?.kind === 'turn'
+      && !page.turn.answeredAt
+      && page.turn.questionId === currentTurn.value?.questionId,
+  )
+})
+
 const statusLabel = computed(() => {
   const labels: Record<SocraticReviewStatus, string> = {
     review_planning: '正在生成复盘计划',
@@ -104,6 +140,17 @@ const latestFeedback = computed(() => {
   const turn = latestAnsweredTurn.value
   return turn?.evaluation || null
 })
+
+function pageLabel(page: ReviewPage, index: number) {
+  if (page.kind === 'evidence') return '补充证据'
+  if (page.kind === 'summary') return '最终总结'
+  return `第 ${index + 1} 题`
+}
+
+function goToPage(index: number) {
+  if (!pages.value.length) return
+  viewIndex.value = Math.min(Math.max(index, 0), pages.value.length - 1)
+}
 
 function evaluationLabel(evaluation: SocraticReviewEvaluation) {
   if (evaluation.verdict === 'passed') return '正确'
@@ -130,20 +177,106 @@ function llmPayload() {
     : {}
 }
 
+/* -- 草稿暂存：按 labId+sessionId 存本机，reviewId 不符时视为过期 ---------- */
+
+interface ReviewDraftStore {
+  reviewId: string
+  answers: Record<string, string>
+  summary: string
+}
+
+function draftStorageKey(target: SocraticReview) {
+  return `os-lab:review-drafts:${target.labId}:${target.sessionId}`
+}
+
+function readDraftStore(target: SocraticReview): ReviewDraftStore {
+  const empty: ReviewDraftStore = { reviewId: target.reviewId, answers: {}, summary: '' }
+  if (typeof localStorage === 'undefined') return empty
+  try {
+    const parsed = JSON.parse(localStorage.getItem(draftStorageKey(target)) || 'null') as ReviewDraftStore | null
+    if (!parsed || parsed.reviewId !== target.reviewId) return empty
+    return {
+      reviewId: target.reviewId,
+      answers: parsed.answers && typeof parsed.answers === 'object' ? { ...parsed.answers } : {},
+      summary: typeof parsed.summary === 'string' ? parsed.summary : '',
+    }
+  } catch {
+    return empty
+  }
+}
+
+function writeDraftStore(target: SocraticReview, store: ReviewDraftStore) {
+  if (typeof localStorage === 'undefined') return
+  const hasContent = store.summary.trim() || Object.values(store.answers).some((text) => String(text || '').trim())
+  try {
+    if (hasContent) localStorage.setItem(draftStorageKey(target), JSON.stringify(store))
+    else localStorage.removeItem(draftStorageKey(target))
+  } catch {
+    /* 存储不可用（隐私模式 / 配额）时静默降级为仅内存暂存 */
+  }
+}
+
+function clearDraftStore(target: SocraticReview) {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.removeItem(draftStorageKey(target))
+  } catch {
+    /* 同上 */
+  }
+}
+
+/** 把当前输入立即写入本机暂存，供面板销毁重建、刷新或切页后恢复。 */
+function persistDraftsNow() {
+  if (draftPersistTimer) {
+    clearTimeout(draftPersistTimer)
+    draftPersistTimer = null
+  }
+  const target = review.value
+  if (!target || target.status === 'review_completed') return
+  const store = readDraftStore(target)
+  if (activeQuestionId) {
+    if (answerDraft.value.trim()) store.answers[activeQuestionId] = answerDraft.value
+    else delete store.answers[activeQuestionId]
+  }
+  store.summary = summaryDraft.value
+  writeDraftStore(target, store)
+}
+
+function scheduleDraftPersist() {
+  if (draftPersistTimer) clearTimeout(draftPersistTimer)
+  draftPersistTimer = setTimeout(persistDraftsNow, 250)
+}
+
 function applyReview(next: SocraticReview | null) {
+  persistDraftsNow()
   const previousReviewId = review.value?.reviewId || ''
   review.value = next
   emit('update', next)
 
-  const nextQuestionId = next?.turns?.find((turn) => turn.askedAt && !turn.answeredAt)?.questionId || ''
+  if (!next) {
+    activeQuestionId = ''
+    viewIndex.value = 0
+    return
+  }
+
+  const store = readDraftStore(next)
+  const nextQuestionId = next.turns?.find((turn) => turn.askedAt && !turn.answeredAt)?.questionId || ''
   if (nextQuestionId !== activeQuestionId) {
     activeQuestionId = nextQuestionId
-    answerDraft.value = ''
+    answerDraft.value = (nextQuestionId && store.answers[nextQuestionId]) || ''
   }
-  if (next?.reviewId !== previousReviewId) summaryDraft.value = next?.finalSummary || ''
-  if (next?.status === 'review_completed' && next.reviewId !== completedEmittedId) {
-    completedEmittedId = next.reviewId
-    emit('completed', next)
+  if (next.reviewId !== previousReviewId) {
+    summaryDraft.value = store.summary || next.finalSummary || ''
+    viewIndex.value = actionPageIndex.value
+  } else {
+    viewIndex.value = Math.min(viewIndex.value, Math.max(pages.value.length - 1, 0))
+  }
+  if (next.status === 'review_completed') {
+    clearDraftStore(next)
+    if (next.reviewId !== completedEmittedId) {
+      completedEmittedId = next.reviewId
+      emit('completed', next)
+    }
   }
 }
 
@@ -188,8 +321,8 @@ async function runAction(
   pathname: string,
   body: Record<string, unknown>,
   successNotice: string,
-) {
-  if (action.value || !readyToLoad.value) return
+): Promise<boolean> {
+  if (action.value || !readyToLoad.value) return false
   ++loadSequence
   action.value = nextAction
   error.value = ''
@@ -200,9 +333,11 @@ async function runAction(
     })
     applyReview(payload.review || null)
     if (successNotice) emit('notice', successNotice)
+    return true
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : '复盘操作失败'
     emit('notice', error.value)
+    return false
   } finally {
     action.value = ''
   }
@@ -222,12 +357,17 @@ async function submitAnswer() {
   const turn = currentTurn.value
   const answer = answerDraft.value.trim()
   if (!turn || !answer || !review.value) return
-  await runAction(
+  const submitted = await runAction(
     'answer',
     '/learning/review/answer',
     { reviewId: review.value.reviewId, questionId: turn.questionId, answer, ...llmPayload() },
     '回答已记录。',
   )
+  if (submitted && review.value) {
+    const store = readDraftStore(review.value)
+    delete store.answers[turn.questionId]
+    writeDraftStore(review.value, store)
+  }
 }
 
 async function resumeReview() {
@@ -265,14 +405,19 @@ function onSummaryKeydown(event: KeyboardEvent) {
   }
 }
 
+watch(answerDraft, scheduleDraftPersist)
+watch(summaryDraft, scheduleDraftPersist)
+
 watch(
   () => [props.endpoint, props.authenticated, props.labId, props.sessionId] as const,
   () => {
+    persistDraftsNow()
     ++loadSequence
     review.value = null
     error.value = ''
     answerDraft.value = ''
     summaryDraft.value = ''
+    viewIndex.value = 0
     activeQuestionId = ''
     completedEmittedId = ''
     if (mounted.value) refreshReview({ quiet: true })
@@ -282,6 +427,10 @@ watch(
 onMounted(() => {
   mounted.value = true
   refreshReview({ quiet: true })
+})
+
+onBeforeUnmount(() => {
+  persistDraftsNow()
 })
 
 defineExpose({ refreshReview, startReview })
@@ -445,146 +594,183 @@ defineExpose({ refreshReview, startReview })
           </ol>
         </div>
 
-        <div v-else-if="review.status === 'awaiting_evidence'" class="evidence-view">
-          <div class="review-progress">已回答 {{ review.answeredCount }} 题 / 最多 5 题</div>
-          <div class="status-callout evidence">
-            <FileCheck2 :size="20" aria-hidden="true" />
-            <div>
-              <strong>需要一条新的可信验证</strong>
-              <p>{{ latestFeedback ? evaluationSummary(latestFeedback) : '完成新的可信运行或断言后，再继续本次复盘。' }}</p>
-              <div v-if="latestFeedback?.missingPoints?.length" class="evaluation-section">
-                <strong>缺失点</strong>
-                <ul>
-                  <li v-for="item in latestFeedback.missingPoints" :key="item">{{ item }}</li>
-                </ul>
-              </div>
-              <div v-if="latestFeedback?.correctReasoning" class="evaluation-section">
-                <strong>参考因果链</strong>
-                <p>{{ latestFeedback.correctReasoning }}</p>
-              </div>
-              <div v-if="latestFeedback?.correctiveExplanation" class="evaluation-section">
-                <strong>纠正说明</strong>
-                <p>{{ latestFeedback.correctiveExplanation }}</p>
-              </div>
-              <ul v-if="latestFeedback?.missingEvidence?.length">
-                <li v-for="item in latestFeedback.missingEvidence" :key="item">{{ item }}</li>
-              </ul>
-            </div>
-          </div>
-          <button class="primary-action" type="button" :disabled="Boolean(action)" @click="resumeReview">
-            <LoaderCircle v-if="action === 'resume'" class="spinning" :size="16" aria-hidden="true" />
-            <RefreshCw v-else :size="16" aria-hidden="true" />
-            已完成新验证，继续复盘
-          </button>
-        </div>
-
-        <div v-else-if="currentTurn" class="question-view">
-          <div class="review-progress">第 {{ currentNumber }} / 最多 5 题</div>
-          <div
-            v-if="latestFeedback"
-            class="inline-feedback evaluation-detail"
-            :class="evaluationTone(latestFeedback)"
-          >
-            <Bot :size="16" aria-hidden="true" />
-            <div>
-              <div class="evaluation-heading">
-                <span class="verdict-label">{{ evaluationLabel(latestFeedback) }}</span>
-                <span v-if="evaluationSummary(latestFeedback)">{{ evaluationSummary(latestFeedback) }}</span>
-              </div>
-              <div v-if="latestFeedback.missingPoints?.length" class="evaluation-section">
-                <strong>缺失点</strong>
-                <ul>
-                  <li v-for="item in latestFeedback.missingPoints" :key="item">{{ item }}</li>
-                </ul>
-              </div>
-              <div v-if="latestFeedback.correctReasoning" class="evaluation-section">
-                <strong>参考因果链</strong>
-                <p>{{ latestFeedback.correctReasoning }}</p>
-              </div>
-              <div v-if="latestFeedback.correctiveExplanation" class="evaluation-section">
-                <strong>纠正说明</strong>
-                <p>{{ latestFeedback.correctiveExplanation }}</p>
-              </div>
-            </div>
-          </div>
-          <article class="question-block">
-            <div class="question-source"><Bot :size="17" aria-hidden="true" />AI 导师</div>
-            <p>{{ currentTurn.prompt }}</p>
-          </article>
-          <label class="composer">
-            <span>你的回答</span>
-            <textarea
-              v-model="answerDraft"
-              rows="6"
-              maxlength="8000"
-              :disabled="action === 'answer'"
-              @keydown="onAnswerKeydown"
-            />
-          </label>
-          <div class="composer-actions">
-            <span>{{ answerDraft.length }} / 8000</span>
-            <button type="button" :disabled="!canSubmitAnswer" @click="submitAnswer">
-              <LoaderCircle v-if="action === 'answer'" class="spinning" :size="16" aria-hidden="true" />
-              <Send v-else :size="16" aria-hidden="true" />
-              提交回答
+        <div v-else-if="pages.length" class="paged-view">
+          <div class="review-progress">已回答 {{ review.answeredCount }} / 最多 {{ review.maxQuestions || 5 }} 题</div>
+          <nav class="page-bar" aria-label="复盘翻页">
+            <button
+              type="button"
+              class="page-nav"
+              title="上一页"
+              aria-label="上一页"
+              :disabled="viewIndex === 0"
+              @click="goToPage(viewIndex - 1)"
+            >
+              <ChevronLeft :size="16" aria-hidden="true" />
             </button>
-          </div>
-        </div>
+            <div class="page-chips">
+              <button
+                v-for="(page, index) in pages"
+                :key="page.kind === 'turn' ? page.turn.questionId : page.kind"
+                type="button"
+                class="page-chip"
+                :class="{ active: index === viewIndex, 'is-action': index === actionPageIndex }"
+                :title="pageLabel(page, index)"
+                :aria-label="pageLabel(page, index)"
+                :aria-current="index === viewIndex ? 'page' : undefined"
+                @click="goToPage(index)"
+              >{{ page.kind === 'turn' ? index + 1 : page.kind === 'summary' ? '总' : '证' }}</button>
+            </div>
+            <button
+              type="button"
+              class="page-nav"
+              title="下一页"
+              aria-label="下一页"
+              :disabled="viewIndex >= pages.length - 1"
+              @click="goToPage(viewIndex + 1)"
+            >
+              <ChevronRight :size="16" aria-hidden="true" />
+            </button>
+            <button
+              v-if="viewIndex !== actionPageIndex"
+              type="button"
+              class="page-jump"
+              @click="goToPage(actionPageIndex)"
+            >回到当前</button>
+          </nav>
 
-        <div v-else-if="summaryReady" class="summary-view">
-          <div class="review-progress">已回答 {{ review.answeredCount }} 题 / 最多 5 题</div>
-          <div
-            v-if="latestFeedback"
-            class="inline-feedback evaluation-detail"
-            :class="evaluationTone(latestFeedback)"
-          >
-            <Bot :size="16" aria-hidden="true" />
-            <div>
-              <div class="evaluation-heading">
-                <span class="verdict-label">{{ evaluationLabel(latestFeedback) }}</span>
-                <span v-if="evaluationSummary(latestFeedback)">{{ evaluationSummary(latestFeedback) }}</span>
+          <template v-if="activePage && activePage.kind === 'turn'">
+            <article class="question-block">
+              <div class="question-source"><Bot :size="17" aria-hidden="true" />AI 导师 · 第 {{ viewIndex + 1 }} 题</div>
+              <p>{{ activePage.turn.prompt }}</p>
+            </article>
+
+            <template v-if="activePage.turn.answeredAt">
+              <div class="answer-record">
+                <span>我的回答</span>
+                <blockquote>{{ activePage.turn.studentAnswer }}</blockquote>
               </div>
-              <div v-if="latestFeedback.missingPoints?.length" class="evaluation-section">
-                <strong>缺失点</strong>
-                <ul>
-                  <li v-for="item in latestFeedback.missingPoints" :key="item">{{ item }}</li>
+              <div
+                v-if="activePage.turn.evaluation"
+                class="evaluation-detail page-evaluation"
+                :class="evaluationTone(activePage.turn.evaluation)"
+              >
+                <div class="evaluation-heading">
+                  <span class="verdict-label">{{ evaluationLabel(activePage.turn.evaluation) }}</span>
+                  <span v-if="evaluationSummary(activePage.turn.evaluation)">{{ evaluationSummary(activePage.turn.evaluation) }}</span>
+                </div>
+                <div v-if="activePage.turn.evaluation.missingPoints?.length" class="evaluation-section">
+                  <strong>缺失点</strong>
+                  <ul>
+                    <li v-for="item in activePage.turn.evaluation.missingPoints" :key="item">{{ item }}</li>
+                  </ul>
+                </div>
+                <div v-if="activePage.turn.evaluation.correctReasoning" class="evaluation-section">
+                  <strong>参考因果链</strong>
+                  <p>{{ activePage.turn.evaluation.correctReasoning }}</p>
+                </div>
+                <div v-if="activePage.turn.evaluation.correctiveExplanation" class="evaluation-section">
+                  <strong>纠正说明</strong>
+                  <p>{{ activePage.turn.evaluation.correctiveExplanation }}</p>
+                </div>
+                <div v-if="activePage.turn.evaluation.missingEvidence?.length" class="evaluation-section">
+                  <strong>待补证据</strong>
+                  <ul>
+                    <li v-for="item in activePage.turn.evaluation.missingEvidence" :key="item">{{ item }}</li>
+                  </ul>
+                </div>
+              </div>
+              <div v-else class="evaluation-detail page-evaluation is-pending">本题尚无评价记录。</div>
+              <div v-if="forwardLabel" class="page-forward">
+                <button type="button" @click="goToPage(viewIndex + 1)">
+                  {{ forwardLabel }}
+                  <ChevronRight :size="16" aria-hidden="true" />
+                </button>
+              </div>
+            </template>
+
+            <template v-else-if="composerVisible">
+              <label class="composer">
+                <span>你的回答</span>
+                <textarea
+                  v-model="answerDraft"
+                  rows="6"
+                  maxlength="8000"
+                  :disabled="action === 'answer'"
+                  @keydown="onAnswerKeydown"
+                />
+              </label>
+              <div class="composer-actions">
+                <span>草稿已自动暂存 · {{ answerDraft.length }} / 8000</span>
+                <button type="button" :disabled="!canSubmitAnswer" @click="submitAnswer">
+                  <LoaderCircle v-if="action === 'answer'" class="spinning" :size="16" aria-hidden="true" />
+                  <Send v-else :size="16" aria-hidden="true" />
+                  提交回答
+                </button>
+              </div>
+            </template>
+
+            <div v-else class="evaluation-detail page-evaluation is-pending">本题尚未开放作答。</div>
+          </template>
+
+          <template v-else-if="activePage && activePage.kind === 'evidence'">
+            <div class="status-callout evidence">
+              <FileCheck2 :size="20" aria-hidden="true" />
+              <div>
+                <strong>需要一条新的可信验证</strong>
+                <p>{{ latestFeedback ? evaluationSummary(latestFeedback) : '完成新的可信运行或断言后，再继续本次复盘。' }}</p>
+                <div v-if="latestFeedback?.missingPoints?.length" class="evaluation-section">
+                  <strong>缺失点</strong>
+                  <ul>
+                    <li v-for="item in latestFeedback.missingPoints" :key="item">{{ item }}</li>
+                  </ul>
+                </div>
+                <div v-if="latestFeedback?.correctReasoning" class="evaluation-section">
+                  <strong>参考因果链</strong>
+                  <p>{{ latestFeedback.correctReasoning }}</p>
+                </div>
+                <div v-if="latestFeedback?.correctiveExplanation" class="evaluation-section">
+                  <strong>纠正说明</strong>
+                  <p>{{ latestFeedback.correctiveExplanation }}</p>
+                </div>
+                <ul v-if="latestFeedback?.missingEvidence?.length">
+                  <li v-for="item in latestFeedback.missingEvidence" :key="item">{{ item }}</li>
                 </ul>
               </div>
-              <div v-if="latestFeedback.correctReasoning" class="evaluation-section">
-                <strong>参考因果链</strong>
-                <p>{{ latestFeedback.correctReasoning }}</p>
-              </div>
-              <div v-if="latestFeedback.correctiveExplanation" class="evaluation-section">
-                <strong>纠正说明</strong>
-                <p>{{ latestFeedback.correctiveExplanation }}</p>
-              </div>
             </div>
-          </div>
-          <div class="summary-headline">
-            <FileCheck2 :size="20" aria-hidden="true" />
-            <div>
-              <strong>写下最终总结</strong>
-              <small>这段总结将与复盘问答一同进入实验记录。</small>
-            </div>
-          </div>
-          <label class="composer">
-            <span>我的最终总结</span>
-            <textarea
-              v-model="summaryDraft"
-              rows="7"
-              maxlength="8000"
-              :disabled="action === 'summary'"
-              @keydown="onSummaryKeydown"
-            />
-          </label>
-          <div class="composer-actions">
-            <span>{{ summaryDraft.length }} / 8000</span>
-            <button type="button" :disabled="!canSubmitSummary" @click="submitSummary">
-              <LoaderCircle v-if="action === 'summary'" class="spinning" :size="16" aria-hidden="true" />
-              <CheckCircle2 v-else :size="16" aria-hidden="true" />
-              完成复盘
+            <button class="primary-action" type="button" :disabled="Boolean(action)" @click="resumeReview">
+              <LoaderCircle v-if="action === 'resume'" class="spinning" :size="16" aria-hidden="true" />
+              <RefreshCw v-else :size="16" aria-hidden="true" />
+              已完成新验证，继续复盘
             </button>
-          </div>
+          </template>
+
+          <template v-else-if="activePage && activePage.kind === 'summary'">
+            <div class="summary-headline">
+              <FileCheck2 :size="20" aria-hidden="true" />
+              <div>
+                <strong>写下最终总结</strong>
+                <small>这段总结将与复盘问答一同进入实验记录。</small>
+              </div>
+            </div>
+            <label class="composer">
+              <span>我的最终总结</span>
+              <textarea
+                v-model="summaryDraft"
+                rows="7"
+                maxlength="8000"
+                :disabled="action === 'summary'"
+                @keydown="onSummaryKeydown"
+              />
+            </label>
+            <div class="composer-actions">
+              <span>草稿已自动暂存 · {{ summaryDraft.length }} / 8000</span>
+              <button type="button" :disabled="!canSubmitSummary" @click="submitSummary">
+                <LoaderCircle v-if="action === 'summary'" class="spinning" :size="16" aria-hidden="true" />
+                <CheckCircle2 v-else :size="16" aria-hidden="true" />
+                完成复盘
+              </button>
+            </div>
+          </template>
         </div>
 
         <div v-else class="state-block" role="status">
@@ -622,7 +808,6 @@ defineExpose({ refreshReview, startReview })
 .summary-headline,
 .question-source,
 .inline-alert,
-.inline-feedback,
 .status-callout {
   display: flex;
   align-items: flex-start;
@@ -751,39 +936,25 @@ button:disabled {
 }
 
 .review-progress {
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   color: var(--ws-ink-muted, var(--vp-c-text-2));
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
-.inline-alert,
-.inline-feedback {
+.inline-alert {
   gap: 8px;
   margin-bottom: 12px;
   padding: 9px 10px;
-  border: 1px solid var(--ws-line, var(--vp-c-divider));
+  color: var(--ws-danger, var(--vp-c-red-1));
+  border: 1px solid color-mix(in srgb, var(--ws-danger, var(--vp-c-red-1)) 35%, var(--ws-line, var(--vp-c-divider)));
   border-radius: 6px;
+  background: var(--ws-danger-soft, var(--vp-c-red-soft));
   font-size: 12px;
   line-height: 1.55;
 }
 
-.inline-alert {
-  color: var(--ws-danger, var(--vp-c-red-1));
-  border-color: color-mix(in srgb, var(--ws-danger, var(--vp-c-red-1)) 35%, var(--ws-line, var(--vp-c-divider)));
-  background: var(--ws-danger-soft, var(--vp-c-red-soft));
-}
-
-.inline-feedback {
-  background: var(--ws-surface-soft, var(--vp-c-bg-soft));
-}
-
-.inline-feedback > div {
-  min-width: 0;
-}
-
 .inline-alert svg,
-.inline-feedback svg,
 .status-callout svg,
 .completion-line svg,
 .summary-headline svg {
@@ -791,13 +962,97 @@ button:disabled {
   margin-top: 1px;
 }
 
-.question-view,
-.summary-view,
-.evidence-view,
+.paged-view,
 .completed-view,
 .deferred-view {
   width: min(100%, 760px);
   margin: 0 auto;
+}
+
+.page-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--ws-line, var(--vp-c-divider));
+}
+
+.page-nav {
+  flex: 0 0 30px;
+  width: 30px;
+  min-height: 30px;
+  padding: 0;
+  color: var(--ws-ink-muted, var(--vp-c-text-2));
+  border-color: var(--ws-line, var(--vp-c-divider));
+  background: transparent;
+}
+
+.page-nav:hover:not(:disabled) {
+  color: var(--ws-ink, var(--vp-c-text-1));
+  border-color: var(--ws-line-strong, var(--vp-c-border));
+  background: var(--ws-surface-soft, var(--vp-c-bg-soft));
+}
+
+.page-chips {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  min-width: 0;
+}
+
+.page-chip {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0 8px;
+  color: var(--ws-ink-muted, var(--vp-c-text-2));
+  border-color: var(--ws-line, var(--vp-c-divider));
+  border-radius: 999px;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.page-chip:hover:not(:disabled) {
+  color: var(--ws-ink, var(--vp-c-text-1));
+  border-color: var(--ws-line-strong, var(--vp-c-border));
+  background: var(--ws-surface-soft, var(--vp-c-bg-soft));
+}
+
+.page-chip.is-action:not(.active) {
+  color: var(--ws-accent, var(--vp-c-brand-1));
+  border-color: color-mix(in srgb, var(--ws-accent, var(--vp-c-brand-1)) 55%, var(--ws-line, var(--vp-c-divider)));
+}
+
+.page-chip.active {
+  color: var(--ws-accent-contrast, #fff);
+  border-color: var(--ws-accent, var(--vp-c-brand-1));
+  background: var(--ws-accent, var(--vp-c-brand-1));
+}
+
+.page-chip.active:hover:not(:disabled) {
+  color: var(--ws-accent-contrast, #fff);
+  border-color: var(--ws-accent-hover, var(--vp-c-brand-2));
+  background: var(--ws-accent-hover, var(--vp-c-brand-2));
+}
+
+.page-jump {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 8px;
+  color: var(--ws-accent, var(--vp-c-brand-1));
+  border-color: transparent;
+  background: transparent;
+  font-size: 12px;
+}
+
+.page-jump:hover:not(:disabled) {
+  color: var(--ws-accent, var(--vp-c-brand-1));
+  border-color: var(--ws-line, var(--vp-c-divider));
+  background: var(--ws-surface-soft, var(--vp-c-bg-soft));
 }
 
 .question-block {
@@ -822,6 +1077,38 @@ button:disabled {
   line-height: 1.75;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.answer-record {
+  margin-top: 14px;
+}
+
+.answer-record > span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--ws-ink-muted, var(--vp-c-text-2));
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.answer-record blockquote {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--ws-ink, var(--vp-c-text-1));
+  border: 1px solid var(--ws-line, var(--vp-c-divider));
+  border-left: 3px solid var(--ws-line-strong, var(--vp-c-border));
+  border-radius: 6px;
+  background: var(--ws-surface-soft, var(--vp-c-bg-soft));
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.page-forward {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
 }
 
 .composer {
@@ -989,7 +1276,8 @@ button:disabled {
   color: var(--ws-ink-muted, var(--vp-c-text-2));
 }
 
-.turn-history .evaluation-detail {
+.turn-history .evaluation-detail,
+.page-evaluation {
   margin-top: 10px;
   padding: 11px 12px;
   border: 1px solid var(--ws-line, var(--vp-c-divider));
@@ -998,6 +1286,10 @@ button:disabled {
   background: var(--ws-surface-soft, var(--vp-c-bg-soft));
   font-size: 12px;
   line-height: 1.6;
+}
+
+.page-evaluation {
+  margin-top: 12px;
 }
 
 .evaluation-detail.is-passed {
@@ -1085,6 +1377,10 @@ button:disabled {
 @media (max-width: 640px) {
   .review-body {
     padding: 14px 12px;
+  }
+
+  .page-bar {
+    flex-wrap: wrap;
   }
 
   .question-block,

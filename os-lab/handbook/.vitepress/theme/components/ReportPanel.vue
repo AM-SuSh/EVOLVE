@@ -28,7 +28,6 @@ import {
   authHeaders,
   type LlmConfig,
   type SocraticReview,
-  type SocraticReviewEvaluation,
   type TutorLab,
 } from '../tutor-model'
 import { createReportMarkdown, renderReportHtml } from '../report-markdown'
@@ -607,67 +606,6 @@ function rememberReferencedImages() {
   for (const id of currentReferencedImageIds()) previouslyReferencedImageIds.add(id)
 }
 
-function reviewEvaluationLabel(evaluation: SocraticReviewEvaluation) {
-  const category = evaluation.verdict === 'passed'
-    ? '正确'
-    : evaluation.verdict === 'partial'
-      ? '部分正确'
-      : '需修正'
-  const explicitLabel = String(evaluation.verdictLabel || '').trim()
-  return explicitLabel && explicitLabel !== category
-    ? `${category}（${explicitLabel}）`
-    : category
-}
-
-function reviewRecordMarkdown(review: SocraticReview) {
-  const transcript = String(review.transcriptMarkdown || '').trim()
-  const turns = [...review.turns]
-    .filter((turn) => Boolean(turn.askedAt && turn.prompt))
-    .sort((left, right) => left.ordinal - right.ordinal)
-  if (!turns.length) return transcript
-
-  const lines = ['## 收获与复盘', '']
-
-  turns.forEach((turn, index) => {
-    lines.push(
-      `### 问题 ${index + 1}`,
-      '',
-      `**AI 导师：** ${turn.prompt}`,
-      '',
-      `**学生：** ${turn.studentAnswer || '（未回答）'}`,
-      '',
-    )
-    if (!turn.evaluation) return
-    lines.push(`**评价：** ${reviewEvaluationLabel(turn.evaluation)}`, '')
-    if (turn.evaluation.rationale) lines.push(`**评价说明：** ${turn.evaluation.rationale}`, '')
-    if (turn.evaluation.missingPoints?.length) {
-      lines.push('**缺失点：**', ...turn.evaluation.missingPoints.map((item) => `- ${item}`), '')
-    }
-    if (turn.evaluation.correctReasoning) {
-      lines.push(`**参考因果链：** ${turn.evaluation.correctReasoning}`, '')
-    }
-    if (turn.evaluation.correctiveExplanation) {
-      lines.push(`**纠正说明：** ${turn.evaluation.correctiveExplanation}`, '')
-    }
-    if (turn.evaluation.missingEvidence?.length) {
-      lines.push('**待补证据：**', ...turn.evaluation.missingEvidence.map((item) => `- ${item}`), '')
-    }
-  })
-
-  if (review.finalSummary) {
-    lines.push('### 我的最终总结', '', review.finalSummary.trim(), '')
-  }
-  if (review.status === 'deferred') {
-    lines.push(
-      '### 复盘状态',
-      '',
-      `已转为后续关注：${review.deferredReason || '由教师结合后续证据继续确认。'}`,
-      '',
-    )
-  }
-  return lines.join('\n').trim()
-}
-
 /** 始终按当前下拉选中的格式组装，提交/预览/导出同一份。 */
 function buildBodyMarkdown() {
   const tpl = template.value
@@ -690,10 +628,6 @@ function buildBodyMarkdown() {
         ),
       )
     }
-  }
-  if (socraticReview.value && reviewSubmittable.value) {
-    const reviewRecord = reviewRecordMarkdown(socraticReview.value)
-    if (reviewRecord) lines.push(reviewRecord, '')
   }
   return lines.join('\n')
 }
