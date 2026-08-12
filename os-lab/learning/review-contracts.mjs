@@ -62,6 +62,9 @@ export function normalizeReviewPlan(raw, options = {}) {
   if (knownConceptIds && questions.some((question) => !knownConceptIds.has(question.conceptId))) {
     throw new TypeError('复盘问题包含当前 Lab 之外的 conceptId')
   }
+  if (options.requireEvidence === true && questions.some((question) => question.evidenceRefs.length === 0)) {
+    throw new TypeError('每个复盘问题都必须引用至少一条过程或运行证据')
+  }
   const maxQuestions = Math.max(2, Math.min(5, Number(raw?.maxQuestions) || questions.length))
   if (questions.length > maxQuestions) throw new TypeError('复盘初始问题数不能超过 maxQuestions')
   return {
@@ -71,7 +74,18 @@ export function normalizeReviewPlan(raw, options = {}) {
     sourceAssessmentId: textValue(raw?.sourceAssessmentId, 160),
     maxQuestions,
     rationale: textValue(raw?.rationale, 4_000),
-    evidenceRefs: refs(raw?.evidenceRefs || questions.flatMap((question) => question.evidenceRefs)),
+    generator: {
+      mode: ['remote', 'deterministic'].includes(raw?.generator?.mode)
+        ? raw.generator.mode
+        : 'deterministic',
+      model: textValue(raw?.generator?.model, 160),
+      promptVersion: textValue(raw?.generator?.promptVersion || 'assessment-review-v1', 160),
+    },
+    evidenceRefs: refs(
+      Array.isArray(raw?.evidenceRefs) && raw.evidenceRefs.length
+        ? raw.evidenceRefs
+        : questions.flatMap((question) => question.evidenceRefs),
+    ),
     questions,
   }
 }
@@ -89,4 +103,3 @@ export function normalizeReviewEvaluation(raw) {
     followUpObjective: textValue(raw?.followUpObjective, 1_000),
   }
 }
-

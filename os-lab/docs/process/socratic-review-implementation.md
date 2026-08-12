@@ -33,3 +33,16 @@
   - 新增概念目录与复盘数据库测试。
 - 验证：`node --test ../learning/concept-catalog.test.mjs ../learning/socratic-review-db.test.mjs`。
 - 本地提交：`feat(review): establish socratic review domain foundation`。
+
+### 阶段 2：Assessment Agent 与全过程证据
+
+- 状态：完成
+- 主要修改：
+  - 新增独立 `learning/assessment-agent.mjs`，使用独立 Prompt 和严格 JSON 输出生成复盘计划、评价复盘回答。
+  - 证据 bundle 同时纳入完整 Tutor 会话快照、学生/AI 事件、提示、代码操作、诊断/Trace、可信运行、报告正文、Rubric 和 mastery。
+  - 复盘计划默认 3 题、允许 2-5 题，并为动态追问保留总计 5 题的上限。
+  - 所有 `conceptId` 和 `evidenceRefs` 经过当前 Lab 概念与证据白名单校验；远程模型失败或伪造引用时确定性降级。
+  - 实现类概念缺少对应可信通过 run 时，口头回答最多进入 `needs-evidence`。
+  - 新增可版本化 JSON Schema 和 Assessment Agent 回归测试。
+- 验证：`node --test ../learning/assessment-agent.test.mjs ../learning/concept-catalog.test.mjs`，6 项通过。
+- 本地提交：`feat(assessment): generate evidence-backed review plans`。

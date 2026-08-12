@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://os-lab.local/schema/assessment-review-plan-v1.schema.json",
+  "title": "OS Lab Socratic review plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "labId", "sessionId", "maxQuestions", "questions", "evidenceRefs", "generator"],
+  "properties": {
+    "version": { "const": "socratic-review-plan-v1" },
+    "labId": { "pattern": "^lab[1-8]$" },
+    "sessionId": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "sourceAssessmentId": { "type": "string", "maxLength": 160 },
+    "maxQuestions": { "type": "integer", "minimum": 2, "maximum": 5 },
+    "rationale": { "type": "string", "maxLength": 4000 },
+    "evidenceRefs": { "type": "array", "items": { "type": "string", "maxLength": 200 } },
+    "generator": {
+      "type": "object",
+      "required": ["mode", "model", "promptVersion"],
+      "properties": {
+        "mode": { "enum": ["remote", "deterministic"] },
+        "model": { "type": "string", "maxLength": 160 },
+        "promptVersion": { "type": "string", "maxLength": 160 }
+      }
+    },
+    "questions": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["questionId", "conceptId", "kind", "objective", "prompt", "reason", "passCriteria", "evidenceRefs", "requiresRunEvidence"],
+        "properties": {
+          "questionId": { "type": "string", "minLength": 1, "maxLength": 160 },
+          "conceptId": { "type": "string", "minLength": 1, "maxLength": 160 },
+          "kind": { "enum": ["concept-explanation", "causal-explanation", "evidence-reflection", "counterexample", "transfer"] },
+          "objective": { "type": "string", "maxLength": 2000 },
+          "prompt": { "type": "string", "minLength": 1, "maxLength": 4000 },
+          "reason": { "type": "string", "maxLength": 2000 },
+          "passCriteria": { "type": "array", "maxItems": 8, "items": { "type": "string", "maxLength": 500 } },
+          "evidenceRefs": { "type": "array", "items": { "type": "string", "maxLength": 200 } },
+          "requiresRunEvidence": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}
+
