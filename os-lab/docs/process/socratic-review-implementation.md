@@ -46,3 +46,18 @@
   - 新增可版本化 JSON Schema 和 Assessment Agent 回归测试。
 - 验证：`node --test ../learning/assessment-agent.test.mjs ../learning/concept-catalog.test.mjs`，6 项通过。
 - 本地提交：`feat(assessment): generate evidence-backed review plans`。
+
+### 阶段 3：Tutor 编排与复盘 API
+
+- 状态：完成
+- 主要修改：
+  - 日常 Tutor 只在已有解释、学生明确表示理解、同一主题未检查过且通过冷却窗口时追加一次理解检查；学生回应后立即关闭该检查，不形成连续追问。
+  - `/chat` 的护栏、远程、流式和离线返回统一写入服务端权威 `student_message` / `ai_response` 事件，并保存可跨设备恢复的完整对话快照。
+  - 新增 `GET /learning/review`、`POST /learning/review/start`、`/answer`、`/resume`、`/summary`，由服务端校验学生归属、可信验证、逐题顺序、回答不可覆盖和五题总上限。
+  - 复盘启动时使用独立 Assessment 配置综合对话、工作区事件、可信运行、诊断/Trace、报告和 mastery；回答不完整时最多增加一次有边界的动态追问，缺运行证据时进入 `awaiting_evidence`。
+  - 新增 `review_started`、`review_question_asked`、`review_answer_submitted`、`review_answer_evaluated`、`review_completed` 事件；浏览器不能伪造这些服务端事件。
+  - 远程 Assessment 的 `passed` 不能覆盖可信运行要求；完成后保存不可变问答 transcript 和复盘 mastery observations。
+- 验证：
+  - `node --test learning/assessment-agent.test.mjs learning/socratic-review-db.test.mjs tutor/turn-policy.test.mjs tutor/contracts.test.mjs`，27 项通过。
+  - `npm run test:smoke`，真实 HTTP/SSE/运行/评价/报告链路通过；确认两轮 Tutor 问答生成 4 条服务端权威事件。
+- 本地提交：`feat(tutor): orchestrate throttled checks and socratic reviews`。

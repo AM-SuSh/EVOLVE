@@ -1001,6 +1001,12 @@ try {
     diagnostics: db.prepare('SELECT count(*) AS value FROM run_diagnostics').get().value,
     diagnosticOpens: db.prepare("SELECT count(*) AS value FROM events WHERE type = 'diagnostic_opened'").get().value,
     learningChain: db.prepare("SELECT count(*) AS value FROM events WHERE session_id = 'smoke-learning-session'").get().value,
+    authoritativeChat: db.prepare(
+      `SELECT count(*) AS value FROM events
+       WHERE session_id = 'smoke-learning-session'
+         AND type IN ('student_message', 'ai_response')
+         AND json_extract(payload_json, '$.metadata.authority') = 'server'`,
+    ).get().value,
     serverStages: db.prepare("SELECT count(*) AS value FROM events WHERE session_id = 'smoke-learning-session' AND type = 'stage_enter'").get().value,
     tutorSessions: db.prepare("SELECT count(*) AS value FROM tutor_sessions WHERE session_id = 'smoke-learning-session'").get().value,
     assessments: db.prepare("SELECT count(*) AS value FROM assessments WHERE session_id = 'smoke-learning-session'").get().value,
@@ -1018,7 +1024,8 @@ try {
   assert.equal(counts.assertions, 12)
   assert.equal(counts.diagnostics > 0, true)
   assert.equal(counts.diagnosticOpens, 1)
-  assert.equal(counts.learningChain, 14)
+  assert.equal(counts.learningChain >= 14, true)
+  assert.equal(counts.authoritativeChat, 4)
   assert.equal(counts.serverStages, 2)
   assert.equal(counts.tutorSessions, 1)
   assert.equal(counts.assessments, 1)

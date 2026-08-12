@@ -119,3 +119,54 @@ test('database refuses review turns beyond the five-question cap', () => {
   }), /5 题上限/)
 })
 
+test('review ordering, immutability and unresolved verdicts are enforced', () => {
+  const registration = learningDb.register('review-guard-student', 'secret1', '计科2301')
+  const student = learningDb.resolveSession(registration.token)
+  const created = learningDb.createSocraticReview(student.id, reviewPlan('review-session-guards'))
+  assert.throws(
+    () => learningDb.markSocraticReviewTurnAsked(student.id, created.reviewId, 'q2'),
+    /按顺序/,
+  )
+  assert.throws(
+    () => learningDb.answerSocraticReviewTurn(student.id, created.reviewId, 'q1', { answer: '未提问' }),
+    /尚未提出/,
+  )
+  learningDb.markSocraticReviewTurnAsked(student.id, created.reviewId, 'q1')
+  learningDb.answerSocraticReviewTurn(student.id, created.reviewId, 'q1', {
+    answer: '这是一条仍需补充证据的回答。',
+    evaluation: { verdict: 'partial', evidenceRefs: [] },
+  })
+  assert.throws(
+    () => learningDb.answerSocraticReviewTurn(student.id, created.reviewId, 'q1', { answer: '覆盖旧回答' }),
+    /已经回答/,
+  )
+  const followed = learningDb.insertSocraticReviewFollowup(student.id, created.reviewId, 'q1', {
+    questionId: 'q1-followup',
+    conceptId: 'os.sched.task-state',
+    kind: 'causal-explanation',
+    objective: '补齐状态变化证据',
+    prompt: '请补充状态变化的证据。',
+    reason: '原回答不完整',
+    passCriteria: ['说明 Ready 与 Exited'],
+    evidenceRefs: ['run:failed-1'],
+  })
+  assert.deepEqual(followed.turns.map((turn) => turn.questionId), ['q1', 'q1-followup', 'q2'])
+  assert.throws(
+    () => learningDb.completeSocraticReview(student.id, created.reviewId, { finalSummary: '总结' }),
+    /至少完成|未回答/,
+  )
+})
+
+test('follow-up throttle persists pending checks until explicitly resolved', () => {
+  const registration = learningDb.register('followup-student', 'secret1', '计科2301')
+  const student = learningDb.resolveSession(registration.token)
+  const key = 'topic:12345678'
+  const asked = learningDb.recordTutorFollowupTurn(student.id, 'followup-session', 'lab2', key, { checkAsked: true })
+  assert.equal(asked.pending, true)
+  assert.equal(asked.checkCount, 1)
+  const preserved = learningDb.recordTutorFollowupTurn(student.id, 'followup-session', 'lab2', key)
+  assert.equal(preserved.pending, true)
+  const resolved = learningDb.recordTutorFollowupTurn(student.id, 'followup-session', 'lab2', key, { resolvePending: true })
+  assert.equal(resolved.pending, false)
+  assert.equal(resolved.resolved, true)
+})

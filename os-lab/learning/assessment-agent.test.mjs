@@ -153,3 +153,31 @@ test('answer evaluation cannot pass an implementation concept without required t
   assert.equal(result.evaluation.verdict, 'needs-evidence')
 })
 
+test('remote Assessment verdict cannot override missing trusted run evidence', async () => {
+  const input = evidenceInput()
+  input.runs = input.runs.filter((run) => !run.verified)
+  const bundle = buildReviewEvidenceBundle(input)
+  const question = {
+    conceptId: 'os.sched.task-state',
+    objective: '确认状态转换',
+    passCriteria: ['yield 后回到 Ready'],
+    evidenceRefs: ['run:run-failed'],
+    requiresRunEvidence: true,
+  }
+  const result = await evaluateAssessmentReviewAnswer(
+    question,
+    '这是一条足够长但没有可信运行支持的状态转换解释。',
+    bundle,
+    {
+      llm: { upstream: 'http://assessment.test/v1', model: 'assessment-model' },
+      fetchImpl: async () => ({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: JSON.stringify({
+          verdict: 'passed', rationale: '模型认为通过', evidenceRefs: ['run:run-failed'],
+        }) } }] }),
+      }),
+    },
+  )
+  assert.equal(result.agent.mode, 'remote')
+  assert.equal(result.evaluation.verdict, 'needs-evidence')
+})

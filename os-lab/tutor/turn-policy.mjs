@@ -23,6 +23,8 @@ const DEBUG_RE = /(现象|乱码|报错|错误|失败|崩溃|panic|卡住|不工
 const VERIFICATION_RE = /(实验|验证|测试|尝试|观察|运行|预期|断言|QEMU|cargo|trace|日志)/i
 const CODE_RE = /(?:\.[a-z0-9]+\b|函数|字段|源码|代码|调用链|控制流|数据流|实现位置|寄存器|结构体)/i
 const GENERIC_FOLLOW_UP_RE = /^(?:请)?(?:再|继续|然后|那|这个|这里|还是|能否|可以)?(?:给|说|讲|解释|具体|详细|看|帮|提示|一点|一下|呢|吗|？|\?|，|。|\s){1,24}$/i
+const UNDERSTANDING_ACK_RE = /(明白了|懂了|理解了|我理解|所以.*应该|也就是说|我认为|我的判断|我现在知道|这样看来|原来是)/i
+const EXPLICIT_CONTINUE_RE = /(我先去|我再跑|我去看|我先检查|我继续|暂时不用|先不用|我试试|知道了，?我)/i
 const TOPIC_TERM_RE = /(\bfd\b|fd表|文件描述符|file descriptor|fdtype|offset|sepc|sscratch|scause|stvec|sstatus|satp|sret|ecall|trap|syscall|panic|页表|地址空间|虚拟内存|物理内存|调度器|任务切换|上下文切换|进程|线程|文件系统|磁盘|inode|管道|信号|互斥锁|自旋锁|死锁|中断|异常|特权级|系统调用)/gi
 
 const INTENT_ACTIONS = Object.freeze({
@@ -100,7 +102,9 @@ export function identifyTutorTopic(input) {
   const inferredIntent = inferTutorIntent(message)
   const explicitTerms = topicTerms(message)
   const responseMode = inferTutorResponseMode(message)
-  const followUp = GENERIC_FOLLOW_UP_RE.test(message) && !explicitTerms.length && responseMode === 'answer-first'
+  const acknowledgement = UNDERSTANDING_ACK_RE.test(message) && !explicitTerms.length
+  const followUp = (GENERIC_FOLLOW_UP_RE.test(message) || acknowledgement) &&
+    !explicitTerms.length && responseMode === 'answer-first'
   const intent = followUp && previousIntent ? previousIntent : inferredIntent
   const codeFile = cleanContextText(input?.codeContext?.file, 240).replace(/\\/g, '/')
   const reading = [cleanContextText(input?.reading?.h2, 120), cleanContextText(input?.reading?.h3, 120)]
@@ -175,6 +179,15 @@ export function planTutorTurn(input) {
   const hintLevel = hintRequested ? Math.min(4, previousHintLevel + 1) : previousHintLevel
   const actions = [...INTENT_ACTIONS[intent]]
   if (hintRequested) actions.push(`offer-hint-l${hintLevel}`)
+  const understandingCheck = shouldAskUnderstandingCheck({
+    message,
+    intent,
+    responseMode,
+    history: input?.history,
+    followup: input?.followup,
+  })
+  if (input?.followup?.pending) actions.push('resolve-understanding-check')
+  if (understandingCheck.shouldAsk) actions.push('selective-understanding-check')
 
   return {
     version: 'turn-policy-v2',
@@ -194,6 +207,12 @@ export function planTutorTurn(input) {
     topicChanged: Boolean(topic.topicChanged),
     topicChangeReason: topic.topicChangeReason,
     actions: [...new Set(actions)],
+    understandingCheck,
+    followup: {
+      pending: Boolean(input?.followup?.pending),
+      resolved: Boolean(input?.followup?.resolved),
+      checkCount: Number(input?.followup?.checkCount || 0),
+    },
     evidenceRefs: collectEvidenceRefs(evidence),
     toolContext: {
       latestRun: evidence.latestRun || null,
@@ -201,6 +220,55 @@ export function planTutorTurn(input) {
       traceCount: evidence.latestRun?.traceCount || 0,
     },
   }
+}
+
+export function shouldAskUnderstandingCheck(input = {}) {
+  const message = String(input.message || '').trim()
+  const intent = INTENTS.has(input.intent) ? input.intent : inferTutorIntent(message)
+  const responseMode = RESPONSE_MODES.has(input.responseMode)
+    ? input.responseMode
+    : inferTutorResponseMode(message)
+  const followup = input.followup || {}
+  const history = Array.isArray(input.history) ? input.history : []
+  const priorAssistant = [...history].reverse().find((item) => item?.role === 'assistant' && String(item.content || '').trim())
+  const studentAcknowledged = UNDERSTANDING_ACK_RE.test(message)
+  const explicitlyContinuing = EXPLICIT_CONTINUE_RE.test(message)
+  const sameTopicHasAnswer = Boolean(priorAssistant)
+  const cooldownPassed = Number(followup.turnIndex || 0) - Number(followup.lastCheckTurn ?? -10) >= 2
+  const eligible =
+    responseMode !== 'guardrail' &&
+    !['reflection'].includes(intent) &&
+    !explicitlyContinuing &&
+    !followup.pending &&
+    !followup.resolved &&
+    Number(followup.checkCount || 0) === 0 &&
+    sameTopicHasAnswer &&
+    studentAcknowledged &&
+    cooldownPassed
+  return {
+    shouldAsk: eligible,
+    reason: eligible
+      ? '学生确认理解且当前问题已有解释，进行一次收束检查'
+      : '当前疑问尚未确认解决，或本主题/会话处于追问冷却期',
+    maxPerTopic: 1,
+    cooldownTurns: 2,
+  }
+}
+
+export function understandingCheckPrompt(input = {}) {
+  if (input?.followup?.pending) {
+    return [
+      '学生当前是在回应上一轮的理解检查。先判断并回应这份理解：正确时简短确认并补齐必要边界；不完整时直接澄清缺失点。',
+      '本轮必须结束这条理解检查，不再追加新的问题，也不要形成连续追问。',
+    ].join('\n')
+  }
+  if (!input?.understandingCheck?.shouldAsk) return ''
+  return [
+    '当前允许进行一次理解收束检查。',
+    '先完整回答学生当前问题，再只提出一个与刚才疑问直接相关、可用学生自己的话回答的问题。',
+    '学生回答后不要继续连环追问；若回答正确，确认理解并结束本线程。',
+    '不要把这个问题写成阶段门控，也不要向学生说明评分或内部状态。',
+  ].join('\n')
 }
 
 export function tutorTurnPolicyPrompt(decision) {
@@ -213,6 +281,7 @@ export function tutorTurnPolicyPrompt(decision) {
     `- 教学动作：${decision.actions.join(', ')}`,
     `- 可引用证据：${decision.evidenceRefs.join(', ') || '无'}`,
     `- 可信工具摘要：${JSON.stringify(decision.toolContext)}`,
+    understandingCheckPrompt(decision),
     decision.responseMode === 'definition-first'
       ? '回答顺序：先直接定义学生问到的术语，并补充一个与当前实验相关的作用或边界；不得以阶段、边界或反问开头。回答完成后至多追问一个问题。'
       : decision.responseMode === 'guardrail'

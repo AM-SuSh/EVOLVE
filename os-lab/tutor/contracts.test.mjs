@@ -51,6 +51,31 @@ test('event-v2 compatibly accepts transfer and the L4 support tier', () => {
   assert.equal(validateInteractionEvent({ ...event, hintLevel: 5 }), false)
 })
 
+test('event-v2 validates server-authoritative Socratic review events', () => {
+  const common = {
+    version: 2,
+    id: 'review-event-1',
+    sessionId: 'session-review',
+    labId: 'lab2',
+    timestamp: '2026-08-12T00:00:00.000Z',
+    stage: 'reflect',
+    reviewId: 'review-1',
+  }
+  assert.equal(validateInteractionEvent({ ...common, type: 'review_started' }), true)
+  assert.equal(validateInteractionEvent({
+    ...common, type: 'review_question_asked', questionId: 'q1',
+    conceptIds: ['os.trap.syscall-abi'],
+  }), true)
+  assert.equal(validateInteractionEvent({
+    ...common, type: 'review_answer_evaluated', questionId: 'q1',
+    conceptIds: ['os.trap.syscall-abi'], verdict: 'passed', evidenceRefs: ['run:1'],
+  }), true)
+  assert.equal(validateInteractionEvent({
+    ...common, type: 'review_answer_evaluated', questionId: 'q1',
+    conceptIds: ['os.trap.syscall-abi'], verdict: 'invented', evidenceRefs: [],
+  }), false)
+})
+
 test('trace-v1 parser ignores malformed frames and accepts Lab2 events', () => {
   const trap = { v: 1, seq: 1, ts: 10, cpu: 0, pid: 0, tid: 0, type: 'trap_enter', cause: 'user_ecall' }
   const task = { v: 1, seq: 2, ts: 20, cpu: 0, pid: 1, tid: 1, type: 'task_switch', from: 'Ready', to: 'Running', reason: 'scheduler' }

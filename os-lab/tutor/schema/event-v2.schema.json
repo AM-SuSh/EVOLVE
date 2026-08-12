@@ -16,7 +16,9 @@
         "session_start", "stage_enter", "template_used", "student_message", "ai_response",
         "guardrail_triggered", "verification_attempt", "reflection_submitted", "manual_note",
         "code_open", "code_save", "run_started", "run_finished", "diagnostic_opened",
-        "trace_inspected", "hint_requested", "checkpoint_answered", "report_submitted", "teacher_reviewed"
+        "trace_inspected", "hint_requested", "checkpoint_answered", "report_submitted", "teacher_reviewed",
+        "review_started", "review_question_asked", "review_answer_submitted",
+        "review_answer_evaluated", "review_completed"
       ]
     },
     "stage": { "enum": ["orient", "read", "run", "debug", "reflect", "transfer"] },
@@ -62,6 +64,9 @@
     "rubricVersion": { "type": "string", "minLength": 1, "maxLength": 160 },
     "decision": { "type": "string", "minLength": 1, "maxLength": 80 },
     "comment": { "type": "string", "maxLength": 8000 }
+    ,"reviewId": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "questionId": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "verdict": { "enum": ["passed", "partial", "needs-evidence", "misconception", "defer"] }
   },
   "allOf": [
     {
@@ -103,6 +108,22 @@
     {
       "if": { "properties": { "type": { "const": "teacher_reviewed" } }, "required": ["type"] },
       "then": { "required": ["rubricVersion", "decision", "comment"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "review_started" } }, "required": ["type"] },
+      "then": { "required": ["reviewId"] }
+    },
+    {
+      "if": { "properties": { "type": { "enum": ["review_question_asked", "review_answer_submitted"] } }, "required": ["type"] },
+      "then": { "required": ["reviewId", "questionId", "conceptIds"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "review_answer_evaluated" } }, "required": ["type"] },
+      "then": { "required": ["reviewId", "questionId", "conceptIds", "verdict", "evidenceRefs"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "review_completed" } }, "required": ["type"] },
+      "then": { "required": ["reviewId", "evidenceRefs"] }
     }
   ]
 }

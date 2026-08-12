@@ -23,6 +23,11 @@ import {
 import { scoreLearningEvents } from '../learning/rubric.mjs'
 import { assessLearningV3 } from '../learning/rubric-v3.mjs'
 import { deriveMasteryUpdates } from '../learning/mastery.mjs'
+import {
+  buildReviewEvidenceBundle,
+  createAssessmentReviewPlan,
+  evaluateAssessmentReviewAnswer,
+} from '../learning/assessment-agent.mjs'
 import { evaluateReviewGates } from '../learning/review-gates.mjs'
 import { createLearningBackup, generateAnonymousAnalysis } from '../learning/trial-operations.mjs'
 import { accessForLab, buildLearningAccess } from '../learning/access.mjs'
@@ -54,6 +59,7 @@ import { evaluateRunAssertions, getRunRecipe } from '../tutor/run-recipes.mjs'
 import { parseTraceQuery, readTracePage, TraceIntegrityError } from '../tutor/trace-store.mjs'
 import { decideTutorTurn, enforceTutorOutput, tutorPolicyPrompt } from '../tutor/state-machine.mjs'
 import {
+  inferQuestionCategory,
   identifyTutorTopic,
   planTutorTurn,
   tutorResponseModes,
@@ -83,23 +89,32 @@ import {
 } from '../scripts/scaffold.mjs'
 import {
   changePassword,
+  answerSocraticReviewTurn,
+  completeSocraticReview,
+  createSocraticReview,
   createRun,
+  deferSocraticReview,
   finishRun,
   getAssessmentInput,
   getLearningEvidence,
   getReportAttachmentMeta,
   getReportDraftMeta,
+  getLatestSocraticReview,
+  getSocraticReview,
   getRun,
   getRunDiagnostics,
   getTutorEvidenceSummary,
+  getTutorFollowupState,
   getTutorSessionState,
   getTutorTopicHintState,
   insertLearningEvents,
+  insertSocraticReviewFollowup,
   enqueueAssessmentReview,
   listAssessmentReviews,
   listAllReports,
   listFinalPerformance,
   listMastery,
+  listMasteryObservations,
   listMyFinalPerformance,
   listMyReports,
   listRunHistory,
@@ -111,8 +126,11 @@ import {
   register,
   resolveSession,
   saveAssessment,
+  saveMasteryObservations,
   saveReportDraft,
   saveTutorSessionState,
+  markSocraticReviewTurnAsked,
+  recordTutorFollowupTurn,
   submitAssessmentReview,
   submitFinalPerformance,
   submitFinalPerformanceBatch,
@@ -985,6 +1003,185 @@ async function persistEvents(userId, events) {
   await appendLearningEventsFile(userId, events)
 }
 
+async function storeServerEvents(userId, events) {
+  if (!events.length) return { accepted: 0 }
+  const stored = insertLearningEvents(userId, events)
+  await persistEvents(userId, events)
+  return stored
+}
+
+function serverEvent({ sessionId, labId, stage = 'reflect', type, ...payload }) {
+  return {
+    version: 2,
+    id: randomUUID(),
+    sessionId,
+    labId,
+    timestamp: new Date().toISOString(),
+    type,
+    stage: stageIds.has(stage) ? stage : 'reflect',
+    ...payload,
+  }
+}
+
+function conversationMessages(history) {
+  return (Array.isArray(history) ? history : [])
+    .map((item) => ({
+      id: String(item?.id || randomUUID()).slice(0, 160),
+      role: item?.role === 'assistant' ? 'assistant' : 'student',
+      content: String(item?.content || '').trim().slice(0, 8_000),
+      timestamp: String(item?.timestamp || new Date().toISOString()),
+      stage: stageIds.has(item?.stage) ? item.stage : undefined,
+      category: String(item?.category || '').slice(0, 80) || undefined,
+      hintLevel: Number.isInteger(item?.hintLevel) ? item.hintLevel : undefined,
+      evidenceRefs: Array.isArray(item?.evidenceRefs) ? item.evidenceRefs.slice(0, 20) : undefined,
+    }))
+    .filter((item) => item.content)
+    .slice(-120)
+}
+
+async function persistAuthoritativeChatTurn({
+  userId, sessionId, labId, stage, message, reply, history, tutorState, mode, guardrail,
+}) {
+  const category = inferQuestionCategory(message)
+  const studentEvent = serverEvent({
+    sessionId, labId, stage, type: 'student_message', category, content: message,
+    metadata: { authority: 'server', topicKey: tutorState.topicKey || '' },
+  })
+  const assistantEvent = serverEvent({
+    sessionId, labId, stage: tutorState.stage, type: 'ai_response', category, content: reply,
+    metadata: {
+      authority: 'server', mode, topicKey: tutorState.topicKey || '',
+      understandingCheck: Boolean(tutorState.understandingCheck?.shouldAsk),
+      guardrail: Boolean(guardrail),
+    },
+  })
+  await storeServerEvents(userId, [studentEvent, assistantEvent])
+
+  const existing = await readConversationSnapshot(userId, labId, sessionId)
+  const messages = conversationMessages(existing?.messages?.length ? existing.messages : history)
+  if (messages.at(-1)?.role !== 'student' || messages.at(-1)?.content !== message) {
+    messages.push({
+      id: studentEvent.id, role: 'student', content: message, timestamp: studentEvent.timestamp, stage, category,
+    })
+  }
+  if (messages.at(-1)?.role !== 'assistant' || messages.at(-1)?.content !== reply) {
+    messages.push({
+      id: assistantEvent.id, role: 'assistant', content: reply, timestamp: assistantEvent.timestamp,
+      stage: tutorState.stage, category, hintLevel: tutorState.hintLevel, evidenceRefs: tutorState.evidenceRefs,
+    })
+  }
+  await saveConversationSnapshot(userId, {
+    sessionId, labId, stage: tutorState.stage, messages: messages.slice(-120), tutorState,
+  })
+  if (tutorState.routingMode === 'intent' && tutorState.topicKey) {
+    recordTutorFollowupTurn(userId, sessionId, labId, tutorState.topicKey, {
+      checkAsked: Boolean(tutorState.understandingCheck?.shouldAsk),
+      resolvePending: Boolean(tutorState.followup?.pending),
+    })
+  }
+  return { studentEvent, assistantEvent }
+}
+
+function publicSocraticReview(review) {
+  if (!review) return null
+  return {
+    reviewId: review.reviewId,
+    sessionId: review.sessionId,
+    labId: review.labId,
+    status: review.status,
+    maxQuestions: review.maxQuestions,
+    askedCount: review.askedCount,
+    answeredCount: review.answeredCount,
+    finalSummary: review.finalSummary,
+    transcriptMarkdown: review.transcriptMarkdown,
+    createdAt: review.createdAt,
+    updatedAt: review.updatedAt,
+    completedAt: review.completedAt,
+    deferredReason: String(review.plan?.deferredReason || ''),
+    turns: review.turns.filter((turn) => turn.askedAt).map((turn) => ({
+      id: turn.id,
+      ordinal: turn.ordinal,
+      questionId: turn.questionId,
+      conceptId: turn.conceptId,
+      kind: turn.kind,
+      prompt: turn.prompt,
+      parentTurnId: turn.parentTurnId,
+      studentAnswer: turn.studentAnswer,
+      evaluation: turn.evaluation
+        ? {
+            verdict: turn.evaluation.verdict,
+            rationale: turn.evaluation.rationale,
+            missingEvidence: turn.evaluation.missingEvidence,
+          }
+        : null,
+      askedAt: turn.askedAt,
+      answeredAt: turn.answeredAt,
+    })),
+  }
+}
+
+function reviewTranscript(review, finalSummary) {
+  const turns = review.turns.map((turn, index) => [
+    `### 问题 ${index + 1}`,
+    `**AI 导师：** ${turn.prompt}`,
+    `**学生：** ${turn.studentAnswer}`,
+  ].join('\n\n'))
+  return ['## 收获与复盘', ...turns, '### 我的最终总结', String(finalSummary || '').trim()]
+    .join('\n\n')
+}
+
+function reviewFollowupQuestion(turn, evaluation, kind = 'clarify') {
+  const needsEvidence = evaluation.verdict === 'needs-evidence'
+  return {
+    questionId: `review-followup-${randomUUID()}`,
+    conceptId: turn.conceptId,
+    kind: needsEvidence ? 'evidence-reflection' : turn.kind,
+    objective: evaluation.followUpObjective || turn.objective,
+    prompt: needsEvidence
+      ? `请先补充与“${turn.objective}”相关的可信运行或断言，再结合新证据说明你的判断。`
+      : `你刚才的回答还缺少关键因果关系。请围绕“${evaluation.followUpObjective || turn.objective}”，补充一个具体代码路径、运行现象或反例来说明。`,
+    reason: kind === 'evidence' ? '原回答需要新的可信运行证据。' : '原回答需要一次有边界的澄清追问。',
+    passCriteria: turn.passCriteria,
+    evidenceRefs: turn.evidenceRefs,
+    requiresRunEvidence: needsEvidence || turn.requiresRunEvidence,
+  }
+}
+
+async function buildCurrentReviewBundle(userId, sessionId, labId, assessment = null) {
+  const input = getAssessmentInput(userId, sessionId, labId)
+  const [conversation, reportDraft] = await Promise.all([
+    readConversationSnapshot(userId, labId, sessionId),
+    readReportDraftFile(userId, labId),
+  ])
+  const authoritativeMessages = input.events
+    .filter((event) =>
+      ['student_message', 'ai_response'].includes(event.type) && event.metadata?.authority === 'server',
+    )
+    .map((event) => ({
+      role: event.type === 'ai_response' ? 'assistant' : 'student',
+      content: event.content,
+      timestamp: event.timestamp,
+      stage: event.stage,
+      category: event.category,
+    }))
+  return buildReviewEvidenceBundle({
+    labId, sessionId, ...input,
+    conversation: authoritativeMessages.length ? { messages: authoritativeMessages } : conversation,
+    reportDraft, assessment,
+    mastery: [...listMastery(userId), ...listMasteryObservations(userId, labId)],
+  })
+}
+
+async function assessmentLlm(studentLlm) {
+  const tutorLlm = await resolveLlm(studentLlm)
+  return {
+    ...tutorLlm,
+    upstream: (process.env.OS_LAB_ASSESSMENT_BASE_URL || tutorLlm.upstream).replace(/\/$/, ''),
+    model: process.env.OS_LAB_ASSESSMENT_MODEL || tutorLlm.model,
+    apiKey: process.env.OS_LAB_ASSESSMENT_API_KEY || tutorLlm.apiKey,
+  }
+}
+
 function markdownReport(sessionId, score, labId) {
   return `## ${labLabels[labId] || labLabels.lab2} 学习报告（session: ${sessionId}）\n\n- 过程分 ${score.process}/100 | 结果分 ${score.result}/100 | 反思分 ${score.reflection}/100 -> **总分 ${score.total}**\n- 交互 ${score.counts.messages} 次 | 验证 ${score.counts.verifications} 次 | 护栏 ${score.counts.guardrails} 次\n- 建议：${score.summary}`
 }
@@ -1213,14 +1410,19 @@ async function handleChat(body, request, response, origin, session) {
   const guardrail = matchGuardrail(message)
   const storedState = getTutorSessionState(session.id, learningSessionId, labId)
   const evidence = getTutorEvidenceSummary(session.id, learningSessionId, labId)
+  const history = normalizeHistory(body.history)
+  const previousFollowup = tutorRoutingMode === 'intent' && storedState.topicKey
+    ? getTutorFollowupState(session.id, learningSessionId, labId, storedState.topicKey)
+    : null
   const turnInput = {
     currentStage: storedState.stage,
     requestedStage,
     message,
     evidence,
     hintLevel: storedState.hintLevel,
+    history,
   }
-  const topic = tutorRoutingMode === 'intent'
+  let topic = tutorRoutingMode === 'intent'
     ? identifyTutorTopic({
         ...turnInput,
         codeContext: body.codeContext,
@@ -1230,12 +1432,25 @@ async function handleChat(body, request, response, origin, session) {
         previousTopicAnchor: storedState.topicAnchor,
       })
     : null
+  if (previousFollowup?.pending) {
+    topic = {
+      topicKey: storedState.topicKey,
+      topicIntent: storedState.topicIntent || topic.topicIntent,
+      topicAnchor: storedState.topicAnchor || topic.topicAnchor,
+      responseMode: topic.responseMode,
+      topicChanged: false,
+      topicChangeReason: 'pending-understanding-check',
+    }
+  }
   const topicHintState = topic
     ? getTutorTopicHintState(session.id, learningSessionId, labId, topic.topicKey)
     : null
+  const followup = topic
+    ? getTutorFollowupState(session.id, learningSessionId, labId, topic.topicKey)
+    : null
   const tutorState = tutorRoutingMode === 'stage'
     ? { ...decideTutorTurn(turnInput), routingMode: 'stage' }
-    : planTutorTurn({ ...turnInput, topic, topicHintLevel: topicHintState.hintLevel })
+    : planTutorTurn({ ...turnInput, topic, topicHintLevel: topicHintState.hintLevel, followup })
   tutorState.evidenceRefs = [...new Set([
     ...tutorState.evidenceRefs,
     ...requestedEvidence.evidenceRefs,
@@ -1283,6 +1498,10 @@ async function handleChat(body, request, response, origin, session) {
   // 护栏命中是规则判定，没有上游调用，直接整段返回。
   if (guardrail) {
     const responseText = String(guardrail.response || '').replaceAll('Lab2', labLabels[labId].split(' ')[0])
+    await persistAuthoritativeChatTurn({
+      userId: session.id, sessionId: learningSessionId, labId, stage: requestedStage, message,
+      reply: responseText, history: body.history, tutorState, mode: 'guardrail', guardrail: true,
+    })
     json(response, 200, {
       reply: responseText,
       mode: 'guardrail',
@@ -1372,12 +1591,17 @@ async function handleChat(body, request, response, origin, session) {
     return { reply: extractCompletionText(payload).trim(), payload, error: '', meta }
   }
 
-  const sendOffline = (detail) => {
+  const sendOffline = async (detail) => {
+    const reply = serverOfflineTutorReply(message, labId, tutorState)
+    await persistAuthoritativeChatTurn({
+      userId: session.id, sessionId: learningSessionId, labId, stage: requestedStage, message,
+      reply, history: body.history, tutorState, mode: 'offline', guardrail: false,
+    })
     sendOfflineTutorResponse({
       response,
       origin,
       wantsStream,
-      reply: serverOfflineTutorReply(message, labId, tutorState),
+      reply,
       framework,
       tutorState,
       knowledgeMeta,
@@ -1401,7 +1625,7 @@ async function handleChat(body, request, response, origin, session) {
             ? '（API Key 可能失效）'
             : ''
       const error = (payload?.error?.message || `上游模型返回 ${upstreamResponse.status}`) + hint
-      sendOffline(error)
+      await sendOffline(error)
       return
     }
 
@@ -1414,11 +1638,16 @@ async function handleChat(body, request, response, origin, session) {
         reply = responsesResult.reply
         if (!reply) {
           await logEmptyUpstream(llm, responsesResult.payload, 'responses-fallback')
-          sendOffline(responsesResult.error || emptyCompletionReason(responsesResult.payload))
+          await sendOffline(responsesResult.error || emptyCompletionReason(responsesResult.payload))
           return
         }
       }
       const guardedOutput = enforceTutorOutput(reply, tutorState, { allowedKnowledgeRefs })
+      await persistAuthoritativeChatTurn({
+        userId: session.id, sessionId: learningSessionId, labId, stage: requestedStage, message,
+        reply: guardedOutput.reply, history: body.history, tutorState, mode: 'remote',
+        guardrail: guardedOutput.guarded,
+      })
       json(response, 200, {
         reply: guardedOutput.reply,
         mode: 'remote',
@@ -1459,10 +1688,15 @@ async function handleChat(body, request, response, origin, session) {
     }
 
     if (!reply) {
-      sendOffline(emptyCompletionReason(emptyPayload))
+      await sendOffline(emptyCompletionReason(emptyPayload))
       return
     } else {
       const guardedOutput = enforceTutorOutput(reply, tutorState, { allowedKnowledgeRefs })
+      await persistAuthoritativeChatTurn({
+        userId: session.id, sessionId: learningSessionId, labId, stage: requestedStage, message,
+        reply: guardedOutput.reply, history: body.history, tutorState, mode: 'remote',
+        guardrail: guardedOutput.guarded,
+      })
       if (guardedOutput.guarded) {
         sendFrame(response, {
           type: 'meta',
@@ -1488,7 +1722,7 @@ async function handleChat(body, request, response, origin, session) {
     const detail = aborted
       ? `连接上游超时（${llmConnectTimeoutMs}ms 内未建立连接），检查网络或接口地址`
       : raw
-    sendOffline(detail)
+    await sendOffline(detail)
   } finally {
     clearTimeout(timer)
   }
@@ -2144,6 +2378,249 @@ const server = http.createServer(async (request, response) => {
       })
       const review = enqueueAssessmentReview(session.id, saved.assessmentId, assessment, reviewGates)
       json(response, 200, { ok: true, assessmentId: saved.assessmentId, assessment, reviewGates, review }, origin)
+      return
+    }
+
+    if (request.method === 'GET' && pathname === '/learning/review') {
+      if (!session || session.role !== 'student') {
+        json(response, 401, { error: '请以学生账号登录后查看复盘' }, origin)
+        return
+      }
+      const labId = String(requestUrl.searchParams.get('labId') || '')
+      const learningSessionId = String(requestUrl.searchParams.get('sessionId') || '').trim().slice(0, 160)
+      if (!labIds.has(labId) || !learningSessionId) {
+        json(response, 400, { error: 'labId 或 sessionId 无效' }, origin)
+        return
+      }
+      json(response, 200, {
+        ok: true,
+        review: publicSocraticReview(getLatestSocraticReview(session.id, learningSessionId, labId)),
+      }, origin)
+      return
+    }
+
+    if (request.method === 'POST' && pathname === '/learning/review/start') {
+      if (!session || session.role !== 'student') {
+        json(response, 401, { error: '请以学生账号登录后开始复盘' }, origin)
+        return
+      }
+      const body = await readBody(request)
+      const labId = String(body.labId || '')
+      const learningSessionId = String(body.sessionId || '').trim().slice(0, 160)
+      if (!labIds.has(labId) || !learningSessionId) {
+        json(response, 400, { error: 'labId 或 sessionId 无效' }, origin)
+        return
+      }
+      const existing = getLatestSocraticReview(session.id, learningSessionId, labId)
+      if (existing && !['review_completed', 'deferred'].includes(existing.status)) {
+        json(response, 200, { ok: true, review: publicSocraticReview(existing), resumed: true }, origin)
+        return
+      }
+      const assessmentInput = getAssessmentInput(session.id, learningSessionId, labId)
+      const verifiedRun = [...assessmentInput.runs].reverse().find((run) => run.trusted && run.verified)
+      if (!verifiedRun) {
+        json(response, 409, {
+          error: '完成当前实验的可信验证后才能开始最终复盘',
+          lifecycle: 'working',
+        }, origin)
+        return
+      }
+      const assessment = assessLearningV3({ labId, sessionId: learningSessionId, ...assessmentInput })
+      const saved = saveAssessment(session.id, assessment, deriveMasteryUpdates(assessment))
+      const bundle = await buildCurrentReviewBundle(session.id, learningSessionId, labId, assessment)
+      const generated = await createAssessmentReviewPlan(bundle, {
+        sourceAssessmentId: saved.assessmentId,
+        llm: await assessmentLlm(body.llm),
+      })
+      let review = createSocraticReview(session.id, generated.plan)
+      review = markSocraticReviewTurnAsked(session.id, review.reviewId, review.turns[0].questionId)
+      const events = [
+        serverEvent({
+          sessionId: learningSessionId, labId, type: 'review_started', reviewId: review.reviewId,
+          evidenceRefs: generated.plan.evidenceRefs,
+          metadata: {
+            assessmentId: saved.assessmentId,
+            agent: generated.agent,
+            planVersion: generated.plan.version,
+          },
+        }),
+        serverEvent({
+          sessionId: learningSessionId, labId, type: 'review_question_asked',
+          reviewId: review.reviewId, questionId: review.turns[0].questionId,
+          conceptIds: [review.turns[0].conceptId], content: review.turns[0].prompt,
+        }),
+      ]
+      await storeServerEvents(session.id, events)
+      json(response, 201, {
+        ok: true, lifecycle: 'review_active', review: publicSocraticReview(review), agent: generated.agent,
+      }, origin)
+      return
+    }
+
+    if (request.method === 'POST' && pathname === '/learning/review/answer') {
+      if (!session || session.role !== 'student') {
+        json(response, 401, { error: '请以学生账号登录后回答复盘' }, origin)
+        return
+      }
+      const body = await readBody(request)
+      const review = getSocraticReview(session.id, String(body.reviewId || ''))
+      const questionId = String(body.questionId || '').trim().slice(0, 160)
+      const answer = String(body.answer || '').trim().slice(0, 8_000)
+      if (!review || !questionId || !answer) {
+        json(response, 400, { error: '复盘、问题或回答无效' }, origin)
+        return
+      }
+      const turn = review.turns.find((item) => item.questionId === questionId)
+      if (turn?.answeredAt) {
+        if (turn.studentAnswer !== answer) {
+          json(response, 409, { error: '已提交的复盘回答不能覆盖；需要补充时请回答下一条追问' }, origin)
+          return
+        }
+        json(response, 200, { ok: true, replayed: true, review: publicSocraticReview(review) }, origin)
+        return
+      }
+      const firstUnanswered = review.turns.find((item) => item.askedAt && !item.answeredAt)
+      if (!turn || firstUnanswered?.questionId !== questionId) {
+        json(response, 409, { error: '必须回答当前显示的复盘问题' }, origin)
+        return
+      }
+      const bundle = await buildCurrentReviewBundle(session.id, review.sessionId, review.labId)
+      const judged = await evaluateAssessmentReviewAnswer(turn, answer, bundle, {
+        llm: await assessmentLlm(body.llm),
+      })
+      const answerEvent = serverEvent({
+        sessionId: review.sessionId, labId: review.labId, type: 'review_answer_submitted',
+        reviewId: review.reviewId, questionId, conceptIds: [turn.conceptId], content: answer,
+      })
+      let updated = answerSocraticReviewTurn(session.id, review.reviewId, questionId, {
+        answer, answerEventRef: `event:${answerEvent.id}`, evaluation: judged.evaluation,
+      })
+      const events = [
+        answerEvent,
+        serverEvent({
+          sessionId: review.sessionId, labId: review.labId, type: 'review_answer_evaluated',
+          reviewId: review.reviewId, questionId, conceptIds: [turn.conceptId],
+          verdict: judged.evaluation.verdict, evidenceRefs: judged.evaluation.evidenceRefs,
+          metadata: { agent: judged.agent, rationale: judged.evaluation.rationale },
+        }),
+      ]
+      if (judged.evaluation.verdict === 'defer') {
+        updated = deferSocraticReview(session.id, review.reviewId, judged.evaluation.rationale)
+      } else if (['partial', 'misconception'].includes(judged.evaluation.verdict)) {
+        if (turn.parentTurnId || updated.turns.length >= updated.maxQuestions || updated.turns.length >= 5) {
+          updated = deferSocraticReview(session.id, review.reviewId, '复盘已达到追问边界，需要教师后续关注。')
+        } else {
+          updated = insertSocraticReviewFollowup(
+            session.id, review.reviewId, questionId, reviewFollowupQuestion(turn, judged.evaluation),
+          )
+          const followupTurn = updated.turns.find((item) => item.parentTurnId === turn.id)
+          updated = markSocraticReviewTurnAsked(session.id, review.reviewId, followupTurn.questionId)
+          events.push(serverEvent({
+            sessionId: review.sessionId, labId: review.labId, type: 'review_question_asked',
+            reviewId: review.reviewId, questionId: followupTurn.questionId,
+            conceptIds: [followupTurn.conceptId], content: followupTurn.prompt,
+          }))
+        }
+      } else if (judged.evaluation.verdict === 'passed') {
+        const next = updated.turns.find((item) => !item.answeredAt)
+        if (next) {
+          updated = markSocraticReviewTurnAsked(session.id, review.reviewId, next.questionId)
+          events.push(serverEvent({
+            sessionId: review.sessionId, labId: review.labId, type: 'review_question_asked',
+            reviewId: review.reviewId, questionId: next.questionId,
+            conceptIds: [next.conceptId], content: next.prompt,
+          }))
+        }
+      }
+      await storeServerEvents(session.id, events)
+      json(response, 200, { ok: true, review: publicSocraticReview(updated), agent: judged.agent }, origin)
+      return
+    }
+
+    if (request.method === 'POST' && pathname === '/learning/review/resume') {
+      if (!session || session.role !== 'student') {
+        json(response, 401, { error: '请以学生账号登录后继续复盘' }, origin)
+        return
+      }
+      const body = await readBody(request)
+      const review = getSocraticReview(session.id, String(body.reviewId || ''))
+      if (!review || review.status !== 'awaiting_evidence') {
+        json(response, 409, { error: '当前复盘不在等待证据状态' }, origin)
+        return
+      }
+      const source = [...review.turns].reverse().find((turn) => turn.evaluation?.verdict === 'needs-evidence')
+      const assessmentInput = getAssessmentInput(session.id, review.sessionId, review.labId)
+      const freshRuns = assessmentInput.runs.filter((run) =>
+        run.trusted && run.verified && run.finishedAt && run.finishedAt > source.answeredAt,
+      )
+      if (!freshRuns.length) {
+        json(response, 409, { error: '请先完成一次新的可信验证，再继续回答该问题' }, origin)
+        return
+      }
+      if (review.turns.length >= review.maxQuestions || review.turns.length >= 5) {
+        const deferred = deferSocraticReview(session.id, review.reviewId, '补充证据后已达到五题上限，需要教师后续关注。')
+        json(response, 200, { ok: true, review: publicSocraticReview(deferred) }, origin)
+        return
+      }
+      const evidenceRefs = freshRuns.map((run) => `run:${run.runId}`)
+      let updated = insertSocraticReviewFollowup(session.id, review.reviewId, source.questionId, {
+        ...reviewFollowupQuestion(source, source.evaluation, 'evidence'),
+        evidenceRefs: [...new Set([...source.evidenceRefs, ...evidenceRefs])],
+      })
+      const followupTurn = updated.turns.find((turn) => turn.parentTurnId === source.id)
+      updated = markSocraticReviewTurnAsked(session.id, review.reviewId, followupTurn.questionId)
+      await storeServerEvents(session.id, [serverEvent({
+        sessionId: review.sessionId, labId: review.labId, type: 'review_question_asked',
+        reviewId: review.reviewId, questionId: followupTurn.questionId,
+        conceptIds: [followupTurn.conceptId], content: followupTurn.prompt, evidenceRefs,
+      })])
+      json(response, 200, { ok: true, review: publicSocraticReview(updated) }, origin)
+      return
+    }
+
+    if (request.method === 'POST' && pathname === '/learning/review/summary') {
+      if (!session || session.role !== 'student') {
+        json(response, 401, { error: '请以学生账号登录后完成复盘' }, origin)
+        return
+      }
+      const body = await readBody(request)
+      const review = getSocraticReview(session.id, String(body.reviewId || ''))
+      const finalSummary = String(body.finalSummary || '').trim().slice(0, 8_000)
+      if (!review || !finalSummary) {
+        json(response, 400, { error: '复盘或最终总结无效' }, origin)
+        return
+      }
+      if (review.status === 'review_completed') {
+        if (review.finalSummary !== finalSummary) {
+          json(response, 409, { error: '已完成复盘的最终总结不可覆盖' }, origin)
+          return
+        }
+        json(response, 200, {
+          ok: true, replayed: true, lifecycle: 'review_completed',
+          review: publicSocraticReview(review),
+        }, origin)
+        return
+      }
+      const transcriptMarkdown = reviewTranscript(review, finalSummary)
+      const completed = completeSocraticReview(session.id, review.reviewId, { finalSummary, transcriptMarkdown })
+      const observations = completed.turns
+        .filter((turn) => turn.evaluation?.verdict === 'passed')
+        .map((turn) => ({
+          sessionId: review.sessionId, labId: review.labId, conceptId: turn.conceptId,
+          status: 'proficient', confidence: 0.85, misconceptions: [],
+          evidenceRefs: [...new Set([turn.answerEventRef, ...(turn.evaluation.evidenceRefs || [])].filter(Boolean))],
+          sourceType: 'socratic-review', sourceId: review.reviewId,
+        }))
+      saveMasteryObservations(session.id, observations)
+      const event = serverEvent({
+        sessionId: review.sessionId, labId: review.labId, type: 'review_completed',
+        reviewId: review.reviewId, evidenceRefs: observations.flatMap((item) => item.evidenceRefs),
+        content: finalSummary,
+      })
+      await storeServerEvents(session.id, [event])
+      json(response, 200, {
+        ok: true, lifecycle: 'review_completed', review: publicSocraticReview(completed),
+      }, origin)
       return
     }
 
@@ -3525,10 +4002,11 @@ const server = http.createServer(async (request, response) => {
           (event) =>
             !validateInteractionEvent(event) ||
             event.type === 'run_started' ||
-            event.type === 'run_finished',
+            event.type === 'run_finished' ||
+            event.type.startsWith('review_'),
         )
       ) {
-        json(response, 400, { error: '事件不符合 event v1/v2 契约，或属于只能由服务端生成的运行事件' }, origin)
+        json(response, 400, { error: '事件不符合 event v1/v2 契约，或属于只能由服务端生成的运行/复盘事件' }, origin)
         return
       }
       const invalidTraceEvidence = events.find((event) => {

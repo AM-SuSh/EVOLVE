@@ -309,6 +309,30 @@ CREATE TABLE IF NOT EXISTS mastery_observations (
 CREATE INDEX IF NOT EXISTS mastery_observations_user_concept_idx
   ON mastery_observations(user_id, concept_id, created_at DESC);
 `)
+applyMigration('20260812_tutor_followup_throttle_v1', `
+CREATE TABLE IF NOT EXISTS tutor_followup_sessions (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  session_id TEXT NOT NULL,
+  lab_id TEXT NOT NULL,
+  turn_index INTEGER NOT NULL DEFAULT 0,
+  last_check_turn INTEGER NOT NULL DEFAULT -10,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(user_id, session_id, lab_id)
+);
+
+CREATE TABLE IF NOT EXISTS tutor_topic_checks (
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  session_id TEXT NOT NULL,
+  lab_id TEXT NOT NULL,
+  topic_key TEXT NOT NULL,
+  topic_turn_count INTEGER NOT NULL DEFAULT 0,
+  check_count INTEGER NOT NULL DEFAULT 0,
+  pending INTEGER NOT NULL DEFAULT 0,
+  resolved INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(user_id, session_id, lab_id, topic_key)
+);
+`)
 applyMigration('20260807_student_data_v1', `
 CREATE TABLE IF NOT EXISTS report_drafts (
   user_id INTEGER NOT NULL REFERENCES users(id),
@@ -1109,6 +1133,7 @@ export function createSocraticReview(userId, plan) {
 export function appendSocraticReviewTurn(userId, reviewId, question, parentTurnId = null) {
   const review = getSocraticReview(userId, reviewId)
   if (!review) throw new Error('复盘会话不存在或不属于当前账号')
+  if (['review_completed', 'deferred'].includes(review.status)) throw new Error('复盘会话已经结束')
   if (review.turns.length >= review.maxQuestions || review.turns.length >= 5) {
     throw new Error('复盘问题已达到 5 题上限')
   }
@@ -1127,11 +1152,54 @@ export function appendSocraticReviewTurn(userId, reviewId, question, parentTurnI
   return getSocraticReview(userId, reviewId)
 }
 
+export function insertSocraticReviewFollowup(userId, reviewId, parentQuestionId, question) {
+  const review = getSocraticReview(userId, reviewId)
+  if (!review) throw new Error('复盘会话不存在或不属于当前账号')
+  if (['review_completed', 'deferred'].includes(review.status)) throw new Error('复盘会话已经结束')
+  if (review.turns.length >= review.maxQuestions || review.turns.length >= 5) {
+    throw new Error('复盘问题已达到 5 题上限')
+  }
+  const parent = review.turns.find((turn) => turn.questionId === parentQuestionId)
+  if (!parent?.answeredAt) throw new Error('只能在已经回答的问题后生成追问')
+  const createdAt = now()
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    db.prepare(
+      `UPDATE socratic_review_turns SET ordinal = ordinal + 100
+       WHERE review_id = ? AND ordinal > ?`,
+    ).run(reviewId, parent.ordinal)
+    db.prepare(
+      `UPDATE socratic_review_turns SET ordinal = ordinal - 99
+       WHERE review_id = ? AND ordinal > ?`,
+    ).run(reviewId, parent.ordinal + 100)
+    db.prepare(
+      `INSERT INTO socratic_review_turns
+        (id, review_id, ordinal, question_id, concept_id, kind, objective, prompt, reason,
+         pass_criteria_json, evidence_refs_json, requires_run_evidence, parent_turn_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      randomUUID(), reviewId, parent.ordinal + 1, question.questionId, question.conceptId, question.kind,
+      question.objective, question.prompt, question.reason, JSON.stringify(question.passCriteria || []),
+      JSON.stringify(question.evidenceRefs || []), question.requiresRunEvidence ? 1 : 0, parent.id, createdAt,
+    )
+    db.prepare('UPDATE socratic_reviews SET updated_at = ? WHERE id = ?').run(createdAt, reviewId)
+    db.exec('COMMIT')
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+  return getSocraticReview(userId, reviewId)
+}
+
 export function markSocraticReviewTurnAsked(userId, reviewId, questionId) {
   const review = getSocraticReview(userId, reviewId)
   if (!review) throw new Error('复盘会话不存在或不属于当前账号')
+  if (['review_completed', 'deferred'].includes(review.status)) throw new Error('复盘会话已经结束')
   const turn = review.turns.find((item) => item.questionId === questionId)
   if (!turn) throw new Error('复盘问题不存在')
+  const firstUnanswered = review.turns.find((item) => !item.answeredAt)
+  if (firstUnanswered && firstUnanswered.questionId !== questionId) throw new Error('必须按顺序回答复盘问题')
+  if (turn.answeredAt) return review
   const timestamp = now()
   db.exec('BEGIN IMMEDIATE')
   try {
@@ -1150,8 +1218,11 @@ export function markSocraticReviewTurnAsked(userId, reviewId, questionId) {
 export function answerSocraticReviewTurn(userId, reviewId, questionId, input) {
   const review = getSocraticReview(userId, reviewId)
   if (!review) throw new Error('复盘会话不存在或不属于当前账号')
+  if (['review_completed', 'deferred'].includes(review.status)) throw new Error('复盘会话已经结束')
   const turn = review.turns.find((item) => item.questionId === questionId)
   if (!turn) throw new Error('复盘问题不存在')
+  if (!turn.askedAt) throw new Error('复盘问题尚未提出')
+  if (turn.answeredAt) throw new Error('复盘问题已经回答；需要补充时请生成一个新的追问')
   const answer = String(input?.answer || '').trim().slice(0, 8_000)
   if (!answer) throw new TypeError('复盘回答不能为空')
   const timestamp = now()
@@ -1172,9 +1243,16 @@ export function answerSocraticReviewTurn(userId, reviewId, questionId, input) {
 export function completeSocraticReview(userId, reviewId, input = {}) {
   const review = getSocraticReview(userId, reviewId)
   if (!review) throw new Error('复盘会话不存在或不属于当前账号')
-  if (review.turns.filter((turn) => turn.answeredAt).length < 2) {
-    throw new Error('至少完成 2 个复盘问题后才能结束')
+  if (['review_completed', 'deferred'].includes(review.status)) throw new Error('复盘会话已经结束')
+  const answeredTurns = review.turns.filter((turn) => turn.answeredAt)
+  if (answeredTurns.length < 2) throw new Error('至少完成 2 个复盘问题后才能结束')
+  if (answeredTurns.length !== review.turns.length) throw new Error('还有复盘问题未回答')
+  const parentIds = new Set(review.turns.map((turn) => turn.parentTurnId).filter(Boolean))
+  const unresolvedLeaves = answeredTurns.filter((turn) => !parentIds.has(turn.id))
+  if (unresolvedLeaves.some((turn) => ['needs-evidence', 'partial', 'misconception', 'defer'].includes(turn.evaluation?.verdict))) {
+    throw new Error('复盘中仍有回答需要补充或修正')
   }
+  if (!String(input.finalSummary || '').trim()) throw new Error('复盘结束前需要提交自己的最终总结')
   const timestamp = now()
   db.prepare(
     `UPDATE socratic_reviews SET status = 'review_completed', final_summary = ?,
@@ -1185,6 +1263,99 @@ export function completeSocraticReview(userId, reviewId, input = {}) {
     timestamp, timestamp, reviewId,
   )
   return getSocraticReview(userId, reviewId)
+}
+
+export function deferSocraticReview(userId, reviewId, reason = '') {
+  const review = getSocraticReview(userId, reviewId)
+  if (!review) throw new Error('复盘会话不存在或不属于当前账号')
+  if (review.status === 'review_completed') throw new Error('已完成的复盘不能延期')
+  if (review.status === 'deferred') return review
+  const timestamp = now()
+  const plan = { ...review.plan, deferredReason: String(reason || '').trim().slice(0, 2_000) }
+  db.prepare(
+    `UPDATE socratic_reviews SET status = 'deferred', plan_json = ?, updated_at = ? WHERE id = ?`,
+  ).run(JSON.stringify(plan), timestamp, reviewId)
+  return getSocraticReview(userId, reviewId)
+}
+
+export function getTutorFollowupState(userId, sessionId, labId, topicKey = '') {
+  const session = db.prepare(
+    `SELECT turn_index AS turnIndex, last_check_turn AS lastCheckTurn, updated_at AS updatedAt
+     FROM tutor_followup_sessions WHERE user_id = ? AND session_id = ? AND lab_id = ?`,
+  ).get(userId, sessionId, labId)
+  const topic = topicKey
+    ? db.prepare(
+      `SELECT topic_turn_count AS topicTurnCount, check_count AS checkCount, pending, resolved, updated_at AS updatedAt
+       FROM tutor_topic_checks WHERE user_id = ? AND session_id = ? AND lab_id = ? AND topic_key = ?`,
+    ).get(userId, sessionId, labId, topicKey)
+    : null
+  return {
+    turnIndex: Number(session?.turnIndex || 0),
+    lastCheckTurn: Number(session?.lastCheckTurn ?? -10),
+    topicKey: String(topicKey || ''),
+    topicTurnCount: Number(topic?.topicTurnCount || 0),
+    checkCount: Number(topic?.checkCount || 0),
+    pending: Boolean(topic?.pending),
+    resolved: Boolean(topic?.resolved),
+    updatedAt: topic?.updatedAt || session?.updatedAt || '',
+  }
+}
+
+export function recordTutorFollowupTurn(userId, sessionId, labId, topicKey, input = {}) {
+  const safeTopicKey = String(topicKey || '').trim().slice(0, 120)
+  if (!safeTopicKey) return getTutorFollowupState(userId, sessionId, labId)
+  const timestamp = now()
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    const existing = getTutorFollowupState(userId, sessionId, labId, safeTopicKey)
+    const nextTurnIndex = existing.turnIndex + 1
+    const pending = input.checkAsked ? 1 : input.resolvePending ? 0 : existing.pending ? 1 : 0
+    const resolved = input.checkAsked
+      ? 0
+      : input.resolvePending || input.resolved || existing.resolved
+        ? 1
+        : 0
+    db.prepare(
+      `INSERT INTO tutor_followup_sessions
+         (user_id, session_id, lab_id, turn_index, last_check_turn, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, session_id, lab_id) DO UPDATE SET
+         turn_index = excluded.turn_index,
+         last_check_turn = excluded.last_check_turn,
+         updated_at = excluded.updated_at`,
+    ).run(
+      userId, sessionId, labId, nextTurnIndex,
+      input.checkAsked ? nextTurnIndex : existing.lastCheckTurn, timestamp,
+    )
+    db.prepare(
+      `INSERT INTO tutor_topic_checks
+         (user_id, session_id, lab_id, topic_key, topic_turn_count, check_count, pending, resolved, updated_at)
+       VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
+       ON CONFLICT(user_id, session_id, lab_id, topic_key) DO UPDATE SET
+         topic_turn_count = tutor_topic_checks.topic_turn_count + 1,
+         check_count = tutor_topic_checks.check_count + excluded.check_count,
+         pending = excluded.pending,
+         resolved = excluded.resolved,
+         updated_at = excluded.updated_at`,
+    ).run(
+      userId, sessionId, labId, safeTopicKey, input.checkAsked ? 1 : 0,
+      pending, resolved, timestamp,
+    )
+    db.exec('COMMIT')
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+  return getTutorFollowupState(userId, sessionId, labId, safeTopicKey)
+}
+
+export function resolveTutorFollowup(userId, sessionId, labId, topicKey) {
+  const timestamp = now()
+  db.prepare(
+    `UPDATE tutor_topic_checks SET pending = 0, resolved = 1, updated_at = ?
+     WHERE user_id = ? AND session_id = ? AND lab_id = ? AND topic_key = ?`,
+  ).run(timestamp, userId, sessionId, labId, String(topicKey || '').slice(0, 120))
+  return getTutorFollowupState(userId, sessionId, labId, topicKey)
 }
 
 export function saveMasteryObservations(userId, observations = []) {

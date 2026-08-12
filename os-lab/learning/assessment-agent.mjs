@@ -405,6 +405,20 @@ export async function evaluateAssessmentReviewAnswer(question, answer, bundle, o
     const evaluation = normalizeReviewEvaluation(raw)
     const valid = new Set(bundle.validEvidenceRefs)
     if (evaluation.evidenceRefs.some((ref) => !valid.has(ref))) throw new TypeError('answer evaluation cited invalid evidence')
+    const hasRequiredRun = !question.requiresRunEvidence || evaluation.evidenceRefs.some((ref) =>
+      ref.startsWith('run:') && bundle.runs.some((run) => run.ref === ref && run.trusted && run.verified),
+    )
+    if (!hasRequiredRun && evaluation.verdict === 'passed') {
+      return {
+        evaluation: normalizeReviewEvaluation({
+          ...evaluation,
+          verdict: 'needs-evidence',
+          rationale: '模型判断不能覆盖本题要求的可信运行证据。',
+          missingEvidence: ['补充与该概念对应的可信运行或断言'],
+        }),
+        agent: { mode: 'remote', model: options.llm.model, error: '' },
+      }
+    }
     return { evaluation, agent: { mode: 'remote', model: options.llm.model, error: '' } }
   } catch (error) {
     return {

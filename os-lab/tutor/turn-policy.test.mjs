@@ -165,3 +165,61 @@ test('topic identity changes with source file or diagnostic meaning and hints re
   assert.equal(capped.hintLevel, 4)
   assert.equal(capped.hintAdvanced, false)
 })
+
+test('understanding checks only close a resolved doubt once per topic', () => {
+  const history = [{ role: 'assistant', content: 'sepc 保存异常返回后继续执行的位置。' }]
+  const firstQuestion = planTutorTurn({
+    message: 'sepc 是什么？',
+    requestedStage: 'read',
+    history: [],
+    followup: { turnIndex: 0, lastCheckTurn: -10, checkCount: 0 },
+  })
+  assert.equal(firstQuestion.understandingCheck.shouldAsk, false)
+
+  const confused = planTutorTurn({
+    message: '我还是没理解它为什么需要前移',
+    requestedStage: 'read',
+    history,
+    followup: { turnIndex: 1, lastCheckTurn: -10, checkCount: 0 },
+  })
+  assert.equal(confused.understandingCheck.shouldAsk, false)
+
+  const acknowledged = planTutorTurn({
+    message: '明白了，也就是说不前移就会再次执行同一条 ecall。',
+    requestedStage: 'read',
+    history,
+    followup: { turnIndex: 2, lastCheckTurn: -10, checkCount: 0 },
+  })
+  assert.equal(acknowledged.understandingCheck.shouldAsk, true)
+  assert.equal(acknowledged.actions.includes('selective-understanding-check'), true)
+
+  const repeated = planTutorTurn({
+    message: '我理解了。',
+    requestedStage: 'read',
+    history,
+    followup: { turnIndex: 4, lastCheckTurn: 2, checkCount: 1 },
+  })
+  assert.equal(repeated.understandingCheck.shouldAsk, false)
+})
+
+test('a pending understanding check is answered and closed without another question', () => {
+  const plan = planTutorTurn({
+    message: '它会重复执行原来的 ecall。',
+    requestedStage: 'read',
+    history: [{ role: 'assistant', content: '你能解释为什么 sepc 要前移吗？' }],
+    followup: { turnIndex: 3, lastCheckTurn: 2, checkCount: 1, pending: true },
+  })
+  assert.equal(plan.understandingCheck.shouldAsk, false)
+  assert.equal(plan.actions.includes('resolve-understanding-check'), true)
+  assert.match(tutorTurnPolicyPrompt(plan), /本轮必须结束这条理解检查/)
+})
+
+test('explicitly continuing work does not trigger an understanding check', () => {
+  const plan = planTutorTurn({
+    message: '明白了，我先去跑一下。',
+    requestedStage: 'run',
+    history: [{ role: 'assistant', content: '先检查保存和恢复路径。' }],
+    followup: { turnIndex: 3, lastCheckTurn: -10, checkCount: 0 },
+  })
+  assert.equal(plan.understandingCheck.shouldAsk, false)
+})

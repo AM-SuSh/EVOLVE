@@ -25,6 +25,11 @@ const EVENT_V2_TYPES = new Set([
   'checkpoint_answered',
   'report_submitted',
   'teacher_reviewed',
+  'review_started',
+  'review_question_asked',
+  'review_answer_submitted',
+  'review_answer_evaluated',
+  'review_completed',
 ])
 
 const TRACE_TYPES = new Set(['trap_enter', 'task_switch'])
@@ -129,6 +134,31 @@ export function validateInteractionEvent(event) {
   }
   if (event.type === 'teacher_reviewed') {
     return isText(event.rubricVersion, 160) && isText(event.decision, 80) && typeof event.comment === 'string' && event.comment.length <= 8000
+  }
+  if (event.type === 'review_started') return isText(event.reviewId, 160)
+  if (['review_question_asked', 'review_answer_submitted'].includes(event.type)) {
+    return Boolean(
+      isText(event.reviewId, 160) &&
+      isText(event.questionId, 160) &&
+      Array.isArray(event.conceptIds) &&
+      event.conceptIds.length > 0 &&
+      event.conceptIds.every((item) => isText(item, 160)),
+    )
+  }
+  if (event.type === 'review_answer_evaluated') {
+    return Boolean(
+      isText(event.reviewId, 160) &&
+      isText(event.questionId, 160) &&
+      Array.isArray(event.conceptIds) &&
+      event.conceptIds.length > 0 &&
+      event.conceptIds.every((item) => isText(item, 160)) &&
+      ['passed', 'partial', 'needs-evidence', 'misconception', 'defer'].includes(event.verdict) &&
+      Array.isArray(event.evidenceRefs) &&
+      event.evidenceRefs.every((item) => isText(item, 200)),
+    )
+  }
+  if (event.type === 'review_completed') {
+    return isText(event.reviewId, 160) && Array.isArray(event.evidenceRefs) && event.evidenceRefs.every((item) => isText(item, 200))
   }
   return true
 }
