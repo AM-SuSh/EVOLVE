@@ -92,4 +92,23 @@
   - `node --test access.test.mjs socratic-review-db.test.mjs trial-operations.test.mjs`：14 项通过，涵盖新旧完成状态隔离、五题上限与备份表计数。
   - `npm run test:smoke`：通过旧反思不可解锁、Lab1/2 复盘完成、`awaiting_evidence -> 新可信运行 -> resume`、最多五题、服务端报告门禁、教师复盘读取与备份链路。
   - `npm run build`：VitePress 客户端、服务端 bundle 与渲染页面通过。
-- 本地提交：`650a92a feat(lifecycle): enforce reviewed completion and teacher visibility`。
+- 本地提交：`8977d70 feat(lifecycle): enforce reviewed completion and teacher visibility`。
+
+### 阶段 6：全量验收与契约收口
+
+- 状态：完成
+- 主要修改：
+  - C0 Tutor 基线补齐 `review_started`、`review_question_asked`、`review_answer_submitted`、`review_answer_evaluated`、`review_completed` 的服务端权威证据分类；反思阶段的正式退出证据由旧 `reflection_submitted` 改为 `review_completed`。
+  - 同步修正非默认 `OS_LAB_TUTOR_ROUTING_MODE=stage` 路径：只有 `review_completed + report_submitted` 才能从 `reflect` 进入 `transfer`，历史 `reflection_submitted` 不再能绕过新闭环。
+  - stage 路径进一步区分“缺最终复盘”与“已复盘、缺报告提交”；前端 `gate/actions` 文案与新状态机同步，避免继续显示旧自由文本反思指引。
+  - 报告提交显式携带当前 `sessionId`；服务端确认同一 Lab、同一会话的复盘已完成后，才保存报告并生成含正文 SHA-256、复盘引用和 `server-verified` 标记的 `report_submitted`。公开 `/events` 接口拒绝客户端伪造该事件。
+  - 移除服务端与前端离线副本中针对 `sepc` / `sscratch` 的术语特判回答；离线回复统一使用共享意图分类，不维护术语白名单或额外直接解释。
+  - 为上述 stage 路径、报告权威事件和离线策略补充回归测试，避免默认 `intent` 路由之外出现完成语义分叉。
+- 验证：
+  - `npm test`：122/122 通过。
+  - `npm run test:harness`：34 个 Tutor 场景全部通过，单轮追问率、相关性、证据引用与阶段不变性均满足阈值。
+  - `npm run test:rag-harness`：3/3 通过。
+  - `npm run test:smoke`：通过真实 HTTP/SSE/SQLite 链路，包括旧反思不解锁、复盘阻塞恢复、报告门禁、客户端伪造报告事件被拒绝、服务端权威报告事件落库、教师复盘读取和备份。
+  - `npm run build`：VitePress 客户端、服务端 bundle 与静态渲染通过。
+  - 运行态：Tutor `GET /health` 返回 `ok: true`，VitePress 开发站点根路径返回 HTTP 200；本次环境没有可用的浏览器控制实例，因此未能补充截图式人工页面检查。
+- 本地提交 message：`feat(contracts): close authoritative review lifecycle`。

@@ -82,6 +82,33 @@ test('C3 chat evidence references reject another user and output citations stay 
   assert.doesNotMatch(guarded.reply, /not-owned/)
 })
 
+test('C3 stage routing treats review_completed, not a legacy reflection event, as reflect completion', () => {
+  const legacy = decideTutorTurn({
+    currentStage: 'reflect',
+    message: '我已经写完报告。',
+    evidence: { counts: { reflection_submitted: 1, report_submitted: 1 } },
+  })
+  assert.equal(legacy.stage, 'reflect')
+  assert.equal(legacy.gate, 'missing-review-evidence')
+
+  const reviewedOnly = decideTutorTurn({
+    currentStage: 'reflect',
+    message: '我已经完成复盘。',
+    evidence: { counts: { review_completed: 1 } },
+  })
+  assert.equal(reviewedOnly.stage, 'reflect')
+  assert.equal(reviewedOnly.gate, 'missing-report-evidence')
+  assert.deepEqual(reviewedOnly.actions, ['request-report-submission'])
+
+  const reviewed = decideTutorTurn({
+    currentStage: 'reflect',
+    message: '我已经写完报告。',
+    evidence: { counts: { review_completed: 1, report_submitted: 1 } },
+  })
+  assert.equal(reviewed.stage, 'transfer')
+  assert.equal(reviewed.gate, 'review-evidence-complete')
+})
+
 test('RAG citations are restricted to chunks recalled in the current turn', () => {
   const decision = decideTutorTurn({ currentStage: 'orient', message: '我认为 trap 会保存上下文', evidence: {} })
   assert.equal(enforceTutorOutput('请对照这一节 [kb:allowed:chunk-1] 再判断？', decision, {

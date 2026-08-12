@@ -2,7 +2,7 @@ import { parse as parseYaml } from 'yaml'
 // @ts-expect-error 评分唯一实现（前端与 tutor-server 共用，避免两处漂移）
 import { scoreLearningEvents } from '../../../learning/rubric.mjs'
 // @ts-expect-error 本轮问题分类与服务端意图策略共用同一实现
-import { inferQuestionCategory } from '../../../tutor/turn-policy.mjs'
+import { inferQuestionCategory, inferTutorIntent } from '../../../tutor/turn-policy.mjs'
 // 护栏规则单一事实源：与 tutor-server 读同一份 YAML
 import guardrailSource from '../../../tutor/prompts/guardrails.yaml?raw'
 
@@ -167,7 +167,8 @@ const TUTOR_ACTION_NEXT: Record<string, string> = {
   'inspect-run-evidence': '对照本次运行输出与断言差异',
   'inspect-diagnostic': '打开 Problems 查看编译诊断',
   'ask-causal-explanation': '用因果链解释：现象 → 机制 → 证据',
-  'request-evidence-linked-reflection': '提交含「我 / AI / 验证」的复盘',
+  'request-socratic-review': '在报告区完成基于过程证据的苏格拉底复盘',
+  'request-report-submission': '将已完成复盘的报告提交给教师',
   'ask-transfer-question': '尝试一条迁移问题并说明如何验证',
   'cite-server-evidence': '引用本次可信 run / 断言，勿凭空声称已通过',
   'apply-answer-guardrail': '不要索要完整代码；先给出判断或观察',
@@ -178,7 +179,8 @@ const TUTOR_GATE_NEXT: Record<string, string> = {
   'missing-source-evidence': '缺源码证据：打开 trap/调度相关文件并指出位置',
   'missing-trusted-run': '缺可信运行：先发起工作台里的可信验证',
   'missing-debug-hypothesis': '缺可证伪假设：先写现象与下一步观察',
-  'missing-reflection-evidence': '缺复盘证据：提交含「我 / AI / 验证」的反思',
+  'missing-review-evidence': '缺最终复盘：先完成基于对话、行为和运行证据的苏格拉底问答',
+  'missing-report-evidence': '复盘已完成：提交报告后再进入迁移检验',
   'answer-guardrail': '请求被护栏拦截：改为描述判断或观察',
   'diagnostic-available': '已有诊断：先定位问题再改代码',
   'trusted-run-failed': '验证未通过：用最小实验区分失败原因',
@@ -187,7 +189,7 @@ const TUTOR_GATE_NEXT: Record<string, string> = {
   'initial-judgment-observed': '继续：打开源码核对机制路径',
   'source-evidence-observed': '继续：发起可信验证',
   'regression-passed': '回归已过：进入因果解释与复盘',
-  'reflection-evidence-complete': '复盘证据齐：尝试迁移检验',
+  'review-evidence-complete': '复盘与报告证据齐：尝试迁移检验',
   'transfer-check': '完成一条带预测的迁移回答',
 }
 
@@ -1364,21 +1366,15 @@ export function offlineTutorReply(
     return `我不能交付可直接粘贴的完整实现。先把 ${lab.label} 的任务缩小到一个机制或函数，并写出你已经确认的一条事实；我会继续用代码路径和验证问题引导你。`
   }
 
-  if (lab.id === 'lab2' && /(sepc|ecall)/i.test(text)) {
-    return '沿控制流想：trap 发生后 sepc 指向哪条指令？如果 sret 回到同一地址，CPU 下一步又会做什么？先回答这两个问题，再定位 advance_sepc 的调用位置。'
+  const intent = inferTutorIntent(text)
+  const intentReplies: Record<string, string> = {
+    concept: `先回答你问到的边界：${lab.label} 里的结论需要同时区分硬件行为、内核状态变化和可观察证据。你现在最不确定的是哪一层？`,
+    'code-reading': '先沿你提到的符号回答：看它接收什么状态、修改哪个不变量、把控制权交给谁。请贴出当前函数及其一个调用点，我们只核对这条路径。',
+    debug: '这个现象说明当前实现与预期至少在一个可观察状态上分叉。先写出最早出现差异的一行输出，以及一个能被它证伪的原因假设。',
+    verification: `验证的关键不是“能运行”，而是观察结果能否区分两个判断。先写预期差异，再运行 ${lab.verificationCommand}，只比较对应断言或 Trace。`,
+    reflection: `复盘时要把结论和证据一一对应。先选 ${lab.label} 中一个你现在能解释的机制，并指出它由哪条代码路径或运行结果支持。`,
+    transfer: '先分开不变量与改变的条件：条件变化后，原机制未必整体失效。请先预测一个会变化的可观察结果，再说明如何验证。',
+    'direct-answer': `我不能交付可直接提交的完整实现。请给出你已有的局部代码、判断或失败现象之一，我会先解释关键机制，再引导下一步。`,
   }
-
-  if (lab.id === 'lab2' && /(sscratch|csrrw|栈|sp)/i.test(text)) {
-    return '设想不用 sscratch：trap 刚发生时 sp 仍属于谁？在保存任何通用寄存器前，你还能借用哪个寄存器而不破坏用户现场？先用这两个问题检查栈交换的必要性。'
-  }
-
-  const stageReplies: Record<TutorStageId, string> = {
-    orient: `先不急着看实现。围绕“${lab.focus}”，写下你认为最关键的一个系统边界，以及这个判断的依据。`,
-    read: `从右侧建议路径任选一个入口，沿调用或数据流追到核心实现。每经过一层，分别写下输入、状态变化和输出。`,
-    run: `先写下你预测的三个关键输出，再运行 ${lab.verificationCommand}。完成后只贴与预测不同的部分，我们用差异定位环节。`,
-    debug: '把排错拆成证据链：精确现象、当前假设、能证伪它的最小实验。先补齐这三项，我再给下一层提示。',
-    reflect: `用三句话收束 ${lab.label}：你能独立解释什么？AI 提醒了哪个关键点？你用哪条运行结果或代码路径验证了它？`,
-    transfer: `改变一个关键条件后，${lab.label} 的原结论还成立吗？先写预测，再说明你会用什么代码路径或运行证据验证。`,
-  }
-  return stageReplies[stage]
+  return intentReplies[intent] || intentReplies.concept
 }

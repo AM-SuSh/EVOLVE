@@ -14,7 +14,9 @@ test('C0 baseline has closed transitions and classified exit evidence', () => {
   assert.equal(tutorStages.at(-1).id, 'transfer')
   assert.deepEqual(tutorStages.at(-1).allowedNext, [])
   assert.equal(evidenceCatalog.run_finished.authority, 'server')
+  assert.equal(evidenceCatalog.review_completed.authority, 'server')
   assert.deepEqual(stageEvidenceMatrix.run, ['run_finished'])
+  assert.deepEqual(stageEvidenceMatrix.reflect, ['review_completed', 'report_submitted'])
 })
 
 test('C0 harness case format rejects incomplete expectations', () => {

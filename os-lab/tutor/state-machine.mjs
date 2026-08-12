@@ -87,13 +87,16 @@ export function decideTutorTurn(input) {
       gate = evidence.diagnosticCount ? 'diagnostic-available' : 'missing-debug-hypothesis'
     }
   } else if (currentStage === 'reflect') {
-    if (evidence.counts?.reflection_submitted > 0 && evidence.counts?.report_submitted > 0) {
+    if (evidence.counts?.review_completed > 0 && evidence.counts?.report_submitted > 0) {
       stage = 'transfer'
-      gate = 'reflection-evidence-complete'
+      gate = 'review-evidence-complete'
       actions.push('ask-transfer-question')
+    } else if (!(evidence.counts?.review_completed > 0)) {
+      actions.push('request-socratic-review')
+      gate = 'missing-review-evidence'
     } else {
-      actions.push('request-evidence-linked-reflection')
-      gate = 'missing-reflection-evidence'
+      actions.push('request-report-submission')
+      gate = 'missing-report-evidence'
     }
   } else {
     actions.push('ask-transfer-question')

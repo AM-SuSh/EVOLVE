@@ -1634,6 +1634,7 @@ async function submitReportToTeacher(payload: {
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({
         labId: props.labId,
+        sessionId: sessionId.value,
         content: payload.content,
         attachments: payload.attachments,
       }),

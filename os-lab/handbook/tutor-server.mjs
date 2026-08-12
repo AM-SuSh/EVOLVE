@@ -1300,14 +1300,6 @@ function serverOfflineTutorReply(message, labId, tutorState, guardrailTriggered 
     return `我不能交付可直接提交的完整实现。先把 ${label} 的任务缩小到一个机制或函数，并写出你已经确认的一条事实；我会继续用代码路径和验证问题引导你。`
   }
 
-  if (labId === 'lab2' && /(sepc|ecall)/i.test(message)) {
-    return '沿控制流想：trap 发生后 sepc 指向哪条指令？如果 sret 回到同一地址，CPU 下一步又会做什么？先回答这两个问题，再定位 advance_sepc 的调用位置。'
-  }
-
-  if (labId === 'lab2' && /(sscratch|csrrw|栈|sp)/i.test(message)) {
-    return '设想不用 sscratch：trap 刚发生时 sp 仍属于谁？在保存任何通用寄存器前，哪一个寄存器还能临时借用而不破坏用户现场？先用这两个问题检查栈交换的必要性。'
-  }
-
   const intentReplies = {
     concept: `先回答你问到的边界：${label} 里的结论需要同时区分硬件行为、内核状态变化和可观察证据。你现在最不确定的是哪一层？`,
     'code-reading': '先沿你提到的符号回答：看它接收什么状态、修改哪个不变量、把控制权交给谁。请贴出当前函数及其一个调用点，我们只核对这条路径。',
@@ -2706,11 +2698,47 @@ const server = http.createServer(async (request, response) => {
         }, origin)
         return
       }
+      const learningSessionId = String(body.sessionId || '').trim().slice(0, 160)
+      const completedReview = learningSessionId
+        ? getLatestSocraticReview(session.id, learningSessionId, labId)
+        : null
+      if (!grandfathered && completedReview?.status !== 'review_completed') {
+        json(response, 409, {
+          error: '报告必须关联当前学习会话中已完成的苏格拉底复盘。',
+          lifecycle: 'review_required',
+          access: labAccess,
+        }, origin)
+        return
+      }
       await ensureStudentReportDraft(session.id, labId)
       const savedAttachments = await saveReportAttachments(session.id, labId, body.attachments)
       const submission = await saveReportSubmissionFile(session.id, labId, content)
       submitReport(session.id, labId, content, savedAttachments, submission.path)
-      json(response, 200, { ok: true, mine: listMyReports(session.id), attachments: savedAttachments }, origin)
+      let reportEvent = null
+      if (completedReview?.status === 'review_completed') {
+        reportEvent = serverEvent({
+          sessionId: learningSessionId,
+          labId,
+          type: 'report_submitted',
+          reportVersion: `sha256:${createHash('sha256').update(content).digest('hex')}`,
+          evidenceRefs: [...new Set([
+            `review:${completedReview.reviewId}`,
+            ...(completedReview.plan?.evidenceRefs || []),
+          ])].slice(0, 20),
+          metadata: {
+            authority: 'server-verified',
+            reviewId: completedReview.reviewId,
+            contentPath: submission.path,
+          },
+        })
+        await storeServerEvents(session.id, [reportEvent])
+      }
+      json(response, 200, {
+        ok: true,
+        mine: listMyReports(session.id),
+        attachments: savedAttachments,
+        reportEventId: reportEvent?.id || '',
+      }, origin)
       return
     }
 
@@ -4067,10 +4095,11 @@ const server = http.createServer(async (request, response) => {
             !validateInteractionEvent(event) ||
             event.type === 'run_started' ||
             event.type === 'run_finished' ||
+            event.type === 'report_submitted' ||
             event.type.startsWith('review_'),
         )
       ) {
-        json(response, 400, { error: '事件不符合 event v1/v2 契约，或属于只能由服务端生成的运行/复盘事件' }, origin)
+        json(response, 400, { error: '事件不符合 event v1/v2 契约，或属于只能由服务端生成的运行/复盘/报告事件' }, origin)
         return
       }
       const invalidTraceEvidence = events.find((event) => {

@@ -788,7 +788,8 @@ try {
   const offlineDone = offlineFrames.find((frame) => frame.type === 'done')
   assert.equal(offlineDone.mode, 'offline')
   assert.equal(offlineDone.model, 'offline-tutor')
-  assert.match(offlineDone.reply, /sepc|trap/i)
+  assert.match(offlineDone.reply, /硬件行为|内核状态|可观察证据/)
+  assert.doesNotMatch(offlineDone.reply, /advance_sepc|sret 回到同一地址/)
   assert.ok(offlineDone.tutorState?.stage)
   assert.notEqual(offlineDone.tutorState?.topicKey, chat.tutorState.topicKey)
   assert.equal(offlineDone.tutorState?.hintLevel, 0)
@@ -889,14 +890,6 @@ try {
       stage: 'reflect',
       content: '我的判断是 yield 让当前任务回到 Ready；AI 提醒我检查切换原因；QEMU 输出和 trace 验证了这个结论。',
     },
-    {
-      ...eventCommon,
-      id: 'smoke-lab2-report-submitted',
-      type: 'report_submitted',
-      stage: 'reflect',
-      reportVersion: 'lab2-report-v1',
-      evidenceRefs: [`run:${runId}`, `trace:${runId}`],
-    },
   ]
   const crossUserTraceEvent = await postJson('/events', otherStudentHeaders, {
     event: { ...learningEvents[5], id: 'smoke-cross-user-trace' },
@@ -909,6 +902,18 @@ try {
   })
   assert.equal(eventSync.status, 202)
   assert.equal((await eventSync.json()).accepted, learningEvents.length)
+
+  const clientReportEvent = await postJson('/events', studentHeaders, {
+    event: {
+      ...eventCommon,
+      id: 'smoke-client-report-submitted',
+      type: 'report_submitted',
+      stage: 'reflect',
+      reportVersion: 'client-forged-report-v1',
+      evidenceRefs: [`run:${runId}`],
+    },
+  })
+  assert.equal(clientReportEvent.status, 400)
 
   const reportBeforeReview = await postJson('/reports', studentHeaders, {
     labId: 'lab2', content: '# Lab2 report before Socratic review',
@@ -1042,9 +1047,15 @@ try {
   const reportSubmit = await fetch(`${endpoint}/reports`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...studentHeaders },
-    body: JSON.stringify({ labId: 'lab2', content: reportContent }),
+    body: JSON.stringify({
+      labId: 'lab2',
+      sessionId: 'smoke-learning-session',
+      content: reportContent,
+    }),
   })
   assert.equal(reportSubmit.status, 200)
+  const reportSubmitPayload = await reportSubmit.json()
+  assert.match(reportSubmitPayload.reportEventId, /^[0-9a-f-]{36}$/i)
 
   const teacherSocraticReview = await fetch(
     `${endpoint}/teacher/socratic-review?user=member-c-smoke&labId=lab2`,
@@ -1158,6 +1169,12 @@ try {
       "SELECT count(*) AS value FROM socratic_review_turns WHERE json_extract(evaluation_json, '$.verdict') = 'needs-evidence'",
     ).get().value,
     reports: db.prepare("SELECT count(*) AS value FROM reports WHERE lab_id = 'lab2'").get().value,
+    authoritativeReportSubmissions: db.prepare(
+      `SELECT count(*) AS value FROM events
+       WHERE session_id = 'smoke-learning-session'
+         AND type = 'report_submitted'
+         AND json_extract(payload_json, '$.metadata.authority') = 'server-verified'`,
+    ).get().value,
     factoryPublishes: Object.keys(JSON.parse(readFileSync(factoryCatalogPath, 'utf8')).labs || {}).length,
     issuedLabs: JSON.parse(readFileSync(path.join(studentsRoot, 'member-c-smoke', '.scaffold-state.json'), 'utf8')).applied.length,
   }
@@ -1179,6 +1196,7 @@ try {
   assert.equal(counts.completedSocraticReviews >= 3, true)
   assert.equal(counts.needsEvidenceTurns, 1)
   assert.equal(counts.reports, 1)
+  assert.equal(counts.authoritativeReportSubmissions, 1)
   assert.equal(counts.factoryPublishes, 1)
   assert.equal(counts.issuedLabs, 3)
   console.log(`tutor smoke passed: ${JSON.stringify(counts)}`)
