@@ -1036,6 +1036,58 @@ try {
   const afterReviewAccess = await fetch(`${endpoint}/learning/access`, { headers: studentHeaders }).then((response) => response.json())
   assert.equal(afterReviewAccess.labs.find((lab) => lab.labId === 'lab2').reviewCompleted, true)
 
+  const unqueuedReportAssessmentBefore = await fetch(
+    `${endpoint}/teacher/report-assessment?user=member-c-smoke&labId=lab2`,
+    { headers: teacherHeaders },
+  ).then((response) => response.json())
+  assert.equal(unqueuedReportAssessmentBefore.hasReport, false)
+  assert.ok(unqueuedReportAssessmentBefore.assessment.assessmentId)
+  assert.equal(unqueuedReportAssessmentBefore.assessmentReview, null)
+  assert.equal(unqueuedReportAssessmentBefore.acceptance, null)
+  const unqueuedAssessmentId = unqueuedReportAssessmentBefore.assessment.assessmentId
+  const unqueuedAutomaticTotal = unqueuedReportAssessmentBefore.assessment.automaticResult.total
+  const blockedAcceptance = await postJson('/teacher/report-acceptance', teacherHeaders, {
+    user: 'member-c-smoke',
+    labId: 'lab2',
+    assessmentId: unqueuedAssessmentId,
+    finalScore: { total: 92, dimensions: { process: 90, result: 100, reflection: 80 } },
+    feedback: 'A report is required before acceptance.',
+    acceptanceAdvice: 'Submit the report first.',
+  })
+  assert.equal(blockedAcceptance.status, 400)
+
+  const lab2Report = await postJson('/reports', studentHeaders, {
+    labId: 'lab2',
+    sessionId: 'smoke-learning-session',
+    content: '# Lab2 final report\n\nI link scheduling claims to trusted run evidence.',
+  })
+  assert.equal(lab2Report.status, 200)
+  const acceptanceResponse = await postJson('/teacher/report-acceptance', teacherHeaders, {
+    user: 'member-c-smoke',
+    labId: 'lab2',
+    assessmentId: unqueuedAssessmentId,
+    finalScore: { total: 94, dimensions: { process: 92, result: 100, reflection: 85 } },
+    feedback: 'The report matches the trusted run evidence.',
+    acceptanceAdvice: 'Continue explaining scheduling boundary conditions.',
+  })
+  assert.equal(acceptanceResponse.status, 200)
+  assert.equal((await acceptanceResponse.json()).revision, 1)
+  const acceptedReportAssessment = await fetch(
+    `${endpoint}/teacher/report-assessment?user=member-c-smoke&labId=lab2`,
+    { headers: teacherHeaders },
+  ).then((response) => response.json())
+  assert.equal(acceptedReportAssessment.assessment.automaticResult.total, unqueuedAutomaticTotal)
+  assert.equal(acceptedReportAssessment.assessmentReview, null)
+  assert.equal(acceptedReportAssessment.acceptance.finalScore.total, 94)
+  assert.equal(acceptedReportAssessment.acceptance.feedback, 'The report matches the trusted run evidence.')
+  assert.equal(acceptedReportAssessment.acceptanceHistory.length, 1)
+  const acceptedReportList = await fetch(`${endpoint}/teacher/reports`, { headers: teacherHeaders })
+    .then((response) => response.json())
+  assert.equal(
+    acceptedReportList.reports.find((item) => item.user === 'member-c-smoke' && item.labId === 'lab2').feedback,
+    'The report matches the trusted run evidence.',
+  )
+
   const blockedLab3Upgrade = await postJson('/scaffold/upgrade', studentHeaders, { variant: 'debug' })
   assert.equal(blockedLab3Upgrade.status, 403)
 
@@ -1093,6 +1145,22 @@ try {
     .then((response) => response.json())
   assert.equal(reviewPayload.reviews.length, 1)
   assert.equal(reviewPayload.reviews[0].assessmentId, assessmentPayload.assessmentId)
+  assert.equal(
+    (await fetch(`${endpoint}/teacher/report-assessment?user=member-c-smoke&labId=lab2`, { headers: studentHeaders })).status,
+    401,
+  )
+  const reportAssessmentBefore = await fetch(
+    `${endpoint}/teacher/report-assessment?user=member-c-smoke&labId=lab2`,
+    { headers: teacherHeaders },
+  ).then((response) => response.json())
+  assert.equal(reportAssessmentBefore.hasReport, true)
+  assert.equal(reportAssessmentBefore.assessment.assessmentId, assessmentPayload.assessmentId)
+  assert.equal(reportAssessmentBefore.assessment.automaticResult.total, assessmentPayload.assessment.total)
+  assert.equal(reportAssessmentBefore.assessmentReview.reviewId, assessmentPayload.review.reviewId)
+  assert.equal(reportAssessmentBefore.acceptance, null)
+  assert.equal(reportAssessmentBefore.acceptanceHistory.length, 1)
+  assert.equal(reportAssessmentBefore.acceptanceHistory[0].assessmentId, unqueuedAssessmentId)
+
   const teacherReview = await postJson('/teacher/review', teacherHeaders, {
     reviewId: assessmentPayload.review.reviewId,
     decision: 'corrected',
@@ -1241,7 +1309,13 @@ try {
     mastery: db.prepare('SELECT count(*) AS value FROM mastery_evidence').get().value,
     reviews: db.prepare('SELECT count(*) AS value FROM review_queue').get().value,
     reviewDecisions: db.prepare('SELECT count(*) AS value FROM review_decisions').get().value,
-    teacherReviews: db.prepare("SELECT count(*) AS value FROM events WHERE type = 'teacher_reviewed'").get().value,
+    teacherReviews: db.prepare(
+      "SELECT count(*) AS value FROM events WHERE type = 'teacher_reviewed' AND json_extract(payload_json, '$.metadata.acceptanceId') IS NULL",
+    ).get().value,
+    reportAcceptances: db.prepare('SELECT count(*) AS value FROM report_acceptances').get().value,
+    reportAcceptanceEvents: db.prepare(
+      "SELECT count(*) AS value FROM events WHERE type = 'teacher_reviewed' AND json_extract(payload_json, '$.metadata.acceptanceId') IS NOT NULL",
+    ).get().value,
     completedSocraticReviews: db.prepare("SELECT count(*) AS value FROM socratic_reviews WHERE status = 'review_completed'").get().value,
     needsEvidenceTurns: db.prepare(
       "SELECT count(*) AS value FROM socratic_review_turns WHERE json_extract(evaluation_json, '$.verdict') = 'needs-evidence'",
@@ -1271,10 +1345,12 @@ try {
   assert.equal(counts.reviews, 1)
   assert.equal(counts.reviewDecisions, 1)
   assert.equal(counts.teacherReviews, 1)
+  assert.equal(counts.reportAcceptances, 1)
+  assert.equal(counts.reportAcceptanceEvents, 1)
   assert.equal(counts.completedSocraticReviews >= 3, true)
   assert.equal(counts.needsEvidenceTurns, 1)
   assert.equal(counts.reports, 1)
-  assert.equal(counts.authoritativeReportSubmissions, 1)
+  assert.equal(counts.authoritativeReportSubmissions, 2)
   assert.equal(counts.factoryPublishes, 1)
   assert.equal(counts.issuedLabs, 3)
   console.log(`tutor smoke passed: ${JSON.stringify(counts)}`)

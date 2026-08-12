@@ -2,7 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { withBase } from 'vitepress'
 import { ArrowLeft, CheckCircle2, ClipboardCheck, Download, RefreshCw, Save, Search } from 'lucide-vue-next'
-import { authHeaders, loadAuth } from '../tutor-model'
+import AssessmentScorePanel from './AssessmentScorePanel.vue'
+import { authHeaders, loadAuth, normalizeAssessmentV2, shortRef, type AssessmentV2 } from '../tutor-model'
 import { createReportMarkdown, renderReportHtml } from '../report-markdown'
 
 /**
@@ -31,6 +32,34 @@ interface StudentReport {
   hasReport?: boolean
   reviewStatus?: string
   reviewUpdatedAt?: string
+}
+
+interface ReportAssessment {
+  assessmentId: string
+  sessionId: string
+  labId: string
+  rubricVersion: string
+  automaticResult: {
+    total: number
+    dimensions: { process: number; result: number; reflection: number }
+    items: AssessmentV2['items']
+    uncertainty?: string
+  }
+  llmSuggestion?: { rationale?: string; reasons?: string[] }
+}
+
+interface ReportAcceptance {
+  acceptanceId: string
+  assessmentId: string
+  revision: number
+  teacher: string
+  finalScore: {
+    total: number
+    dimensions: { process: number; result: number; reflection: number }
+  }
+  feedback: string
+  acceptanceAdvice: string
+  createdAt: string
 }
 
 interface ReviewTurn {
@@ -87,6 +116,10 @@ const socraticReview = ref<TeacherSocraticReview | null>(null)
 const tutorConversation = ref<TutorConversationTurn[]>([])
 const reviewLoading = ref(false)
 const reviewError = ref('')
+const reportAssessment = ref<ReportAssessment | null>(null)
+const reportAcceptance = ref<ReportAcceptance | null>(null)
+const finalScoreDraft = ref(0)
+const finalScoreSaved = ref(0)
 
 const classes = computed(() => [...new Set(reports.value.map((r) => r.className).filter(Boolean))])
 const labs = computed(() => [...new Set(reports.value.map((r) => r.labId))].sort())
@@ -114,8 +147,22 @@ const filtered = computed(() =>
 const pendingCount = computed(() => reports.value.filter((report) => !reportReviewed(report)).length)
 const reviewedCount = computed(() => reports.value.length - pendingCount.value)
 const active = computed(() => reports.value.find((report) => reportKey(report) === activeKey.value))
+const automaticAssessment = computed(() => {
+  const assessment = reportAssessment.value
+  return assessment
+    ? normalizeAssessmentV2(assessment.automaticResult, {
+        version: assessment.rubricVersion || 'rubric-v3',
+        labId: assessment.labId,
+        sessionId: assessment.sessionId,
+      })
+    : null
+})
 const hasChanges = computed(() =>
-  Boolean(active.value && reportExists(active.value) && feedbackDraft.value !== feedbackSaved.value),
+  Boolean(
+    active.value &&
+      ((reportExists(active.value) && feedbackDraft.value !== feedbackSaved.value) ||
+        (reportAssessment.value && (!reportAcceptance.value || finalScoreDraft.value !== finalScoreSaved.value))),
+  ),
 )
 
 function reportExists(report?: StudentReport | null) {
@@ -182,6 +229,9 @@ const activeHtml = computed(() => {
     reportMarkdown,
   )
 })
+const reportContainsReview = computed(() =>
+  /(?:^|\n)#{2,3}\s*(?:收获与复盘|复盘问答|苏格拉底复盘)/m.test(active.value?.content || ''),
+)
 
 async function downloadAttachment(report: StudentReport, item: ReportAttachment) {
   try {
@@ -217,6 +267,10 @@ function open(report: StudentReport) {
   activeKey.value = reportKey(report)
   feedbackDraft.value = report.feedback || ''
   feedbackSaved.value = feedbackDraft.value
+  reportAssessment.value = null
+  reportAcceptance.value = null
+  finalScoreDraft.value = 0
+  finalScoreSaved.value = 0
   note.value = ''
   void loadSocraticReview(report)
 }
@@ -236,20 +290,76 @@ async function loadSocraticReview(report: StudentReport) {
   reviewError.value = ''
   socraticReview.value = null
   tutorConversation.value = []
+  reportAssessment.value = null
+  reportAcceptance.value = null
   try {
     const query = new URLSearchParams({ user: report.user, labId: report.labId })
-    const response = await fetch(`${endpoint}/teacher/socratic-review?${query.toString()}`, { headers: authHeaders() })
+    const [reviewResponse, assessmentResponse] = await Promise.all([
+      fetch(`${endpoint}/teacher/socratic-review?${query.toString()}`, { headers: authHeaders() }),
+      fetch(`${endpoint}/teacher/report-assessment?${query.toString()}`, { headers: authHeaders() }),
+    ])
+    const response = reviewResponse
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(payload?.error || `导师服务返回 ${response.status}`)
     if (reportKey(report) !== activeKey.value) return
     socraticReview.value = payload.review || null
     tutorConversation.value = Array.isArray(payload.tutorConversation) ? payload.tutorConversation : []
+    if (assessmentResponse.ok) {
+      const assessmentPayload = await assessmentResponse.json().catch(() => ({}))
+      reportAssessment.value = assessmentPayload.assessment || null
+      reportAcceptance.value = assessmentPayload.acceptance || null
+      const latest = reportAcceptance.value?.finalScore?.total
+      finalScoreDraft.value = Number.isInteger(latest)
+        ? Number(latest)
+        : Number(reportAssessment.value?.automaticResult?.total || 0)
+      finalScoreSaved.value = finalScoreDraft.value
+      if (reportAcceptance.value) {
+        feedbackDraft.value = reportAcceptance.value.acceptanceAdvice || reportAcceptance.value.feedback || report.feedback || ''
+        feedbackSaved.value = feedbackDraft.value
+      }
+    }
   } catch (err) {
     if (reportKey(report) === activeKey.value) {
       reviewError.value = err instanceof Error ? err.message : '无法加载苏格拉底复盘记录'
     }
   } finally {
     if (reportKey(report) === activeKey.value) reviewLoading.value = false
+  }
+}
+
+function clampScore(value: number) {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(100, Math.max(0, Math.round(value)))
+}
+
+function onFinalScoreInput(event: Event) {
+  finalScoreDraft.value = clampScore(Number((event.target as HTMLInputElement).value))
+}
+
+function scoreReason(assessment: ReportAssessment | null) {
+  if (!assessment) return '当前没有关联的服务端评分记录。'
+  const llmReasons = Array.isArray(assessment.llmSuggestion?.reasons)
+    ? assessment.llmSuggestion?.reasons?.filter(Boolean) || []
+    : []
+  if (llmReasons.length) return llmReasons.join('；')
+  if (assessment.llmSuggestion?.rationale) return assessment.llmSuggestion.rationale
+  const itemReasons = assessment.automaticResult.items
+    .filter((item) => item.note && item.status !== 'unobserved')
+    .slice(0, 4)
+    .map((item) => `${item.label}：${item.note}`)
+  return itemReasons.length
+    ? itemReasons.join('；')
+    : '评分依据来自实验过程事件、可信运行结果与复盘证据；展开细项可核对 evidenceRefs。'
+}
+
+async function onOpenEvidence(refValue: string) {
+  const raw = String(refValue || '').trim()
+  if (!raw) return
+  try {
+    await navigator.clipboard.writeText(raw)
+    note.value = `已复制评分证据 ${shortRef(raw)}`
+  } catch {
+    note.value = `评分证据：${raw}`
   }
 }
 
@@ -294,16 +404,37 @@ async function saveFeedback() {
   busy.value = true
   note.value = ''
   try {
-    const response = await fetch(`${endpoint}/teacher/report-feedback`, {
+    const advice = feedbackDraft.value.trim()
+    if (!advice) {
+      note.value = '请填写验收建议，作为教师最终评分的理由。'
+      return
+    }
+    if (!reportAssessment.value) {
+      note.value = '当前没有关联的自动评分，请让学生先生成学习评价。'
+      return
+    }
+    const dimensions = reportAcceptance.value?.finalScore.dimensions || reportAssessment.value.automaticResult.dimensions
+    const response = await fetch(`${endpoint}/teacher/report-acceptance`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ user: active.value.user, labId: active.value.labId, feedback: feedbackDraft.value }),
+      body: JSON.stringify({
+        user: active.value.user,
+        labId: active.value.labId,
+        assessmentId: reportAssessment.value.assessmentId,
+        finalScore: { total: clampScore(finalScoreDraft.value), dimensions },
+        feedback: advice,
+        acceptanceAdvice: advice,
+      }),
     })
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(payload?.error || `服务返回 ${response.status}`)
-    active.value.feedback = feedbackDraft.value
-    feedbackSaved.value = feedbackDraft.value
-    note.value = '验收意见已保存，学生端已同步。'
+    active.value.feedback = advice
+    feedbackDraft.value = advice
+    feedbackSaved.value = advice
+    finalScoreDraft.value = clampScore(finalScoreDraft.value)
+    finalScoreSaved.value = finalScoreDraft.value
+    note.value = '最终评分与验收建议已保存，学生端已同步。'
+    void loadSocraticReview(active.value)
   } catch (err) {
     note.value = err instanceof Error ? err.message : '保存失败'
   } finally {
@@ -422,6 +553,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
               {{ reportExists(active) ? '提交于' : '复盘更新于' }} {{ formatTime(reportTimestamp(active)) }}
             </time>
           </header>
+          <div class="tr-document">
           <div v-if="reportExists(active) && active.attachments?.length" class="tr-attachments">
             <strong>附件</strong>
             <button
@@ -443,9 +575,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
               <p>当前条目来自实验复盘，下方仍可查看完整的苏格拉底复盘记录。</p>
             </div>
           </div>
-          <section class="tr-socratic" aria-label="苏格拉底复盘记录">
+          <section v-if="!reportContainsReview || !reportExists(active)" class="tr-socratic" aria-label="苏格拉底复盘记录">
             <header>
-              <div><span>苏格拉底复盘</span><strong>{{ socraticReview?.status || active.reviewStatus || '未记录' }}</strong></div>
+              <div><span>实验提交 · 复盘记录</span><strong>{{ socraticReview?.status || active.reviewStatus || '未记录' }}</strong></div>
               <small v-if="socraticReview?.sourceAssessmentId">Assessment {{ socraticReview.sourceAssessmentId }}</small>
             </header>
             <p v-if="reviewLoading" class="tr-review-state">正在加载复盘证据...</p>
@@ -479,44 +611,80 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
                 </div>
               </div>
               <div v-if="socraticReview.finalSummary" class="tr-review-summary"><strong>学生最终总结</strong><p>{{ socraticReview.finalSummary }}</p></div>
-              <details v-if="socraticReview.transcriptMarkdown" class="tr-review-conversation">
-                <summary>原始复盘 transcript</summary>
-                <pre>{{ socraticReview.transcriptMarkdown }}</pre>
-              </details>
-              <details v-if="tutorConversation.length" class="tr-review-conversation">
-                <summary>导师日常对话证据（{{ tutorConversation.length }} 条）</summary>
-                <ol>
-                  <li v-for="message in tutorConversation" :key="message.id"><strong>{{ message.role === 'assistant' ? 'AI 导师' : '学生' }}</strong><span>{{ message.content }}</span></li>
-                </ol>
-              </details>
             </template>
           </section>
+          <details v-if="socraticReview || tutorConversation.length" class="tr-authority">
+            <summary>查看服务端复盘与导师对话证据</summary>
+            <pre v-if="socraticReview?.transcriptMarkdown">{{ socraticReview.transcriptMarkdown }}</pre>
+            <ol v-if="tutorConversation.length">
+              <li v-for="message in tutorConversation" :key="message.id"><strong>{{ message.role === 'assistant' ? 'AI 导师' : '学生' }}</strong><span>{{ message.content }}</span></li>
+            </ol>
+          </details>
+          </div>
         </template>
       </main>
 
       <aside class="tr-feedback" :class="{ disabled: !active || !reportExists(active) }">
         <header>
-          <span>验收意见</span>
+          <span>实验验收</span>
           <strong>{{ active && !reportExists(active) ? '等待报告' : active?.feedback?.trim() ? '已完成' : '待验收' }}</strong>
         </header>
-        <p v-if="active && !reportExists(active)">学生提交实验报告后，才可填写并保存报告验收意见。</p>
-        <p v-else>意见保存后会立即同步到学生的实验报告面板。</p>
-        <textarea
-          v-model="feedbackDraft"
-          :disabled="!active || !reportExists(active)"
-          placeholder="记录达成情况、证据是否充分，以及下一步需要改进的内容。"
-          aria-label="验收意见"
-        />
-        <p v-if="note" class="tr-note" :class="{ ok: note.startsWith('验收意见已保存') }">{{ note }}</p>
+        <div class="tr-feedback-scroll">
+          <p v-if="active && !reportExists(active)" class="tr-feedback-hint">学生提交实验报告后，才可完成验收。</p>
+          <template v-else-if="active">
+            <section class="tr-auto-score">
+              <header><span>自动评分</span><strong>{{ automaticAssessment ? `${automaticAssessment.total} 分` : '暂无' }}</strong></header>
+              <div v-if="automaticAssessment" class="tr-score-dimensions">
+                <span>过程 <b>{{ automaticAssessment.dimensions.process }}</b></span>
+                <span>结果 <b>{{ automaticAssessment.dimensions.result }}</b></span>
+                <span>反思 <b>{{ automaticAssessment.dimensions.reflection }}</b></span>
+              </div>
+              <p>{{ scoreReason(reportAssessment) }}</p>
+              <details v-if="automaticAssessment" class="tr-score-details">
+                <summary>查看评分细项与证据</summary>
+                <AssessmentScorePanel
+                  :assessment="automaticAssessment"
+                  :interactive="true"
+                  @open-evidence="onOpenEvidence"
+                />
+              </details>
+            </section>
+            <label class="tr-final-score">
+              <span>教师最终分</span>
+              <span class="tr-score-input">
+                <input
+                  :value="finalScoreDraft"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  :disabled="!reportAssessment"
+                  @input="onFinalScoreInput"
+                />
+                <b>/ 100</b>
+              </span>
+              <small v-if="!reportAssessment">没有关联的自动评分时暂不支持定分。</small>
+            </label>
+            <label class="tr-advice">
+              <span>验收建议</span>
+              <textarea
+                v-model="feedbackDraft"
+                placeholder="说明达成情况、评分理由，以及需要继续改进的内容。"
+                aria-label="验收建议"
+              />
+            </label>
+          </template>
+        </div>
+        <p v-if="note" class="tr-note" :class="{ ok: note.includes('已保存') }">{{ note }}</p>
         <div class="tr-feedback-footer">
           <span>{{ active && !reportExists(active) ? '尚无报告可验收' : hasChanges ? '有未保存修改' : active ? '已保存' : '' }}</span>
           <button
             type="button"
             :disabled="!active || !reportExists(active) || busy || !hasChanges"
-            :title="active && !reportExists(active) ? '学生尚未提交报告' : '保存验收意见（Ctrl/Command + S）'"
+            :title="active && !reportExists(active) ? '学生尚未提交报告' : '保存最终评分与验收建议（Ctrl/Command + S）'"
             @click="saveFeedback"
           >
-            <Save :size="15" aria-hidden="true" />{{ busy ? '保存中…' : '保存意见' }}
+            <Save :size="15" aria-hidden="true" />{{ busy ? '保存中…' : '保存验收' }}
           </button>
         </div>
       </aside>
@@ -988,6 +1156,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 .tr-reader {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .tr-reader > header {
@@ -1014,11 +1183,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   white-space: nowrap;
 }
 
+.tr-document {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--ws-surface);
+}
+
 .tr-content {
   max-height: none;
   margin: 0;
   padding: var(--ws-space-5) clamp(var(--ws-space-5), 4vw, 48px) var(--ws-space-8);
-  overflow: auto;
+  overflow: visible;
   color: var(--ws-ink);
   border: 0;
   border-radius: 0;
@@ -1104,6 +1280,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   border-top: 1px solid var(--ws-line);
   background: var(--ws-surface-alt);
 }
+
+.tr-authority {
+  margin: 0 clamp(var(--ws-space-5), 4vw, 48px) var(--ws-space-7);
+  padding: var(--ws-space-3);
+  border-top: 1px solid var(--ws-line);
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+}
+
+.tr-authority summary { cursor: pointer; font-weight: var(--ws-weight-semibold); }
+.tr-authority pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.tr-authority ol { padding-left: 20px; }
+.tr-authority li + li { margin-top: var(--ws-space-2); }
+.tr-authority li strong { display: block; color: var(--ws-accent); }
+.tr-authority li span { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .tr-socratic > header,
 .tr-review-turn-head,
@@ -1252,13 +1443,101 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 .tr-feedback {
   display: grid;
-  grid-template-rows: auto auto minmax(180px, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: var(--ws-space-3);
   margin: 0;
   padding: var(--ws-space-4);
   border-left: 1px solid var(--ws-line);
   background: var(--ws-surface-alt);
 }
+
+.tr-feedback-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+.tr-feedback-hint,
+.tr-auto-score p {
+  margin: 0;
+  color: var(--ws-ink-faint);
+  font-size: var(--ws-text-xs);
+  line-height: var(--ws-leading-normal);
+}
+
+.tr-auto-score {
+  display: grid;
+  gap: var(--ws-space-3);
+  padding-bottom: var(--ws-space-4);
+  border-bottom: 1px solid var(--ws-line);
+}
+
+.tr-auto-score > header,
+.tr-score-dimensions,
+.tr-score-input {
+  display: flex;
+  align-items: center;
+}
+
+.tr-auto-score > header { justify-content: space-between; gap: var(--ws-space-2); }
+.tr-auto-score > header span { color: var(--ws-ink-muted); font-size: var(--ws-text-xs); font-weight: var(--ws-weight-semibold); }
+.tr-auto-score > header strong { color: var(--ws-accent); font-size: var(--ws-text-xl); }
+
+.tr-score-dimensions {
+  justify-content: space-between;
+  gap: var(--ws-space-2);
+  padding: var(--ws-space-2) 0;
+  border-top: 1px solid var(--ws-line);
+  border-bottom: 1px solid var(--ws-line);
+}
+
+.tr-score-dimensions span { display: grid; gap: 1px; color: var(--ws-ink-faint); font-size: var(--ws-text-xs); }
+.tr-score-dimensions b { color: var(--ws-ink); font-size: var(--ws-text-base); }
+
+.tr-score-details > summary {
+  cursor: pointer;
+  color: var(--ws-accent);
+  font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.tr-score-details :deep(.asp) { margin-top: var(--ws-space-3); padding: 0; border: 0; background: transparent; }
+.tr-score-details :deep(.asp-head) { display: none; }
+
+.tr-final-score,
+.tr-advice {
+  display: grid;
+  gap: var(--ws-space-2);
+  margin-top: var(--ws-space-4);
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.tr-score-input {
+  justify-content: space-between;
+  min-height: 54px;
+  padding: 0 var(--ws-space-3);
+  border: 1px solid var(--ws-line-strong);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
+}
+
+.tr-score-input input {
+  width: 90px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ws-ink);
+  font: inherit;
+  font-size: 26px;
+  font-weight: var(--ws-weight-semibold);
+}
+
+.tr-score-input b { color: var(--ws-ink-faint); font-size: var(--ws-text-sm); }
+.tr-final-score small { color: var(--ws-warn); font-weight: var(--ws-weight-normal); }
 
 .tr-feedback.disabled {
   opacity: 0.65;
@@ -1282,9 +1561,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   line-height: var(--ws-leading-normal);
 }
 
-.tr-feedback textarea {
+.tr-advice textarea {
   width: 100%;
-  min-height: 0;
+  min-height: 150px;
   padding: var(--ws-space-3);
   color: var(--ws-ink);
   border: 1px solid var(--ws-line);
@@ -1294,10 +1573,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   font: inherit;
   font-size: var(--ws-text-sm);
   line-height: var(--ws-leading-relaxed);
-  resize: none;
+  resize: vertical;
 }
 
-.tr-feedback textarea:focus {
+.tr-advice textarea:focus,
+.tr-score-input:focus-within {
   border-color: var(--ws-accent);
   box-shadow: 0 0 0 2px var(--ws-accent-soft);
 }

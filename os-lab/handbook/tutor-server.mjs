@@ -97,6 +97,7 @@ import {
   finishRun,
   getAssessmentInput,
   getLearningEvidence,
+  getReportAssessment,
   getReportAttachmentMeta,
   getReportDraftMeta,
   getLatestSocraticReviewForStudent,
@@ -135,6 +136,7 @@ import {
   markSocraticReviewTurnAsked,
   recordTutorFollowupTurn,
   submitAssessmentReview,
+  submitReportAcceptance,
   submitFinalPerformance,
   submitFinalPerformanceBatch,
   setReportFeedback,
@@ -3672,6 +3674,22 @@ const server = http.createServer(async (request, response) => {
         return
       }
 
+      if (request.method === 'GET' && pathname === '/teacher/report-assessment') {
+        const username = String(requestUrl.searchParams.get('user') || '').trim()
+        const labId = String(requestUrl.searchParams.get('labId') || '')
+        if (!username || !labIds.has(labId)) {
+          json(response, 400, { error: 'user 和 labId 必须有效' }, origin)
+          return
+        }
+        const assessment = getReportAssessment(username, labId)
+        if (!assessment) {
+          json(response, 404, { error: '学生不存在' }, origin)
+          return
+        }
+        json(response, 200, { ok: true, ...assessment }, origin)
+        return
+      }
+
       if (request.method === 'GET' && pathname === '/teacher/socratic-review') {
         const username = String(requestUrl.searchParams.get('user') || '')
         const labId = String(requestUrl.searchParams.get('labId') || '')
@@ -3737,6 +3755,17 @@ const server = http.createServer(async (request, response) => {
       if (request.method === 'POST' && pathname === '/teacher/review') {
         const body = await readBody(request)
         const result = submitAssessmentReview(session.id, body)
+        json(response, result.ok ? 200 : 400, result, origin)
+        return
+      }
+
+      if (request.method === 'POST' && pathname === '/teacher/report-acceptance') {
+        const body = await readBody(request)
+        if (!labIds.has(String(body?.labId || ''))) {
+          json(response, 400, { ok: false, error: 'labId 必须有效' }, origin)
+          return
+        }
+        const result = submitReportAcceptance(session.id, body)
         json(response, result.ok ? 200 : 400, result, origin)
         return
       }

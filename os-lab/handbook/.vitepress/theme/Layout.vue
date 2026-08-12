@@ -65,7 +65,8 @@ const route = useRoute()
   top: var(--vp-nav-height);
   height: calc(100dvh - var(--vp-nav-height));
   min-height: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .knowledge-manager-layout {

@@ -337,6 +337,26 @@ applyMigration('20260812_socratic_review_lifecycle_v1', `
 ALTER TABLE reports ADD COLUMN review_grandfathered INTEGER NOT NULL DEFAULT 0;
 UPDATE reports SET review_grandfathered = 1;
 `)
+applyMigration('20260812_report_acceptance_v1', `
+CREATE TABLE IF NOT EXISTS report_acceptances (
+  id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  lab_id TEXT NOT NULL,
+  report_id INTEGER NOT NULL REFERENCES reports(id),
+  assessment_id TEXT NOT NULL REFERENCES assessments(id),
+  revision INTEGER NOT NULL,
+  teacher_user_id INTEGER NOT NULL REFERENCES users(id),
+  final_score_json TEXT NOT NULL,
+  feedback TEXT NOT NULL,
+  acceptance_advice TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE(user_id, lab_id, revision)
+);
+CREATE INDEX IF NOT EXISTS report_acceptances_user_lab_revision_idx
+  ON report_acceptances(user_id, lab_id, revision DESC);
+CREATE INDEX IF NOT EXISTS report_acceptances_assessment_idx
+  ON report_acceptances(assessment_id, revision DESC);
+`)
 applyMigration('20260807_student_data_v1', `
 CREATE TABLE IF NOT EXISTS report_drafts (
   user_id INTEGER NOT NULL REFERENCES users(id),
@@ -594,6 +614,187 @@ export function setReportFeedback(username, labId, feedback) {
     .prepare('UPDATE reports SET feedback = ? WHERE user_id = ? AND lab_id = ?')
     .run(String(feedback || '').slice(0, 8000), user.id, String(labId || ''))
   return changed.changes > 0 ? { ok: true } : { ok: false, error: '该报告不存在' }
+}
+
+function parseAssessmentRow(row) {
+  if (!row) return null
+  return {
+    assessmentId: row.assessmentId,
+    sessionId: row.sessionId,
+    labId: row.labId,
+    rubricVersion: row.rubricVersion,
+    automaticResult: {
+      total: row.total,
+      dimensions: JSON.parse(row.dimensionsJson),
+      items: JSON.parse(row.itemsJson),
+      uncertainty: row.uncertainty,
+    },
+    trajectory: JSON.parse(row.trajectoryJson),
+    llmSuggestion: JSON.parse(row.llmSuggestionJson),
+    createdAt: row.createdAt,
+  }
+}
+
+const reportAssessmentSelect = `
+  SELECT id AS assessmentId, session_id AS sessionId, lab_id AS labId,
+         rubric_version AS rubricVersion, total, dimensions_json AS dimensionsJson,
+         items_json AS itemsJson, trajectory_json AS trajectoryJson,
+         llm_suggestion_json AS llmSuggestionJson, uncertainty, created_at AS createdAt
+  FROM assessments`
+
+function parseReportAcceptanceRow(row, currentAssessmentId = '') {
+  if (!row) return null
+  return {
+    acceptanceId: row.acceptanceId,
+    assessmentId: row.assessmentId,
+    revision: row.revision,
+    teacher: row.teacher,
+    finalScore: JSON.parse(row.finalScoreJson),
+    feedback: row.feedback,
+    acceptanceAdvice: row.acceptanceAdvice,
+    createdAt: row.createdAt,
+    isCurrentAssessment: row.assessmentId === currentAssessmentId,
+  }
+}
+
+const reportAcceptanceSelect = `
+  SELECT ra.id AS acceptanceId, ra.assessment_id AS assessmentId, ra.revision,
+         u.username AS teacher, ra.final_score_json AS finalScoreJson,
+         ra.feedback, ra.acceptance_advice AS acceptanceAdvice, ra.created_at AS createdAt
+  FROM report_acceptances ra JOIN users u ON u.id = ra.teacher_user_id`
+
+/** Teacher acceptance bundle: latest automatic assessment, optional legacy review and immutable acceptance history. */
+export function getReportAssessment(username, labId) {
+  const student = db.prepare(
+    "SELECT id, username, class_name AS className FROM users WHERE username = ? AND role = 'student'",
+  ).get(String(username || ''))
+  if (!student) return null
+  const normalizedLabId = String(labId || '')
+  const report = db.prepare(
+    'SELECT id, feedback, updated_at AS updatedAt FROM reports WHERE user_id = ? AND lab_id = ?',
+  ).get(student.id, normalizedLabId)
+  const assessment = parseAssessmentRow(db.prepare(
+    `${reportAssessmentSelect}
+     WHERE user_id = ? AND lab_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+  ).get(student.id, normalizedLabId))
+  const assessmentReview = assessment
+    ? (() => {
+        const review = parseReviewRow(db.prepare(`${reviewSelect} WHERE q.assessment_id = ?`).get(assessment.assessmentId))
+        return review ? { ...review, decisions: listReviewDecisions(review.reviewId) } : null
+      })()
+    : null
+  const acceptanceRows = db.prepare(
+    `${reportAcceptanceSelect}
+     WHERE ra.user_id = ? AND ra.lab_id = ? ORDER BY ra.revision DESC`,
+  ).all(student.id, normalizedLabId)
+  const acceptanceHistory = acceptanceRows.map((row) =>
+    parseReportAcceptanceRow(row, assessment?.assessmentId || ''),
+  )
+  return {
+    user: student.username,
+    className: student.className || '',
+    labId: normalizedLabId,
+    hasReport: Boolean(report),
+    reportUpdatedAt: report?.updatedAt || null,
+    reportFeedback: report?.feedback || '',
+    assessment,
+    assessmentReview,
+    acceptance: acceptanceHistory.find((item) => item.isCurrentAssessment) || null,
+    acceptanceHistory,
+  }
+}
+
+function normalizeFinalScore(input) {
+  const total = Number(input?.total)
+  const dimensions = input?.dimensions
+  if (!Number.isInteger(total) || total < 0 || total > 100 || !dimensions ||
+      ['process', 'result', 'reflection'].some((key) =>
+        !Number.isInteger(Number(dimensions[key])) || Number(dimensions[key]) < 0 || Number(dimensions[key]) > 100,
+      )) return null
+  return {
+    total,
+    dimensions: {
+      process: Number(dimensions.process),
+      result: Number(dimensions.result),
+      reflection: Number(dimensions.reflection),
+    },
+  }
+}
+
+/** Append a teacher acceptance revision without mutating the linked automatic assessment. */
+export function submitReportAcceptance(teacherUserId, input) {
+  const teacher = db.prepare("SELECT id FROM users WHERE id = ? AND role = 'teacher'").get(teacherUserId)
+  if (!teacher) return { ok: false, error: '只有教师可以提交最终验收' }
+  const student = db.prepare(
+    "SELECT id FROM users WHERE username = ? AND role = 'student'",
+  ).get(String(input?.user || ''))
+  if (!student) return { ok: false, error: '学生不存在' }
+  const labId = String(input?.labId || '')
+  const report = db.prepare(
+    'SELECT id FROM reports WHERE user_id = ? AND lab_id = ?',
+  ).get(student.id, labId)
+  if (!report) return { ok: false, error: '学生尚未提交该实验报告' }
+  const assessmentId = String(input?.assessmentId || '')
+  const finalScore = normalizeFinalScore(input?.finalScore)
+  if (!finalScore) return { ok: false, error: '教师最终评分必须是 0-100 的整数' }
+  const feedback = String(input?.feedback || '').trim().slice(0, 8_000)
+  const acceptanceAdvice = String(input?.acceptanceAdvice || '').trim().slice(0, 8_000)
+  if (!feedback) return { ok: false, error: '最终验收必须填写报告反馈' }
+  if (!acceptanceAdvice) return { ok: false, error: '最终验收必须填写验收建议' }
+  const timestamp = now()
+  const acceptanceId = randomUUID()
+  const eventId = randomUUID()
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    const latestAssessment = db.prepare(
+      `${reportAssessmentSelect}
+       WHERE user_id = ? AND lab_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+    ).get(student.id, labId)
+    if (!latestAssessment) {
+      db.exec('ROLLBACK')
+      return { ok: false, error: '该学生当前实验尚无自动评价' }
+    }
+    if (assessmentId !== latestAssessment.assessmentId) {
+      db.exec('ROLLBACK')
+      return { ok: false, error: '自动评价已更新，请刷新后重新验收' }
+    }
+    const revision = Number(db.prepare(
+      'SELECT coalesce(max(revision), 0) + 1 AS value FROM report_acceptances WHERE user_id = ? AND lab_id = ?',
+    ).get(student.id, labId).value)
+    db.prepare(
+      `INSERT INTO report_acceptances
+        (id, user_id, lab_id, report_id, assessment_id, revision, teacher_user_id,
+         final_score_json, feedback, acceptance_advice, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      acceptanceId, student.id, labId, report.id, assessmentId, revision, teacherUserId,
+      JSON.stringify(finalScore), feedback, acceptanceAdvice, timestamp,
+    )
+    db.prepare('UPDATE reports SET feedback = ? WHERE id = ?').run(feedback, report.id)
+    const event = {
+      version: 2,
+      id: eventId,
+      sessionId: latestAssessment.sessionId,
+      labId,
+      type: 'teacher_reviewed',
+      stage: 'reflect',
+      timestamp,
+      rubricVersion: latestAssessment.rubricVersion,
+      decision: 'accepted',
+      comment: feedback,
+      metadata: { assessmentId, acceptanceId, revision, finalScore, acceptanceAdvice },
+    }
+    db.prepare(
+      `INSERT INTO events
+        (id, user_id, schema_version, session_id, lab_id, run_id, type, stage, occurred_at, payload_json, created_at)
+       VALUES (?, ?, 2, ?, ?, NULL, 'teacher_reviewed', 'reflect', ?, ?, ?)`,
+    ).run(eventId, student.id, latestAssessment.sessionId, labId, timestamp, JSON.stringify(event), timestamp)
+    db.exec('COMMIT')
+    return { ok: true, acceptanceId, assessmentId, revision, eventId, acceptedAt: timestamp }
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
 }
 
 export function listUsers() {

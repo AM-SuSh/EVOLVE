@@ -6,6 +6,7 @@ import test, { after } from 'node:test'
 import { assessLearningV2 } from './rubric-v2.mjs'
 import { deriveMasteryUpdates } from './mastery.mjs'
 import { evaluateReviewGates } from './review-gates.mjs'
+import { validateInteractionEvent } from '../tutor/contracts.mjs'
 
 const tempRoot = mkdtempSync(path.join(tmpdir(), 'os-lab-db-'))
 process.env.OS_LAB_DB_PATH = path.join(tempRoot, 'learning.db')
@@ -217,6 +218,64 @@ test('migration binds events and immutable runs to the authenticated user', () =
   assert.deepEqual(audited.decisions.map((decision) => decision.revision), [1, 2])
   assert.equal(audited.decisions[0].correctedResult.total, 88)
   assert.equal(learningDb.getAssessmentInput(session.id, 'learning-1', 'lab2').events.some((event) => event.type === 'teacher_reviewed'), true)
+
+  const latestAssessment = {
+    ...assessment,
+    sessionId: 'learning-acceptance',
+    total: Math.max(0, assessment.total - 1),
+  }
+  const latestSaved = learningDb.saveAssessment(session.id, latestAssessment)
+  const beforeReport = learningDb.getReportAssessment('member-c-test', 'lab2')
+  assert.equal(beforeReport.hasReport, false)
+  assert.equal(beforeReport.assessment.assessmentId, latestSaved.assessmentId)
+  assert.equal(beforeReport.assessmentReview, null)
+  assert.equal(beforeReport.acceptance, null)
+  const noReportAcceptance = learningDb.submitReportAcceptance(teacher.id, {
+    user: 'member-c-test',
+    labId: 'lab2',
+    assessmentId: latestSaved.assessmentId,
+    finalScore: { total: 91, dimensions: { process: 90, result: 100, reflection: 75 } },
+    feedback: '报告反馈',
+    acceptanceAdvice: '继续保留证据链。',
+  })
+  assert.equal(noReportAcceptance.ok, false)
+  assert.match(noReportAcceptance.error, /尚未提交/)
+
+  learningDb.submitReport(session.id, 'lab2', '# Lab2 report')
+  const firstAcceptance = learningDb.submitReportAcceptance(teacher.id, {
+    user: 'member-c-test',
+    labId: 'lab2',
+    assessmentId: latestSaved.assessmentId,
+    finalScore: { total: 91, dimensions: { process: 90, result: 100, reflection: 75 } },
+    feedback: '报告结构完整，证据引用有效。',
+    acceptanceAdvice: '后续说明调度边界条件。',
+  })
+  assert.equal(firstAcceptance.ok, true)
+  assert.equal(firstAcceptance.revision, 1)
+  const secondAcceptance = learningDb.submitReportAcceptance(teacher.id, {
+    user: 'member-c-test',
+    labId: 'lab2',
+    assessmentId: latestSaved.assessmentId,
+    finalScore: { total: 93, dimensions: { process: 92, result: 100, reflection: 80 } },
+    feedback: '补充说明后通过最终验收。',
+    acceptanceAdvice: '将因果链迁移到下一实验。',
+  })
+  assert.equal(secondAcceptance.revision, 2)
+  const acceptanceBundle = learningDb.getReportAssessment('member-c-test', 'lab2')
+  assert.equal(acceptanceBundle.assessment.assessmentId, latestSaved.assessmentId)
+  assert.equal(acceptanceBundle.assessment.automaticResult.total, latestAssessment.total)
+  assert.equal(acceptanceBundle.acceptance.finalScore.total, 93)
+  assert.equal(acceptanceBundle.acceptanceHistory.length, 2)
+  assert.deepEqual(acceptanceBundle.acceptanceHistory.map((item) => item.revision), [2, 1])
+  assert.equal(acceptanceBundle.reportFeedback, '补充说明后通过最终验收。')
+  assert.equal(learningDb.listAssessmentReviews().length, 1)
+  assert.equal(learningDb.listAssessmentReviews()[0].automaticResult.total, assessment.total)
+  const acceptanceEvent = learningDb.getAssessmentInput(session.id, 'learning-acceptance', 'lab2').events
+    .find((event) => event.metadata?.acceptanceId === secondAcceptance.acceptanceId)
+  assert.equal(acceptanceEvent.type, 'teacher_reviewed')
+  assert.equal(acceptanceEvent.metadata.finalScore.total, 93)
+  assert.equal(validateInteractionEvent(acceptanceEvent), true)
+
   const mastery = learningDb.listMastery(session.id)
   assert.equal(mastery.length, 4)
   assert.equal(mastery.every((item) => item.assessmentId === saved.assessmentId), true)
