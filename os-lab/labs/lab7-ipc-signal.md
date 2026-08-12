@@ -253,7 +253,7 @@ make test-lab7
 ```text
 OpenSBI v1.7
   ...（OpenSBI 平台/HART 日志，可忽略）...
-os-lab kernel lab7: IPC and signals.
+EVOLVE kernel lab7: IPC and signals.
 dup_test pass
 signal_child ready        ← 可忽略的中间信息
 signal_test pass

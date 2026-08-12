@@ -242,7 +242,7 @@ async function resolveWorkRoot(user) {
       return { root: studentRootFor(safe), name: `student-labs/${safe}`, user: safe }
     }
   }
-  return { root: osLabRoot, name: 'os-lab', user: null }
+  return { root: osLabRoot, name: 'EVOLVE', user: null }
 }
 
 /**
@@ -3578,7 +3578,7 @@ const server = http.createServer(async (request, response) => {
 await seedLegacyClasses()
 
 server.listen(port, '127.0.0.1', () => {
-  console.log(`os-lab tutor proxy: http://127.0.0.1:${port}`)
+  console.log(`EVOLVE tutor proxy: http://127.0.0.1:${port}`)
   console.log(`framework: ${tutorRoutingMode === 'intent' ? 'intent-routing-v1' : 'multi-lab-v2.1'} · routing: ${tutorRoutingMode} · 默认上游: ${defaultUpstream} · 默认模型: ${defaultModel}`)
   console.log('账号体系: 注册（学生+班级）/登录 · 预置管理员 admin/admin123（请尽快改密码）· 教师入口 /guide/ai-tutor')
   console.log(`events: ${dataDir}`)

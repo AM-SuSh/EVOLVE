@@ -1,8 +1,8 @@
 {
-  "name": "os-lab-handbook",
+  "name": "evolve-handbook",
   "private": true,
   "version": "1.0.0",
-  "description": "os-lab 学习手册（VitePress 静态站）",
+  "description": "EVOLVE 学习手册（VitePress 静态站）",
   "type": "module",
   "scripts": {
     "sync": "node scripts/sync-content.mjs",

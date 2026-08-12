@@ -76,7 +76,7 @@ pub extern "C" fn rust_main() -> ! {
     #[cfg(not(any(feature = "lab2", feature = "lab3", feature = "lab4", feature = "lab5", feature = "lab6", feature = "lab7", feature = "lab8")))]
     {
         println!("Hello, OS!");
-        println!("os-lab kernel lab1 is running on QEMU virt.");
+        println!("EVOLVE kernel lab1 is running on QEMU virt.");
         os_sbi::shutdown();
     }
 
@@ -84,24 +84,24 @@ pub extern "C" fn rust_main() -> ! {
     {
         #[cfg(any(feature = "lab3", feature = "lab4", feature = "lab5", feature = "lab6", feature = "lab7", feature = "lab8"))]
         {
-            println!("os-lab kernel lab3: enabling virtual memory...");
+            println!("EVOLVE kernel lab3: enabling virtual memory...");
             mm::init();
             #[cfg(any(feature = "lab6", feature = "lab7", feature = "lab8"))]
             mm::map_mmio_devices();
-            println!("os-lab kernel lab3: virtual memory ready.");
+            println!("EVOLVE kernel lab3: virtual memory ready.");
         }
         #[cfg(feature = "lab8")]
         {
-            println!("os-lab kernel lab8: threads, blocking sync, deadlock detection.");
+            println!("EVOLVE kernel lab8: threads, blocking sync, deadlock detection.");
         }
         #[cfg(all(feature = "lab7", not(feature = "lab8")))]
         {
-            println!("os-lab kernel lab7: IPC and signals.");
+            println!("EVOLVE kernel lab7: IPC and signals.");
         }
         #[cfg(all(feature = "lab6", not(any(feature = "lab7", feature = "lab8"))))]
         {
             os_alloc::init_heap();
-            println!("os-lab kernel lab6: VirtIO disk filesystem.");
+            println!("EVOLVE kernel lab6: VirtIO disk filesystem.");
             sync::init();
             fs::init();
         }
@@ -120,7 +120,7 @@ pub extern "C" fn rust_main() -> ! {
         #[cfg(all(feature = "lab5", not(feature = "lab6")))]
         {
             os_alloc::init_heap();
-            println!("os-lab kernel lab5: filesystem and sync.");
+            println!("EVOLVE kernel lab5: filesystem and sync.");
             sync::init();
             fs::init();
         }

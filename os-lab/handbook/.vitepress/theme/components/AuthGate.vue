@@ -91,7 +91,7 @@ onMounted(async () => {
 <template>
   <div v-if="locked" class="ag-overlay">
     <div class="ag-card">
-      <p class="ag-brand"><span>OS</span> os-lab 操作系统学习平台</p>
+      <p class="ag-brand"><img :src="withBase('/logo.svg')" alt="" />EVOLVE 操作系统学习平台</p>
       <h1>{{ mode === 'login' ? '登录' : '学生注册' }}</h1>
 
       <p v-if="serverDown" class="ag-warn">
@@ -182,16 +182,10 @@ onMounted(async () => {
   font-weight: 600;
 }
 
-.ag-brand span {
-  display: grid;
+.ag-brand img {
   width: 34px;
   height: 34px;
-  color: var(--ws-accent-contrast);
   border-radius: 8px;
-  background: var(--vp-c-brand-1);
-  place-items: center;
-  font-size: 13px;
-  font-weight: 700;
   box-shadow: 0 4px 12px color-mix(in srgb, var(--vp-c-brand-1) 34%, transparent);
 }
 

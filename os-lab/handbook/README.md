@@ -1,4 +1,4 @@
-# os-lab 学习手册
+# EVOLVE 学习手册
 
 基于 [VitePress](https://vitepress.dev/) 的静态学习门户，聚合自研教学文档并提供学习进度勾选与验证命令复制。学生入门请先读 `guide/start.md`（规划 Lab1–8）。
 

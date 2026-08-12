@@ -8,7 +8,7 @@
       "guide": "/labs/lab1-bare-metal",
       "answers": "/answers/lab1-answers",
       "verifyCmd": "cargo run -p kernel --features lab1 --release",
-      "expected": ["Hello, OS!", "os-lab kernel lab1 is running on QEMU virt."],
+      "expected": ["Hello, OS!", "EVOLVE kernel lab1 is running on QEMU virt."],
       "checklist": [
         { "id": "read", "label": "阅读实验指导（问题场景 + 背景知识）" },
         { "id": "run", "label": "在 QEMU 中跑通 lab1" },

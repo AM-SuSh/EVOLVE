@@ -91,7 +91,7 @@ pub use disk::*;
 
 ```rust
 os_alloc::init_heap();
-println!("os-lab kernel lab6: VirtIO disk filesystem.");
+println!("EVOLVE kernel lab6: VirtIO disk filesystem.");
 sync::init();
 fs::init();
 // ...
@@ -400,7 +400,7 @@ make test-lab6
 **预期输出**（前面 OpenSBI 日志可忽略）：
 
 ```text
-os-lab kernel lab6: VirtIO disk filesystem.
+EVOLVE kernel lab6: VirtIO disk filesystem.
 file_test pass
 Test link OK!
 mass open/unlink OK!

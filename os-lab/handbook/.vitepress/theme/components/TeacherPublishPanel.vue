@@ -8,7 +8,6 @@ import {
   Eye,
   EyeOff,
   FileText,
-  FlaskConical,
   Megaphone,
   Plus,
   RefreshCw,
@@ -23,7 +22,6 @@ import {
 } from 'lucide-vue-next'
 import { buildXlsxBlob } from '../../../export-xlsx.mjs'
 import { authHeaders, type TutorLab } from '../tutor-model'
-import FinalProjectEditor, { type FinalProjectDraft } from './FinalProjectEditor.vue'
 import {
   DEFAULT_REPORT_TEMPLATE,
   cloneTemplate,
@@ -54,7 +52,6 @@ interface ScopeConfig {
   assignments?: Record<string, string>
   notice?: string
   schedules?: Record<string, ScheduleEntry>
-  finalProject?: FinalProjectDraft | null
 }
 
 interface TeacherLlmConfig {
@@ -110,8 +107,6 @@ const llmChecking = ref(false)
 const llmConnection = ref<'idle' | 'connected' | 'offline'>('idle')
 const llmDetail = ref('')
 const llmActiveModel = ref('')
-
-const finalProjectScope = ref('')
 
 /** 当前 Lab 的报告版式草稿（全局布置，学生端拉取）。 */
 const reportDraft = ref<ReportTemplate>(cloneTemplate(DEFAULT_REPORT_TEMPLATE))
@@ -403,66 +398,6 @@ async function clearTeacherLlm() {
     '教师统一模型配置已清除，正在检测环境默认配置。',
   )
   if (ok) await checkTeacherLlmConnection()
-}
-
-/** 期末任务按作用域就近读取：学生 > 班级 > 全局；未设置时回落上一级。 */
-function finalProjectFor(scopeKey: string): FinalProjectDraft | null | undefined {
-  if (!overview.value) return null
-  if (scopeKey.startsWith('student:')) {
-    const user = scopeKey.slice(8)
-    const own = overview.value.config.students[user]?.finalProject
-    if (own) return own
-    const student = overview.value.students.find((item) => item.user === user)
-    const className = String(student?.className || '').trim()
-    const classProject = className ? overview.value.config.classes[className]?.finalProject : null
-    return classProject || overview.value.config.finalProject
-  }
-  if (scopeKey) return overview.value.config.classes[scopeKey]?.finalProject || overview.value.config.finalProject
-  return overview.value.config.finalProject
-}
-
-const finalProjectSeed = computed<FinalProjectDraft>(() => {
-  const current = finalProjectFor(finalProjectScope.value)
-  return {
-    title: current?.title || '期末探索实验',
-    kind: current?.kind || 'open',
-    description: current?.description || '',
-    mechanisms: Array.isArray(current?.mechanisms) ? [...current.mechanisms] : [],
-    verificationCommand: current?.verificationCommand || '',
-    rubric:
-      Array.isArray(current?.rubric) && current.rubric.length
-        ? [...current.rubric]
-        : ['提案质量', '机制运用', '可信证据', '反思与迁移'],
-    leaderboard: current?.leaderboard
-      ? {
-          metrics: current.leaderboard.metrics.map((metric) => ({ ...metric })),
-        }
-      : undefined,
-  }
-})
-
-async function publishFinalProject(draft: FinalProjectDraft) {
-  if (busy.value) return
-  if (!draft.title || !draft.description) {
-    note.value = '期末探索任务至少需要名称和任务书。'
-    noteOk.value = false
-    return
-  }
-  await publish(
-    scopeOf(finalProjectScope.value),
-    { finalProject: draft },
-    `${scopeName(finalProjectScope.value)}：期末探索任务已发布。`,
-  )
-}
-
-async function clearFinalProject() {
-  if (busy.value) return
-  if (!window.confirm(`确认清除「${scopeName(finalProjectScope.value)}」的期末探索任务？`)) return
-  await publish(
-    scopeOf(finalProjectScope.value),
-    { clearFinalProject: true },
-    `${scopeName(finalProjectScope.value)}：已清除期末探索任务。`,
-  )
 }
 
 async function createClass() {
@@ -1159,34 +1094,6 @@ onMounted(load)
             </button>
           </div>
         </div>
-      </section>
-
-      <section class="ws-pub-block">
-        <div class="ws-pub-section-title">
-          <span>07</span>
-          <div>
-            <h3>期末探索任务</h3>
-            <p>创建并发布 Lab9 探索实验；学生完成 Lab8 后自动解锁该节点。</p>
-          </div>
-        </div>
-
-        <div class="ws-pub-final-scope">
-          <FlaskConical :size="15" aria-hidden="true" />
-          <select v-model="finalProjectScope" aria-label="期末探索任务发布范围">
-            <option value="">全体学生</option>
-            <option v-for="c in classList" :key="c" :value="c">仅 {{ c }}</option>
-            <option v-if="studentSel" :value="`student:${studentSel}`">仅 {{ studentSel }}</option>
-          </select>
-        </div>
-
-        <FinalProjectEditor
-          :key="finalProjectScope"
-          :initial="finalProjectSeed"
-          :busy="busy"
-          @save="publishFinalProject"
-          @clear="clearFinalProject"
-        />
-
       </section>
     </div>
 
@@ -2139,23 +2046,6 @@ onMounted(load)
   color: var(--ws-ink);
   font-size: 12px;
   line-height: 1.5;
-}
-
-.ws-pub-final-scope {
-  display: flex;
-  align-items: center;
-  gap: var(--ws-space-2);
-  margin-bottom: var(--ws-space-3);
-  color: var(--ws-ink-muted);
-}
-
-.ws-pub-final-scope svg {
-  flex: 0 0 auto;
-  color: var(--ws-accent);
-}
-
-.ws-pub-final-scope select {
-  flex: 1 1 auto;
 }
 
 @media (max-width: 1180px) {

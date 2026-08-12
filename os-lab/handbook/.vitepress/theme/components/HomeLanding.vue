@@ -13,7 +13,7 @@ import { ArrowRight, Check, Play } from 'lucide-vue-next'
           Rust · RISC-V 64 · QEMU
         </div>
         <h1 id="os-home-title" class="os-brand os-reveal os-delay-1">
-          <span class="os-brand-mark">EVOlVE</span>
+          <span class="os-brand-mark">EVOLVE</span>
           <span class="os-brand-expand">
             <span class="os-brand-expand-line">Evolving Virtual OS Learning</span>
             <span class="os-brand-expand-line">&amp; Verification Environment</span>
@@ -45,7 +45,7 @@ import { ArrowRight, Check, Play } from 'lucide-vue-next'
             <span class="os-terminal-dot"></span>
             <span class="os-terminal-dot"></span>
             <span class="os-terminal-dot"></span>
-            <span class="os-terminal-title">os-lab-kernel — qemu-system-riscv64</span>
+            <span class="os-terminal-title">EVOLVE kernel — qemu-system-riscv64</span>
           </div>
           <div class="os-terminal-body">
             <div class="os-terminal-line">

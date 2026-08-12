@@ -51,7 +51,7 @@ interface OpenTab {
 }
 
 const tree = ref<FsNode[]>([])
-const rootName = ref('os-lab')
+const rootName = ref('EVOLVE')
 const expanded = ref<Set<string>>(new Set())
 const loading = ref(false)
 const error = ref('')
@@ -130,7 +130,7 @@ async function loadTree() {
     if (!response.ok) throw new Error(`导师服务返回 ${response.status}`)
     const payload = await response.json()
     tree.value = payload.tree || []
-    rootName.value = payload.root || 'os-lab'
+    rootName.value = payload.root || 'EVOLVE'
     expanded.value = new Set(tree.value.filter((n) => n.type === 'dir').map((n) => n.path))
   } catch (err) {
     error.value =

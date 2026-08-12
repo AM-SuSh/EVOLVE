@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 const handbookRoot = fileURLToPath(new URL('..', import.meta.url))
 
 export default withMermaid(defineConfig({
-  title: 'EVOlVE',
+  title: 'EVOLVE',
   description: 'Evolving Virtual OS Learning & Verification Environment',
   lang: 'zh-CN',
   srcDir: '.',
@@ -25,11 +25,11 @@ export default withMermaid(defineConfig({
   head: [['meta', { name: 'theme-color', content: '#126a73' }]],
   themeConfig: {
     logo: '/logo.svg',
-    // 引导式学习是主入口；进度勾选/验证速查从顶栏移入侧栏，避免与工作台重复。
+    // 同一路由按登录角色显示「教师工作台」或「引导式学习」。
     nav: [
       { text: '首页', link: '/' },
       { text: '入门指南', link: '/guide/start' },
-      { text: '引导式学习', link: '/guide/ai-tutor' },
+      { component: 'RoleLearningNav' },
       { text: '学习材料', link: '/materials' },
     ],
     // 学生侧栏只保留入门三页；进度勾选/验证速查/项目文档已从学生导航移除。
@@ -38,7 +38,7 @@ export default withMermaid(defineConfig({
         {
           text: '入门指南',
           items: [
-            { text: '认识 os-lab', link: '/guide/start' },
+            { text: '认识 EVOLVE', link: '/guide/start' },
             { text: '引导式学习', link: '/guide/ai-tutor' },
             { text: '环境安装', link: '/setup/environment' },
           ],
@@ -48,7 +48,7 @@ export default withMermaid(defineConfig({
         {
           text: '入门指南',
           items: [
-            { text: '认识 os-lab', link: '/guide/start' },
+            { text: '认识 EVOLVE', link: '/guide/start' },
             { text: '引导式学习', link: '/guide/ai-tutor' },
             { text: '环境安装', link: '/setup/environment' },
           ],
@@ -57,7 +57,7 @@ export default withMermaid(defineConfig({
     },
     socialLinks: [],
     footer: {
-      message: 'os-lab 自研操作系统教学实验环境',
+      message: 'EVOLVE 自研操作系统教学实验环境',
       copyright: 'BSD-3-Clause',
     },
     outline: { level: [2, 3] },

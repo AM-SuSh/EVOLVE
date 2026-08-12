@@ -1,6 +1,6 @@
 ---
 layout: home
-title: EVOlVE
+title: EVOLVE
 description: Evolving Virtual OS Learning & Verification Environment
 footer: false
 ---

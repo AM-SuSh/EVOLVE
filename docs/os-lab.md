@@ -211,7 +211,7 @@ cargo run-lab1
 
 ```text
 Hello, OS!
-os-lab kernel lab1 is running on QEMU virt.
+EVOLVE kernel lab1 is running on QEMU virt.
 ```
 
 OpenSBI 日志中应出现：
@@ -233,7 +233,7 @@ cargo run -p kernel --features lab2
 成功标准：
 
 ```text
-os-lab kernel lab2: trap and multitask.
+EVOLVE kernel lab2: trap and multitask.
 Loading 3 user apps (batch slot at 0x80400000)...
 Hello from user app!
 Power test start
@@ -266,8 +266,8 @@ cargo run -p kernel --features lab3
 成功标准：
 
 ```text
-os-lab kernel lab3: enabling virtual memory...
-os-lab kernel lab3: virtual memory ready.
+EVOLVE kernel lab3: enabling virtual memory...
+EVOLVE kernel lab3: virtual memory ready.
 Loading 3 user apps (batch slot at 0x80400000)...
 Hello from user app!
 Power test start
@@ -328,7 +328,7 @@ cargo run -p kernel --features lab5 --release
 成功标准：
 
 ```text
-os-lab kernel lab5: filesystem and sync.
+EVOLVE kernel lab5: filesystem and sync.
 Hello from testfile!
 fs_test pass
 pipe says hi

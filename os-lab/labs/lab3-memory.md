@@ -262,9 +262,9 @@ fn new_ppn(ppn: PhysPageNum, perm: MapPermission) -> Self {
 在 `kernel/src/main.rs` 中，Lab3 及以上 feature 会在 trap / 任务初始化之前调用：
 
 ```rust
-println!("os-lab kernel lab3: enabling virtual memory...");
+println!("EVOLVE kernel lab3: enabling virtual memory...");
 mm::init();
-println!("os-lab kernel lab3: virtual memory ready.");
+println!("EVOLVE kernel lab3: virtual memory ready.");
 ```
 
 `kernel/src/mm.rs` 的 `init` 大致做这些事：

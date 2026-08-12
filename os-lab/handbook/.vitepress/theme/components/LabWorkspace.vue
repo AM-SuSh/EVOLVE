@@ -2730,7 +2730,7 @@ function enterFinal() {
 function exportGrowth() {
   exportEventsAsJsonl(
     events.value,
-    `os-lab-growth-record-${new Date().toISOString().slice(0, 10)}.jsonl`,
+    `EVOLVE-growth-record-${new Date().toISOString().slice(0, 10)}.jsonl`,
   )
   toast('成长档案已导出为 JSONL。')
 }
@@ -3816,7 +3816,7 @@ onBeforeUnmount(() => {
         <h2>模型设置</h2>
         <p v-if="!studentLlmAllowed" class="ws-modal-hint">
           <strong>当前班级由老师统一配置模型</strong>，学生自配不生效——直接关闭本窗口即可使用；
-          有疑问找老师在引导式学习工作台调整。
+          有疑问找老师在教师工作台调整。
         </p>
         <p v-else class="ws-modal-hint">
           配置只保存在本机浏览器，随每次提问发给本地导师服务；全部留空表示使用老师统一配置

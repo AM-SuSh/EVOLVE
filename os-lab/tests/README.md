@@ -39,7 +39,7 @@ cargo run -p kernel --features lab1
 
 本机 Git 不在 `D:\AppGallery\Git` 时，将第一行改为 `activate-os-env.local.ps1`。
 
-成功标准：QEMU 输出 `Hello, OS!` 与 `os-lab kernel lab1 is running on QEMU virt.`，进程 exit code 0。
+成功标准：QEMU 输出 `Hello, OS!` 与 `EVOLVE kernel lab1 is running on QEMU virt.`，进程 exit code 0。
 
 ## 链接脚本校验（成员 B Day1）
 
@@ -80,7 +80,7 @@ cargo run -p kernel --features lab2
 QEMU 输出中应依次出现：
 
 ```text
-os-lab kernel lab2: trap and multitask.
+EVOLVE kernel lab2: trap and multitask.
 Loading 3 user apps ...
 Hello from user app!
 App 0 exited with code 0
@@ -213,7 +213,7 @@ cargo run -p kernel --features lab5 --release
 QEMU 输出中应出现（OpenSBI 启动日志可忽略）：
 
 ```text
-os-lab kernel lab5: filesystem and sync.
+EVOLVE kernel lab5: filesystem and sync.
 Hello from testfile!
 fs_test pass
 pipe says hi
@@ -268,7 +268,7 @@ Linux/macOS：将 `cargo test` 的 `--target` 换为对应 host triple；`os-vm`
 | lab4 | `I am parent`、`I am child`、`fork_test pass`、`All processes exited.` |
 | lab3 | `409684505`、5 轮 `Yield round`、`All user apps exited.` |
 | lab2 | `409684505`、5 轮 `Yield round`、`All user apps exited.` |
-| lab1 | `Hello, OS!`、`os-lab kernel lab1 is running on QEMU virt.` |
+| lab1 | `Hello, OS!`、`EVOLVE kernel lab1 is running on QEMU virt.` |
 
 各 Lab 细则见上文 Day1–Day5 各节。
 
@@ -336,7 +336,7 @@ Linux/macOS：将 `cargo test` 的 `--target` 换为对应 host triple；`os-vm`
 - [ ] Lab4 QEMU：`I am parent`/`I am child`、`fork_test pass`、`All processes exited.`
 - [ ] Lab3 QEMU：5 轮 `Yield round`、`All user apps exited.`
 - [ ] Lab2 QEMU：`409684505`、`All user apps exited.`
-- [ ] Lab1 QEMU：`Hello, OS!`、`os-lab kernel lab1 is running on QEMU virt.`
+- [ ] Lab1 QEMU：`Hello, OS!`、`EVOLVE kernel lab1 is running on QEMU virt.`
 - [ ] `cargo check -p kernel --features lab1`…`lab5` 均可编译
 
 **说明**：全 workspace 与各 lab feature 的 `cargo clippy -- -D warnings` 均已通过（2026-06-27 终验）。详见 [`docs/os-lab.md` §5.11](../../docs/os-lab.md#511-完整验证) 与 [仓库总览](../../README.md)。
@@ -359,7 +359,7 @@ cargo test -p os-fs --target x86_64-pc-windows-msvc
 QEMU 输出应包含（顺序大致如下，OpenSBI 日志可忽略）：
 
 ```text
-os-lab kernel lab6: VirtIO disk filesystem.
+EVOLVE kernel lab6: VirtIO disk filesystem.
 file_test pass
 Test link OK!
 mass open/unlink OK!

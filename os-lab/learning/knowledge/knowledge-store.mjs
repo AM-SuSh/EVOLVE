@@ -363,7 +363,7 @@ export function openKnowledgeStore(options = {}) {
     const manifestRaw = readFileSync(absoluteManifest, 'utf8')
     const manifest = JSON.parse(manifestRaw)
     const sourceId = String(manifest.sourceId || 'platform-lab-manuals')
-    const sourceTitle = String(options.title || 'OS Lab 本地实验手册')
+    const sourceTitle = String(options.title || 'EVOLVE 本地实验手册')
     const inputHash = sha256(manifestRaw)
     ensureSource(sourceId, sourceTitle, actor)
     const runId = randomUUID()

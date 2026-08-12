@@ -103,7 +103,7 @@ qemu-system-riscv64 --version" />
 
 ```text
 Hello, OS!
-os-lab kernel lab1 is running on QEMU virt.
+EVOLVE kernel lab1 is running on QEMU virt.
 ```
 
 然后按顺序体验后续 Lab（Lab1–5 可用 cargo；Lab6–8 须用 make，需 VirtIO）：

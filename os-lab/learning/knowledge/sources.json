@@ -5,7 +5,7 @@
   "sources": [
     {
       "id": "platform-lab-manuals",
-      "title": "OS Lab 本地实验手册",
+      "title": "EVOLVE 本地实验手册",
       "status": "selected",
       "sourceType": "local-files",
       "format": "markdown",
@@ -27,7 +27,7 @@
     },
     {
       "id": "platform-lab-packages",
-      "title": "OS Lab 结构化概念与检查点",
+      "title": "EVOLVE 结构化概念与检查点",
       "status": "selected",
       "sourceType": "local-directory",
       "format": "yaml-markdown",
@@ -47,7 +47,7 @@
     },
     {
       "id": "platform-published-catalog",
-      "title": "OS Lab 发布目录",
+      "title": "EVOLVE 发布目录",
       "status": "selected",
       "sourceType": "local-files",
       "format": "json",

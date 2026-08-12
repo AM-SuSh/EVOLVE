@@ -13,6 +13,7 @@ import TutorEntry from './components/TutorEntry.vue'
 import HomeLanding from './components/HomeLanding.vue'
 import KnowledgeManager from './components/KnowledgeManager.vue'
 import FinalProjectPublishPanel from './components/FinalProjectPublishPanel.vue'
+import RoleLearningNav from './components/RoleLearningNav.vue'
 
 export default {
   extends: DefaultTheme,
@@ -26,5 +27,6 @@ export default {
     app.component('HomeLanding', HomeLanding)
     app.component('KnowledgeManager', KnowledgeManager)
     app.component('FinalProjectPublishPanel', FinalProjectPublishPanel)
+    app.component('RoleLearningNav', RoleLearningNav)
   },
 } satisfies Theme

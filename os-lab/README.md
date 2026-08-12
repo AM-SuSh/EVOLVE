@@ -1,4 +1,4 @@
-# os-lab：自研操作系统教学实验环境
+# EVOLVE：自研操作系统教学实验环境
 
 基于 Rust + RISC-V 64 的单内核渐进式教学实验环境。学生通过切换 `lab1` 到 `lab5` 的 feature，在同一套代码库中观察内核从裸机到完整系统的演进。
 
@@ -31,7 +31,7 @@ cargo run -p kernel --features lab1 --release
 
 ```text
 Hello, OS!
-os-lab kernel lab1 is running on QEMU virt.
+EVOLVE kernel lab1 is running on QEMU virt.
 ```
 
 4. 按顺序体验完整演进：

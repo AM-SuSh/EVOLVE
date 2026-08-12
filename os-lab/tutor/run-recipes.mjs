@@ -39,7 +39,7 @@ const definitions = {
         hint: '内核入口没有打印该行：检查 main 是否真的执行 println，并确认 lab1 feature 已启用。',
       },
       {
-        text: 'os-lab kernel lab1 is running on QEMU virt.',
+        text: 'EVOLVE kernel lab1 is running on QEMU virt.',
         hint: 'QEMU 启动信息缺失：检查链接地址、启动流程和 main 的执行路径，确认 OpenSBI 之后内核真的运行到打印处。',
       },
     ],

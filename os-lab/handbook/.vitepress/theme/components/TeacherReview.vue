@@ -236,12 +236,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   <div class="tr">
     <header class="tr-topbar">
       <a class="tr-brand" :href="withBase('/guide/ai-tutor')">
-        <span>OS</span>
-        <div><strong>os-lab 实验验收</strong><small>提交检查与学习反馈</small></div>
+        <img :src="withBase('/logo.svg')" alt="" />
+        <div><strong>EVOLVE 实验验收</strong><small>提交检查与学习反馈</small></div>
       </a>
       <div class="tr-topbar-actions">
         <span>{{ teacherName }}</span>
-        <a :href="withBase('/guide/ai-tutor')"><ArrowLeft :size="15" aria-hidden="true" />引导式学习</a>
+        <a :href="withBase('/guide/ai-tutor')"><ArrowLeft :size="15" aria-hidden="true" />教师工作台</a>
         <button type="button" title="刷新提交" aria-label="刷新提交" @click="load"><RefreshCw :size="15" aria-hidden="true" /></button>
       </div>
     </header>
@@ -250,7 +250,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       <ClipboardCheck :size="28" aria-hidden="true" />
       <strong>需要教师账号</strong>
       <p>请先登录教师账号，再进入实验验收。</p>
-      <a :href="withBase('/guide/ai-tutor')">返回引导式学习</a>
+      <a :href="withBase('/guide/ai-tutor')">返回教师工作台</a>
     </div>
 
     <div v-else-if="authed" class="tr-body">
@@ -558,17 +558,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   text-decoration: none;
 }
 
-.tr-brand > span {
-  display: grid;
+.tr-brand > img {
   width: 30px;
   height: 30px;
-  color: var(--ws-accent-contrast);
   border-radius: var(--ws-radius-sm);
-  background: var(--ws-accent);
-  place-items: center;
-  font-family: var(--ws-font-mono);
-  font-size: var(--ws-text-xs);
-  font-weight: var(--ws-weight-bold);
 }
 
 .tr-brand strong,

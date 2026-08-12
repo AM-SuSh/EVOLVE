@@ -298,7 +298,7 @@ async function onOpenEvidence(refValue: string) {
   if (!raw) return
   try {
     await navigator.clipboard.writeText(raw)
-    toast.value = `已复制 ${shortRef(raw)}（教师页无学生工作台，请到引导式学习中跳转面板）`
+    toast.value = `已复制 ${shortRef(raw)}（教师页无学生工作台，请到教师工作台中跳转面板）`
   } catch {
     toast.value = `${raw}（教师页仅展示/复制引用，不跳转学生 IDE）`
   }
@@ -330,7 +330,7 @@ onMounted(() => {
   <main class="teacher-report">
     <header class="teacher-report-header">
       <div>
-        <span>os-lab · 教师端 · 评分复核</span>
+        <span>EVOLVE · 教师端 · 评分复核</span>
         <h1>{{ active ? `${selectedLab.label} · 评分复核` : '评分复核（评分 v2）' }}</h1>
         <p>
           只读展示服务端 automaticResult；改分经 POST /teacher/review 留痕，不覆盖自动分。
@@ -374,8 +374,8 @@ onMounted(() => {
     <section v-if="denied" class="teacher-empty">
       <ShieldAlert :size="28" aria-hidden="true" />
       <h2>需要教师账号</h2>
-      <p>请先在引导式学习登录教师账号，再打开本页进行评分复核。</p>
-      <a :href="withBase('/guide/ai-tutor')">返回引导式学习</a>
+      <p>请先登录教师账号，再打开本页进行评分复核。</p>
+      <a :href="withBase('/guide/ai-tutor')">返回教师工作台</a>
     </section>
 
     <div v-else class="teacher-layout">

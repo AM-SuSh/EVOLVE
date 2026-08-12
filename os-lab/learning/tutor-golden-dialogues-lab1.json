@@ -87,7 +87,7 @@
       "expect": "allow",
       "title": "已有受信运行，请求深化启动链解释",
       "stage": "run",
-      "student_message": "受信验证已通过（run:demo-lab1-ok），我看到了 Hello, OS! 和 os-lab kernel lab1。请追问为什么链接地址必须是 0x80200000，不要给整段讲解。",
+      "student_message": "受信验证已通过（run:demo-lab1-ok），我看到了 Hello, OS! 和 EVOLVE kernel lab1。请追问为什么链接地址必须是 0x80200000，不要给整段讲解。",
       "context": {
         "has_trusted_run": true,
         "verified": true,

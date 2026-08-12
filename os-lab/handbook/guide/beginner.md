@@ -15,7 +15,7 @@
 
 ## 第一次进入前
 
-1. 阅读[认识 os-lab](/guide/start)，了解 Lab1–Lab8 的顺序和它们与 OSTEP 的对应关系。
+1. 阅读[认识 EVOLVE](/guide/start)，了解 Lab1–Lab8 的顺序和它们与 OSTEP 的对应关系。
 2. 如果本机还没有工具，按[环境安装](/setup/environment)准备 Rust、RISC-V 目标和 QEMU。
 3. 从[引导式学习](/guide/ai-tutor)进入工作台，或者直接打开当前已分发的 Lab，例如 [Lab1 工作台](/learn/lab1)。
 4. 只做教师已经分发、并且你已经领取的 Lab。后续 Lab 被锁定时，不是页面坏了，而是前一层的可信验证/复盘尚未完成，或老师还没有按范围分发这一层。
@@ -175,4 +175,4 @@ make test-labN
 
 请保留以下信息再求助：当前 Lab、执行的完整命令、第一条失败信息、测试结果中的期望/实际值、相关代码行，以及你自己的判断。这样导师或老师可以沿着证据回到具体位置，而不是只能猜测“哪里可能有问题”。
 
-更详细的组件行为见[工作台 UI 说明](/docs/workbench-ui)；课程地图和环境准备见[认识 os-lab](/guide/start)。
+更详细的组件行为见[工作台 UI 说明](/docs/workbench-ui)；课程地图和环境准备见[认识 EVOLVE](/guide/start)。

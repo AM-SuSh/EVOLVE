@@ -369,7 +369,7 @@ OpenSBI v1.7
   ...（OpenSBI 平台/HART 日志，可忽略）...
 Boot HART MEDELEG           : 0x0000000000f4b509
 Hello, OS!                              ← 你的内核从这里开始输出
-os-lab kernel lab1 is running on QEMU virt.
+EVOLVE kernel lab1 is running on QEMU virt.
 ```
 
 **通过标准**：看到 `Hello, OS!` 且 QEMU 自动退出（终端命令返回，没有卡住或报错）。
@@ -421,7 +421,7 @@ println!("Hello, OS! 我是 xxx");
 | 验证项      | 命令                                                     | 通过标准                                                       |
 | -------- | ------------------------------------------------------ | ---------------------------------------------------------- |
 | 主编译      | `cargo check -p kernel --features lab1`                | 无 error                                                    |
-| QEMU     | `cargo run -p kernel --features lab1 --release`        | `Hello, OS!`、`os-lab kernel lab1 is running on QEMU virt.` |
+| QEMU     | `cargo run -p kernel --features lab1 --release`        | `Hello, OS!`、`EVOLVE kernel lab1 is running on QEMU virt.` |
 | 组件单测（可选） | `cargo test -p os-sbi --target x86_64-pc-windows-msvc` | 2 项通过                                                      |
 
 

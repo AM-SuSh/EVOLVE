@@ -522,7 +522,7 @@ cargo run -p kernel --features lab5 --release
 ```text
 OpenSBI v1.7
   ...（OpenSBI 平台/HART 日志，可忽略）...
-os-lab kernel lab5: filesystem and sync.
+EVOLVE kernel lab5: filesystem and sync.
 Loading 5 user apps (ELF, lab4 process model)...
 Hello from testfile!
 fs_test pass

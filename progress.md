@@ -1,4 +1,29 @@
-# os-lab 项目进度总览
+# EVOLVE 项目进度总览
+
+## 2026-08-12 - Task: 收口教师工作台入口并完成 EVOLVE 品牌迁移
+
+### What was done
+- 删除每个 Lab 教师端「教学安排」右栏中重复的 **07 期末探索任务**，以及对应的编辑器引用、作用域状态、发布/清除逻辑和样式；期末任务统一由独立页 `/teacher/final-project` 发布和管理。
+- 将顶部主入口改为角色感知导航：教师账号显示「教师工作台」，学生账号仍显示「引导式学习」；桌面导航与移动菜单复用同一组件和 `/guide/ai-tutor` 角色分流路由。
+- 将用户可见品牌统一为全大写 `EVOLVE`，修正此前 `EVOlVE` 大小写不一致；覆盖站点标题、首页、登录弹窗、页脚、入门侧栏、教师评分/验收页、代码树根节点、成长档案文件名、Tutor 服务日志和 handbook 包元数据。
+- 登录弹窗和教师验收页不再各自显示旧「OS」方标，统一复用 `public/logo.svg` 中的 `EV` 品牌标。
+- 同步更新 AI 导师系统身份、知识库来源标题、QEMU 内核启动横幅，以及 Lab1 可信验证断言、手册、参考答案和测试说明，确保品牌改名后运行契约仍然一致。
+- 保留 `os-lab/` 物理目录、`OS_LAB_*` 环境变量、`learning/os-lab.db`、浏览器存储键和历史评测快照，避免破坏现有部署、用户登录态、学习数据与可追溯记录。
+
+### Testing
+- `npm test`：通过，104 项测试全绿。
+- `npm run build`：通过；同步 26 份 Markdown，VitePress 客户端/服务端 bundle 和页面渲染完成。
+- `cargo check -p kernel --features lab1`：通过。
+- `cargo run -p kernel --features lab1 --release`：通过；QEMU 实际输出 `Hello, OS!` 和 `EVOLVE kernel lab1 is running on QEMU virt.`，并正常退出。
+- `git diff --check`：通过；仅提示仓库现有的 LF/CRLF 行尾转换信息。
+- 本地预览已启动于 `http://127.0.0.1:4173/`；应用内浏览器当前无可用连接，因此未完成自动截图级视觉检查。
+
+### Notes
+- 主要改动：`TeacherPublishPanel.vue`、`RoleLearningNav.vue`、`AuthGate.vue`、`TeacherReport.vue`、`TeacherReview.vue`、`config.mts`、`kernel/src/main.rs`、`tutor/run-recipes.mjs`、Tutor Prompt、知识库来源配置及对应手册/验证文档。
+- `/guide/ai-tutor` 路由继续作为师生共用的角色分流入口；本轮只按角色调整展示名称，没有迁移 URL。
+- 历史评测记录中的旧品牌文本保持原样，作为当时运行结果的不可变快照。
+
+---
 
 ## 2026-08-11 - Task: 首页全称两行排版
 

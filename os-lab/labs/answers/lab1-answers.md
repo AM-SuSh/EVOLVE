@@ -48,7 +48,7 @@ pub extern "C" fn rust_main() -> ! {
     clear_bss();          // 1. 清零未初始化全局变量段
     console::init();      // 2. 控制台初始化（当前为空占位）
     println!("Hello, OS!");                 // 3. 输出
-    println!("os-lab kernel lab1 is running on QEMU virt.");
+    println!("EVOLVE kernel lab1 is running on QEMU virt.");
     os_sbi::shutdown();   // 4. 经独立 crate 关机
 }
 ```
