@@ -1158,6 +1158,7 @@ function reviewHasUnresolvedLeaves(review) {
 
 function reviewFollowupQuestion(turn, evaluation, kind = 'clarify') {
   const needsEvidence = evaluation.verdict === 'needs-evidence'
+  const missingPoints = (evaluation.missingPoints || []).slice(0, 2).join('；')
   return {
     questionId: `review-followup-${randomUUID()}`,
     conceptId: turn.conceptId,
@@ -1165,7 +1166,9 @@ function reviewFollowupQuestion(turn, evaluation, kind = 'clarify') {
     objective: evaluation.followUpObjective || turn.objective,
     prompt: needsEvidence
       ? `请先补充与“${turn.objective}”相关的可信运行或断言，再结合新证据说明你的判断。`
-      : `你刚才的回答还缺少关键因果关系。请围绕“${evaluation.followUpObjective || turn.objective}”，补充一个具体代码路径、运行现象或反例来说明。`,
+      : missingPoints
+        ? `你的回答已经覆盖了一部分。还想请你补充：${missingPoints}。可以结合一个具体代码路径、运行现象或反例来说明。`
+        : `围绕“${evaluation.followUpObjective || turn.objective}”，请再补充一个具体代码路径、运行现象或反例来完善你的解释。`,
     reason: kind === 'evidence' ? '原回答需要新的可信运行证据。' : '原回答需要一次有边界的澄清追问。',
     passCriteria: turn.passCriteria,
     evidenceRefs: turn.evidenceRefs,

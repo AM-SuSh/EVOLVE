@@ -60,7 +60,12 @@ Harness 对每一轮同时检查：
 4. `mastered/passed/correct/incorrect` 等判断是否绑定了有效证据。
 5. 是否只问一个可执行问题。
 
-Assessment Harness 应复用事件和证据引用 schema，但使用独立 fixture，例如“相同代码结果、不同反思质量”的样例，验证评分项是否只引用 `event:`、`run:`、`report:` 等真实记录。Tutor Harness 的通过不代表评分 Harness 通过，二者在 CI 中应分别报告。
+Assessment Harness 已实现于 [learning/assessment-harness.mjs](../learning/assessment-harness.mjs)，命令入口是 `learning/assessment-harness-cli.mjs`（`npm run test:assessment-harness`），fixture 为 `learning/fixtures/assessment-harness-cases-v1.json`，其中包含“相同代码结果、不同反思质量”的对照样例。它与 Tutor Harness 独立，检查两类用例：
+
+- 计划用例：题目数量与题型（2-5 题、必含 evidence-reflection 与 transfer）、`conceptId` 属于当前 Lab 目录、`evidenceRefs` 逐字来自 bundle 白名单、与近期问题不重复，以及叙事中立性——学生可见的 prompt/objective/passCriteria 不得要求固定叙事格式（如“先复述最初的错误判断”“按原假设 -> 修正后结论还原判断过程”）。
+- 回答用例：verdict 落在期望集合内、评价只引用 `event:`、`run:`、`report:` 等真实记录、`requiresRunEvidence` 的题目没有可信 verified run 时不得判 `passed`（口头回答不能覆盖运行证据），且未通过的评价必须给出 `missingPoints`/`missingEvidence` 与参考解释，不能只下结论。
+
+Tutor Harness 的通过不代表 Assessment Harness 通过，二者在 CI 中分别报告。
 
 ## 4. 知识库分层与 RAG 契约
 

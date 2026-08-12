@@ -1,0 +1,197 @@
+{
+  "version": "assessment-harness-cases-v1",
+  "bundles": {
+    "lab2-full": {
+      "labId": "lab2",
+      "sessionId": "assessment-harness-session",
+      "events": [
+        {
+          "id": "student-question",
+          "type": "student_message",
+          "stage": "debug",
+          "category": "debug",
+          "timestamp": "2026-08-12T01:00:00.000Z",
+          "content": "为什么 Yield 只执行了一轮？我的假设是任务状态没有回到 Ready。"
+        },
+        {
+          "id": "tutor-answer",
+          "type": "ai_response",
+          "stage": "debug",
+          "category": "debug",
+          "timestamp": "2026-08-12T01:00:01.000Z",
+          "content": "先检查 mark_current_suspended 后的状态以及下一轮调度选择。"
+        },
+        {
+          "id": "code-open",
+          "type": "code_open",
+          "stage": "debug",
+          "path": "kernel/src/task.rs",
+          "timestamp": "2026-08-12T01:01:00.000Z"
+        },
+        {
+          "id": "hint-2",
+          "type": "hint_requested",
+          "stage": "debug",
+          "hintLevel": 2,
+          "timestamp": "2026-08-12T01:01:30.000Z"
+        }
+      ],
+      "runs": [
+        {
+          "runId": "run-failed",
+          "trusted": true,
+          "verified": false,
+          "assertions": [
+            { "id": "yield-five-rounds", "passed": false, "observed": "1" },
+            { "id": "all-exited", "passed": true, "observed": "ok" }
+          ]
+        },
+        {
+          "runId": "run-passed",
+          "trusted": true,
+          "verified": true,
+          "assertions": [
+            { "id": "yield-five-rounds", "passed": true, "observed": "5" },
+            { "id": "all-exited", "passed": true, "observed": "ok" },
+            { "id": "hello-output", "passed": true, "observed": "ok" },
+            { "id": "power-result", "passed": true, "observed": "ok" }
+          ]
+        }
+      ],
+      "conversation": {
+        "messages": [
+          { "role": "student", "content": "为什么 Yield 只执行了一轮？" },
+          { "role": "assistant", "content": "先对比 Ready 和 Exited。", "hintLevel": 2 },
+          { "role": "student", "content": "我检查 task.rs 后认为 yield 应回到 Ready。" }
+        ]
+      },
+      "reportDraft": {
+        "markdownBody": "我先观察运行输出，再打开 task.rs 并修改状态转换。",
+        "sections": { "process": "失败后修改并重新运行。" }
+      },
+      "mastery": []
+    },
+    "lab2-no-verified": {
+      "labId": "lab2",
+      "sessionId": "assessment-harness-session-unverified",
+      "events": [
+        {
+          "id": "student-question",
+          "type": "student_message",
+          "stage": "debug",
+          "category": "debug",
+          "timestamp": "2026-08-12T01:00:00.000Z",
+          "content": "为什么 Yield 只执行了一轮？"
+        }
+      ],
+      "runs": [
+        {
+          "runId": "run-failed",
+          "trusted": true,
+          "verified": false,
+          "assertions": [
+            { "id": "yield-five-rounds", "passed": false, "observed": "1" },
+            { "id": "all-exited", "passed": true, "observed": "ok" }
+          ]
+        }
+      ],
+      "conversation": {
+        "messages": [
+          { "role": "student", "content": "为什么 Yield 只执行了一轮？" }
+        ]
+      },
+      "reportDraft": null,
+      "mastery": []
+    }
+  },
+  "cases": [
+    {
+      "id": "plan-baseline-grounded-and-narrative-neutral",
+      "type": "plan",
+      "bundle": "lab2-full",
+      "tags": ["plan-shape", "evidence-grounding", "narrative-neutral"],
+      "expected": {
+        "requiredKinds": ["evidence-reflection", "transfer"],
+        "forbiddenPatterns": [
+          "最初的判断",
+          "初始判断",
+          "原假设",
+          "复述.{0,8}(错误|判断|观点)",
+          "还原.{0,12}判断过程",
+          "先说出.{0,12}判断",
+          "按.{0,20}(格式|顺序|叙事)"
+        ]
+      }
+    },
+    {
+      "id": "plan-rotation-rejects-repeated-prompts",
+      "type": "plan",
+      "bundle": "lab2-full",
+      "rotatePrevious": true,
+      "tags": ["novelty"],
+      "expected": {
+        "requiredKinds": [],
+        "forbiddenPatterns": [
+          "最初的判断",
+          "初始判断",
+          "原假设",
+          "复述.{0,8}(错误|判断|观点)"
+        ]
+      }
+    },
+    {
+      "id": "answer-correct-mechanism-without-narrative",
+      "type": "answer",
+      "bundle": "lab2-full",
+      "tags": ["same-run-different-reflection", "no-narrative-required"],
+      "question": {
+        "questionId": "harness-q1",
+        "conceptId": "os.sched.task-state",
+        "kind": "evidence-reflection",
+        "objective": "确认任务状态转换的机制理解与证据对应",
+        "prompt": "结合一条运行现象或代码路径，解释 yield 与 exit 后任务状态分别如何变化？",
+        "passCriteria": ["yield 后回到 Ready", "exit 后进入 Exited"],
+        "evidenceRefs": ["run:run-passed"],
+        "requiresRunEvidence": true
+      },
+      "answer": "yield 后任务回到 Ready，会在后续轮次被调度器再次选中；exit 后进入 Exited，不再参与调度。run-passed 那次五轮轮转的运行现象可以验证这条状态转换。",
+      "expected": { "verdicts": ["passed"] }
+    },
+    {
+      "id": "answer-shallow-reflection-gets-actionable-feedback",
+      "type": "answer",
+      "bundle": "lab2-full",
+      "tags": ["same-run-different-reflection", "actionable-feedback"],
+      "question": {
+        "questionId": "harness-q2",
+        "conceptId": "os.sched.task-state",
+        "kind": "evidence-reflection",
+        "objective": "确认任务状态转换的机制理解与证据对应",
+        "prompt": "结合一条运行现象或代码路径，解释 yield 与 exit 后任务状态分别如何变化？",
+        "passCriteria": ["yield 后回到 Ready", "exit 后进入 Exited"],
+        "evidenceRefs": ["run:run-passed"],
+        "requiresRunEvidence": true
+      },
+      "answer": "都通过了，没什么可说的。",
+      "expected": { "verdicts": ["partial", "misconception"] }
+    },
+    {
+      "id": "answer-verbal-cannot-override-missing-trusted-run",
+      "type": "answer",
+      "bundle": "lab2-no-verified",
+      "tags": ["same-run-different-reflection", "no-verbal-override"],
+      "question": {
+        "questionId": "harness-q3",
+        "conceptId": "os.sched.task-state",
+        "kind": "evidence-reflection",
+        "objective": "确认任务状态转换的机制理解与证据对应",
+        "prompt": "结合一条运行现象或代码路径，解释 yield 与 exit 后任务状态分别如何变化？",
+        "passCriteria": ["yield 后回到 Ready", "exit 后进入 Exited"],
+        "evidenceRefs": ["run:run-failed"],
+        "requiresRunEvidence": true
+      },
+      "answer": "yield 后任务回到 Ready，exit 后进入 Exited，我会检查下一轮调度是否还能选中该任务来验证。",
+      "expected": { "verdicts": ["needs-evidence"] }
+    }
+  ]
+}

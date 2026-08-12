@@ -211,9 +211,9 @@ function questionVariant(history, conceptId, kind) {
 
 function evidenceReflectionPrompt(concept, variant) {
   return [
-    `回看你完成本实验的过程：关于“${concept.title}”，你最初的判断是什么，哪一条对话、代码观察或运行证据让你确认或修改了它？`,
-    `不要只复述最终结果。请以“${concept.title}”为例，按“原假设 -> 操作或观察 -> 证据 -> 修正后结论”还原一次你的实验判断过程。`,
-    `从本次实验里挑一条与“${concept.title}”有关、最可能被误读的现象。你当时如何区分猜测与证据，最后用什么结果确认了因果关系？`,
+    `结合你本次实验中的一条运行结果或代码观察，解释“${concept.title}”是如何工作的：这条证据对应机制的哪一步？`,
+    `围绕“${concept.title}”，你认为本次实验里哪条运行现象或断言最能证明它按预期工作？请说明这条证据为什么能支持结论。`,
+    `如果要向同学证明“${concept.title}”确实在起作用，你会引用本次实验中的哪条现象或代码路径？请说明它与机制之间的因果关系。`,
   ][variant]
 }
 
@@ -267,12 +267,15 @@ export function generateDeterministicReviewPlan(bundle, options = {}) {
         questionId: `review-${randomUUID()}`,
         conceptId: concept.conceptId,
         kind,
-        objective: `复盘 ${concept.title} 的判断和证据变化`,
+        objective: `确认 ${concept.title} 的机制理解与证据对应`,
         prompt: evidenceReflectionPrompt(concept, variant),
         reason: entry.failed.length
           ? '该概念关联过失败断言，需要确认学生能解释从失败到通过的证据链。'
-          : '该概念在实验行为或 Tutor 对话中出现，需要把结果与学生自己的判断连接起来。',
-        passCriteria: ['说明自己的初始判断', '指出具体证据', '解释证据如何支持或证伪判断'],
+          : '该概念在实验行为或 Tutor 对话中出现，需要确认学生能把机制解释和实际证据对应起来。',
+        passCriteria: [
+          ...(concept.invariants || []).slice(0, 2),
+          '结合具体证据（代码路径或运行现象）说明结论',
+        ],
         evidenceRefs: refs,
         requiresRunEvidence: entry.failed.length > 0 || concept.passCriteria.requiresTrustedRun,
       }
@@ -406,6 +409,8 @@ export async function createAssessmentReviewPlan(bundle, options = {}) {
         '只输出 JSON。conceptId 必须来自输入目录，evidenceRefs 必须逐字来自 validEvidenceRefs。',
         '不要因为未观察到就断言学生不掌握；低置信度应使用诊断性问题。',
         '问题要覆盖理解确认、过程证据反思和迁移，避免重复已在对话中充分证明的内容。',
+        '问题只检验机制理解与证据对应，不得要求学生按固定叙事格式回答（例如先复述自己最初的错误判断再给出修正）。',
+        'passCriteria 必须是可从回答内容判断的知识要点，不得是表达格式或叙事结构要求。',
         'reviewHistory 是近期已经问过的问题；本次不得原样复用问题，优先覆盖未问概念，必须复查薄弱点时要更换题型或情境。',
         '输出字段：maxQuestions,rationale,questions[]；每题含 questionId,conceptId,kind,objective,prompt,reason,passCriteria,evidenceRefs,requiresRunEvidence。',
       ].join('\n'),
@@ -487,7 +492,7 @@ export function evaluateReviewAnswerDeterministically(question, answer, bundle) 
     correctReasoning,
     correctiveExplanation: verdict === 'passed'
       ? '你的回答已经形成了可检查的解释。请保留“机制、证据、结论”之间的对应关系。'
-      : `请按“触发条件 -> 机制或状态变化 -> 可观察结果 -> 验证证据”补全回答。\n${correctReasoning}`,
+      : `你的回答还有可以补充的地方，参考解释如下：\n${correctReasoning}`,
     followUpObjective: verdict === 'partial' || verdict === 'misconception'
       ? question.objective
       : '',
@@ -504,6 +509,8 @@ export async function evaluateAssessmentReviewAnswer(question, answer, bundle, o
       system: [
         '你是独立的 OS Lab Assessment Agent，评价一条复盘回答。只输出 JSON。',
         'verdict 只能是 passed, partial, needs-evidence, misconception, defer。',
+        '只根据回答是否体现了正确的机制理解来判定，不评价表达方式或叙事顺序；学生不需要先复述自己曾经的错误判断。',
+        '只要回答覆盖了 passCriteria 中的知识要点且与证据一致，即使措辞简短或顺序不同也应判 passed。',
         '只能引用 validEvidenceRefs；口头回答不能覆盖可信运行；没有证据时不能宣布实现正确。',
         '必须明确告诉学生回答是正确、部分正确还是需要修正，并给出具体缺失点和完整的参考因果链；不能只说“缺少关键因果”。',
         '输出 verdict,verdictLabel,rationale,evidenceRefs,missingEvidence,missingPoints,correctReasoning,correctiveExplanation,followUpObjective。',
