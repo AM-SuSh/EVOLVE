@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { withBase } from 'vitepress'
-import { ArrowLeft, CheckCircle2, ClipboardCheck, Download, RefreshCw, Save, Search } from 'lucide-vue-next'
+import { Bot, CheckCircle2, ClipboardCheck, Download, RefreshCw, Save, Search, Sparkles, User } from 'lucide-vue-next'
 import AssessmentScorePanel from './AssessmentScorePanel.vue'
 import { authHeaders, loadAuth, normalizeAssessmentV2, shortRef, type AssessmentV2 } from '../tutor-model'
 import { createReportMarkdown, renderReportHtml } from '../report-markdown'
@@ -92,13 +92,6 @@ interface TeacherSocraticReview {
   turns: ReviewTurn[]
 }
 
-interface TutorConversationTurn {
-  id: string
-  role: 'student' | 'assistant'
-  content: string
-  timestamp: string
-}
-
 const authed = ref(false)
 const denied = ref(false)
 const reports = ref<StudentReport[]>([])
@@ -111,9 +104,7 @@ const feedbackDraft = ref('')
 const feedbackSaved = ref('')
 const busy = ref(false)
 const note = ref('')
-const teacherName = loadAuth()?.username || '教师'
 const socraticReview = ref<TeacherSocraticReview | null>(null)
-const tutorConversation = ref<TutorConversationTurn[]>([])
 const reviewLoading = ref(false)
 const reviewError = ref('')
 const reportAssessment = ref<ReportAssessment | null>(null)
@@ -186,6 +177,12 @@ function reviewDetailText(value?: string | string[]) {
     .join('\n')
 }
 
+function reviewDetailList(value?: string | string[]) {
+  return (Array.isArray(value) ? value : [value])
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+}
+
 function attachmentUrl(user: string, labId: string, file: string) {
   const token = loadAuth()?.token || ''
   const url = new URL(`${endpoint}/teacher/report-attachment`)
@@ -229,9 +226,6 @@ const activeHtml = computed(() => {
     reportMarkdown,
   )
 })
-const reportContainsReview = computed(() =>
-  /(?:^|\n)#{2,3}\s*(?:收获与复盘|复盘问答|苏格拉底复盘)/m.test(active.value?.content || ''),
-)
 
 async function downloadAttachment(report: StudentReport, item: ReportAttachment) {
   try {
@@ -289,7 +283,6 @@ async function loadSocraticReview(report: StudentReport) {
   reviewLoading.value = true
   reviewError.value = ''
   socraticReview.value = null
-  tutorConversation.value = []
   reportAssessment.value = null
   reportAcceptance.value = null
   try {
@@ -303,7 +296,6 @@ async function loadSocraticReview(report: StudentReport) {
     if (!response.ok) throw new Error(payload?.error || `导师服务返回 ${response.status}`)
     if (reportKey(report) !== activeKey.value) return
     socraticReview.value = payload.review || null
-    tutorConversation.value = Array.isArray(payload.tutorConversation) ? payload.tutorConversation : []
     if (assessmentResponse.ok) {
       const assessmentPayload = await assessmentResponse.json().catch(() => ({}))
       reportAssessment.value = assessmentPayload.assessment || null
@@ -469,18 +461,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 <template>
   <div class="tr">
-    <header class="tr-topbar">
-      <a class="tr-brand" :href="withBase('/guide/ai-tutor')">
-        <img :src="withBase('/logo.svg')" alt="" />
-        <div><strong>EVOLVE 实验验收</strong><small>提交检查与学习反馈</small></div>
-      </a>
-      <div class="tr-topbar-actions">
-        <span>{{ teacherName }}</span>
-        <a :href="withBase('/guide/ai-tutor')"><ArrowLeft :size="15" aria-hidden="true" />教师工作台</a>
-        <button type="button" title="刷新提交" aria-label="刷新提交" @click="load"><RefreshCw :size="15" aria-hidden="true" /></button>
-      </div>
-    </header>
-
     <div v-if="denied" class="tr-state">
       <ClipboardCheck :size="28" aria-hidden="true" />
       <strong>需要教师账号</strong>
@@ -575,51 +555,55 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
               <p>当前条目来自实验复盘，下方仍可查看完整的苏格拉底复盘记录。</p>
             </div>
           </div>
-          <section v-if="!reportContainsReview || !reportExists(active)" class="tr-socratic" aria-label="苏格拉底复盘记录">
-            <header>
-              <div><span>实验提交 · 复盘记录</span><strong>{{ socraticReview?.status || active.reviewStatus || '未记录' }}</strong></div>
-              <small v-if="socraticReview?.sourceAssessmentId">Assessment {{ socraticReview.sourceAssessmentId }}</small>
-            </header>
+          <section class="tr-socratic" aria-label="复盘对话记录">
+            <header><span>复盘对话记录</span></header>
             <p v-if="reviewLoading" class="tr-review-state">正在加载复盘证据...</p>
             <p v-else-if="reviewError" class="tr-review-state is-error">{{ reviewError }}</p>
             <p v-else-if="!socraticReview" class="tr-review-state">此条目没有服务端复盘记录。</p>
             <template v-else>
-              <p v-if="socraticReview.plan?.rationale" class="tr-review-rationale">{{ socraticReview.plan.rationale }}</p>
-              <div v-for="turn in socraticReview.turns" :key="turn.id" class="tr-review-turn">
-                <div class="tr-review-turn-head"><strong>问题 {{ turn.ordinal }}</strong><span>{{ turn.conceptId }} · {{ turn.kind }}</span></div>
-                <p><b>AI 导师：</b>{{ turn.prompt }}</p>
-                <p><b>学生：</b>{{ turn.studentAnswer || '未回答' }}</p>
-                <div v-if="turn.evaluation" class="tr-review-evaluation">
-                  <strong>{{ reviewVerdictLabel(turn.evaluation.verdict) }}</strong>
-                  <span>{{ turn.evaluation.rationale }}</span>
-                  <div
-                    v-if="reviewDetailText(turn.evaluation.missingPoints) || reviewDetailText(turn.evaluation.correctReasoning) || reviewDetailText(turn.evaluation.correctiveExplanation)"
-                    class="tr-review-evaluation-details"
-                  >
-                    <div v-if="reviewDetailText(turn.evaluation.missingPoints)">
-                      <b>遗漏要点</b><span>{{ reviewDetailText(turn.evaluation.missingPoints) }}</span>
+              <article v-for="turn in socraticReview.turns" :key="turn.id" class="tr-review-turn">
+                <header class="tr-review-turn-head">
+                  <strong>问题 {{ turn.ordinal }}</strong>
+                  <span>{{ turn.conceptId }} · {{ turn.kind }}</span>
+                  <em
+                    v-if="turn.evaluation"
+                    class="tr-verdict"
+                    :class="`is-${turn.evaluation.verdict}`"
+                  >{{ reviewVerdictLabel(turn.evaluation.verdict) }}</em>
+                </header>
+                <div class="tr-chat">
+                  <div class="tr-chat-message is-tutor">
+                    <span class="tr-chat-avatar" aria-hidden="true"><Bot :size="15" /></span>
+                    <div class="tr-chat-bubble"><small>AI 导师</small><p>{{ turn.prompt }}</p></div>
+                  </div>
+                  <div class="tr-chat-message is-student">
+                    <span class="tr-chat-avatar" aria-hidden="true"><User :size="15" /></span>
+                    <div class="tr-chat-bubble"><small>学生</small><p>{{ turn.studentAnswer || '未回答' }}</p></div>
+                  </div>
+                </div>
+                <footer
+                  v-if="turn.evaluation && (reviewDetailList(turn.evaluation.missingPoints).length || reviewDetailText(turn.evaluation.correctReasoning))"
+                  class="tr-review-evaluation"
+                >
+                  <dl class="tr-review-evaluation-details">
+                    <div v-if="reviewDetailList(turn.evaluation.missingPoints).length">
+                      <dt>缺失点</dt>
+                      <dd>
+                        <ul><li v-for="item in reviewDetailList(turn.evaluation.missingPoints)" :key="item">{{ item }}</li></ul>
+                      </dd>
                     </div>
                     <div v-if="reviewDetailText(turn.evaluation.correctReasoning)">
-                      <b>正确推理</b><span>{{ reviewDetailText(turn.evaluation.correctReasoning) }}</span>
+                      <dt>参考答案</dt><dd>{{ reviewDetailText(turn.evaluation.correctReasoning) }}</dd>
                     </div>
-                    <div v-if="reviewDetailText(turn.evaluation.correctiveExplanation)">
-                      <b>纠正说明</b><span>{{ reviewDetailText(turn.evaluation.correctiveExplanation) }}</span>
-                    </div>
-                  </div>
-                  <code v-for="ref in turn.evaluation.evidenceRefs" :key="ref">{{ ref }}</code>
-                  <code v-for="ref in turn.evidenceRefs" :key="`plan-${ref}`">{{ ref }}</code>
-                </div>
+                  </dl>
+                </footer>
+              </article>
+              <div v-if="socraticReview.finalSummary" class="tr-review-summary">
+                <strong><Sparkles :size="14" aria-hidden="true" />学生最终总结</strong>
+                <p>{{ socraticReview.finalSummary }}</p>
               </div>
-              <div v-if="socraticReview.finalSummary" class="tr-review-summary"><strong>学生最终总结</strong><p>{{ socraticReview.finalSummary }}</p></div>
             </template>
           </section>
-          <details v-if="socraticReview || tutorConversation.length" class="tr-authority">
-            <summary>查看服务端复盘与导师对话证据</summary>
-            <pre v-if="socraticReview?.transcriptMarkdown">{{ socraticReview.transcriptMarkdown }}</pre>
-            <ol v-if="tutorConversation.length">
-              <li v-for="message in tutorConversation" :key="message.id"><strong>{{ message.role === 'assistant' ? 'AI 导师' : '学生' }}</strong><span>{{ message.content }}</span></li>
-            </ol>
-          </details>
           </div>
         </template>
       </main>
@@ -867,88 +851,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
    review styles above while the old route remains backward compatible. */
 .tr {
   display: grid;
-  grid-template-rows: 58px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   height: calc(100dvh - var(--vp-nav-height));
   min-width: 0;
   color: var(--ws-ink);
   background: var(--ws-surface-alt);
-}
-
-.tr-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ws-space-4);
-  padding: 0 var(--ws-space-4);
-  border-bottom: 1px solid var(--ws-line);
-  background: var(--ws-surface);
-}
-
-.tr-brand,
-.tr-topbar-actions,
-.tr-topbar-actions a,
-.tr-topbar-actions button {
-  display: flex;
-  align-items: center;
-}
-
-.tr-brand {
-  gap: var(--ws-space-2);
-  color: var(--ws-ink);
-  text-decoration: none;
-}
-
-.tr-brand > img {
-  width: 30px;
-  height: 30px;
-  border-radius: var(--ws-radius-sm);
-}
-
-.tr-brand strong,
-.tr-brand small {
-  display: block;
-}
-
-.tr-brand strong {
-  font-size: var(--ws-text-base);
-}
-
-.tr-brand small {
-  color: var(--ws-ink-faint);
-  font-size: var(--ws-text-xs);
-}
-
-.tr-topbar-actions {
-  gap: var(--ws-space-2);
-  color: var(--ws-ink-muted);
-  font-size: var(--ws-text-sm);
-}
-
-.tr-topbar-actions a,
-.tr-topbar-actions button {
-  justify-content: center;
-  gap: var(--ws-space-1);
-  min-height: var(--ws-control-md);
-  padding: var(--ws-space-1) var(--ws-space-3);
-  color: var(--ws-ink-muted);
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-md);
-  background: var(--ws-surface);
-  font: inherit;
-  font-size: var(--ws-text-sm);
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.tr-topbar-actions button {
-  width: var(--ws-control-md);
-  padding: 0;
-}
-
-.tr-topbar-actions a:hover,
-.tr-topbar-actions button:hover {
-  color: var(--ws-accent);
-  border-color: var(--ws-accent);
 }
 
 .tr-body {
@@ -1035,13 +942,46 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 .tr-filters select {
   min-width: 0;
   height: var(--ws-control-md);
-  padding: var(--ws-space-1) var(--ws-space-3);
+  padding: var(--ws-space-1) calc(var(--ws-space-2) + 14px) var(--ws-space-1) var(--ws-space-2);
   color: var(--ws-ink);
   border: 1px solid var(--ws-line-strong);
   border-radius: var(--ws-radius-md);
   background-color: var(--ws-surface-soft);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23667085' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--ws-space-1) center;
   font: inherit;
   font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-medium);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.tr-filters select:hover {
+  border-color: var(--vp-c-brand-2);
+}
+
+.tr-filters select:focus-visible {
+  border-color: var(--ws-accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ws-accent-soft);
+}
+
+.tr-filters select option {
+  color: var(--ws-ink);
+  background-color: var(--ws-surface);
+}
+
+/* linear-gradient 覆盖 Chromium 下拉选中项的默认蓝色高亮 */
+.tr-filters select option:checked {
+  color: var(--vp-c-brand-1);
+  background: linear-gradient(
+    color-mix(in srgb, var(--vp-c-brand-1) 16%, var(--ws-surface)),
+    color-mix(in srgb, var(--vp-c-brand-1) 16%, var(--ws-surface))
+  );
+  font-weight: var(--ws-weight-semibold);
 }
 
 .tr-status-tabs {
@@ -1276,58 +1216,33 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 }
 
 .tr-socratic {
-  padding: var(--ws-space-4) clamp(var(--ws-space-5), 4vw, 48px) var(--ws-space-7);
+  padding: var(--ws-space-5) clamp(var(--ws-space-5), 4vw, 48px) var(--ws-space-7);
   border-top: 1px solid var(--ws-line);
   background: var(--ws-surface-alt);
 }
 
-.tr-authority {
-  margin: 0 clamp(var(--ws-space-5), 4vw, 48px) var(--ws-space-7);
-  padding: var(--ws-space-3);
-  border-top: 1px solid var(--ws-line);
-  color: var(--ws-ink-muted);
-  font-size: var(--ws-text-xs);
-}
-
-.tr-authority summary { cursor: pointer; font-weight: var(--ws-weight-semibold); }
-.tr-authority pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-.tr-authority ol { padding-left: 20px; }
-.tr-authority li + li { margin-top: var(--ws-space-2); }
-.tr-authority li strong { display: block; color: var(--ws-accent); }
-.tr-authority li span { white-space: pre-wrap; overflow-wrap: anywhere; }
-
-.tr-socratic > header,
-.tr-review-turn-head,
-.tr-review-evaluation,
-.tr-socratic code {
+.tr-socratic > header {
   display: flex;
   align-items: center;
+  gap: var(--ws-space-2);
+  margin-bottom: var(--ws-space-4);
 }
 
-.tr-socratic > header {
-  justify-content: space-between;
-  gap: var(--ws-space-3);
-  margin-bottom: var(--ws-space-3);
+.tr-socratic > header::before {
+  content: '';
+  width: 4px;
+  height: 18px;
+  border-radius: var(--ws-radius-full);
+  background: var(--ws-accent);
 }
 
-.tr-socratic > header div {
-  display: grid;
-  gap: 2px;
-}
-
-.tr-socratic > header span,
-.tr-socratic > header small,
-.tr-review-turn-head span {
-  color: var(--ws-ink-faint);
-  font-size: var(--ws-text-xs);
-}
-
-.tr-socratic > header strong {
+.tr-socratic > header span {
+  color: var(--ws-ink);
   font-size: var(--ws-text-base);
+  font-weight: var(--ws-weight-bold);
 }
 
-.tr-review-state,
-.tr-review-rationale {
+.tr-review-state {
   margin: 0 0 var(--ws-space-3);
   color: var(--ws-ink-muted);
   font-size: var(--ws-text-sm);
@@ -1335,73 +1250,214 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 .tr-review-state.is-error { color: var(--ws-danger, #b42318); }
 
-.tr-review-turn,
-.tr-review-summary,
-.tr-review-conversation {
+.tr-review-turn {
   margin-top: var(--ws-space-3);
-  padding: var(--ws-space-3);
+  padding: 0;
   border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius-md);
+  border-radius: var(--ws-radius-lg);
+  background: var(--ws-surface);
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.tr-review-turn-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ws-space-2);
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border-bottom: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
+}
+
+.tr-review-turn-head strong {
+  color: var(--ws-ink);
+  font-size: var(--ws-text-sm);
+}
+
+.tr-review-turn-head > span {
+  overflow: hidden;
+  color: var(--ws-ink-faint);
+  font-size: var(--ws-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tr-verdict {
+  flex: none;
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: var(--ws-radius-full);
+  font-size: var(--ws-text-xs);
+  font-style: normal;
+  font-weight: var(--ws-weight-semibold);
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line-strong);
   background: var(--ws-surface);
 }
 
-.tr-review-turn p,
-.tr-review-summary p { margin: var(--ws-space-2) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tr-verdict.is-passed {
+  color: var(--ws-ok);
+  border-color: color-mix(in srgb, var(--ws-ok) 35%, transparent);
+  background: color-mix(in srgb, var(--ws-ok) 10%, transparent);
+}
 
-.tr-review-turn-head { justify-content: space-between; gap: var(--ws-space-3); }
+.tr-verdict.is-partial,
+.tr-verdict.is-needs-evidence {
+  color: var(--ws-warn);
+  border-color: color-mix(in srgb, var(--ws-warn) 38%, transparent);
+  background: color-mix(in srgb, var(--ws-warn) 10%, transparent);
+}
 
-.tr-review-evaluation {
-  flex-wrap: wrap;
+.tr-verdict.is-misconception {
+  color: var(--ws-danger);
+  border-color: color-mix(in srgb, var(--ws-danger) 35%, transparent);
+  background: color-mix(in srgb, var(--ws-danger) 8%, transparent);
+}
+
+.tr-chat {
+  display: grid;
+  gap: var(--ws-space-3);
+  padding: var(--ws-space-3);
+}
+
+.tr-chat-message {
+  display: flex;
+  align-items: flex-start;
   gap: var(--ws-space-2);
-  margin-top: var(--ws-space-3);
+  max-width: min(720px, 92%);
+}
+
+.tr-chat-message.is-student {
+  flex-direction: row-reverse;
+  justify-self: end;
+}
+
+.tr-chat-avatar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-top: 2px;
+  border-radius: var(--ws-radius-full);
+}
+
+.tr-chat-message.is-tutor .tr-chat-avatar {
+  color: var(--ws-accent);
+  background: var(--ws-accent-soft);
+}
+
+.tr-chat-message.is-student .tr-chat-avatar {
   color: var(--ws-ink-muted);
-  font-size: var(--ws-text-xs);
+  background: var(--ws-surface-alt);
+  border: 1px solid var(--ws-line);
 }
 
-.tr-review-evaluation strong { color: var(--ws-accent); }
-
-.tr-review-evaluation-details {
-  display: grid;
-  gap: var(--ws-space-2);
-  width: 100%;
-  padding: var(--ws-space-2) 0;
-  border-top: 1px solid var(--ws-line);
-  border-bottom: 1px solid var(--ws-line);
+.tr-chat-bubble {
+  min-width: 0;
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border-radius: var(--ws-radius-md);
+  font-size: var(--ws-text-sm);
+  line-height: var(--ws-leading-relaxed);
 }
 
-.tr-review-evaluation-details > div {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  gap: var(--ws-space-2);
-}
-
-.tr-review-evaluation-details b {
+.tr-chat-message.is-tutor .tr-chat-bubble {
   color: var(--ws-ink);
+  border: 1px solid var(--ws-line);
+  border-top-left-radius: 4px;
+  background: var(--ws-surface-alt);
 }
 
-.tr-review-evaluation-details span {
+.tr-chat-message.is-student .tr-chat-bubble {
+  color: var(--ws-ink);
+  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 24%, transparent);
+  border-top-right-radius: 4px;
+  background: color-mix(in srgb, var(--vp-c-brand-1) 8%, var(--ws-surface));
+}
+
+.tr-chat-bubble small {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ws-ink-faint);
+  font-size: 11px;
+  font-weight: var(--ws-weight-semibold);
+  letter-spacing: 0.02em;
+}
+
+.tr-chat-message.is-tutor .tr-chat-bubble small {
+  color: var(--ws-accent);
+}
+
+.tr-chat-bubble p {
+  margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.tr-socratic code {
-  max-width: 100%;
-  padding: 2px 5px;
-  overflow-wrap: anywhere;
+.tr-review-evaluation {
+  padding: var(--ws-space-2) var(--ws-space-3) var(--ws-space-3);
+  border-top: 1px dashed var(--ws-line);
   color: var(--ws-ink-muted);
-  border-radius: 3px;
-  background: var(--ws-surface-alt);
-  font-size: 11px;
+  font-size: var(--ws-text-xs);
 }
 
-.tr-review-summary strong { font-size: var(--ws-text-sm); }
+.tr-review-evaluation-details {
+  display: grid;
+  gap: var(--ws-space-2);
+  margin: var(--ws-space-2) 0 0;
+  padding: var(--ws-space-2) var(--ws-space-3);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+}
 
-.tr-review-conversation summary { cursor: pointer; color: var(--ws-ink-muted); font-size: var(--ws-text-sm); }
-.tr-review-conversation pre { margin: var(--ws-space-3) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
-.tr-review-conversation ol { margin: var(--ws-space-3) 0 0; padding-left: 20px; }
-.tr-review-conversation li + li { margin-top: var(--ws-space-2); }
-.tr-review-conversation li strong { display: block; color: var(--ws-accent); font-size: var(--ws-text-xs); }
-.tr-review-conversation li span { white-space: pre-wrap; overflow-wrap: anywhere; }
+.tr-review-evaluation-details > div {
+  display: grid;
+  grid-template-columns: 60px minmax(0, 1fr);
+  gap: var(--ws-space-2);
+}
+
+.tr-review-evaluation-details dt {
+  color: var(--ws-ink);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.tr-review-evaluation-details dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tr-review-evaluation-details ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.tr-review-evaluation-details li + li {
+  margin-top: 2px;
+}
+
+.tr-review-summary {
+  margin-top: var(--ws-space-3);
+  padding: var(--ws-space-3) var(--ws-space-4);
+  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 26%, transparent);
+  border-radius: var(--ws-radius-lg);
+  background: color-mix(in srgb, var(--vp-c-brand-1) 7%, var(--ws-surface));
+}
+
+.tr-review-summary strong {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ws-space-1);
+  color: var(--ws-accent);
+  font-size: var(--ws-text-sm);
+}
+
+.tr-review-summary p {
+  margin: var(--ws-space-2) 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 
 .tr-attachments {
   display: flex;
@@ -1697,20 +1753,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 }
 
 @media (max-width: 720px) {
-  .tr {
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .tr-topbar {
-    min-height: 58px;
-  }
-
-  .tr-brand small,
-  .tr-topbar-actions > span,
-  .tr-topbar-actions a {
-    display: none;
-  }
-
   .tr-body {
     grid-template-columns: minmax(0, 1fr);
     overflow-y: auto;

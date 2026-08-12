@@ -256,6 +256,7 @@ onMounted(load)
 <template>
   <section class="ws-batch-open" aria-label="批量开放">
     <header>
+      <span class="ws-batch-step" aria-hidden="true"><Send :size="15" /></span>
       <div>
         <span>快捷发布</span>
         <h3>批量开放</h3>
@@ -404,16 +405,35 @@ onMounted(load)
   gap: var(--ws-space-3);
   margin: var(--ws-space-4) 0;
   padding: var(--ws-space-4);
-  border: 1px solid var(--ws-line);
+  border: 1px solid color-mix(in srgb, var(--ws-accent) 35%, var(--ws-line));
   border-radius: var(--ws-radius-lg);
-  background: var(--ws-surface);
+  background:
+    linear-gradient(135deg, var(--ws-accent-soft), transparent 55%),
+    var(--ws-surface);
+  box-shadow: var(--ws-shadow-1);
 }
 
 .ws-batch-open > header {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
   gap: var(--ws-space-3);
+}
+
+.ws-batch-open > header > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ws-batch-step {
+  display: grid;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: var(--ws-accent-contrast);
+  border: 1px solid var(--ws-accent);
+  border-radius: var(--ws-radius-full);
+  background: var(--ws-accent);
 }
 
 .ws-batch-open > header span,

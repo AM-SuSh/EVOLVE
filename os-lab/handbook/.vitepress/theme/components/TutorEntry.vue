@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { withBase } from 'vitepress'
-import { ArrowRight, ClipboardCheck, FlaskConical, LogIn, PencilLine, RefreshCw } from 'lucide-vue-next'
+import { ArrowRight, LogIn, RefreshCw } from 'lucide-vue-next'
 import { authHeaders, loadAuth, tutorLabs, type LearningAccessItem } from '../tutor-model'
 import TeacherBatchOpen from './TeacherBatchOpen.vue'
 
@@ -54,6 +54,8 @@ function openLogin() {
 onMounted(() => {
   const auth = loadAuth()
   isTeacher.value = auth?.role === 'teacher'
+  // 教师与学生共用本路由，页面标签按角色区分。
+  if (isTeacher.value) document.title = '教师工作台 | EVOLVE'
   if (!isTeacher.value) void launchStudent()
 })
 </script>
@@ -61,34 +63,6 @@ onMounted(() => {
 <template>
   <div class="ws-entry">
     <template v-if="isTeacher">
-      <section class="ws-entry-hero">
-        <div>
-          <span>教师工作区</span>
-          <h2>备课、发布与验收，围绕每个实验完成</h2>
-          <p>
-            选择一个实验进入双栏工作台：左侧预览或编辑实验手册，右侧安排分发范围、任务类型和班级公告。
-            学生提交后统一进入实验验收；期末探索任务可在独立页面按全局、班级或单个学生发布。
-          </p>
-          <div class="ws-entry-cta">
-            <a class="primary" :href="withBase('/learn/lab1')">
-              <PencilLine :size="16" aria-hidden="true" />进入 Lab1 工作台
-            </a>
-            <a :href="withBase('/teacher-review')">
-              <ClipboardCheck :size="16" aria-hidden="true" />实验验收
-            </a>
-            <a :href="withBase('/teacher/final-project')">
-              <FlaskConical :size="16" aria-hidden="true" />期末探索
-            </a>
-          </div>
-        </div>
-
-        <div class="ws-entry-progress" role="img" aria-label="8 个实验可管理">
-          <strong>{{ tutorLabs.length }}<em> Labs</em></strong>
-          <span>手册与教学安排</span>
-          <i><b /></i>
-        </div>
-      </section>
-
       <TeacherBatchOpen />
 
       <section class="ws-teacher-labs" aria-labelledby="teacher-labs-title">
@@ -97,9 +71,6 @@ onMounted(() => {
             <span>课程实验</span>
             <h2 id="teacher-labs-title">选择本次要处理的实验</h2>
           </div>
-          <a :href="withBase('/teacher-review')">
-            <ClipboardCheck :size="15" aria-hidden="true" />查看全部提交
-          </a>
         </header>
 
         <ol>
@@ -186,26 +157,12 @@ onMounted(() => {
   to { transform: rotate(360deg); }
 }
 
-.ws-entry-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 200px;
-  align-items: center;
-  gap: var(--ws-space-6);
-  padding: var(--ws-space-6);
-  border: 1px solid var(--ws-line);
-  border-top: 3px solid var(--ws-accent);
-  border-radius: var(--ws-radius-lg);
-  background: var(--ws-surface-soft);
-}
-
-.ws-entry-hero > div:first-child > span,
 .ws-teacher-labs > header span {
   color: var(--ws-accent);
   font-size: var(--ws-text-xs);
   font-weight: var(--ws-weight-bold);
 }
 
-.ws-entry-hero h2,
 .ws-teacher-labs > header h2 {
   margin: var(--ws-space-2) 0;
   padding: 0;
@@ -214,7 +171,6 @@ onMounted(() => {
   line-height: var(--ws-leading-tight);
 }
 
-.ws-entry-hero p,
 .ws-teacher-labs li p {
   margin: 0;
   color: var(--ws-ink-muted);
@@ -222,19 +178,12 @@ onMounted(() => {
   line-height: var(--ws-leading-relaxed);
 }
 
-.ws-entry-cta,
 .ws-teacher-lab-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--ws-space-2);
 }
 
-.ws-entry-cta {
-  margin-top: var(--ws-space-4);
-}
-
-.ws-entry-cta a,
-.ws-teacher-labs > header > a,
 .ws-teacher-lab-actions a {
   display: inline-flex;
   align-items: center;
@@ -249,54 +198,18 @@ onMounted(() => {
   font-size: var(--ws-text-sm);
   font-weight: var(--ws-weight-semibold);
   text-decoration: none;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
 }
 
-.ws-entry-cta a.primary,
 .ws-teacher-lab-actions a.primary {
   color: var(--ws-accent-contrast);
   border-color: var(--ws-accent);
   background: var(--ws-accent);
 }
 
-.ws-entry-progress {
-  text-align: center;
-}
-
-.ws-entry-progress strong {
-  display: block;
-  color: var(--ws-accent);
-  font-size: 34px;
-  line-height: 1;
-}
-
-.ws-entry-progress em {
-  color: var(--ws-ink-faint);
-  font-size: var(--ws-text-sm);
-  font-style: normal;
-  text-transform: uppercase;
-}
-
-.ws-entry-progress span {
-  display: block;
-  margin-top: var(--ws-space-2);
-  color: var(--ws-ink-muted);
-  font-size: var(--ws-text-sm);
-}
-
-.ws-entry-progress i {
-  display: block;
-  height: 8px;
-  margin-top: var(--ws-space-3);
-  overflow: hidden;
-  border-radius: var(--ws-radius-full);
-  background: var(--ws-surface);
-}
-
-.ws-entry-progress i b {
-  display: block;
-  width: 100%;
-  height: 100%;
-  background: var(--ws-accent);
+.ws-teacher-lab-actions a.primary:hover {
+  border-color: var(--ws-accent-hover);
+  background: var(--ws-accent-hover);
 }
 
 .ws-teacher-labs {
@@ -328,8 +241,19 @@ onMounted(() => {
   align-items: center;
   gap: var(--ws-space-3);
   min-height: 76px;
-  padding: var(--ws-space-3) 0;
+  margin: 0 calc(-1 * var(--ws-space-2));
+  padding: var(--ws-space-3) var(--ws-space-2);
   border-bottom: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  transition: background-color 0.15s ease;
+}
+
+.ws-teacher-labs li:hover {
+  background: var(--ws-surface-soft);
+}
+
+.ws-teacher-labs li:hover .ws-teacher-lab-index {
+  color: var(--ws-accent);
 }
 
 .ws-teacher-lab-index {
@@ -350,11 +274,6 @@ onMounted(() => {
 }
 
 @media (max-width: 720px) {
-  .ws-entry-hero {
-    grid-template-columns: minmax(0, 1fr);
-    padding: var(--ws-space-4);
-  }
-
   .ws-teacher-labs > header {
     align-items: flex-start;
   }

@@ -199,3 +199,27 @@
 - 新增 `POST /teacher/report-acceptance`：教师一次提交最终分、报告反馈和验收建议；写入追加式 `report_acceptances` 与 `teacher_reviewed` 审计事件。自动评价保持只读，旧 `GET /teacher/reviews` / `POST /teacher/review` 保留兼容。
 - 顶栏移除“评分复核”导航；`/guide/teacher-report` 改为兼容说明页，统一入口为 `/teacher-review`。
 - 验证结果：`npm test` 125/125，`npm run test:smoke` 通过（覆盖未入旧复核队列的自动评分、无报告拒绝验收、最终验收修订和自动分不可变），`npm run build` 通过，`git diff --check` 通过。浏览器控制实例不可用，未执行截图式验收。
+
+### 本轮代码实现：复盘题目中立化与 Assessment Harness（2026-08-13）
+
+- 实测根因：复盘题面强制学生按“原假设 -> 修正后结论”还原自己的判断过程，答对机制但不复述错误经历的学生会被判 partial；评价文案也倾向要求固定叙事结构。
+- `learning/assessment-agent.mjs`：三个 evidence-reflection 题面变体全部改写为“机制解释 + 证据对应”风格，不再要求复述最初的错误判断；`objective` 与 `passCriteria` 改为来自概念 invariants 的可判定知识要点；远程计划 Prompt 增加“不得要求固定叙事格式、passCriteria 必须是知识要点”约束；回答评价 Prompt 增加“只判机制理解，措辞简短或顺序不同也应判 passed”约束；确定性评价的纠正说明改为给出参考解释而非模板化格式要求。
+- `handbook/tutor-server.mjs`：澄清追问改为引用评价给出的具体 `missingPoints`（最多两条），不再统一说“还缺少关键因果关系”。
+- 新增 `learning/assessment-harness.mjs` / `assessment-harness-cli.mjs` / `assessment-harness.test.mjs` 与 fixture `learning/fixtures/assessment-harness-cases-v1.json`：计划用例校验题量题型、conceptId 归属、evidenceRefs 白名单、近期不重复与叙事中立性；回答用例校验 verdict 落点、证据引用真实、口头回答不覆盖运行证据、未通过必须给出缺失点与参考解释。入口 `npm run test:assessment-harness`，并纳入 `npm test`。
+- `docs/agent-system-technical.md` 同步：Assessment Harness 从“应实现”改为已实现，记录两类用例的检查口径。
+
+### 本轮代码实现：复盘书页化、草稿暂存与报告/复盘分离（2026-08-13）
+
+- `SocraticReviewPanel.vue`：进行中的复盘改为“书页式”组织，每道已提出的题一页（题目、我的回答、AI 评价同页），待补证据与最终总结各占一页；顶部页码条可回看任意已答题，「回到当前」跳回待作答页。回答与总结草稿按 `labId + sessionId + reviewId` 存入 localStorage，提交成功或复盘完成后清除，折叠、切页签、翻页、刷新均不丢稿。
+- `ReportPanel.vue`：删除 `reviewRecordMarkdown` 及其在 `buildBodyMarkdown` 中的拼接。提交、预览、导出的报告只含学生自己撰写的正文与附件，复盘问答不再重复出现在报告末尾；“先完成复盘才能提交”的服务端门禁不变，教师端复盘证据走独立接口。
+- 存量数据清理：对清库后已重新提交的一份 Lab1 报告，同步截掉数据库 `reports.content` 与磁盘 `submission.md` 中拼接的“## 收获与复盘”段。
+- `handbook/docs/workbench-ui.md` 同步书页翻页、草稿暂存与“正文不再拼接复盘”的口径。
+
+### 本轮代码实现：教师工作台入口与验收阅读流精简（2026-08-13）
+
+- `TutorEntry.vue`：删除教师登录后顶部的“教师工作区”hero 卡片（含进入 Lab1 工作台、实验验收、期末探索按钮与 8 Labs 进度块）和“查看全部提交”按钮；教师直达批量开放与课程实验列表。
+- `TeacherNav.vue` 顶栏新增“教师工作台”入口；`RoleLearningNav.vue` 对教师隐藏“引导式学习”链接，避免双入口。
+- `TeacherBatchOpen.vue` / `TeacherPublishPanel.vue`：发布区改为带步骤角标的视觉层级（快捷发布、公告、AI 模型状态角标等）；报告格式预览不再包含“收获与反思”固定章节，移除未使用的模板重置入口。
+- `FinalProjectPublishPanel.vue`：头部精简为单行标题。
+- `TeacherReview.vue`：“复盘对话记录”改为气泡对话式阅读流（导师问题与学生回答左右分侧，评价随气泡展开）；小标题从强调色小字放大为正文级加粗标题并配左侧色条，区块留白同步加大。
+- 运维记录：2026-08-12 晚清空了服务端全部已提交报告、草稿、评估、复盘、掌握度与验收队列数据（保留账号、会话、对话与运行记录），清库前备份至 `learning/backups/os-lab-manual-reset-20260812T220007.db`，用于全流程人工测试。

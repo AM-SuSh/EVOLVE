@@ -19,6 +19,7 @@ import {
   UserRound,
   Users,
   X,
+  Zap,
 } from 'lucide-vue-next'
 import { buildXlsxBlob } from '../../../export-xlsx.mjs'
 import { authHeaders, type TutorLab } from '../tutor-model'
@@ -128,14 +129,6 @@ const reportPreview = computed(() => {
       formatSectionMarkdown(section.title, section.prompt, '（学生填写）', tpl.includePromptsInMarkdown),
     )
   }
-  lines.push(
-    formatSectionMarkdown(
-      tpl.reflection.title,
-      tpl.reflection.prompt,
-      '（学生填写）',
-      tpl.includePromptsInMarkdown,
-    ),
-  )
   return lines.join('\n')
 })
 
@@ -180,6 +173,27 @@ const openTargetCount = computed(() => {
     ...classList.value.map((name) => classEntry(name)),
   ]
   return entries.filter((entry) => isOpen(entry)).length
+})
+/** 批量操作当前选中的范围数（班级 + 可选的全局默认）。 */
+const batchScopeCount = computed(
+  () => batchClasses.value.length + (batchIncludeGlobal.value ? 1 : 0),
+)
+/** 当前公告范围下是否已有公告，用于步骤角标。 */
+const noticePublished = computed(() => {
+  if (!overview.value) return false
+  const scoped = noticeScope.value
+    ? classEntry(noticeScope.value)?.notice
+    : overview.value.config.notice
+  return Boolean(String(scoped || overview.value.config.notice || '').trim())
+})
+/** 统一 AI 模型的步骤角标状态。 */
+const llmChip = computed(() => {
+  if (llmConnection.value === 'connected') return { text: '已连接', tone: 'ok' }
+  if (llmConnection.value === 'offline') return { text: '未连接', tone: 'todo' }
+  if (llmKeyConfigured.value || llmDraft.value.baseUrl.trim() || llmDraft.value.model.trim()) {
+    return { text: '已配置', tone: 'idle' }
+  }
+  return { text: '未配置', tone: 'idle' }
 })
 function labIndex(labId: string) {
   return (overview.value?.labs || []).indexOf(labId)
@@ -652,10 +666,6 @@ function moveReportSection(index: number, delta: number) {
   list.splice(target, 0, item)
 }
 
-function resetReportTemplate() {
-  reportDraft.value = cloneTemplate(DEFAULT_REPORT_TEMPLATE)
-}
-
 async function openReportModal() {
   await loadReportTemplate()
   reportModalOpen.value = true
@@ -744,18 +754,21 @@ onMounted(load)
 
     <div v-if="overview" class="ws-pub-scroll">
       <div class="ws-pub-summary" aria-label="发布概况">
-        <span><strong>{{ openTargetCount }}/{{ targetCount }}</strong>目标已分发</span>
+        <span><strong>{{ openTargetCount }}<em>/{{ targetCount }}</em></strong>范围已分发</span>
         <span><strong>{{ classList.length }}</strong>个班级</span>
         <span><strong>{{ studentList.length }}</strong>名学生</span>
       </div>
 
       <section class="ws-pub-block ws-pub-quick">
         <div class="ws-pub-section-title">
-          <span>快速</span>
+          <span class="ws-pub-step ws-pub-step-quick"><Zap :size="15" aria-hidden="true" /></span>
           <div>
             <h3>快速下发</h3>
-            <p>选择全局默认任务后，一个按钮同时按范围分发并下发当前 Lab。</p>
+            <p>选择任务类型后，一键向全体学生分发本实验并下发任务。</p>
           </div>
+          <span class="ws-pub-chip" :class="isOpen(undefined) ? 'ok' : 'todo'">
+            {{ isOpen(undefined) ? '已分发' : '待分发' }}
+          </span>
         </div>
         <div class="ws-pub-target ws-pub-target-global">
           <div class="ws-pub-target-info">
@@ -771,10 +784,13 @@ onMounted(load)
           </div>
           <div class="ws-pub-target-actions">
             <template v-if="variants.length">
-              <select v-model="variantDrafts['']" aria-label="快速下发任务类型">
-                <option value="" disabled>选择任务类型</option>
-                <option v-for="v in taskOptions" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
-              </select>
+              <label class="ws-pub-field">
+                <span>任务类型</span>
+                <select v-model="variantDrafts['']" aria-label="快速下发任务类型">
+                  <option value="" disabled>选择任务类型</option>
+                  <option v-for="v in taskOptions" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
+                </select>
+              </label>
               <button
                 type="button"
                 :disabled="busy || !variantDrafts['']"
@@ -793,30 +809,36 @@ onMounted(load)
 
       <section class="ws-pub-block">
         <div class="ws-pub-section-title">
-          <span>01</span>
+          <span class="ws-pub-step">1</span>
           <div><h3>按班级安排</h3><p>先选择班级再设置；学生注册时只能从这些班级中选择。</p></div>
+          <span class="ws-pub-chip" :class="classList.length ? (selectedClass ? 'ok' : 'idle') : 'todo'">
+            {{ classList.length ? (selectedClass ? `正在安排 ${selectedClass}` : `${classList.length} 个班级`) : '先创建班级' }}
+          </span>
         </div>
 
         <div class="ws-pub-class-picker">
-          <label class="ws-pub-class-select">
+          <label class="ws-pub-field">
             <span>选择班级</span>
             <select v-model="selectedClass" aria-label="选择班级">
               <option value="" disabled>选择班级</option>
               <option v-for="c in classList" :key="c" :value="c">{{ c }}</option>
             </select>
           </label>
-          <div class="ws-pub-create-class">
-            <input
-              v-model="newClassName"
-              type="text"
-              maxlength="32"
-              placeholder="新班级名称，如 计科2302"
-              @keydown.enter.prevent="createClass"
-            />
-            <button type="button" :disabled="busy || !newClassName.trim()" @click="createClass">
-              <Plus :size="14" aria-hidden="true" />创建班级
-            </button>
-          </div>
+          <label class="ws-pub-field">
+            <span>创建新班级</span>
+            <span class="ws-pub-create-class">
+              <input
+                v-model="newClassName"
+                type="text"
+                maxlength="32"
+                placeholder="新班级名称，如 计科2302"
+                @keydown.enter.prevent="createClass"
+              />
+              <button type="button" :disabled="busy || !newClassName.trim()" @click="createClass">
+                <Plus :size="14" aria-hidden="true" />创建班级
+              </button>
+            </span>
+          </label>
         </div>
         <div class="ws-pub-class-actions">
           <button
@@ -844,14 +866,17 @@ onMounted(load)
           </div>
           <div class="ws-pub-target-actions">
             <template v-if="variants.length">
-              <select v-model="variantDrafts[selectedClass]" :aria-label="`${selectedClass}任务类型`">
-                <option value="" disabled>选择任务类型</option>
-                <option v-for="v in taskOptions" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
-              </select>
+              <label class="ws-pub-field">
+                <span>任务类型</span>
+                <select v-model="variantDrafts[selectedClass]" :aria-label="`${selectedClass}任务类型`">
+                  <option value="" disabled>选择任务类型</option>
+                  <option v-for="v in taskOptions" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
+                </select>
+              </label>
               <button type="button" :disabled="busy || !variantDrafts[selectedClass]" title="下发任务" @click="assignTo(selectedClass)"><Send :size="14" aria-hidden="true" />下发</button>
             </template>
             <span v-else class="ws-pub-no-variants">暂无任务变体</span>
-            <button v-if="!isOpen(classEntry(selectedClass))" type="button" class="ghost" :disabled="busy" title="分发本实验" @click="openTo(selectedClass)"><Unlock :size="14" aria-hidden="true" /></button>
+            <button v-if="!isOpen(classEntry(selectedClass))" type="button" class="ghost" :disabled="busy" title="分发本实验" @click="openTo(selectedClass)"><Unlock :size="14" aria-hidden="true" />分发本实验</button>
           </div>
         </div>
 
@@ -867,16 +892,22 @@ onMounted(load)
 
       <section class="ws-pub-block ws-pub-batch">
         <div class="ws-pub-section-title">
-          <span>02</span>
+          <span class="ws-pub-step">2</span>
           <div><h3>批量操作</h3><p>多选班级后统一解锁、下发任务或设置任务时间。</p></div>
+          <span class="ws-pub-chip" :class="hasBatchSelection ? 'ok' : 'idle'">
+            {{ hasBatchSelection ? `已选 ${batchScopeCount} 个范围` : '未选择范围' }}
+          </span>
         </div>
         <div class="ws-pub-batch-scope">
-          <label class="ws-pub-batch-toggle">
-            <input v-model="batchAll" type="checkbox" /> 全选班级
-          </label>
-          <label class="ws-pub-batch-toggle">
-            <input v-model="batchIncludeGlobal" type="checkbox" /> 同时应用到全局默认
-          </label>
+          <p class="ws-pub-subhead">① 勾选要操作的范围</p>
+          <div class="ws-pub-batch-toggles">
+            <label class="ws-pub-batch-toggle">
+              <input v-model="batchAll" type="checkbox" /> 全选班级
+            </label>
+            <label class="ws-pub-batch-toggle">
+              <input v-model="batchIncludeGlobal" type="checkbox" /> 同时应用到全局默认
+            </label>
+          </div>
           <div class="ws-pub-batch-classes">
             <label
               v-for="name in classList"
@@ -893,74 +924,96 @@ onMounted(load)
             <p v-if="!classList.length" class="ws-pub-empty">还没有班级可批量操作。</p>
           </div>
         </div>
-        <div class="ws-pub-batch-actions">
-          <select v-model="batchVariant" :disabled="!variants.length" aria-label="批量任务类型">
-            <option value="" disabled>选择任务类型</option>
-            <option v-for="v in taskOptions" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
-          </select>
-          <button type="button" :disabled="busy || !hasBatchSelection" @click="batchOpen">
-            <Unlock :size="14" aria-hidden="true" />解锁
-          </button>
-          <button
-            type="button"
-            :disabled="busy || !hasBatchSelection || !batchVariant"
-            @click="batchAssign"
-          >
-            <Send :size="14" aria-hidden="true" />下发任务
-          </button>
-          <button
-            type="button"
-            :disabled="busy || !hasBatchSelection || !batchVariant"
-            @click="batchOpenAndAssign"
-          >
-            <Unlock :size="14" aria-hidden="true" />解锁并下发
-          </button>
+        <div class="ws-pub-batch-step">
+          <p class="ws-pub-subhead">② 选择任务类型并执行</p>
+          <div class="ws-pub-batch-actions">
+            <label class="ws-pub-field">
+              <span>任务类型</span>
+              <select v-model="batchVariant" :disabled="!variants.length" aria-label="批量任务类型">
+                <option value="" disabled>选择任务类型</option>
+                <option v-for="v in taskOptions" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
+              </select>
+            </label>
+            <div class="ws-pub-batch-buttons">
+              <button type="button" class="ghost" :disabled="busy || !hasBatchSelection" @click="batchOpen">
+                <Unlock :size="14" aria-hidden="true" />仅解锁
+              </button>
+              <button
+                type="button"
+                class="ghost"
+                :disabled="busy || !hasBatchSelection || !batchVariant"
+                @click="batchAssign"
+              >
+                <Send :size="14" aria-hidden="true" />仅下发任务
+              </button>
+              <button
+                type="button"
+                :disabled="busy || !hasBatchSelection || !batchVariant"
+                @click="batchOpenAndAssign"
+              >
+                <Unlock :size="14" aria-hidden="true" />解锁并下发
+              </button>
+            </div>
+          </div>
         </div>
-        <div class="ws-pub-batch-schedule">
-          <label>
-            <span>解锁时间</span>
-            <input v-model="scheduleUnlock" type="datetime-local" aria-label="批量解锁时间" />
-          </label>
-          <label>
-            <span>截止时间</span>
-            <input v-model="scheduleLock" type="datetime-local" aria-label="批量截止时间" />
-          </label>
-          <button type="button" :disabled="busy || !hasBatchSelection" @click="batchSetSchedule">
-            <CalendarClock :size="14" aria-hidden="true" />设置任务时间
-          </button>
-          <button
-            type="button"
-            class="ghost"
-            :disabled="busy || !hasBatchSelection"
-            @click="batchClearSchedule"
-          >
-            <Trash2 :size="14" aria-hidden="true" />清除时间
-          </button>
+        <div class="ws-pub-batch-step">
+          <p class="ws-pub-subhead">③ 设置任务时间（可选）</p>
+          <div class="ws-pub-batch-schedule">
+            <label class="ws-pub-field">
+              <span>解锁时间</span>
+              <input v-model="scheduleUnlock" type="datetime-local" aria-label="批量解锁时间" />
+            </label>
+            <label class="ws-pub-field">
+              <span>截止时间</span>
+              <input v-model="scheduleLock" type="datetime-local" aria-label="批量截止时间" />
+            </label>
+            <button type="button" :disabled="busy || !hasBatchSelection" @click="batchSetSchedule">
+              <CalendarClock :size="14" aria-hidden="true" />设置任务时间
+            </button>
+            <button
+              type="button"
+              class="ghost"
+              :disabled="busy || !hasBatchSelection"
+              @click="batchClearSchedule"
+            >
+              <Trash2 :size="14" aria-hidden="true" />清除时间
+            </button>
+          </div>
         </div>
       </section>
 
       <section class="ws-pub-block">
         <div class="ws-pub-section-title">
-          <span>03</span>
+          <span class="ws-pub-step">3</span>
           <div><h3>个别调整</h3><p>从下拉框选择学生后查看具体分发情况并单独调整；上方已选班级时只显示该班学生。</p></div>
+          <span class="ws-pub-chip" :class="studentList.length ? 'idle' : 'todo'">
+            {{ studentList.length ? `${studentList.length} 名学生` : '暂无学生' }}
+          </span>
         </div>
         <div v-if="studentList.length" class="ws-pub-student-picker">
-          <select v-model="studentSel" aria-label="选择学生">
-            <option value="" disabled>选择学生</option>
-            <option v-for="u in studentList" :key="u" :value="u">{{ u }}</option>
-          </select>
+          <label class="ws-pub-field">
+            <span>选择学生</span>
+            <select v-model="studentSel" aria-label="选择学生">
+              <option value="" disabled>选择学生</option>
+              <option v-for="u in studentList" :key="u" :value="u">{{ u }}</option>
+            </select>
+          </label>
           <template v-if="studentSel">
             <span class="ws-pub-student-current">
+              <UserRound :size="13" aria-hidden="true" />
               当前任务：{{ assignedStudentVariant(studentSel)[0] }}<template v-if="variantLabel(assignedStudentVariant(studentSel)[0])"> · {{ variantLabel(assignedStudentVariant(studentSel)[0]) }}</template>
               · {{ assignedStudentVariant(studentSel)[1] ? '单独设置' : '跟随班级/默认' }}
               <template v-if="isStudentOpen(studentSel)"> · 本实验已分发</template>
               <template v-else> · 尚未分发</template>
             </span>
             <div class="ws-pub-student-actions">
-              <select v-model="variantDrafts[`student:${studentSel}`]" :disabled="!variants.length" :aria-label="`${studentSel}任务类型`">
-                <option value="" disabled>选择任务类型</option>
-                <option v-for="v in taskOptions" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
-              </select>
+              <label class="ws-pub-field">
+                <span>任务类型</span>
+                <select v-model="variantDrafts[`student:${studentSel}`]" :disabled="!variants.length" :aria-label="`${studentSel}任务类型`">
+                  <option value="" disabled>选择任务类型</option>
+                  <option v-for="v in taskOptions" :key="v.name" :value="v.name">{{ v.name }} · {{ v.label }}</option>
+                </select>
+              </label>
               <button
                 type="button"
                 :disabled="busy || !variantDrafts[`student:${studentSel}`]"
@@ -985,16 +1038,19 @@ onMounted(load)
 
       <section class="ws-pub-block">
         <div class="ws-pub-section-title">
-          <span>04</span>
+          <span class="ws-pub-step">4</span>
           <div><h3>学习公告</h3><p>发布后显示在学生工作台顶部。</p></div>
+          <span class="ws-pub-chip" :class="noticePublished ? 'ok' : 'idle'">
+            {{ noticePublished ? '已发布' : '未发布' }}
+          </span>
         </div>
-        <div class="ws-pub-notice-scope">
-          <Megaphone :size="15" aria-hidden="true" />
+        <label class="ws-pub-field ws-pub-notice-scope">
+          <span>公告范围</span>
           <select v-model="noticeScope" aria-label="公告范围">
             <option value="">全体学生</option>
             <option v-for="c in classList" :key="c" :value="c">仅 {{ c }}</option>
           </select>
-        </div>
+        </label>
         <textarea
           v-model="noticeDraft"
           rows="3"
@@ -1005,11 +1061,12 @@ onMounted(load)
 
       <section class="ws-pub-block">
         <div class="ws-pub-section-title">
-          <span>05</span>
+          <span class="ws-pub-step">5</span>
           <div>
             <h3>报告版式布置</h3>
             <p>在弹窗里编辑章节与填写提示，也可直接导入 Markdown 大纲。</p>
           </div>
+          <span class="ws-pub-chip idle">{{ reportDraft.sections.length }} 节</span>
         </div>
         <div class="ws-pub-report-entry">
           <p>
@@ -1024,11 +1081,12 @@ onMounted(load)
 
       <section class="ws-pub-block">
         <div class="ws-pub-section-title">
-          <span>06</span>
+          <span class="ws-pub-step">6</span>
           <div>
             <h3>统一 AI 模型</h3>
             <p>配置教师统一使用的 OpenAI 兼容接口，并控制学生能否使用本机模型设置。</p>
           </div>
+          <span class="ws-pub-chip" :class="llmChip.tone">{{ llmChip.text }}</span>
         </div>
         <div class="ws-pub-llm-grid">
           <label class="ws-pub-llm-field">
@@ -1127,7 +1185,6 @@ onMounted(load)
               <button type="button" class="ghost" @click="addReportSection">
                 <Plus :size="14" aria-hidden="true" />加一节
               </button>
-              <button type="button" class="ghost" @click="resetReportTemplate">恢复默认五节</button>
               <button type="button" :disabled="busy" @click="saveReportTemplate">
                 <FileText :size="14" aria-hidden="true" />发布本实验报告版式
               </button>
@@ -1141,8 +1198,8 @@ onMounted(load)
             />
 
             <p class="ws-pub-report-import-hint">
-              导入 Markdown 时读取正文各节；复盘节保留固定字段标识，标题和填写提示可在下方调整。导入时用
-              <code>## 节标题</code> 分节，节后的 <code>&gt; 提示</code> 作为填写提示。
+              导入 Markdown 时读取正文各节：用 <code>## 节标题</code> 分节，节后的
+              <code>&gt; 提示</code> 作为填写提示。「收获与复盘」由学生完成可信验证后的对话自动生成，无需在此布置。
             </p>
 
             <label class="ws-pub-report-field">
@@ -1195,21 +1252,6 @@ onMounted(load)
                   maxlength="800"
                   placeholder="告诉学生这一节要写什么、写到什么程度。"
                 />
-              </label>
-            </div>
-
-            <div class="ws-pub-report-section ws-pub-report-fixed">
-              <header>
-                <strong>固定复盘字段</strong>
-              </header>
-              <p>学生完成可信验证后进入「收获与复盘」对话；问答原文与最终总结会由系统追加到报告末尾。</p>
-              <label>
-                <span>标题</span>
-                <input v-model="reportDraft.reflection.title" type="text" maxlength="80" />
-              </label>
-              <label>
-                <span>输入行数</span>
-                <input v-model.number="reportDraft.reflection.rows" type="number" min="2" max="20" />
               </label>
             </div>
 
@@ -1295,44 +1337,90 @@ onMounted(load)
   min-height: 0;
   padding: 0 var(--ws-space-4) var(--ws-space-6);
   overflow-y: auto;
+  background: var(--ws-surface-alt);
 }
 
 .ws-pub-summary {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--ws-space-2);
-  padding: var(--ws-space-3) 0;
-  border-bottom: 1px solid var(--ws-line);
+  padding: var(--ws-space-3) 0 var(--ws-space-1);
 }
 
 .ws-pub-summary span {
+  padding: var(--ws-space-2) var(--ws-space-3);
   color: var(--ws-ink-faint);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
   font-size: var(--ws-text-xs);
 }
 
 .ws-pub-summary strong {
   display: block;
-  color: var(--ws-ink);
-  font-size: var(--ws-text-lg);
+  color: var(--ws-accent);
+  font-size: var(--ws-text-xl);
+  font-weight: var(--ws-weight-bold);
   font-variant-numeric: tabular-nums;
+  line-height: var(--ws-leading-tight);
+}
+
+.ws-pub-summary strong em {
+  color: var(--ws-ink-faint);
+  font-size: var(--ws-text-sm);
+  font-style: normal;
+  font-weight: var(--ws-weight-medium);
 }
 
 .ws-pub-block {
-  padding: var(--ws-space-4) 0;
-  border-bottom: 1px solid var(--ws-line);
+  margin-top: var(--ws-space-3);
+  padding: var(--ws-space-4);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-lg);
+  background: var(--ws-surface);
+  box-shadow: var(--ws-shadow-1);
+}
+
+.ws-pub-quick {
+  border-color: color-mix(in srgb, var(--ws-accent) 40%, var(--ws-line));
+  background:
+    linear-gradient(135deg, var(--ws-accent-soft), transparent 60%),
+    var(--ws-surface);
 }
 
 .ws-pub-section-title {
   display: flex;
+  align-items: flex-start;
   gap: var(--ws-space-3);
   margin-bottom: var(--ws-space-3);
+  padding-bottom: var(--ws-space-3);
+  border-bottom: 1px dashed var(--ws-line);
 }
 
-.ws-pub-section-title > span {
+.ws-pub-step {
+  display: grid;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  place-items: center;
   color: var(--ws-accent);
-  font-family: var(--ws-font-mono);
-  font-size: var(--ws-text-xs);
-  font-weight: var(--ws-weight-semibold);
+  border: 1px solid color-mix(in srgb, var(--ws-accent) 35%, transparent);
+  border-radius: var(--ws-radius-full);
+  background: var(--ws-accent-soft);
+  font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.ws-pub-step-quick {
+  color: var(--ws-accent-contrast);
+  border-color: var(--ws-accent);
+  background: var(--ws-accent);
+}
+
+.ws-pub-section-title > div {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .ws-pub-section-title h3,
@@ -1341,7 +1429,8 @@ onMounted(load)
 }
 
 .ws-pub-section-title h3 {
-  font-size: var(--ws-text-sm);
+  font-size: var(--ws-text-base);
+  line-height: var(--ws-leading-tight);
 }
 
 .ws-pub-section-title p {
@@ -1350,24 +1439,54 @@ onMounted(load)
   font-size: var(--ws-text-xs);
 }
 
+.ws-pub-chip {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 3px var(--ws-space-2);
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-full);
+  background: var(--ws-surface-alt);
+  font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-semibold);
+  white-space: nowrap;
+}
+
+.ws-pub-chip.ok {
+  color: var(--ws-ok);
+  border-color: transparent;
+  background: var(--ws-ok-soft);
+}
+
+.ws-pub-chip.todo {
+  color: var(--ws-warn);
+  border-color: transparent;
+  background: var(--ws-warn-soft);
+}
+
+.ws-pub-subhead {
+  margin: 0 0 var(--ws-space-2);
+  color: var(--ws-ink);
+  font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-semibold);
+}
+
+.ws-pub-field {
+  display: grid;
+  gap: var(--ws-space-1);
+  min-width: 0;
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-semibold);
+}
+
 .ws-pub-class-picker {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--ws-space-3);
-  padding: var(--ws-space-3) 0;
+  padding: var(--ws-space-1) 0 var(--ws-space-3);
 }
 
-.ws-pub-class-select {
-  display: grid;
-  gap: var(--ws-space-1);
-}
-
-.ws-pub-class-select span {
-  color: var(--ws-ink-muted);
-  font-size: var(--ws-text-xs);
-}
-
-.ws-pub-class-select select,
 .ws-pub-create-class input {
   width: 100%;
   min-height: var(--ws-control-md);
@@ -1378,12 +1497,13 @@ onMounted(load)
   background-color: var(--ws-surface-soft);
   font: inherit;
   font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-medium);
 }
 
 .ws-pub-create-class {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
+  align-items: center;
   gap: var(--ws-space-2);
 }
 
@@ -1392,10 +1512,21 @@ onMounted(load)
   padding: var(--ws-space-2) 0;
 }
 
-.ws-pub-batch-scope {
+.ws-pub-batch-scope,
+.ws-pub-batch-step {
   display: grid;
   gap: var(--ws-space-2);
   padding: var(--ws-space-2) 0;
+}
+
+.ws-pub-batch-step {
+  border-top: 1px dashed var(--ws-line);
+}
+
+.ws-pub-batch-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ws-space-2) var(--ws-space-4);
 }
 
 .ws-pub-batch-toggle {
@@ -1437,15 +1568,20 @@ onMounted(load)
 }
 
 .ws-pub-batch-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--ws-space-2);
+}
+
+.ws-pub-batch-actions .ws-pub-field select {
+  width: min(260px, 100%);
+}
+
+.ws-pub-batch-buttons {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--ws-space-1);
-  padding: var(--ws-space-2) 0;
-}
-
-.ws-pub-batch-actions select {
-  width: min(220px, 100%);
 }
 
 .ws-pub-batch-schedule {
@@ -1453,25 +1589,18 @@ onMounted(load)
   grid-template-columns: repeat(2, minmax(0, 1fr)) auto auto;
   align-items: end;
   gap: var(--ws-space-2);
-  padding: var(--ws-space-2) 0;
-}
-
-.ws-pub-batch-schedule label {
-  display: grid;
-  gap: var(--ws-space-1);
-  color: var(--ws-ink-muted);
-  font-size: var(--ws-text-xs);
 }
 
 .ws-pub-batch-schedule input {
-  min-height: var(--ws-control-sm);
+  min-height: var(--ws-control-md);
   padding: var(--ws-space-1) var(--ws-space-2);
   color: var(--ws-ink);
-  border: 1px solid var(--ws-line);
+  border: 1px solid var(--ws-line-strong);
   border-radius: var(--ws-radius-md);
-  background: var(--ws-surface-alt);
+  background: var(--ws-surface-soft);
   font: inherit;
   font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-medium);
 }
 
 .ws-pub-schedule {
@@ -1480,16 +1609,17 @@ onMounted(load)
 
 .ws-pub-target {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--ws-space-3);
-  padding: var(--ws-space-3) 0;
-  border-bottom: 1px solid var(--ws-line);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--ws-space-2);
+  padding: var(--ws-space-3);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
 }
 
 .ws-pub-target-global {
-  padding-right: var(--ws-space-2);
-  padding-left: var(--ws-space-2);
-  background: var(--ws-surface-alt);
+  border-color: color-mix(in srgb, var(--ws-accent) 30%, var(--ws-line));
+  background: var(--ws-surface);
 }
 
 .ws-pub-target-info {
@@ -1533,13 +1663,17 @@ onMounted(load)
 .ws-pub-target-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--ws-space-1);
+  align-items: end;
+  justify-content: flex-start;
+  gap: var(--ws-space-2);
 }
 
-.ws-pub-target-actions select {
-  width: min(190px, 100%);
+.ws-pub-target-actions .ws-pub-field {
+  flex: 1 1 180px;
+}
+
+.ws-pub-target-actions .ws-pub-field select {
+  width: 100%;
 }
 
 .ws-pub-no-variants {
@@ -1581,23 +1715,34 @@ onMounted(load)
 .ws-pub-student-picker {
   display: grid;
   gap: var(--ws-space-2);
-  padding: var(--ws-space-2) 0;
+  padding: var(--ws-space-1) 0;
+}
+
+.ws-pub-student-picker > .ws-pub-field select {
+  width: min(260px, 100%);
 }
 
 .ws-pub-student-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: end;
   justify-content: flex-start;
-  gap: var(--ws-space-1);
+  gap: var(--ws-space-2);
 }
 
-.ws-pub-student-current,
-.ws-pub-notice-scope {
+.ws-pub-student-actions .ws-pub-field select {
+  width: min(200px, 100%);
+}
+
+.ws-pub-student-current {
   display: inline-flex;
   align-items: center;
   gap: var(--ws-space-1);
+  padding: var(--ws-space-1) var(--ws-space-2);
   color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-surface-alt);
   font-size: var(--ws-text-xs);
 }
 
@@ -1605,16 +1750,56 @@ onMounted(load)
   margin-bottom: var(--ws-space-2);
 }
 
+.ws-pub-notice-scope select {
+  width: min(220px, 100%);
+}
+
 .ws-pub select {
   max-width: 100%;
   min-height: var(--ws-control-md);
-  padding: var(--ws-space-1) var(--ws-space-3);
+  padding: var(--ws-space-1) calc(var(--ws-space-3) + 16px) var(--ws-space-1) var(--ws-space-3);
   color: var(--ws-ink);
   border: 1px solid var(--ws-line-strong);
   border-radius: var(--ws-radius-md);
   background-color: var(--ws-surface-soft);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23667085' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--ws-space-2) center;
   font: inherit;
   font-size: var(--ws-text-sm);
+  font-weight: var(--ws-weight-medium);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  appearance: none;
+  -webkit-appearance: none;
+  accent-color: var(--vp-c-brand-1);
+}
+
+.ws-pub select:hover {
+  border-color: var(--vp-c-brand-2);
+}
+
+.ws-pub select:focus-visible {
+  border-color: var(--ws-accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ws-accent-soft);
+}
+
+.ws-pub select option {
+  padding: 6px 10px;
+  color: var(--ws-ink);
+  background-color: var(--ws-surface);
+  font-weight: var(--ws-weight-medium);
+}
+
+/* linear-gradient 覆盖 Chromium 下拉选中项的默认蓝色高亮 */
+.ws-pub select option:checked {
+  color: var(--vp-c-brand-1);
+  background: linear-gradient(
+    color-mix(in srgb, var(--vp-c-brand-1) 16%, var(--ws-surface)),
+    color-mix(in srgb, var(--vp-c-brand-1) 16%, var(--ws-surface))
+  );
+  font-weight: var(--ws-weight-semibold);
 }
 
 .ws-pub textarea {
@@ -1964,17 +2149,6 @@ onMounted(load)
 .ws-pub-report-move button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-}
-
-.ws-pub-report-fixed {
-  opacity: 0.92;
-}
-
-.ws-pub-report-fixed p {
-  margin: 0;
-  color: var(--ws-ink-muted);
-  font-size: var(--ws-text-xs);
-  line-height: 1.5;
 }
 
 .ws-pub-report-meta {

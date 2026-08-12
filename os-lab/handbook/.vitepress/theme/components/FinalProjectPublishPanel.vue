@@ -317,9 +317,7 @@ watch(leaderboardMetric, (value) => {
   <div class="fpp" aria-label="期末探索任务发布">
     <header class="fpp-head">
       <div>
-        <span>Lab9 · 期末探索任务</span>
-        <strong>期末探索任务</strong>
-        <p>不依赖实验手册，按全局、班级或单个学生发布。</p>
+        <strong>Lab9 · 期末探索任务</strong>
       </div>
       <button type="button" class="fpp-refresh" title="刷新发布状态" aria-label="刷新发布状态" @click="load">
         <RefreshCw :size="15" aria-hidden="true" />

@@ -10,7 +10,6 @@ const isTeacher = ref(false)
 const closeScreen = inject<() => void>('close-screen', () => undefined)
 const target = withBase('/guide/ai-tutor')
 
-const label = computed(() => (isTeacher.value ? '教师工作台' : '引导式学习'))
 const active = computed(() => {
   const path = route.path.replace(/\.html$/, '')
   return path === target || path.startsWith(withBase('/learn/'))
@@ -30,13 +29,14 @@ onBeforeUnmount(() => window.removeEventListener('storage', refreshRole))
 
 <template>
   <a
+    v-if="!isTeacher"
     class="role-learning-nav"
     :class="{ active, 'screen-menu': screenMenu }"
     :href="target"
     :aria-current="active ? 'page' : undefined"
     @click="closeScreen"
   >
-    {{ label }}
+    引导式学习
   </a>
 </template>
 
