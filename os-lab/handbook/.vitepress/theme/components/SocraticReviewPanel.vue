@@ -18,6 +18,7 @@ import {
   hasCustomLlmConfig,
   type LlmConfig,
   type SocraticReview,
+  type SocraticReviewEvaluation,
   type SocraticReviewResponse,
   type SocraticReviewStatus,
   type SocraticReviewTurn,
@@ -101,9 +102,27 @@ const statusLabel = computed(() => {
 
 const latestFeedback = computed(() => {
   const turn = latestAnsweredTurn.value
-  if (!turn?.evaluation || turn.evaluation.verdict === 'passed') return null
-  return turn.evaluation
+  return turn?.evaluation || null
 })
+
+function evaluationLabel(evaluation: SocraticReviewEvaluation) {
+  if (evaluation.verdict === 'passed') return '正确'
+  if (evaluation.verdict === 'partial') return '部分正确'
+  return '需修正'
+}
+
+function evaluationSummary(evaluation: SocraticReviewEvaluation) {
+  const details = [evaluation.verdictLabel, evaluation.rationale]
+    .map((item) => String(item || '').trim())
+    .filter((item, index, items) => Boolean(item) && items.indexOf(item) === index)
+  return details.join('：')
+}
+
+function evaluationTone(evaluation: SocraticReviewEvaluation) {
+  if (evaluation.verdict === 'passed') return 'is-passed'
+  if (evaluation.verdict === 'partial') return 'is-partial'
+  return 'is-corrective'
+}
 
 function llmPayload() {
   return hasCustomLlmConfig(props.llmConfig)
@@ -346,6 +365,35 @@ defineExpose({ refreshReview, startReview })
             </div>
           </div>
           <pre class="transcript">{{ review.transcriptMarkdown || '复盘记录已保存。' }}</pre>
+          <ol v-if="askedTurns.some((turn) => turn.evaluation)" class="turn-history completed-evaluations">
+            <li v-for="(turn, index) in askedTurns" :key="turn.questionId">
+              <strong>问题 {{ index + 1 }} 的评价</strong>
+              <div
+                v-if="turn.evaluation"
+                class="evaluation-detail"
+                :class="evaluationTone(turn.evaluation)"
+              >
+                <div class="evaluation-heading">
+                  <span class="verdict-label">{{ evaluationLabel(turn.evaluation) }}</span>
+                  <span v-if="evaluationSummary(turn.evaluation)">{{ evaluationSummary(turn.evaluation) }}</span>
+                </div>
+                <div v-if="turn.evaluation.missingPoints?.length" class="evaluation-section">
+                  <strong>缺失点</strong>
+                  <ul>
+                    <li v-for="item in turn.evaluation.missingPoints" :key="item">{{ item }}</li>
+                  </ul>
+                </div>
+                <div v-if="turn.evaluation.correctReasoning" class="evaluation-section">
+                  <strong>参考因果链</strong>
+                  <p>{{ turn.evaluation.correctReasoning }}</p>
+                </div>
+                <div v-if="turn.evaluation.correctiveExplanation" class="evaluation-section">
+                  <strong>纠正说明</strong>
+                  <p>{{ turn.evaluation.correctiveExplanation }}</p>
+                </div>
+              </div>
+            </li>
+          </ol>
         </div>
 
         <div v-else-if="review.status === 'deferred'" class="deferred-view">
@@ -354,6 +402,7 @@ defineExpose({ refreshReview, startReview })
             <div>
               <strong>本次复盘已转为后续关注</strong>
               <p>{{ review.deferredReason || '当前问题需要教师结合后续证据继续确认。' }}</p>
+              <p class="submission-note">当前状态仍可提交报告，复盘问答与评价会一并交给教师继续确认。</p>
             </div>
           </div>
           <ol v-if="askedTurns.length" class="turn-history">
@@ -361,6 +410,37 @@ defineExpose({ refreshReview, startReview })
               <strong>问题 {{ index + 1 }}</strong>
               <p>{{ turn.prompt }}</p>
               <blockquote v-if="turn.studentAnswer">{{ turn.studentAnswer }}</blockquote>
+              <div
+                v-if="turn.evaluation"
+                class="evaluation-detail"
+                :class="evaluationTone(turn.evaluation)"
+              >
+                <div class="evaluation-heading">
+                  <span class="verdict-label">{{ evaluationLabel(turn.evaluation) }}</span>
+                  <span v-if="evaluationSummary(turn.evaluation)">{{ evaluationSummary(turn.evaluation) }}</span>
+                </div>
+                <div v-if="turn.evaluation.missingPoints?.length" class="evaluation-section">
+                  <strong>缺失点</strong>
+                  <ul>
+                    <li v-for="item in turn.evaluation.missingPoints" :key="item">{{ item }}</li>
+                  </ul>
+                </div>
+                <div v-if="turn.evaluation.correctReasoning" class="evaluation-section">
+                  <strong>参考因果链</strong>
+                  <p>{{ turn.evaluation.correctReasoning }}</p>
+                </div>
+                <div v-if="turn.evaluation.correctiveExplanation" class="evaluation-section">
+                  <strong>纠正说明</strong>
+                  <p>{{ turn.evaluation.correctiveExplanation }}</p>
+                </div>
+                <div v-if="turn.evaluation.missingEvidence?.length" class="evaluation-section">
+                  <strong>待补证据</strong>
+                  <ul>
+                    <li v-for="item in turn.evaluation.missingEvidence" :key="item">{{ item }}</li>
+                  </ul>
+                </div>
+              </div>
+              <div v-else class="evaluation-detail is-pending">本题尚无评价记录。</div>
             </li>
           </ol>
         </div>
@@ -371,7 +451,21 @@ defineExpose({ refreshReview, startReview })
             <FileCheck2 :size="20" aria-hidden="true" />
             <div>
               <strong>需要一条新的可信验证</strong>
-              <p>{{ latestFeedback?.rationale || '完成新的可信运行或断言后，再继续本次复盘。' }}</p>
+              <p>{{ latestFeedback ? evaluationSummary(latestFeedback) : '完成新的可信运行或断言后，再继续本次复盘。' }}</p>
+              <div v-if="latestFeedback?.missingPoints?.length" class="evaluation-section">
+                <strong>缺失点</strong>
+                <ul>
+                  <li v-for="item in latestFeedback.missingPoints" :key="item">{{ item }}</li>
+                </ul>
+              </div>
+              <div v-if="latestFeedback?.correctReasoning" class="evaluation-section">
+                <strong>参考因果链</strong>
+                <p>{{ latestFeedback.correctReasoning }}</p>
+              </div>
+              <div v-if="latestFeedback?.correctiveExplanation" class="evaluation-section">
+                <strong>纠正说明</strong>
+                <p>{{ latestFeedback.correctiveExplanation }}</p>
+              </div>
               <ul v-if="latestFeedback?.missingEvidence?.length">
                 <li v-for="item in latestFeedback.missingEvidence" :key="item">{{ item }}</li>
               </ul>
@@ -386,9 +480,32 @@ defineExpose({ refreshReview, startReview })
 
         <div v-else-if="currentTurn" class="question-view">
           <div class="review-progress">第 {{ currentNumber }} / 最多 5 题</div>
-          <div v-if="latestFeedback" class="inline-feedback">
+          <div
+            v-if="latestFeedback"
+            class="inline-feedback evaluation-detail"
+            :class="evaluationTone(latestFeedback)"
+          >
             <Bot :size="16" aria-hidden="true" />
-            <span>{{ latestFeedback.rationale }}</span>
+            <div>
+              <div class="evaluation-heading">
+                <span class="verdict-label">{{ evaluationLabel(latestFeedback) }}</span>
+                <span v-if="evaluationSummary(latestFeedback)">{{ evaluationSummary(latestFeedback) }}</span>
+              </div>
+              <div v-if="latestFeedback.missingPoints?.length" class="evaluation-section">
+                <strong>缺失点</strong>
+                <ul>
+                  <li v-for="item in latestFeedback.missingPoints" :key="item">{{ item }}</li>
+                </ul>
+              </div>
+              <div v-if="latestFeedback.correctReasoning" class="evaluation-section">
+                <strong>参考因果链</strong>
+                <p>{{ latestFeedback.correctReasoning }}</p>
+              </div>
+              <div v-if="latestFeedback.correctiveExplanation" class="evaluation-section">
+                <strong>纠正说明</strong>
+                <p>{{ latestFeedback.correctiveExplanation }}</p>
+              </div>
+            </div>
           </div>
           <article class="question-block">
             <div class="question-source"><Bot :size="17" aria-hidden="true" />AI 导师</div>
@@ -416,6 +533,33 @@ defineExpose({ refreshReview, startReview })
 
         <div v-else-if="summaryReady" class="summary-view">
           <div class="review-progress">已回答 {{ review.answeredCount }} 题 / 最多 5 题</div>
+          <div
+            v-if="latestFeedback"
+            class="inline-feedback evaluation-detail"
+            :class="evaluationTone(latestFeedback)"
+          >
+            <Bot :size="16" aria-hidden="true" />
+            <div>
+              <div class="evaluation-heading">
+                <span class="verdict-label">{{ evaluationLabel(latestFeedback) }}</span>
+                <span v-if="evaluationSummary(latestFeedback)">{{ evaluationSummary(latestFeedback) }}</span>
+              </div>
+              <div v-if="latestFeedback.missingPoints?.length" class="evaluation-section">
+                <strong>缺失点</strong>
+                <ul>
+                  <li v-for="item in latestFeedback.missingPoints" :key="item">{{ item }}</li>
+                </ul>
+              </div>
+              <div v-if="latestFeedback.correctReasoning" class="evaluation-section">
+                <strong>参考因果链</strong>
+                <p>{{ latestFeedback.correctReasoning }}</p>
+              </div>
+              <div v-if="latestFeedback.correctiveExplanation" class="evaluation-section">
+                <strong>纠正说明</strong>
+                <p>{{ latestFeedback.correctiveExplanation }}</p>
+              </div>
+            </div>
+          </div>
           <div class="summary-headline">
             <FileCheck2 :size="20" aria-hidden="true" />
             <div>
@@ -631,8 +775,11 @@ button:disabled {
 }
 
 .inline-feedback {
-  color: var(--ws-ink-muted, var(--vp-c-text-2));
   background: var(--ws-surface-soft, var(--vp-c-bg-soft));
+}
+
+.inline-feedback > div {
+  min-width: 0;
 }
 
 .inline-alert svg,
@@ -766,6 +913,12 @@ button:disabled {
   background: var(--ws-surface-soft, var(--vp-c-bg-soft));
 }
 
+.status-callout .submission-note {
+  margin-top: 8px;
+  color: var(--ws-ink, var(--vp-c-text-1));
+  font-weight: 650;
+}
+
 .primary-action {
   margin-top: 12px;
 }
@@ -803,6 +956,10 @@ button:disabled {
   list-style: none;
 }
 
+.completed-evaluations {
+  margin-top: 8px;
+}
+
 .turn-history li {
   padding: 14px 0;
   border-bottom: 1px solid var(--ws-line, var(--vp-c-divider));
@@ -826,6 +983,95 @@ button:disabled {
   padding-left: 10px;
   color: var(--ws-ink-muted, var(--vp-c-text-2));
   border-left: 2px solid var(--ws-line-strong, var(--vp-c-border));
+}
+
+.evaluation-detail {
+  color: var(--ws-ink-muted, var(--vp-c-text-2));
+}
+
+.turn-history .evaluation-detail {
+  margin-top: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--ws-line, var(--vp-c-divider));
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: var(--ws-surface-soft, var(--vp-c-bg-soft));
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.evaluation-detail.is-passed {
+  border-color: color-mix(in srgb, var(--ws-ok, var(--vp-c-green-1)) 38%, var(--ws-line, var(--vp-c-divider)));
+}
+
+.evaluation-detail.is-partial {
+  border-color: color-mix(in srgb, var(--ws-warn, var(--vp-c-yellow-1)) 45%, var(--ws-line, var(--vp-c-divider)));
+}
+
+.evaluation-detail.is-corrective {
+  border-color: color-mix(in srgb, var(--ws-danger, var(--vp-c-red-1)) 38%, var(--ws-line, var(--vp-c-divider)));
+}
+
+.evaluation-detail.is-pending {
+  color: var(--ws-ink-faint, var(--vp-c-text-3));
+}
+
+.evaluation-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.verdict-label {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-height: 22px;
+  padding: 1px 7px;
+  color: var(--ws-ink, var(--vp-c-text-1));
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.is-passed .verdict-label {
+  color: var(--ws-ok, var(--vp-c-green-1));
+}
+
+.is-partial .verdict-label {
+  color: var(--ws-warn, var(--vp-c-yellow-1));
+}
+
+.is-corrective .verdict-label {
+  color: var(--ws-danger, var(--vp-c-red-1));
+}
+
+.evaluation-heading > span:last-child {
+  padding-top: 2px;
+}
+
+.evaluation-section {
+  margin-top: 9px;
+}
+
+.evaluation-section strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--ws-ink, var(--vp-c-text-1));
+  font-size: 12px;
+}
+
+.evaluation-section p,
+.evaluation-section ul {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.evaluation-section ul {
+  padding-left: 18px;
 }
 
 .spinning {

@@ -112,3 +112,28 @@
   - `npm run build`：VitePress 客户端、服务端 bundle 与静态渲染通过。
   - 运行态：Tutor `GET /health` 返回 `ok: true`，VitePress 开发站点根路径返回 HTTP 200；本次环境没有可用的浏览器控制实例，因此未能补充截图式人工页面检查。
 - 本地提交 message：`feat(contracts): close authoritative review lifecycle`。
+
+### 阶段 7：复盘可用性修复与教师验收队列闭环
+
+- 状态：完成
+- 实测根因：
+  - 原 Assessment 计划生成没有读取同一学生、同一 Lab 的历史复盘，确定性回退总会选中相同概念和固定题面；远程模型原样复用旧问题时也没有新颖性校验。
+  - 原回答状态机把澄清追问仍未通过视为整场复盘的终止条件，因此常在两题后直接进入 `deferred`。
+  - 原评价契约只有 verdict、简短 rationale 和证据引用，无法稳定向学生说明“是否正确、缺了什么、完整因果链是什么”。
+  - 原报告门禁只接受 `review_completed`，且教师验收队列只从 `reports` 表读取；因此 `deferred` 学生既不能提交报告，教师也看不到仅有复盘的记录。
+- 主要修改：
+  - 新增最近 5 次复盘读取；Assessment Agent 根据历史概念、题型和题面轮换问题。远程模型若原样重复近期问题，则拒绝该计划并回退到同样遵守轮换规则的确定性计划。
+  - 每个主问题最多生成一次澄清追问；澄清仍未通过时保留明确评价并继续下一主问题，不再提前结束整场复盘。计划问题全部完成后仍存在未解决叶子问题，或达到五题总上限时，才进入 `deferred`。
+  - 评价契约增加 `verdictLabel`、`missingPoints`、`correctReasoning`、`correctiveExplanation`。学生当前题、已完成记录、延期记录、报告正文和教师验收页统一展示明确结论、遗漏点和参考因果链。
+  - `deferred` 保存完整 transcript，并成为可提交报告的状态；报告会携带复盘问答、逐题评价和延期原因。该状态不写入熟练掌握证据，也不自动解锁下一实验，仍由教师处理未解决知识点。
+  - 教师验收队列改为报告与复盘联合队列，增加 `hasReport`、`reviewStatus`、`reviewUpdatedAt`。学生尚未提交报告时，教师也能先查看完整复盘和 Tutor 对话；报告批语输入保持禁用，提交报告后即可正常验收。
+- 验证：
+  - `node --test learning/assessment-agent.test.mjs learning/concept-catalog.test.mjs learning/socratic-review-db.test.mjs`：15/15 通过。
+  - `npm run test:smoke`：真实 HTTP/SQLite 链路通过，覆盖“主问题 partial -> 一次澄清 partial -> 继续下一主问题 -> 最终 deferred -> deferred 可提交报告 -> 教师队列从 `hasReport: false` 更新为 `hasReport: true`”。
+  - `npm test`：125/125 通过。
+  - `npm run test:harness`：34 个 Tutor 行为案例全部通过；相关性、单次追问、阶段不干扰与无答案泄漏指标均达标。
+  - `npm run test:rag-harness`：3/3 通过。
+  - `npm run build`：VitePress 客户端、服务端 bundle 与页面渲染通过。
+  - `node --check` 与 `git diff --check` 通过；仅有工作区 LF/CRLF 提示。
+  - 最新隔离服务的 Tutor `8788` 与 VitePress `5174` 均正常监听。当前运行环境没有可用的浏览器控制实例，因此无法补充截图式桌面/移动端验收；本轮 UI 已通过生产构建、类型编译、真实 API smoke 与长文本响应式样式审查。
+- 本地提交 message：`fix(review): make Socratic feedback actionable and teacher-visible`。

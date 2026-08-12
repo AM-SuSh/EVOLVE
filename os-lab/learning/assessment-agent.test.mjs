@@ -88,6 +88,52 @@ test('deterministic Assessment plan is evidence-backed and capped below five', (
   assert.ok(plan.questions.some((question) => question.kind === 'transfer'))
 })
 
+test('Assessment review plans rotate historical questions and reject repeated remote prompts', async () => {
+  const bundle = buildReviewEvidenceBundle(evidenceInput())
+  const firstPlan = generateDeterministicReviewPlan(bundle)
+  const previousPrompts = new Set(firstPlan.questions.map((question) => question.prompt.replace(/\s+/g, ' ').toLowerCase()))
+  const rotatedPlan = generateDeterministicReviewPlan(bundle, { previousQuestions: firstPlan.questions })
+
+  assert.ok(rotatedPlan.questions.some((question) =>
+    !firstPlan.questions.some((previous) => previous.conceptId === question.conceptId),
+  ))
+  assert.ok(rotatedPlan.questions.every((question) =>
+    !previousPrompts.has(question.prompt.replace(/\s+/g, ' ').toLowerCase()),
+  ))
+  assert.ok(rotatedPlan.questions.every((question) =>
+    question.evidenceRefs.every((ref) => bundle.validEvidenceRefs.includes(ref)),
+  ))
+
+  let remoteInput
+  const repeatedRemotePlan = {
+    maxQuestions: 5,
+    rationale: 'Repeat recent prompts to exercise novelty validation.',
+    questions: firstPlan.questions.slice(0, 2).map((question, index) => ({
+      ...question,
+      questionId: `remote-repeat-${index + 1}`,
+    })),
+  }
+  const result = await createAssessmentReviewPlan(bundle, {
+    previousQuestions: firstPlan.questions,
+    llm: { upstream: 'http://assessment.test/v1', model: 'assessment-model' },
+    fetchImpl: async (_url, init) => {
+      const request = JSON.parse(init.body)
+      remoteInput = JSON.parse(request.messages.at(-1).content)
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: JSON.stringify(repeatedRemotePlan) } }] }),
+      }
+    },
+  })
+
+  assert.deepEqual(remoteInput.reviewHistory, firstPlan.questions)
+  assert.equal(result.agent.mode, 'deterministic')
+  assert.ok(result.agent.error)
+  assert.ok(result.plan.questions.every((question) =>
+    !previousPrompts.has(question.prompt.replace(/\s+/g, ' ').toLowerCase()),
+  ))
+})
+
 test('Assessment Agent accepts valid JSON and rejects fabricated evidence by falling back', async () => {
   const bundle = buildReviewEvidenceBundle(evidenceInput())
   const validRaw = {

@@ -389,6 +389,10 @@ export interface SocraticReviewEvaluation {
   verdict: SocraticReviewVerdict
   rationale: string
   missingEvidence: string[]
+  verdictLabel?: string
+  missingPoints?: string[]
+  correctReasoning?: string
+  correctiveExplanation?: string
 }
 
 /** 公开复盘题目。服务端只返回已经 asked 的题目，学生端不得提前展示计划题。 */

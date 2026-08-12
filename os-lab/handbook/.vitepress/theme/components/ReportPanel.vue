@@ -28,6 +28,7 @@ import {
   authHeaders,
   type LlmConfig,
   type SocraticReview,
+  type SocraticReviewEvaluation,
   type TutorLab,
 } from '../tutor-model'
 import { createReportMarkdown, renderReportHtml } from '../report-markdown'
@@ -126,6 +127,10 @@ const libraryCollapsed = ref(true)
 let previouslyReferencedImageIds = new Set<string>()
 
 const canSyncServer = computed(() => Boolean(props.authenticated && props.endpoint))
+const reviewSubmittable = computed(() =>
+  socraticReview.value?.status === 'review_completed'
+  || socraticReview.value?.status === 'deferred',
+)
 
 const imageLibrary = computed(() =>
   attachments.value.filter((item) => item.mime.startsWith('image/')),
@@ -602,6 +607,67 @@ function rememberReferencedImages() {
   for (const id of currentReferencedImageIds()) previouslyReferencedImageIds.add(id)
 }
 
+function reviewEvaluationLabel(evaluation: SocraticReviewEvaluation) {
+  const category = evaluation.verdict === 'passed'
+    ? '正确'
+    : evaluation.verdict === 'partial'
+      ? '部分正确'
+      : '需修正'
+  const explicitLabel = String(evaluation.verdictLabel || '').trim()
+  return explicitLabel && explicitLabel !== category
+    ? `${category}（${explicitLabel}）`
+    : category
+}
+
+function reviewRecordMarkdown(review: SocraticReview) {
+  const transcript = String(review.transcriptMarkdown || '').trim()
+  const turns = [...review.turns]
+    .filter((turn) => Boolean(turn.askedAt && turn.prompt))
+    .sort((left, right) => left.ordinal - right.ordinal)
+  if (!turns.length) return transcript
+
+  const lines = ['## 收获与复盘', '']
+
+  turns.forEach((turn, index) => {
+    lines.push(
+      `### 问题 ${index + 1}`,
+      '',
+      `**AI 导师：** ${turn.prompt}`,
+      '',
+      `**学生：** ${turn.studentAnswer || '（未回答）'}`,
+      '',
+    )
+    if (!turn.evaluation) return
+    lines.push(`**评价：** ${reviewEvaluationLabel(turn.evaluation)}`, '')
+    if (turn.evaluation.rationale) lines.push(`**评价说明：** ${turn.evaluation.rationale}`, '')
+    if (turn.evaluation.missingPoints?.length) {
+      lines.push('**缺失点：**', ...turn.evaluation.missingPoints.map((item) => `- ${item}`), '')
+    }
+    if (turn.evaluation.correctReasoning) {
+      lines.push(`**参考因果链：** ${turn.evaluation.correctReasoning}`, '')
+    }
+    if (turn.evaluation.correctiveExplanation) {
+      lines.push(`**纠正说明：** ${turn.evaluation.correctiveExplanation}`, '')
+    }
+    if (turn.evaluation.missingEvidence?.length) {
+      lines.push('**待补证据：**', ...turn.evaluation.missingEvidence.map((item) => `- ${item}`), '')
+    }
+  })
+
+  if (review.finalSummary) {
+    lines.push('### 我的最终总结', '', review.finalSummary.trim(), '')
+  }
+  if (review.status === 'deferred') {
+    lines.push(
+      '### 复盘状态',
+      '',
+      `已转为后续关注：${review.deferredReason || '由教师结合后续证据继续确认。'}`,
+      '',
+    )
+  }
+  return lines.join('\n').trim()
+}
+
 /** 始终按当前下拉选中的格式组装，提交/预览/导出同一份。 */
 function buildBodyMarkdown() {
   const tpl = template.value
@@ -625,8 +691,9 @@ function buildBodyMarkdown() {
       )
     }
   }
-  if (socraticReview.value?.status === 'review_completed' && socraticReview.value.transcriptMarkdown) {
-    lines.push(socraticReview.value.transcriptMarkdown.trim(), '')
+  if (socraticReview.value && reviewSubmittable.value) {
+    const reviewRecord = reviewRecordMarkdown(socraticReview.value)
+    if (reviewRecord) lines.push(reviewRecord, '')
   }
   return lines.join('\n')
 }
@@ -701,13 +768,14 @@ async function submitToTeacher() {
     emit('notice', '请先登录再提交实验报告。')
     return
   }
-  if (socraticReview.value?.status !== 'review_completed') {
-    emit('notice', '完成本实验的苏格拉底复盘后再提交报告。')
+  if (!reviewSubmittable.value) {
+    emit('notice', '完成苏格拉底复盘，或转入教师后续关注后再提交报告。')
     return
   }
-  const ok = window.confirm(
-    '确认把当前实验报告提交给老师吗？\n\n重复提交会覆盖本实验上一份提交；提交后老师可在验收页查看。',
-  )
+  const deferredNotice = socraticReview.value?.status === 'deferred'
+    ? '当前复盘已转为后续关注，复盘记录将随报告提交，由教师继续确认。\n\n'
+    : ''
+  const ok = window.confirm(`${deferredNotice}确认把当前实验报告提交给老师吗？\n\n重复提交会覆盖本实验上一份提交；提交后老师可在验收页查看。`)
   if (!ok) return
   if (!(await persist(false))) {
     emit('notice', '草稿尚未保存成功，暂不能提交。')
@@ -1419,8 +1487,10 @@ function onReviewCompleted(review: SocraticReview) {
         </button>
         <button
           type="button"
-          title="按当前格式提交给老师（会先确认）"
-          :disabled="busyAttach || socraticReview?.status !== 'review_completed'"
+          :title="socraticReview?.status === 'deferred'
+            ? '复盘已转为后续关注，仍可连同记录提交给老师'
+            : '按当前格式提交给老师（会先确认）'"
+          :disabled="busyAttach || !reviewSubmittable"
           @click="submitToTeacher"
         >
           <Send :size="14" aria-hidden="true" /><span>{{ busyAttach ? '准备中…' : '提交给老师' }}</span>

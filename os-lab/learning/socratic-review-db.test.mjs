@@ -157,6 +157,53 @@ test('review ordering, immutability and unresolved verdicts are enforced', () =>
   )
 })
 
+test('deferred review persists its transcript and enters the teacher queue without a report', () => {
+  const username = 'review-only-deferred-student'
+  const registration = learningDb.register(username, 'secret1', 'review-only-class')
+  const student = learningDb.resolveSession(registration.token)
+  const created = learningDb.createSocraticReview(student.id, reviewPlan('review-session-deferred'))
+  learningDb.markSocraticReviewTurnAsked(student.id, created.reviewId, 'q1')
+  learningDb.answerSocraticReviewTurn(student.id, created.reviewId, 'q1', {
+    answer: 'I can explain the mechanism, but the required runtime evidence is not available yet.',
+    evaluation: {
+      verdict: 'defer',
+      rationale: 'A teacher should inspect the unavailable runtime environment.',
+      evidenceRefs: [],
+    },
+  })
+
+  const transcriptMarkdown = [
+    '## Socratic review',
+    '',
+    '**Tutor:** Explain the observed state transition.',
+    '',
+    '**Student:** Runtime evidence is currently unavailable.',
+  ].join('\n')
+  const deferred = learningDb.deferSocraticReview(
+    student.id,
+    created.reviewId,
+    'Trusted runtime evidence could not be collected.',
+    { transcriptMarkdown },
+  )
+  const persisted = learningDb.getSocraticReview(student.id, created.reviewId)
+
+  assert.equal(deferred.status, 'deferred')
+  assert.equal(persisted.transcriptMarkdown, transcriptMarkdown)
+  assert.equal(persisted.plan.deferredReason, 'Trusted runtime evidence could not be collected.')
+  assert.ok(persisted.completedAt)
+
+  const queueItem = learningDb.listAllReports().find((item) =>
+    item.user === username && item.labId === 'lab2',
+  )
+  assert.ok(queueItem)
+  assert.equal(queueItem.hasReport, false)
+  assert.equal(queueItem.reviewStatus, 'deferred')
+  assert.equal(queueItem.content, '')
+  assert.equal(queueItem.feedback, '')
+  assert.equal(queueItem.contentPath, '')
+  assert.deepEqual(queueItem.attachments, [])
+})
+
 test('follow-up throttle persists pending checks until explicitly resolved', () => {
   const registration = learningDb.register('followup-student', 'secret1', '计科2301')
   const student = learningDb.resolveSession(registration.token)

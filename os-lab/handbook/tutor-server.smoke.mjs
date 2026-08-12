@@ -47,6 +47,7 @@ const mockUpstream = http.createServer(async (request, response) => {
       }
       if (input.question && typeof input.answer === 'string') {
         const needsEvidence = input.answer.includes('[needs-evidence]')
+        const partial = input.answer.includes('[partial]')
         response.end(JSON.stringify({
           choices: [{
             message: {
@@ -59,11 +60,27 @@ const mockUpstream = http.createServer(async (request, response) => {
                     missingEvidence: ['新的可信运行'],
                     followUpObjective: input.question.objective || '',
                   }
+                : partial
+                  ? {
+                      verdict: 'partial',
+                      verdictLabel: '部分正确',
+                      rationale: '回答指出了现象，但还没有完整连接触发条件、状态变化和验证证据。',
+                      evidenceRefs: input.question.evidenceRefs || [],
+                      missingEvidence: [],
+                      missingPoints: ['补充触发条件与状态变化之间的因果关系'],
+                      correctReasoning: '触发条件 -> 状态变化 -> 可观察结果 -> 对应验证证据。',
+                      correctiveExplanation: '先说明什么条件触发机制，再说明内部状态如何变化，最后用运行或代码证据验证结果。',
+                      followUpObjective: input.question.objective || '',
+                    }
                 : {
                     verdict: 'passed',
+                    verdictLabel: '回答正确',
                     rationale: '回答覆盖了本题要求，并引用了当前过程证据。',
                     evidenceRefs: input.question.evidenceRefs || [],
                     missingEvidence: [],
+                    missingPoints: [],
+                    correctReasoning: '机制、过程证据与结论已经形成对应关系。',
+                    correctiveExplanation: '回答已通过，无需补充。',
                     followUpObjective: '',
                   }),
             },
@@ -592,6 +609,67 @@ try {
     firstAnswer: '我用可信运行和启动路径说明了自己如何验证 Lab1 的关键判断。',
   })
   assert.equal(otherLab1Review.status, 'review_completed')
+
+  const deferredReviewStart = await postJson('/learning/review/start', otherStudentHeaders, {
+    labId: 'lab1', sessionId: 'smoke-lab1-session-2',
+  })
+  assert.equal(deferredReviewStart.status, 201)
+  let deferredReview = (await deferredReviewStart.json()).review
+  const firstMainQuestion = deferredReview.turns.find((turn) => turn.askedAt && !turn.answeredAt)
+  deferredReview = await answerCurrentReview(
+    otherStudentHeaders,
+    deferredReview,
+    '[partial] 我只描述了运行现象，还没有把完整因果链说明清楚。',
+  )
+  const clarification = deferredReview.turns.find((turn) => turn.askedAt && !turn.answeredAt)
+  assert.ok(clarification?.parentTurnId, 'a partial main answer should receive one clarification')
+  deferredReview = await answerCurrentReview(
+    otherStudentHeaders,
+    deferredReview,
+    '[partial] 我补充了一点现象，但因果关系仍然不完整。',
+  )
+  const nextMainQuestion = deferredReview.turns.find((turn) => turn.askedAt && !turn.answeredAt)
+  assert.equal(deferredReview.status, 'review_active')
+  assert.ok(nextMainQuestion, 'the review should continue to the next main question')
+  assert.equal(nextMainQuestion.parentTurnId, null)
+  assert.notEqual(nextMainQuestion.questionId, firstMainQuestion.questionId)
+  while (deferredReview.status === 'review_active' && deferredReview.turns.some((turn) => turn.askedAt && !turn.answeredAt)) {
+    deferredReview = await answerCurrentReview(
+      otherStudentHeaders,
+      deferredReview,
+      '[partial] 我现在仍只描述现象，尚未完整说明触发条件、状态变化、可观察结果和验证证据之间的因果链。',
+    )
+  }
+  assert.equal(deferredReview.status, 'deferred')
+  assert.equal(deferredReview.turns.length <= 5, true)
+  assert.equal(deferredReview.turns[0].evaluation.verdictLabel, '部分正确')
+  assert.ok(deferredReview.turns[0].evaluation.missingPoints.length > 0)
+  assert.ok(deferredReview.turns[0].evaluation.correctReasoning)
+  assert.ok(deferredReview.transcriptMarkdown)
+
+  const reportsBeforeDeferredSubmit = await fetch(`${endpoint}/teacher/reports`, { headers: teacherHeaders })
+    .then((response) => response.json())
+  const reviewOnlyQueueItem = reportsBeforeDeferredSubmit.reports.find((item) =>
+    item.user === 'member-c-smoke-2' && item.labId === 'lab1',
+  )
+  assert.ok(reviewOnlyQueueItem)
+  assert.equal(reviewOnlyQueueItem.hasReport, false)
+  assert.equal(reviewOnlyQueueItem.reviewStatus, 'deferred')
+
+  const deferredReportSubmit = await postJson('/reports', otherStudentHeaders, {
+    labId: 'lab1',
+    sessionId: 'smoke-lab1-session-2',
+    content: '# Lab1 report with deferred review',
+  })
+  assert.equal(deferredReportSubmit.status, 200)
+  assert.match((await deferredReportSubmit.json()).reportEventId, /^[0-9a-f-]{36}$/i)
+  const reportsAfterDeferredSubmit = await fetch(`${endpoint}/teacher/reports`, { headers: teacherHeaders })
+    .then((response) => response.json())
+  const submittedQueueItem = reportsAfterDeferredSubmit.reports.find((item) =>
+    item.user === 'member-c-smoke-2' && item.labId === 'lab1',
+  )
+  assert.equal(submittedQueueItem.hasReport, true)
+  assert.equal(submittedQueueItem.reviewStatus, 'deferred')
 
   const lab2Upgrade = await postJson('/scaffold/upgrade', studentHeaders, { variant: 'fill' })
   assert.equal(lab2Upgrade.status, 200)

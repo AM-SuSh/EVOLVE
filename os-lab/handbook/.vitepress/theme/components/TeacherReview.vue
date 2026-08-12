@@ -24,10 +24,13 @@ interface StudentReport {
   user: string
   className?: string
   labId: string
-  updatedAt: string
-  content: string
+  updatedAt?: string
+  content?: string
   feedback?: string
   attachments?: ReportAttachment[]
+  hasReport?: boolean
+  reviewStatus?: string
+  reviewUpdatedAt?: string
 }
 
 interface ReviewTurn {
@@ -43,6 +46,9 @@ interface ReviewTurn {
     rationale: string
     evidenceRefs: string[]
     missingEvidence: string[]
+    missingPoints?: string | string[]
+    correctReasoning?: string | string[]
+    correctiveExplanation?: string | string[]
   }
 }
 
@@ -89,7 +95,7 @@ const filtered = computed(() =>
     (report) => {
       const matchesStatus =
         statusFilter.value === 'all' ||
-        (statusFilter.value === 'reviewed' ? Boolean(report.feedback?.trim()) : !report.feedback?.trim())
+        (statusFilter.value === 'reviewed' ? reportReviewed(report) : !reportReviewed(report))
       const keyword = query.value.trim().toLowerCase()
       const matchesQuery =
         !keyword ||
@@ -105,10 +111,33 @@ const filtered = computed(() =>
     },
   ),
 )
-const pendingCount = computed(() => reports.value.filter((report) => !report.feedback?.trim()).length)
+const pendingCount = computed(() => reports.value.filter((report) => !reportReviewed(report)).length)
 const reviewedCount = computed(() => reports.value.length - pendingCount.value)
 const active = computed(() => reports.value.find((report) => reportKey(report) === activeKey.value))
-const hasChanges = computed(() => feedbackDraft.value !== feedbackSaved.value)
+const hasChanges = computed(() =>
+  Boolean(active.value && reportExists(active.value) && feedbackDraft.value !== feedbackSaved.value),
+)
+
+function reportExists(report?: StudentReport | null) {
+  return Boolean(report && report.hasReport !== false)
+}
+
+function reportReviewed(report: StudentReport) {
+  return reportExists(report) && Boolean(report.feedback?.trim())
+}
+
+function reportTimestamp(report: StudentReport) {
+  return reportExists(report)
+    ? report.updatedAt || report.reviewUpdatedAt || ''
+    : report.reviewUpdatedAt || report.updatedAt || ''
+}
+
+function reviewDetailText(value?: string | string[]) {
+  return (Array.isArray(value) ? value : [value])
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .join('\n')
+}
 
 function attachmentUrl(user: string, labId: string, file: string) {
   const token = loadAuth()?.token || ''
@@ -146,9 +175,9 @@ const reportMarkdown = createReportMarkdown()
 
 const activeHtml = computed(() => {
   const report = active.value
-  if (!report) return ''
+  if (!report || !reportExists(report)) return ''
   return renderReportHtml(
-    report.content,
+    report.content || '',
     (ref) => resolveTeacherAttachment(report, ref),
     reportMarkdown,
   )
@@ -225,7 +254,10 @@ async function loadSocraticReview(report: StudentReport) {
 }
 
 function formatTime(value: string) {
-  return new Date(value).toLocaleString('zh-CN', {
+  if (!value) return '时间未知'
+  const timestamp = new Date(value)
+  if (Number.isNaN(timestamp.getTime())) return '时间未知'
+  return timestamp.toLocaleString('zh-CN', {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -258,7 +290,7 @@ async function load() {
 }
 
 async function saveFeedback() {
-  if (!active.value || busy.value) return
+  if (!active.value || !reportExists(active.value) || busy.value) return
   busy.value = true
   note.value = ''
   try {
@@ -358,9 +390,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             :class="{ active: reportKey(report) === activeKey }"
             @click="open(report)"
           >
-            <span class="tr-list-main"><strong>{{ report.user }}</strong><small>{{ formatTime(report.updatedAt) }}</small></span>
-            <span>{{ report.className || '未分班' }} · {{ report.labId }}</span>
-            <CheckCircle2 v-if="report.feedback?.trim()" class="reviewed" :size="16" aria-label="已完成验收" />
+            <span class="tr-list-main"><strong>{{ report.user }}</strong><small>{{ formatTime(reportTimestamp(report)) }}</small></span>
+            <span class="tr-list-meta">
+              <span>{{ report.className || '未分班' }} · {{ report.labId }}</span>
+              <em :class="{ 'review-only': !reportExists(report) }" :title="report.reviewStatus || undefined">
+                {{ reportExists(report) ? '报告已提交' : '复盘待验收' }}
+              </em>
+            </span>
+            <CheckCircle2 v-if="reportExists(report) && report.feedback?.trim()" class="reviewed" :size="16" aria-label="已完成验收" />
           </button>
           <div v-if="!filtered.length" class="tr-empty">
             <ClipboardCheck :size="24" aria-hidden="true" />
@@ -379,11 +416,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           <header>
             <div>
               <span>{{ active.className || '未分班' }} · {{ active.labId }}</span>
-              <h1>{{ active.user }} 的实验报告</h1>
+              <h1>{{ active.user }} 的{{ reportExists(active) ? '实验报告' : '实验复盘' }}</h1>
             </div>
-            <time :datetime="active.updatedAt">提交于 {{ formatTime(active.updatedAt) }}</time>
+            <time :datetime="reportTimestamp(active)">
+              {{ reportExists(active) ? '提交于' : '复盘更新于' }} {{ formatTime(reportTimestamp(active)) }}
+            </time>
           </header>
-          <div v-if="active.attachments?.length" class="tr-attachments">
+          <div v-if="reportExists(active) && active.attachments?.length" class="tr-attachments">
             <strong>附件</strong>
             <button
               v-for="item in active.attachments"
@@ -396,15 +435,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
               <small>{{ formatSize(item.size) }}</small>
             </button>
           </div>
-          <div class="tr-content tr-md" v-html="activeHtml" />
+          <div v-if="reportExists(active)" class="tr-content tr-md" v-html="activeHtml" />
+          <div v-else class="tr-report-missing" role="status">
+            <ClipboardCheck :size="26" aria-hidden="true" />
+            <div>
+              <strong>学生尚未提交实验报告</strong>
+              <p>当前条目来自实验复盘，下方仍可查看完整的苏格拉底复盘记录。</p>
+            </div>
+          </div>
           <section class="tr-socratic" aria-label="苏格拉底复盘记录">
             <header>
-              <div><span>苏格拉底复盘</span><strong>{{ socraticReview ? socraticReview.status : '未记录' }}</strong></div>
+              <div><span>苏格拉底复盘</span><strong>{{ socraticReview?.status || active.reviewStatus || '未记录' }}</strong></div>
               <small v-if="socraticReview?.sourceAssessmentId">Assessment {{ socraticReview.sourceAssessmentId }}</small>
             </header>
             <p v-if="reviewLoading" class="tr-review-state">正在加载复盘证据...</p>
             <p v-else-if="reviewError" class="tr-review-state is-error">{{ reviewError }}</p>
-            <p v-else-if="!socraticReview" class="tr-review-state">此报告没有服务端复盘记录。</p>
+            <p v-else-if="!socraticReview" class="tr-review-state">此条目没有服务端复盘记录。</p>
             <template v-else>
               <p v-if="socraticReview.plan?.rationale" class="tr-review-rationale">{{ socraticReview.plan.rationale }}</p>
               <div v-for="turn in socraticReview.turns" :key="turn.id" class="tr-review-turn">
@@ -414,6 +460,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
                 <div v-if="turn.evaluation" class="tr-review-evaluation">
                   <strong>{{ reviewVerdictLabel(turn.evaluation.verdict) }}</strong>
                   <span>{{ turn.evaluation.rationale }}</span>
+                  <div
+                    v-if="reviewDetailText(turn.evaluation.missingPoints) || reviewDetailText(turn.evaluation.correctReasoning) || reviewDetailText(turn.evaluation.correctiveExplanation)"
+                    class="tr-review-evaluation-details"
+                  >
+                    <div v-if="reviewDetailText(turn.evaluation.missingPoints)">
+                      <b>遗漏要点</b><span>{{ reviewDetailText(turn.evaluation.missingPoints) }}</span>
+                    </div>
+                    <div v-if="reviewDetailText(turn.evaluation.correctReasoning)">
+                      <b>正确推理</b><span>{{ reviewDetailText(turn.evaluation.correctReasoning) }}</span>
+                    </div>
+                    <div v-if="reviewDetailText(turn.evaluation.correctiveExplanation)">
+                      <b>纠正说明</b><span>{{ reviewDetailText(turn.evaluation.correctiveExplanation) }}</span>
+                    </div>
+                  </div>
                   <code v-for="ref in turn.evaluation.evidenceRefs" :key="ref">{{ ref }}</code>
                   <code v-for="ref in turn.evidenceRefs" :key="`plan-${ref}`">{{ ref }}</code>
                 </div>
@@ -434,22 +494,28 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         </template>
       </main>
 
-      <aside class="tr-feedback" :class="{ disabled: !active }">
+      <aside class="tr-feedback" :class="{ disabled: !active || !reportExists(active) }">
         <header>
           <span>验收意见</span>
-          <strong>{{ active?.feedback?.trim() ? '已完成' : '待验收' }}</strong>
+          <strong>{{ active && !reportExists(active) ? '等待报告' : active?.feedback?.trim() ? '已完成' : '待验收' }}</strong>
         </header>
-        <p>意见保存后会立即同步到学生的实验报告面板。</p>
+        <p v-if="active && !reportExists(active)">学生提交实验报告后，才可填写并保存报告验收意见。</p>
+        <p v-else>意见保存后会立即同步到学生的实验报告面板。</p>
         <textarea
           v-model="feedbackDraft"
-          :disabled="!active"
+          :disabled="!active || !reportExists(active)"
           placeholder="记录达成情况、证据是否充分，以及下一步需要改进的内容。"
           aria-label="验收意见"
         />
         <p v-if="note" class="tr-note" :class="{ ok: note.startsWith('验收意见已保存') }">{{ note }}</p>
         <div class="tr-feedback-footer">
-          <span>{{ hasChanges ? '有未保存修改' : active ? '已保存' : '' }}</span>
-          <button type="button" :disabled="!active || busy || !hasChanges" title="保存验收意见（Ctrl/Command + S）" @click="saveFeedback">
+          <span>{{ active && !reportExists(active) ? '尚无报告可验收' : hasChanges ? '有未保存修改' : active ? '已保存' : '' }}</span>
+          <button
+            type="button"
+            :disabled="!active || !reportExists(active) || busy || !hasChanges"
+            :title="active && !reportExists(active) ? '学生尚未提交报告' : '保存验收意见（Ctrl/Command + S）'"
+            @click="saveFeedback"
+          >
             <Save :size="15" aria-hidden="true" />{{ busy ? '保存中…' : '保存意见' }}
           </button>
         </div>
@@ -893,6 +959,32 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   background: transparent;
 }
 
+.tr-list-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ws-space-2);
+  width: 100%;
+}
+
+.tr-list-meta em {
+  flex: none;
+  padding: 1px 6px;
+  color: var(--ws-ok);
+  border: 1px solid color-mix(in srgb, var(--ws-ok) 35%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ws-ok) 8%, transparent);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 18px;
+}
+
+.tr-list-meta em.review-only {
+  color: var(--ws-warn);
+  border-color: color-mix(in srgb, var(--ws-warn) 38%, transparent);
+  background: color-mix(in srgb, var(--ws-warn) 9%, transparent);
+}
+
 .tr-reader {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -979,6 +1071,34 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   background: var(--ws-surface-alt);
 }
 
+.tr-report-missing {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ws-space-3);
+  margin: var(--ws-space-5) clamp(var(--ws-space-5), 4vw, 48px);
+  padding: var(--ws-space-4);
+  color: var(--ws-ink-muted);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+}
+
+.tr-report-missing svg {
+  flex: none;
+  color: var(--ws-warn);
+}
+
+.tr-report-missing strong {
+  color: var(--ws-ink);
+  font-size: var(--ws-text-sm);
+}
+
+.tr-report-missing p {
+  margin: var(--ws-space-1) 0 0;
+  font-size: var(--ws-text-xs);
+  line-height: var(--ws-leading-normal);
+}
+
 .tr-socratic {
   padding: var(--ws-space-4) clamp(var(--ws-space-5), 4vw, 48px) var(--ws-space-7);
   border-top: 1px solid var(--ws-line);
@@ -1048,6 +1168,30 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 }
 
 .tr-review-evaluation strong { color: var(--ws-accent); }
+
+.tr-review-evaluation-details {
+  display: grid;
+  gap: var(--ws-space-2);
+  width: 100%;
+  padding: var(--ws-space-2) 0;
+  border-top: 1px solid var(--ws-line);
+  border-bottom: 1px solid var(--ws-line);
+}
+
+.tr-review-evaluation-details > div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: var(--ws-space-2);
+}
+
+.tr-review-evaluation-details b {
+  color: var(--ws-ink);
+}
+
+.tr-review-evaluation-details span {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 
 .tr-socratic code {
   max-width: 100%;

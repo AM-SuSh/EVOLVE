@@ -92,14 +92,28 @@ export function normalizeReviewPlan(raw, options = {}) {
 
 export function normalizeReviewEvaluation(raw) {
   const verdict = REVIEW_VERDICTS.includes(raw?.verdict) ? raw.verdict : 'partial'
+  const defaultLabels = {
+    passed: '回答正确',
+    partial: '部分正确',
+    'needs-evidence': '结论待运行证据确认',
+    misconception: '回答需要修正',
+    defer: '需要教师进一步确认',
+  }
   return {
     verdict,
+    verdictLabel: textValue(raw?.verdictLabel || defaultLabels[verdict], 160),
     rationale: textValue(raw?.rationale, 2_000),
     evidenceRefs: refs(raw?.evidenceRefs),
     missingEvidence: (Array.isArray(raw?.missingEvidence) ? raw.missingEvidence : [])
       .map((item) => textValue(item, 500))
       .filter(Boolean)
       .slice(0, 8),
+    missingPoints: (Array.isArray(raw?.missingPoints) ? raw.missingPoints : [])
+      .map((item) => textValue(item, 500))
+      .filter(Boolean)
+      .slice(0, 8),
+    correctReasoning: textValue(raw?.correctReasoning, 4_000),
+    correctiveExplanation: textValue(raw?.correctiveExplanation, 4_000),
     followUpObjective: textValue(raw?.followUpObjective, 1_000),
   }
 }

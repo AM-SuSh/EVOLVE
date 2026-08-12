@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { loadConceptCatalog } from './concept-catalog.mjs'
 import { normalizeReviewEvaluation, normalizeReviewPlan } from './review-contracts.mjs'
 
-export const ASSESSMENT_AGENT_PROMPT_VERSION = 'assessment-review-v1'
+export const ASSESSMENT_AGENT_PROMPT_VERSION = 'assessment-review-v2'
 
 const MAX_EVENTS = 160
 const MAX_MESSAGES = 120
@@ -185,11 +185,74 @@ function misconceptionFor(concept, allText) {
   ) || concept.misconceptions?.[0] || null
 }
 
+function reviewHistory(options = {}) {
+  const questions = Array.isArray(options.previousQuestions) ? options.previousQuestions : []
+  const conceptCounts = new Map()
+  const kindCounts = new Map()
+  const prompts = new Set()
+  for (const question of questions) {
+    const conceptId = text(question?.conceptId, 160)
+    const kind = text(question?.kind, 80)
+    const prompt = text(question?.prompt, 4_000).replace(/\s+/g, ' ').toLowerCase()
+    if (conceptId) conceptCounts.set(conceptId, (conceptCounts.get(conceptId) || 0) + 1)
+    if (conceptId && kind) {
+      const key = `${conceptId}:${kind}`
+      kindCounts.set(key, (kindCounts.get(key) || 0) + 1)
+    }
+    if (prompt) prompts.add(prompt)
+  }
+  return { questions, conceptCounts, kindCounts, prompts }
+}
+
+function questionVariant(history, conceptId, kind) {
+  return ((history.kindCounts.get(`${conceptId}:${kind}`) || 0)
+    + (history.conceptCounts.get(conceptId) || 0)) % 3
+}
+
+function evidenceReflectionPrompt(concept, variant) {
+  return [
+    `回看你完成本实验的过程：关于“${concept.title}”，你最初的判断是什么，哪一条对话、代码观察或运行证据让你确认或修改了它？`,
+    `不要只复述最终结果。请以“${concept.title}”为例，按“原假设 -> 操作或观察 -> 证据 -> 修正后结论”还原一次你的实验判断过程。`,
+    `从本次实验里挑一条与“${concept.title}”有关、最可能被误读的现象。你当时如何区分猜测与证据，最后用什么结果确认了因果关系？`,
+  ][variant]
+}
+
+function conceptPrompt(concept, misconception, variant) {
+  if (misconception) {
+    return [
+      `有人认为“${misconception.statement || misconception.id}”。结合本实验中的“${concept.title}”，你认为这个说法哪里不完整或错误？请用实际路径或现象说明。`,
+      `请为“${misconception.statement || misconception.id}”构造一个反例，并沿本实验的代码路径解释“${concept.title}”真正成立的条件。`,
+      `假设同学依据本次运行结果得出“${misconception.statement || misconception.id}”，你会检查哪两个位置或现象来纠正这个判断？请说明它们之间的因果关系。`,
+    ][variant]
+  }
+  return [
+    `请不用照抄手册，用自己的话解释“${concept.title}”在本实验中的作用，并指出一个能验证这段解释的代码位置或运行现象。`,
+    `把“${concept.title}”写成一条从触发条件到可观察结果的因果链，并说明本实验中哪条证据能证伪其中一步。`,
+    `如果只看最终测试通过，可能会误解“${concept.title}”的哪一步机制？请结合代码路径与运行现象补全解释。`,
+  ][variant]
+}
+
+function transferPrompt(bundle, concept, variant) {
+  const catalogPrompts = bundle.catalog.transferPrompts || []
+  if (variant < catalogPrompts.length) return catalogPrompts[variant]
+  return [
+    `如果改变“${concept.title}”所依赖的一个关键条件，哪些不变量仍必须成立，哪些实现会变化？`,
+    `把“${concept.title}”迁移到一个输入、权限或调度条件不同的场景：原结论哪部分仍成立，哪部分必须重新验证？`,
+    `假设本实验中的一个前置条件被移除，你预计“${concept.title}”相关的第一处可观察变化是什么？怎样设计验证来区分两种解释？`,
+  ][(variant - catalogPrompts.length) % 3]
+}
+
 export function generateDeterministicReviewPlan(bundle, options = {}) {
   const allText = evidenceText(bundle)
+  const history = reviewHistory(options)
   const ranked = bundle.catalog.concepts
     .map((concept) => scoreConcept(bundle, concept, allText))
-    .sort((left, right) => right.score - left.score || left.concept.conceptId.localeCompare(right.concept.conceptId))
+    .sort((left, right) => {
+      const historyDelta = (history.conceptCounts.get(left.concept.conceptId) || 0)
+        - (history.conceptCounts.get(right.concept.conceptId) || 0)
+      return historyDelta || right.score - left.score
+        || left.concept.conceptId.localeCompare(right.concept.conceptId)
+    })
   const selected = ranked.slice(0, Math.min(3, Math.max(2, ranked.length)))
   const globalRefs = fallbackRefs(bundle)
   const questions = selected.map((entry, index) => {
@@ -198,12 +261,14 @@ export function generateDeterministicReviewPlan(bundle, options = {}) {
     const refs = evidenceRefs.length ? evidenceRefs : globalRefs
     const misconception = misconceptionFor(concept, allText)
     if (index === 0) {
+      const kind = 'evidence-reflection'
+      const variant = questionVariant(history, concept.conceptId, kind)
       return {
         questionId: `review-${randomUUID()}`,
         conceptId: concept.conceptId,
-        kind: 'evidence-reflection',
+        kind,
         objective: `复盘 ${concept.title} 的判断和证据变化`,
-        prompt: `回看你完成本实验的过程：关于“${concept.title}”，你最初的判断是什么，哪一条对话、代码观察或运行证据让你确认或修改了它？`,
+        prompt: evidenceReflectionPrompt(concept, variant),
         reason: entry.failed.length
           ? '该概念关联过失败断言，需要确认学生能解释从失败到通过的证据链。'
           : '该概念在实验行为或 Tutor 对话中出现，需要把结果与学生自己的判断连接起来。',
@@ -213,28 +278,28 @@ export function generateDeterministicReviewPlan(bundle, options = {}) {
       }
     }
     if (index === selected.length - 1) {
-      const transfer = bundle.catalog.transferPrompts[0]
-        || `如果改变“${concept.title}”所依赖的一个关键条件，哪些不变量仍必须成立，哪些实现会变化？`
+      const kind = 'transfer'
+      const variant = questionVariant(history, concept.conceptId, kind)
       return {
         questionId: `review-${randomUUID()}`,
         conceptId: concept.conceptId,
-        kind: 'transfer',
+        kind,
         objective: `检查 ${concept.title} 的迁移理解`,
-        prompt: transfer,
+        prompt: transferPrompt(bundle, concept, variant),
         reason: '最终复盘需要检查学生能否把本实验结论迁移到变化条件，而不只是复述运行结果。',
         passCriteria: ['指出至少一个不变量', '指出至少一个变化条件', '给出因果解释或可验证预测'],
         evidenceRefs: refs,
         requiresRunEvidence: false,
       }
     }
+    const kind = misconception ? 'counterexample' : 'concept-explanation'
+    const variant = questionVariant(history, concept.conceptId, kind)
     return {
       questionId: `review-${randomUUID()}`,
       conceptId: concept.conceptId,
-      kind: misconception ? 'counterexample' : 'concept-explanation',
+      kind,
       objective: `确认 ${concept.title} 的机制理解`,
-      prompt: misconception
-        ? `有人认为“${misconception.statement || misconception.id}”。结合本实验中的“${concept.title}”，你认为这个说法哪里不完整或错误？请用实际路径或现象说明。`
-        : `请不用照抄手册，用自己的话解释“${concept.title}”在本实验中的作用，并指出一个能验证这段解释的代码位置或运行现象。`,
+      prompt: conceptPrompt(concept, misconception, variant),
       reason: '通过反例或机制解释确认学生不是仅凭最终通过状态判断掌握。',
       passCriteria: [
         ...(concept.invariants || []).slice(0, 2),
@@ -249,7 +314,9 @@ export function generateDeterministicReviewPlan(bundle, options = {}) {
     sessionId: bundle.sessionId,
     sourceAssessmentId: options.sourceAssessmentId || '',
     maxQuestions: 5,
-    rationale: '根据完整 Tutor 对话、学习事件、工作区行为和可信运行生成；默认三题，后续追问也计入五题上限。',
+    rationale: history.questions.length
+      ? '根据完整 Tutor 对话、学习事件、工作区行为和可信运行生成，并避开近期复盘中已经使用的问题与题型；默认三题，后续追问也计入五题上限。'
+      : '根据完整 Tutor 对话、学习事件、工作区行为和可信运行生成；默认三题，后续追问也计入五题上限。',
     generator: { mode: 'deterministic', promptVersion: ASSESSMENT_AGENT_PROMPT_VERSION },
     evidenceRefs: globalRefs,
     questions,
@@ -315,6 +382,16 @@ function validatePlanEvidence(plan, validEvidenceRefs) {
   if (invalid.length) throw new TypeError(`Assessment Agent 引用了不存在的证据：${invalid[0]}`)
 }
 
+function validatePlanNovelty(plan, previousQuestions = []) {
+  const previousPrompts = new Set(previousQuestions.map((question) =>
+    text(question?.prompt, 4_000).replace(/\s+/g, ' ').toLowerCase(),
+  ).filter(Boolean))
+  const duplicate = plan.questions.find((question) =>
+    previousPrompts.has(text(question.prompt, 4_000).replace(/\s+/g, ' ').toLowerCase()),
+  )
+  if (duplicate) throw new TypeError('Assessment Agent 重复了近期复盘问题')
+}
+
 export async function createAssessmentReviewPlan(bundle, options = {}) {
   const fallback = generateDeterministicReviewPlan(bundle, options)
   if (!options.llm) return { plan: fallback, agent: { mode: 'deterministic', error: '' } }
@@ -329,9 +406,13 @@ export async function createAssessmentReviewPlan(bundle, options = {}) {
         '只输出 JSON。conceptId 必须来自输入目录，evidenceRefs 必须逐字来自 validEvidenceRefs。',
         '不要因为未观察到就断言学生不掌握；低置信度应使用诊断性问题。',
         '问题要覆盖理解确认、过程证据反思和迁移，避免重复已在对话中充分证明的内容。',
+        'reviewHistory 是近期已经问过的问题；本次不得原样复用问题，优先覆盖未问概念，必须复查薄弱点时要更换题型或情境。',
         '输出字段：maxQuestions,rationale,questions[]；每题含 questionId,conceptId,kind,objective,prompt,reason,passCriteria,evidenceRefs,requiresRunEvidence。',
       ].join('\n'),
-      input: bundle,
+      input: {
+        ...bundle,
+        reviewHistory: (Array.isArray(options.previousQuestions) ? options.previousQuestions : []).slice(0, 25),
+      },
     })
     const plan = normalizeReviewPlan({
       ...raw,
@@ -346,6 +427,7 @@ export async function createAssessmentReviewPlan(bundle, options = {}) {
       requireEvidence: true,
     })
     validatePlanEvidence(plan, bundle.validEvidenceRefs)
+    validatePlanNovelty(plan, options.previousQuestions)
     return { plan, agent: { mode: 'remote', model: options.llm.model, error: '' } }
   } catch (error) {
     return {
@@ -361,10 +443,26 @@ function criterionTerms(criteria) {
   )
 }
 
+function referenceReasoning(question, bundle) {
+  const concept = bundle.catalog.concepts.find((item) => item.conceptId === question.conceptId)
+  const mechanism = concept?.summary || question.objective
+  const invariants = (concept?.invariants || []).slice(0, 2)
+  const observations = (concept?.observableEvidence || []).slice(0, 2)
+  return [
+    mechanism ? `核心机制：${mechanism}` : '',
+    question.passCriteria?.length ? `完整回答应覆盖：${question.passCriteria.join('；')}。` : '',
+    invariants.length ? `必须保持的不变量：${invariants.join('；')}。` : '',
+    observations.length ? `可检查证据：${observations.join('；')}。` : '',
+  ].filter(Boolean).join('\n')
+}
+
 export function evaluateReviewAnswerDeterministically(question, answer, bundle) {
   const value = text(answer, 8_000)
   const terms = criterionTerms(question.passCriteria || [])
-  const matched = terms.filter((group) => group.some((term) => value.toLowerCase().includes(term.toLowerCase()))).length
+  const matchedIndexes = terms
+    .map((group, index) => group.some((term) => value.toLowerCase().includes(term.toLowerCase())) ? index : -1)
+    .filter((index) => index >= 0)
+  const matched = matchedIndexes.length
   const hasRequiredRun = !question.requiresRunEvidence || (question.evidenceRefs || []).some((ref) =>
     ref.startsWith('run:') && bundle.runs.some((run) => run.ref === ref && run.trusted && run.verified),
   )
@@ -372,6 +470,10 @@ export function evaluateReviewAnswerDeterministically(question, answer, bundle) 
   if (!hasRequiredRun) verdict = 'needs-evidence'
   else if (value.length >= 30 && (!terms.length || matched >= Math.max(1, Math.ceil(terms.length / 2)))) verdict = 'passed'
   else if (value.length < 8) verdict = 'misconception'
+  const missingPoints = (question.passCriteria || [])
+    .filter((_, index) => !matchedIndexes.includes(index))
+    .slice(0, 4)
+  const correctReasoning = referenceReasoning(question, bundle)
   return normalizeReviewEvaluation({
     verdict,
     rationale: verdict === 'passed'
@@ -381,6 +483,11 @@ export function evaluateReviewAnswerDeterministically(question, answer, bundle) 
         : '回答尚未覆盖足够的因果关系或可检查证据。',
     evidenceRefs: (question.evidenceRefs || []).filter((ref) => bundle.validEvidenceRefs.includes(ref)),
     missingEvidence: verdict === 'needs-evidence' ? ['补充与该概念对应的可信运行或断言'] : [],
+    missingPoints: verdict === 'passed' ? [] : missingPoints,
+    correctReasoning,
+    correctiveExplanation: verdict === 'passed'
+      ? '你的回答已经形成了可检查的解释。请保留“机制、证据、结论”之间的对应关系。'
+      : `请按“触发条件 -> 机制或状态变化 -> 可观察结果 -> 验证证据”补全回答。\n${correctReasoning}`,
     followUpObjective: verdict === 'partial' || verdict === 'misconception'
       ? question.objective
       : '',
@@ -398,11 +505,19 @@ export async function evaluateAssessmentReviewAnswer(question, answer, bundle, o
         '你是独立的 OS Lab Assessment Agent，评价一条复盘回答。只输出 JSON。',
         'verdict 只能是 passed, partial, needs-evidence, misconception, defer。',
         '只能引用 validEvidenceRefs；口头回答不能覆盖可信运行；没有证据时不能宣布实现正确。',
-        '输出 verdict,rationale,evidenceRefs,missingEvidence,followUpObjective。',
+        '必须明确告诉学生回答是正确、部分正确还是需要修正，并给出具体缺失点和完整的参考因果链；不能只说“缺少关键因果”。',
+        '输出 verdict,verdictLabel,rationale,evidenceRefs,missingEvidence,missingPoints,correctReasoning,correctiveExplanation,followUpObjective。',
       ].join('\n'),
       input: { question, answer: text(answer, 8_000), evidence: bundle },
     })
-    const evaluation = normalizeReviewEvaluation(raw)
+    const evaluation = normalizeReviewEvaluation({
+      ...fallback,
+      ...raw,
+      verdictLabel: raw.verdictLabel || fallback.verdictLabel,
+      missingPoints: Array.isArray(raw.missingPoints) ? raw.missingPoints : fallback.missingPoints,
+      correctReasoning: raw.correctReasoning || fallback.correctReasoning,
+      correctiveExplanation: raw.correctiveExplanation || fallback.correctiveExplanation,
+    })
     const valid = new Set(bundle.validEvidenceRefs)
     if (evaluation.evidenceRefs.some((ref) => !valid.has(ref))) throw new TypeError('answer evaluation cited invalid evidence')
     const hasRequiredRun = !question.requiresRunEvidence || evaluation.evidenceRefs.some((ref) =>
@@ -413,8 +528,10 @@ export async function evaluateAssessmentReviewAnswer(question, answer, bundle, o
         evaluation: normalizeReviewEvaluation({
           ...evaluation,
           verdict: 'needs-evidence',
+          verdictLabel: '结论待运行证据确认',
           rationale: '模型判断不能覆盖本题要求的可信运行证据。',
           missingEvidence: ['补充与该概念对应的可信运行或断言'],
+          correctiveExplanation: `当前口头解释不能替代可信运行。完成对应验证后，再按机制、现象和断言结果建立证据链。\n${evaluation.correctReasoning}`,
         }),
         agent: { mode: 'remote', model: options.llm.model, error: '' },
       }

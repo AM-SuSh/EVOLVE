@@ -519,12 +519,36 @@ export function listMyReports(userId) {
 export function listAllReports() {
   return db
     .prepare(
-      `SELECT u.username AS user, u.class_name AS className, r.lab_id AS labId, r.updated_at AS updatedAt, r.content, r.feedback, r.attachments, r.content_path AS contentPath,
-              r.review_grandfathered AS reviewGrandfathered
-       FROM reports r JOIN users u ON u.id = r.user_id ORDER BY u.class_name, u.username, r.lab_id`,
+      `WITH queue AS (
+         SELECT user_id, lab_id FROM reports
+         UNION
+         SELECT user_id, lab_id FROM socratic_reviews
+       ), latest_reviews AS (
+         SELECT user_id, lab_id, status, updated_at,
+                ROW_NUMBER() OVER (PARTITION BY user_id, lab_id ORDER BY created_at DESC) AS position
+         FROM socratic_reviews
+       )
+       SELECT u.username AS user, u.class_name AS className, q.lab_id AS labId,
+              COALESCE(r.updated_at, sr.updated_at) AS updatedAt,
+              COALESCE(r.content, '') AS content, COALESCE(r.feedback, '') AS feedback,
+              COALESCE(r.attachments, '[]') AS attachments, COALESCE(r.content_path, '') AS contentPath,
+              COALESCE(r.review_grandfathered, 0) AS reviewGrandfathered,
+              CASE WHEN r.user_id IS NULL THEN 0 ELSE 1 END AS hasReport,
+              COALESCE(sr.status, '') AS reviewStatus, COALESCE(sr.updated_at, '') AS reviewUpdatedAt
+       FROM queue q
+       JOIN users u ON u.id = q.user_id AND u.role = 'student'
+       LEFT JOIN reports r ON r.user_id = q.user_id AND r.lab_id = q.lab_id
+       LEFT JOIN latest_reviews sr
+         ON sr.user_id = q.user_id AND sr.lab_id = q.lab_id AND sr.position = 1
+       ORDER BY u.class_name, u.username, q.lab_id`,
     )
     .all()
-    .map((row) => ({ ...row, attachments: parseAttachments(row.attachments), reviewGrandfathered: Boolean(row.reviewGrandfathered) }))
+    .map((row) => ({
+      ...row,
+      attachments: parseAttachments(row.attachments),
+      reviewGrandfathered: Boolean(row.reviewGrandfathered),
+      hasReport: Boolean(row.hasReport),
+    }))
 }
 
 /** 按用户名取某份报告的附件元数据（教师下载用）。 */
@@ -1118,6 +1142,20 @@ export function getLatestSocraticReview(userId, sessionId, labId) {
   return parseSocraticReviewRow(row)
 }
 
+export function listRecentSocraticReviews(userId, labId, limit = 5) {
+  const rows = db.prepare(
+    `SELECT id, session_id AS sessionId, lab_id AS labId, status, plan_version AS planVersion,
+            source_assessment_id AS sourceAssessmentId, max_questions AS maxQuestions,
+            plan_json AS planJson, final_summary AS finalSummary,
+            transcript_markdown AS transcriptMarkdown, created_at AS createdAt,
+            updated_at AS updatedAt, completed_at AS completedAt
+     FROM socratic_reviews
+     WHERE user_id = ? AND lab_id = ?
+     ORDER BY created_at DESC LIMIT ?`,
+  ).all(userId, String(labId || ''), Math.max(1, Math.min(20, Number(limit) || 5)))
+  return rows.map(parseSocraticReviewRow)
+}
+
 /** Teacher-only callers use this to inspect the immutable review record. */
 export function getLatestSocraticReviewForStudent(username, labId) {
   const student = db
@@ -1313,7 +1351,7 @@ export function completeSocraticReview(userId, reviewId, input = {}) {
   return getSocraticReview(userId, reviewId)
 }
 
-export function deferSocraticReview(userId, reviewId, reason = '') {
+export function deferSocraticReview(userId, reviewId, reason = '', input = {}) {
   const review = getSocraticReview(userId, reviewId)
   if (!review) throw new Error('复盘会话不存在或不属于当前账号')
   if (review.status === 'review_completed') throw new Error('已完成的复盘不能延期')
@@ -1321,8 +1359,13 @@ export function deferSocraticReview(userId, reviewId, reason = '') {
   const timestamp = now()
   const plan = { ...review.plan, deferredReason: String(reason || '').trim().slice(0, 2_000) }
   db.prepare(
-    `UPDATE socratic_reviews SET status = 'deferred', plan_json = ?, updated_at = ? WHERE id = ?`,
-  ).run(JSON.stringify(plan), timestamp, reviewId)
+    `UPDATE socratic_reviews SET status = 'deferred', plan_json = ?, transcript_markdown = ?,
+            updated_at = ?, completed_at = ? WHERE id = ?`,
+  ).run(
+    JSON.stringify(plan),
+    String(input.transcriptMarkdown || review.transcriptMarkdown || '').trim().slice(0, 64_000),
+    timestamp, timestamp, reviewId,
+  )
   return getSocraticReview(userId, reviewId)
 }
 

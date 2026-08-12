@@ -37,3 +37,32 @@ test('review plan enforces 2-5 questions and current-lab concepts', () => {
   assert.equal(normalizeReviewEvaluation({ verdict: 'needs-evidence' }).verdict, 'needs-evidence')
 })
 
+test('review evaluation normalizes structured feedback fields', () => {
+  const evaluation = normalizeReviewEvaluation({
+    verdict: 'misconception',
+    verdictLabel: '  Needs correction  ',
+    rationale: '  The causal chain skips a state transition.  ',
+    evidenceRefs: ['run:verified', ' run:verified ', '', 'event:answer'],
+    missingEvidence: [' trace output ', '', 'trusted assertion'],
+    missingPoints: [
+      ' trigger ', 'mechanism', '', 'state change', 'observable result',
+      'verification', 'counterexample', 'boundary', 'transfer', 'discarded ninth item',
+    ],
+    correctReasoning: `  ${'r'.repeat(4_100)}  `,
+    correctiveExplanation: `  ${'c'.repeat(4_100)}  `,
+    followUpObjective: `  ${'f'.repeat(1_100)}  `,
+  })
+
+  assert.equal(evaluation.verdict, 'misconception')
+  assert.equal(evaluation.verdictLabel, 'Needs correction')
+  assert.equal(evaluation.rationale, 'The causal chain skips a state transition.')
+  assert.deepEqual(evaluation.evidenceRefs, ['run:verified', 'event:answer'])
+  assert.deepEqual(evaluation.missingEvidence, ['trace output', 'trusted assertion'])
+  assert.deepEqual(evaluation.missingPoints, [
+    'trigger', 'mechanism', 'state change', 'observable result',
+    'verification', 'counterexample', 'boundary', 'transfer',
+  ])
+  assert.equal(evaluation.correctReasoning.length, 4_000)
+  assert.equal(evaluation.correctiveExplanation.length, 4_000)
+  assert.equal(evaluation.followUpObjective.length, 1_000)
+})

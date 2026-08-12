@@ -117,6 +117,7 @@ import {
   listFinalPerformance,
   listMastery,
   listMasteryObservations,
+  listRecentSocraticReviews,
   listMyFinalPerformance,
   listMyReports,
   listRunHistory,
@@ -1112,8 +1113,12 @@ function publicSocraticReview(review) {
       evaluation: turn.evaluation
         ? {
             verdict: turn.evaluation.verdict,
+            verdictLabel: turn.evaluation.verdictLabel,
             rationale: turn.evaluation.rationale,
             missingEvidence: turn.evaluation.missingEvidence,
+            missingPoints: turn.evaluation.missingPoints || [],
+            correctReasoning: turn.evaluation.correctReasoning || '',
+            correctiveExplanation: turn.evaluation.correctiveExplanation || '',
           }
         : null,
       askedAt: turn.askedAt,
@@ -1123,13 +1128,30 @@ function publicSocraticReview(review) {
 }
 
 function reviewTranscript(review, finalSummary) {
-  const turns = review.turns.map((turn, index) => [
-    `### 问题 ${index + 1}`,
-    `**AI 导师：** ${turn.prompt}`,
-    `**学生：** ${turn.studentAnswer}`,
-  ].join('\n\n'))
-  return ['## 收获与复盘', ...turns, '### 我的最终总结', String(finalSummary || '').trim()]
-    .join('\n\n')
+  const turns = review.turns.filter((turn) => turn.askedAt).map((turn, index) => {
+    const evaluation = turn.evaluation
+    return [
+      `### 问题 ${index + 1}`,
+      `**AI 导师：** ${turn.prompt}`,
+      `**学生：** ${turn.studentAnswer || '未回答'}`,
+      evaluation?.verdictLabel ? `**判断：** ${evaluation.verdictLabel}` : '',
+      evaluation?.rationale ? `**评价：** ${evaluation.rationale}` : '',
+      evaluation?.missingPoints?.length ? `**缺失要点：** ${evaluation.missingPoints.join('；')}` : '',
+      evaluation?.correctiveExplanation ? `**参考解释：** ${evaluation.correctiveExplanation}` : '',
+    ].filter(Boolean).join('\n\n')
+  })
+  const summary = String(finalSummary || '').trim()
+  return ['## 收获与复盘', ...turns, summary ? '### 我的最终总结' : '', summary]
+    .filter(Boolean).join('\n\n')
+}
+
+function reviewHasUnresolvedLeaves(review) {
+  const parentIds = new Set(review.turns.map((turn) => turn.parentTurnId).filter(Boolean))
+  return review.turns.some((turn) =>
+    turn.answeredAt
+      && !parentIds.has(turn.id)
+      && ['partial', 'misconception', 'needs-evidence', 'defer'].includes(turn.evaluation?.verdict),
+  )
 }
 
 function reviewFollowupQuestion(turn, evaluation, kind = 'clarify') {
@@ -2422,9 +2444,17 @@ const server = http.createServer(async (request, response) => {
       const assessment = assessLearningV3({ labId, sessionId: learningSessionId, ...assessmentInput })
       const saved = saveAssessment(session.id, assessment, deriveMasteryUpdates(assessment))
       const bundle = await buildCurrentReviewBundle(session.id, learningSessionId, labId, assessment)
+      const reviewHistory = listRecentSocraticReviews(session.id, labId, 5)
+      const previousQuestions = reviewHistory.flatMap((item) => item.turns.map((turn) => ({
+        conceptId: turn.conceptId,
+        kind: turn.kind,
+        prompt: turn.prompt,
+        verdict: turn.evaluation?.verdict || '',
+      }))).slice(0, 25)
       const generated = await createAssessmentReviewPlan(bundle, {
         sourceAssessmentId: saved.assessmentId,
         llm: await assessmentLlm(body.llm),
+        previousQuestions,
       })
       let review = createSocraticReview(session.id, generated.plan)
       review = markSocraticReviewTurnAsked(session.id, review.reviewId, review.turns[0].questionId)
@@ -2499,11 +2529,11 @@ const server = http.createServer(async (request, response) => {
         }),
       ]
       if (judged.evaluation.verdict === 'defer') {
-        updated = deferSocraticReview(session.id, review.reviewId, judged.evaluation.rationale)
+        updated = deferSocraticReview(session.id, review.reviewId, judged.evaluation.rationale, {
+          transcriptMarkdown: reviewTranscript(updated, ''),
+        })
       } else if (['partial', 'misconception'].includes(judged.evaluation.verdict)) {
-        if (turn.parentTurnId || updated.turns.length >= updated.maxQuestions || updated.turns.length >= 5) {
-          updated = deferSocraticReview(session.id, review.reviewId, '复盘已达到追问边界，需要教师后续关注。')
-        } else {
+        if (!turn.parentTurnId && updated.turns.length < updated.maxQuestions && updated.turns.length < 5) {
           updated = insertSocraticReviewFollowup(
             session.id, review.reviewId, questionId, reviewFollowupQuestion(turn, judged.evaluation),
           )
@@ -2514,6 +2544,23 @@ const server = http.createServer(async (request, response) => {
             reviewId: review.reviewId, questionId: followupTurn.questionId,
             conceptIds: [followupTurn.conceptId], content: followupTurn.prompt,
           }))
+        } else {
+          const next = updated.turns.find((item) => !item.answeredAt)
+          if (next) {
+            updated = markSocraticReviewTurnAsked(session.id, review.reviewId, next.questionId)
+            events.push(serverEvent({
+              sessionId: review.sessionId, labId: review.labId, type: 'review_question_asked',
+              reviewId: review.reviewId, questionId: next.questionId,
+              conceptIds: [next.conceptId], content: next.prompt,
+            }))
+          } else {
+            updated = deferSocraticReview(
+              session.id,
+              review.reviewId,
+              '本次计划内问题已完成；仍有知识点需要教师在验收时继续确认。',
+              { transcriptMarkdown: reviewTranscript(updated, '') },
+            )
+          }
         }
       } else if (judged.evaluation.verdict === 'passed') {
         const next = updated.turns.find((item) => !item.answeredAt)
@@ -2524,6 +2571,13 @@ const server = http.createServer(async (request, response) => {
             reviewId: review.reviewId, questionId: next.questionId,
             conceptIds: [next.conceptId], content: next.prompt,
           }))
+        } else if (reviewHasUnresolvedLeaves(updated)) {
+          updated = deferSocraticReview(
+            session.id,
+            review.reviewId,
+            '本次计划内问题已完成；仍有知识点需要教师在验收时继续确认。',
+            { transcriptMarkdown: reviewTranscript(updated, '') },
+          )
         }
       }
       await storeServerEvents(session.id, events)
@@ -2552,7 +2606,12 @@ const server = http.createServer(async (request, response) => {
         return
       }
       if (review.turns.length >= review.maxQuestions || review.turns.length >= 5) {
-        const deferred = deferSocraticReview(session.id, review.reviewId, '补充证据后已达到五题上限，需要教师后续关注。')
+        const deferred = deferSocraticReview(
+          session.id,
+          review.reviewId,
+          '补充证据后已达到五题上限，需要教师在验收时继续确认。',
+          { transcriptMarkdown: reviewTranscript(review, '') },
+        )
         json(response, 200, { ok: true, review: publicSocraticReview(deferred) }, origin)
         return
       }
@@ -2688,23 +2747,15 @@ const server = http.createServer(async (request, response) => {
         json(response, 403, { error: labAccess?.reason || '该实验尚未解锁', access: labAccess }, origin)
         return
       }
-      const reviewCompleted = Boolean(labAccess.reviewCompleted)
       const grandfathered = isReportReviewGrandfathered(session.id, labId)
-      if (!reviewCompleted && !grandfathered) {
-        json(response, 409, {
-          error: '请先完成本实验的苏格拉底复盘，再提交报告。',
-          lifecycle: 'review_required',
-          access: labAccess,
-        }, origin)
-        return
-      }
       const learningSessionId = String(body.sessionId || '').trim().slice(0, 160)
       const completedReview = learningSessionId
         ? getLatestSocraticReview(session.id, learningSessionId, labId)
         : null
-      if (!grandfathered && completedReview?.status !== 'review_completed') {
+      const reviewSubmittable = ['review_completed', 'deferred'].includes(completedReview?.status)
+      if (!reviewSubmittable && !grandfathered) {
         json(response, 409, {
-          error: '报告必须关联当前学习会话中已完成的苏格拉底复盘。',
+          error: '请先完成本实验的苏格拉底复盘问答，再提交报告。',
           lifecycle: 'review_required',
           access: labAccess,
         }, origin)
@@ -2715,7 +2766,7 @@ const server = http.createServer(async (request, response) => {
       const submission = await saveReportSubmissionFile(session.id, labId, content)
       submitReport(session.id, labId, content, savedAttachments, submission.path)
       let reportEvent = null
-      if (completedReview?.status === 'review_completed') {
+      if (reviewSubmittable) {
         reportEvent = serverEvent({
           sessionId: learningSessionId,
           labId,
@@ -2728,6 +2779,7 @@ const server = http.createServer(async (request, response) => {
           metadata: {
             authority: 'server-verified',
             reviewId: completedReview.reviewId,
+            reviewStatus: completedReview.status,
             contentPath: submission.path,
           },
         })
@@ -3660,9 +3712,13 @@ const server = http.createServer(async (request, response) => {
               evaluation: turn.evaluation
                 ? {
                     verdict: turn.evaluation.verdict,
+                    verdictLabel: turn.evaluation.verdictLabel || '',
                     rationale: turn.evaluation.rationale,
                     evidenceRefs: turn.evaluation.evidenceRefs || [],
                     missingEvidence: turn.evaluation.missingEvidence || [],
+                    missingPoints: turn.evaluation.missingPoints || [],
+                    correctReasoning: turn.evaluation.correctReasoning || '',
+                    correctiveExplanation: turn.evaluation.correctiveExplanation || '',
                   }
                 : null,
             })),
