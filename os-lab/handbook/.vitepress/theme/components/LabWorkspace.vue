@@ -2680,20 +2680,11 @@ function reviewReport(content: string) {
   void sendMessage(`这是我目前的实验报告，请你作为 AI 助教指出记录不完整或理解有偏差的地方，并追问我一个能检验理解的问题：\n\n${content}`)
 }
 
-function submitReflection(content: string) {
+async function onSocraticReviewCompleted() {
   const wasCompleted = Boolean(journeyItem.value?.completed)
   activeStage.value = 'reflect'
-  record('reflection_submitted', { content })
-  messages.value.push({
-    id: createId('message'),
-    role: 'assistant',
-    stage: 'reflect',
-    content:
-      '复盘已经保存。再检查一次：你分别写清了**自己的判断**、**AI 的提醒**和**实际验证证据**吗？',
-    timestamp: new Date().toISOString(),
-  })
-  toast('复盘已保存。')
-  persistTutorConversation()
+  await refreshLearningAccess()
+  toast('苏格拉底复盘已完成，并已写入实验报告。')
   announceUnlock(wasCompleted)
 }
 
@@ -3425,7 +3416,10 @@ onBeforeUnmount(() => {
               :report-template="reportTemplate"
               :endpoint="endpoint"
               :authenticated="Boolean(auth && !isTeacherRole)"
-              @reflect="submitReflection"
+              :session-id="sessionId"
+              :verified="runResultHistory.some((entry) => entry.trusted && entry.verified)"
+              :llm-config="llmConfig"
+              @review-completed="onSocraticReviewCompleted"
               @review="reviewReport"
               @submit-teacher="submitReportToTeacher"
               @notice="toast"

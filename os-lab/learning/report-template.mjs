@@ -1,12 +1,12 @@
 /**
  * 实验报告版式：默认模板 + 规范化（教师布置 / 学生端共用）。
- * 老师配置正文各节和复盘标题；复盘字段 ID 与提示可见性由系统固定。
+ * 老师配置正文各节；旧复盘字段只用于草稿兼容，最终复盘由对话 transcript 生成。
  */
 
 /** 系统固定的复盘字段；只保留稳定 ID、标题和输入行数，不生成填写提示。 */
 export const FIXED_REFLECTION = {
   id: 'reflection',
-  title: '收获与反思',
+  title: '收获与复盘',
   prompt: '',
   rows: 4,
 }
@@ -108,7 +108,7 @@ export function getReportTemplate(config, labId) {
 export function createInitialReportDraft(labId, rawTemplate) {
   const template = normalizeReportTemplate(rawTemplate)
   const sections = Object.fromEntries(
-    [...template.sections, template.reflection].map((section) => [section.id, '']),
+    template.sections.map((section) => [section.id, '']),
   )
   const markdownBody = template.sections
     .map((section) => {

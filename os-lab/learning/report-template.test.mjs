@@ -17,7 +17,8 @@ test('initial report draft is an independent copy of the teacher template', () =
 
   assert.equal(draft.labId, 'lab1')
   assert.equal(draft.mode, 'markdown')
-  assert.deepEqual(draft.sections, { observe: '', [FIXED_REFLECTION.id]: '' })
+  assert.deepEqual(draft.sections, { observe: '' })
+  assert.equal(FIXED_REFLECTION.title, '收获与复盘')
   assert.deepEqual(draft.template.reflection, FIXED_REFLECTION)
   assert.match(draft.markdownBody, /^## 现象记录/m)
   assert.match(draft.markdownBody, /> \*\*填写提示：\*\* 写出运行现象。/)

@@ -360,6 +360,76 @@ export interface TutorScore {
   summary: string
 }
 
+/** 服务端主导的实验结束苏格拉底复盘状态。 */
+export type SocraticReviewStatus =
+  | 'review_planning'
+  | 'review_ready'
+  | 'review_active'
+  | 'awaiting_evidence'
+  | 'review_completed'
+  | 'deferred'
+
+export type SocraticReviewVerdict =
+  | 'passed'
+  | 'partial'
+  | 'needs-evidence'
+  | 'misconception'
+  | 'defer'
+
+export type SocraticReviewQuestionKind =
+  | 'concept-explanation'
+  | 'causal-explanation'
+  | 'evidence-reflection'
+  | 'counterexample'
+  | 'transfer'
+
+export interface SocraticReviewEvaluation {
+  verdict: SocraticReviewVerdict
+  rationale: string
+  missingEvidence: string[]
+}
+
+/** 公开复盘题目。服务端只返回已经 asked 的题目，学生端不得提前展示计划题。 */
+export interface SocraticReviewTurn {
+  id: string
+  ordinal: number
+  questionId: string
+  conceptId: string
+  kind: SocraticReviewQuestionKind
+  prompt: string
+  parentTurnId: string | null
+  studentAnswer: string | null
+  evaluation: SocraticReviewEvaluation | null
+  askedAt: string
+  answeredAt: string | null
+}
+
+export interface SocraticReview {
+  reviewId: string
+  sessionId: string
+  labId: TutorLabId
+  status: SocraticReviewStatus
+  maxQuestions: number
+  askedCount: number
+  answeredCount: number
+  finalSummary: string | null
+  transcriptMarkdown: string | null
+  createdAt: string
+  updatedAt: string
+  completedAt: string | null
+  deferredReason: string
+  turns: SocraticReviewTurn[]
+}
+
+export interface SocraticReviewResponse {
+  ok: boolean
+  lifecycle?: string
+  review: SocraticReview | null
+  resumed?: boolean
+  replayed?: boolean
+  error?: string
+}
+
 /** 评分量规 v2 细项（与 learning/rubric-v2.mjs 对齐）。 */
 export type AssessmentItemStatus = 'unobserved' | 'met' | 'partial' | 'not-met' | string
 

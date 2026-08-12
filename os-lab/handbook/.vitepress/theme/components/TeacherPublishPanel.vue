@@ -1202,7 +1202,7 @@ onMounted(load)
               <header>
                 <strong>固定复盘字段</strong>
               </header>
-              <p>每位学生报告末尾都会有「收获与反思」这一节。系统固定其记录标识，不生成额外填写提示。</p>
+              <p>学生完成可信验证后进入「收获与复盘」对话；问答原文与最终总结会由系统追加到报告末尾。</p>
               <label>
                 <span>标题</span>
                 <input v-model="reportDraft.reflection.title" type="text" maxlength="80" />

@@ -15,10 +15,10 @@ export interface ReportTemplate {
   reflection: ReportSectionSpec
 }
 
-/** 系统固定的复盘字段；学生端不显示填写提示。 */
+/** 旧草稿兼容字段；最终复盘由服务端对话 transcript 生成。 */
 export const FIXED_REFLECTION: ReportSectionSpec = {
   id: 'reflection',
-  title: '收获与反思',
+  title: '收获与复盘',
   prompt: '',
   rows: 4,
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import SocraticReviewPanel from './SocraticReviewPanel.vue'
 import {
   Bold,
   Code2,
@@ -23,7 +24,12 @@ import {
   Upload,
   X,
 } from 'lucide-vue-next'
-import { authHeaders, type TutorLab } from '../tutor-model'
+import {
+  authHeaders,
+  type LlmConfig,
+  type SocraticReview,
+  type TutorLab,
+} from '../tutor-model'
 import { createReportMarkdown, renderReportHtml } from '../report-markdown'
 import {
   DEFAULT_REPORT_TEMPLATE,
@@ -55,11 +61,14 @@ const props = defineProps<{
   reportTemplate?: ReportTemplate | null
   endpoint?: string
   authenticated?: boolean
+  sessionId: string
+  verified: boolean
+  llmConfig: LlmConfig
 }>()
 
 const emit = defineEmits<{
-  (event: 'reflect', content: string): void
   (event: 'review', content: string): void
+  (event: 'review-completed', review: SocraticReview): void
   (event: 'submit-teacher', payload: {
     content: string
     attachments: Array<{ name: string; mime: string; dataBase64: string }>
@@ -80,12 +89,9 @@ const draftTemplate = ref<ReportTemplate>(cloneTemplate(props.reportTemplate || 
 const template = computed(() => cloneTemplate(draftTemplate.value))
 const allSections = computed(() => studentSections(template.value))
 const bodySections = computed(() => allSections.value.filter((s) => s.id !== FIXED_REFLECTION.id))
-const reflectionSection = computed(
-  () => allSections.value.find((section) => section.id === FIXED_REFLECTION.id) || FIXED_REFLECTION,
-)
 
 function emptySections(): Record<string, string> {
-  return Object.fromEntries(allSections.value.map((section) => [section.id, '']))
+  return Object.fromEntries(bodySections.value.map((section) => [section.id, '']))
 }
 
 function emptyDraft(): ReportDraft {
@@ -93,6 +99,7 @@ function emptyDraft(): ReportDraft {
 }
 
 const draft = ref<ReportDraft>(emptyDraft())
+const socraticReview = ref<SocraticReview | null>(null)
 const isMarkdownMode = computed(() => draft.value.mode === 'markdown')
 
 const savedAt = ref('')
@@ -231,6 +238,7 @@ function setSectionEditor(key: string, el: unknown) {
 
 function ensureSectionValues() {
   const next = { ...emptySections(), ...draft.value.sections }
+  delete next[FIXED_REFLECTION.id]
   draft.value.sections = next
   if (!allSections.value.some((s) => s.id === activeSection.value)) {
     activeSection.value = bodySections.value[0]?.id || FIXED_REFLECTION.id
@@ -546,18 +554,8 @@ function persist(announce = true): Promise<boolean> {
   return next
 }
 
-function reflectionText() {
-  return (draft.value.sections[FIXED_REFLECTION.id] || '').trim()
-}
-
 async function save() {
-  if (!(await persist(true))) return
-  const reflection = reflectionText()
-  if (reflection) {
-    emit('reflect', reflection)
-  } else {
-    emit('notice', `已保存。补上「${reflectionSection.value.title}」后再点保存，才能完成本层复盘。`)
-  }
+  await persist(true)
 }
 
 function referencedAttachmentKeys(source: string) {
@@ -615,16 +613,8 @@ function buildBodyMarkdown() {
   }
   if (draft.value.mode === 'markdown') {
     lines.push(draft.value.markdownBody.trim() || '（正文未填写）', '')
-    lines.push(
-      formatSectionMarkdown(
-        reflectionSection.value.title,
-        reflectionSection.value.prompt,
-        reflectionText(),
-        withPrompt,
-      ),
-    )
   } else {
-    for (const section of allSections.value) {
+    for (const section of bodySections.value) {
       lines.push(
         formatSectionMarkdown(
           section.title,
@@ -634,6 +624,9 @@ function buildBodyMarkdown() {
         ),
       )
     }
+  }
+  if (socraticReview.value?.status === 'review_completed' && socraticReview.value.transcriptMarkdown) {
+    lines.push(socraticReview.value.transcriptMarkdown.trim(), '')
   }
   return lines.join('\n')
 }
@@ -706,6 +699,10 @@ async function askReview() {
 async function submitToTeacher() {
   if (!canSyncServer.value) {
     emit('notice', '请先登录再提交实验报告。')
+    return
+  }
+  if (socraticReview.value?.status !== 'review_completed') {
+    emit('notice', '完成本实验的苏格拉底复盘后再提交报告。')
     return
   }
   const ok = window.confirm(
@@ -1390,6 +1387,15 @@ function isReferenced(meta: ReportAttachmentMeta) {
 const modeLabel = computed(() =>
   'Markdown 文档',
 )
+
+function onReviewUpdate(review: SocraticReview | null) {
+  socraticReview.value = review
+}
+
+function onReviewCompleted(review: SocraticReview) {
+  socraticReview.value = review
+  emit('review-completed', review)
+}
 </script>
 
 <template>
@@ -1411,7 +1417,12 @@ const modeLabel = computed(() =>
         <button type="button" title="导出当前格式的报告" @click="exportMarkdown">
           <Download :size="14" aria-hidden="true" /><span>导出报告</span>
         </button>
-        <button type="button" title="按当前格式提交给老师（会先确认）" :disabled="busyAttach" @click="submitToTeacher">
+        <button
+          type="button"
+          title="按当前格式提交给老师（会先确认）"
+          :disabled="busyAttach || socraticReview?.status !== 'review_completed'"
+          @click="submitToTeacher"
+        >
           <Send :size="14" aria-hidden="true" /><span>{{ busyAttach ? '准备中…' : '提交给老师' }}</span>
         </button>
         <button type="button" class="primary" @click="save">
@@ -1548,23 +1559,19 @@ const modeLabel = computed(() =>
           <div class="ws-report-preview ws-report-live-preview" v-html="previewHtml" />
         </article>
 
-        <section class="ws-report-reflection-block" aria-label="收获与反思">
-          <header>
-            <div>
-              <strong>{{ reflectionSection.title }}</strong>
-            </div>
-          </header>
-          <textarea
-            :ref="(el) => setSectionEditor(FIXED_REFLECTION.id, el)"
-            v-model="draft.sections[FIXED_REFLECTION.id]"
-            :rows="reflectionSection.rows"
-            spellcheck="false"
-            @focus="activeSection = FIXED_REFLECTION.id"
-            @input="schedulePersist"
-            @blur="persist(false)"
-          />
-        </section>
       </div>
+
+      <SocraticReviewPanel
+        :endpoint="endpoint || ''"
+        :authenticated="Boolean(authenticated)"
+        :lab-id="lab.id"
+        :session-id="sessionId"
+        :verified="verified"
+        :llm-config="llmConfig"
+        @update="onReviewUpdate"
+        @completed="onReviewCompleted"
+        @notice="(text) => emit('notice', text)"
+      />
 
       <section v-if="attachments.length" class="ws-report-file-strip" aria-label="报告文件">
         <header>
@@ -1801,39 +1808,6 @@ const modeLabel = computed(() =>
             </button>
           </div>
         </section>
-        <section
-          class="ws-report-section ws-report-reflect"
-          :class="{ 'is-active-section': activeSection === FIXED_REFLECTION.id }"
-        >
-          <h3>
-            {{ reflectionSection.title }}
-            <small v-if="activeSection === FIXED_REFLECTION.id">（当前段 · 插入目标）</small>
-          </h3>
-          <p class="ws-report-prompt">填写提示：{{ reflectionSection.prompt }}</p>
-          <textarea
-            :ref="(el) => setSectionEditor(FIXED_REFLECTION.id, el)"
-            v-model="draft.sections[FIXED_REFLECTION.id]"
-            :rows="reflectionSection.rows"
-            :placeholder="reflectionSection.prompt"
-            spellcheck="false"
-            @focus="activeSection = FIXED_REFLECTION.id"
-            @blur="persist(false)"
-          />
-          <div v-if="sectionInsertedImages(FIXED_REFLECTION.id).length" class="ws-report-inline-imgs">
-            <span class="ws-report-inline-label">本段已插入</span>
-            <button
-              v-for="img in sectionInsertedImages(FIXED_REFLECTION.id)"
-              :key="`reflect-${img.id}`"
-              type="button"
-              class="ws-report-inline-chip"
-              :title="img.name"
-              @click="openLightbox(img.id)"
-            >
-              <img v-if="attachmentUrls[img.id]" :src="attachmentUrls[img.id]" :alt="img.name" />
-              <em>{{ img.name }}</em>
-            </button>
-          </div>
-        </section>
       </template>
 
       <template v-else>
@@ -1875,19 +1849,6 @@ const modeLabel = computed(() =>
           </div>
         </div>
 
-        <section class="ws-report-section ws-report-reflect">
-          <h3>{{ reflectionSection.title }}</h3>
-          <p class="ws-report-prompt">填写提示：{{ reflectionSection.prompt }}</p>
-          <textarea
-            :ref="(el) => setSectionEditor(FIXED_REFLECTION.id, el)"
-            v-model="draft.sections[FIXED_REFLECTION.id]"
-            :rows="reflectionSection.rows"
-            :placeholder="reflectionSection.prompt"
-            spellcheck="false"
-            @focus="activeSection = FIXED_REFLECTION.id"
-            @blur="persist(false)"
-          />
-        </section>
       </template>
 
       <p class="ws-report-hint">

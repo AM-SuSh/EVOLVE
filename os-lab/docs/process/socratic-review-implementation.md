@@ -61,3 +61,18 @@
   - `node --test learning/assessment-agent.test.mjs learning/socratic-review-db.test.mjs tutor/turn-policy.test.mjs tutor/contracts.test.mjs`，27 项通过。
   - `npm run test:smoke`，真实 HTTP/SSE/运行/评价/报告链路通过；确认两轮 Tutor 问答生成 4 条服务端权威事件。
 - 本地提交：`feat(tutor): orchestrate throttled checks and socratic reviews`。
+
+### 阶段 4：前端复盘对话与报告 transcript
+
+- 状态：完成
+- 主要修改：
+  - 新增 `SocraticReviewPanel.vue`，在报告工作区中按服务端状态显示一个当前问题，支持刷新恢复、回答评价、`awaiting_evidence`、`deferred`、最终总结和完成记录。
+  - 复盘进度固定显示“第 n / 最多 5 题”；未完成可信验证时不能启动，未完成复盘时不能提交教师报告。
+  - 移除活动界面中的自由文本“收获与反思”输入框和 `reflection_submitted` 完成路径；报告保存只保存正文，复盘完成由服务端状态确认。
+  - 问题原文、学生原始回答和最终总结通过同一个 `assembleMarkdown()` 汇入预览、Markdown 导出、AI 点评和教师提交，避免多套报告生成结果不一致。
+  - 初始报告草稿不再创建 `reflection` 文本字段；旧字段仅作为草稿/模板兼容标识，不参与显示和完成判定。
+  - 教师报告版式说明同步为“收获与复盘”对话语义。
+- 验证：
+  - `node --test learning/report-template.test.mjs`，4 项通过。
+  - `npm run build`，VitePress 客户端、服务端 bundle 与页面渲染全部通过。
+- 本地提交：`feat(workbench): replace freeform reflection with review dialogue`。
