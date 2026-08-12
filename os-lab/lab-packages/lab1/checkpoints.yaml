@@ -1,0 +1,9 @@
+schema_version: 1
+lab_id: lab1
+checkpoints:
+  - { id: C1-1, stage: orient, required_evidence: [manual], prompt: 说明 QEMU、OpenSBI 与内核三者的启动顺序。 }
+  - { id: C1-2, stage: read, required_evidence: [code], prompt: 沿 linker.ld、entry.asm 到 main.rs 标出控制权转移与栈建立位置。 }
+  - { id: C1-3, stage: run, required_evidence: [run], prompt: 用两条可信断言说明内核已执行到 Rust 主函数并完成输出。 }
+  - { id: C1-4, stage: debug, required_evidence: [run, code], prompt: 区分链接地址、启动栈与 BSS 清零错误的可观察现象。 }
+  - { id: C1-5, stage: reflect, required_evidence: [review], prompt: 解释 Lab1 的 ecall 为什么进入 SBI，而后续用户态 ecall 会进入内核。 }
+

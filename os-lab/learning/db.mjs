@@ -246,6 +246,69 @@ CREATE TABLE IF NOT EXISTS review_decisions (
 );
 CREATE INDEX IF NOT EXISTS review_decisions_review_revision_idx ON review_decisions(review_id, revision);
 `)
+applyMigration('20260812_socratic_review_v1', `
+CREATE TABLE IF NOT EXISTS socratic_reviews (
+  id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  session_id TEXT NOT NULL,
+  lab_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  plan_version TEXT NOT NULL,
+  source_assessment_id TEXT,
+  max_questions INTEGER NOT NULL,
+  plan_json TEXT NOT NULL,
+  final_summary TEXT NOT NULL DEFAULT '',
+  transcript_markdown TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  completed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS socratic_reviews_user_lab_idx
+  ON socratic_reviews(user_id, session_id, lab_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS socratic_review_turns (
+  id TEXT PRIMARY KEY,
+  review_id TEXT NOT NULL REFERENCES socratic_reviews(id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL,
+  question_id TEXT NOT NULL,
+  concept_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  objective TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  pass_criteria_json TEXT NOT NULL,
+  evidence_refs_json TEXT NOT NULL,
+  requires_run_evidence INTEGER NOT NULL DEFAULT 0,
+  parent_turn_id TEXT REFERENCES socratic_review_turns(id),
+  student_answer TEXT NOT NULL DEFAULT '',
+  answer_event_ref TEXT NOT NULL DEFAULT '',
+  evaluation_json TEXT,
+  asked_at TEXT,
+  answered_at TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE(review_id, ordinal),
+  UNIQUE(review_id, question_id)
+);
+CREATE INDEX IF NOT EXISTS socratic_review_turns_review_idx
+  ON socratic_review_turns(review_id, ordinal);
+
+CREATE TABLE IF NOT EXISTS mastery_observations (
+  id TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  session_id TEXT NOT NULL,
+  lab_id TEXT NOT NULL,
+  concept_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  misconceptions_json TEXT NOT NULL,
+  evidence_refs_json TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS mastery_observations_user_concept_idx
+  ON mastery_observations(user_id, concept_id, created_at DESC);
+`)
 applyMigration('20260807_student_data_v1', `
 CREATE TABLE IF NOT EXISTS report_drafts (
   user_id INTEGER NOT NULL REFERENCES users(id),
@@ -918,6 +981,250 @@ export function listMastery(userId) {
       assessmentId: row.assessmentId,
       lastAssessedAt: row.lastAssessedAt,
     }))
+}
+
+function parseSocraticReviewRow(row) {
+  if (!row) return null
+  const turns = db
+    .prepare(
+      `SELECT id, ordinal, question_id AS questionId, concept_id AS conceptId, kind, objective,
+              prompt, reason, pass_criteria_json AS passCriteriaJson,
+              evidence_refs_json AS evidenceRefsJson, requires_run_evidence AS requiresRunEvidence,
+              parent_turn_id AS parentTurnId, student_answer AS studentAnswer,
+              answer_event_ref AS answerEventRef, evaluation_json AS evaluationJson,
+              asked_at AS askedAt, answered_at AS answeredAt, created_at AS createdAt
+       FROM socratic_review_turns WHERE review_id = ? ORDER BY ordinal`,
+    )
+    .all(row.id)
+    .map((turn) => ({
+      id: turn.id,
+      ordinal: turn.ordinal,
+      questionId: turn.questionId,
+      conceptId: turn.conceptId,
+      kind: turn.kind,
+      objective: turn.objective,
+      prompt: turn.prompt,
+      reason: turn.reason,
+      passCriteria: JSON.parse(turn.passCriteriaJson),
+      evidenceRefs: JSON.parse(turn.evidenceRefsJson),
+      requiresRunEvidence: Boolean(turn.requiresRunEvidence),
+      parentTurnId: turn.parentTurnId || null,
+      studentAnswer: turn.studentAnswer,
+      answerEventRef: turn.answerEventRef,
+      evaluation: turn.evaluationJson ? JSON.parse(turn.evaluationJson) : null,
+      askedAt: turn.askedAt,
+      answeredAt: turn.answeredAt,
+      createdAt: turn.createdAt,
+    }))
+  return {
+    reviewId: row.id,
+    sessionId: row.sessionId,
+    labId: row.labId,
+    status: row.status,
+    planVersion: row.planVersion,
+    sourceAssessmentId: row.sourceAssessmentId || '',
+    maxQuestions: row.maxQuestions,
+    plan: JSON.parse(row.planJson),
+    finalSummary: row.finalSummary,
+    transcriptMarkdown: row.transcriptMarkdown,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    completedAt: row.completedAt,
+    askedCount: turns.filter((turn) => turn.askedAt).length,
+    answeredCount: turns.filter((turn) => turn.answeredAt).length,
+    turns,
+  }
+}
+
+function socraticReviewRow(userId, clause, value) {
+  return db.prepare(
+    `SELECT id, session_id AS sessionId, lab_id AS labId, status, plan_version AS planVersion,
+            source_assessment_id AS sourceAssessmentId, max_questions AS maxQuestions,
+            plan_json AS planJson, final_summary AS finalSummary,
+            transcript_markdown AS transcriptMarkdown, created_at AS createdAt,
+            updated_at AS updatedAt, completed_at AS completedAt
+     FROM socratic_reviews WHERE user_id = ? AND ${clause}`,
+  ).get(userId, value)
+}
+
+export function getSocraticReview(userId, reviewId) {
+  return parseSocraticReviewRow(socraticReviewRow(userId, 'id = ?', reviewId))
+}
+
+export function getLatestSocraticReview(userId, sessionId, labId) {
+  const row = db.prepare(
+    `SELECT id, session_id AS sessionId, lab_id AS labId, status, plan_version AS planVersion,
+            source_assessment_id AS sourceAssessmentId, max_questions AS maxQuestions,
+            plan_json AS planJson, final_summary AS finalSummary,
+            transcript_markdown AS transcriptMarkdown, created_at AS createdAt,
+            updated_at AS updatedAt, completed_at AS completedAt
+     FROM socratic_reviews
+     WHERE user_id = ? AND session_id = ? AND lab_id = ? ORDER BY created_at DESC LIMIT 1`,
+  ).get(userId, sessionId, labId)
+  return parseSocraticReviewRow(row)
+}
+
+export function createSocraticReview(userId, plan) {
+  if (!plan || !Array.isArray(plan.questions) || plan.questions.length < 2 || plan.questions.length > 5) {
+    throw new TypeError('复盘计划必须包含 2-5 个问题')
+  }
+  const maxQuestions = Math.max(2, Math.min(5, Number(plan.maxQuestions) || plan.questions.length))
+  if (plan.questions.length > maxQuestions) throw new TypeError('复盘问题数超过 maxQuestions')
+  const existing = getLatestSocraticReview(userId, plan.sessionId, plan.labId)
+  if (existing && !['review_completed', 'deferred'].includes(existing.status)) return existing
+  const reviewId = randomUUID()
+  const createdAt = now()
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    db.prepare(
+      `INSERT INTO socratic_reviews
+        (id, user_id, session_id, lab_id, status, plan_version, source_assessment_id,
+         max_questions, plan_json, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'review_ready', ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      reviewId, userId, plan.sessionId, plan.labId, plan.version,
+      plan.sourceAssessmentId || null, maxQuestions, JSON.stringify(plan), createdAt, createdAt,
+    )
+    const insertTurn = db.prepare(
+      `INSERT INTO socratic_review_turns
+        (id, review_id, ordinal, question_id, concept_id, kind, objective, prompt, reason,
+         pass_criteria_json, evidence_refs_json, requires_run_evidence, parent_turn_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    for (const [index, question] of plan.questions.entries()) {
+      insertTurn.run(
+        randomUUID(), reviewId, index + 1, question.questionId, question.conceptId, question.kind,
+        question.objective, question.prompt, question.reason, JSON.stringify(question.passCriteria || []),
+        JSON.stringify(question.evidenceRefs || []), question.requiresRunEvidence ? 1 : 0, null, createdAt,
+      )
+    }
+    db.exec('COMMIT')
+    return getSocraticReview(userId, reviewId)
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+}
+
+export function appendSocraticReviewTurn(userId, reviewId, question, parentTurnId = null) {
+  const review = getSocraticReview(userId, reviewId)
+  if (!review) throw new Error('复盘会话不存在或不属于当前账号')
+  if (review.turns.length >= review.maxQuestions || review.turns.length >= 5) {
+    throw new Error('复盘问题已达到 5 题上限')
+  }
+  const createdAt = now()
+  db.prepare(
+    `INSERT INTO socratic_review_turns
+      (id, review_id, ordinal, question_id, concept_id, kind, objective, prompt, reason,
+       pass_criteria_json, evidence_refs_json, requires_run_evidence, parent_turn_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    randomUUID(), reviewId, review.turns.length + 1, question.questionId, question.conceptId, question.kind,
+    question.objective, question.prompt, question.reason, JSON.stringify(question.passCriteria || []),
+    JSON.stringify(question.evidenceRefs || []), question.requiresRunEvidence ? 1 : 0, parentTurnId, createdAt,
+  )
+  db.prepare('UPDATE socratic_reviews SET updated_at = ? WHERE id = ?').run(createdAt, reviewId)
+  return getSocraticReview(userId, reviewId)
+}
+
+export function markSocraticReviewTurnAsked(userId, reviewId, questionId) {
+  const review = getSocraticReview(userId, reviewId)
+  if (!review) throw new Error('复盘会话不存在或不属于当前账号')
+  const turn = review.turns.find((item) => item.questionId === questionId)
+  if (!turn) throw new Error('复盘问题不存在')
+  const timestamp = now()
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    db.prepare('UPDATE socratic_review_turns SET asked_at = COALESCE(asked_at, ?) WHERE id = ?')
+      .run(timestamp, turn.id)
+    db.prepare(`UPDATE socratic_reviews SET status = 'review_active', updated_at = ? WHERE id = ?`)
+      .run(timestamp, reviewId)
+    db.exec('COMMIT')
+    return getSocraticReview(userId, reviewId)
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+}
+
+export function answerSocraticReviewTurn(userId, reviewId, questionId, input) {
+  const review = getSocraticReview(userId, reviewId)
+  if (!review) throw new Error('复盘会话不存在或不属于当前账号')
+  const turn = review.turns.find((item) => item.questionId === questionId)
+  if (!turn) throw new Error('复盘问题不存在')
+  const answer = String(input?.answer || '').trim().slice(0, 8_000)
+  if (!answer) throw new TypeError('复盘回答不能为空')
+  const timestamp = now()
+  db.prepare(
+    `UPDATE socratic_review_turns
+     SET student_answer = ?, answer_event_ref = ?, evaluation_json = ?,
+         asked_at = COALESCE(asked_at, ?), answered_at = ? WHERE id = ?`,
+  ).run(
+    answer, String(input?.answerEventRef || '').slice(0, 200),
+    input?.evaluation ? JSON.stringify(input.evaluation) : null, timestamp, timestamp, turn.id,
+  )
+  const nextStatus = input?.evaluation?.verdict === 'needs-evidence' ? 'awaiting_evidence' : 'review_active'
+  db.prepare('UPDATE socratic_reviews SET status = ?, updated_at = ? WHERE id = ?')
+    .run(nextStatus, timestamp, reviewId)
+  return getSocraticReview(userId, reviewId)
+}
+
+export function completeSocraticReview(userId, reviewId, input = {}) {
+  const review = getSocraticReview(userId, reviewId)
+  if (!review) throw new Error('复盘会话不存在或不属于当前账号')
+  if (review.turns.filter((turn) => turn.answeredAt).length < 2) {
+    throw new Error('至少完成 2 个复盘问题后才能结束')
+  }
+  const timestamp = now()
+  db.prepare(
+    `UPDATE socratic_reviews SET status = 'review_completed', final_summary = ?,
+            transcript_markdown = ?, updated_at = ?, completed_at = ? WHERE id = ?`,
+  ).run(
+    String(input.finalSummary || '').trim().slice(0, 8_000),
+    String(input.transcriptMarkdown || '').trim().slice(0, 64_000),
+    timestamp, timestamp, reviewId,
+  )
+  return getSocraticReview(userId, reviewId)
+}
+
+export function saveMasteryObservations(userId, observations = []) {
+  const insert = db.prepare(
+    `INSERT INTO mastery_observations
+      (id, user_id, session_id, lab_id, concept_id, status, confidence, misconceptions_json,
+       evidence_refs_json, source_type, source_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+  const createdAt = now()
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    for (const observation of observations) {
+      insert.run(
+        randomUUID(), userId, observation.sessionId, observation.labId, observation.conceptId,
+        observation.status, Number(observation.confidence || 0),
+        JSON.stringify(observation.misconceptions || []), JSON.stringify(observation.evidenceRefs || []),
+        String(observation.sourceType || 'assessment'), String(observation.sourceId || ''), createdAt,
+      )
+    }
+    db.exec('COMMIT')
+    return { ok: true, count: observations.length }
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+}
+
+export function listMasteryObservations(userId, labId = '') {
+  return db.prepare(
+    `SELECT id, session_id AS sessionId, lab_id AS labId, concept_id AS conceptId, status, confidence,
+            misconceptions_json AS misconceptionsJson, evidence_refs_json AS evidenceRefsJson,
+            source_type AS sourceType, source_id AS sourceId, created_at AS createdAt
+     FROM mastery_observations WHERE user_id = ? ${labId ? 'AND lab_id = ?' : ''}
+     ORDER BY created_at DESC`,
+  ).all(...(labId ? [userId, labId] : [userId])).map((row) => ({
+    ...row,
+    misconceptions: JSON.parse(row.misconceptionsJson),
+    evidenceRefs: JSON.parse(row.evidenceRefsJson),
+  }))
 }
 
 /* -- 学习事件与可信运行链 ---------------------------------------------------- */

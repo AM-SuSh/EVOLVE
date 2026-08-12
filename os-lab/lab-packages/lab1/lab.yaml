@@ -1,0 +1,24 @@
+schema_version: 1
+id: lab1
+title: 裸机启动与 SBI
+version: 1.0.0
+feature: lab1
+prerequisites: []
+status: stable
+manual: ../../labs/lab1-bare-metal.md
+tutor_context: ../../tutor/prompts/lab1/context.md
+knowledge:
+  - { id: os.boot.entry, level: mechanism, concept_ref: concepts/boot.yaml#os.boot.entry }
+  - { id: os.boot.memory-init, level: mechanism, concept_ref: concepts/boot.yaml#os.boot.memory-init }
+  - { id: os.sbi.service, level: mechanism, concept_ref: concepts/boot.yaml#os.sbi.service }
+verification:
+  recipe: lab1.verify.v1
+  command: cargo run -p kernel --features lab1 --release
+  assertions:
+    - { id: hello-os, kind: output-contains, text: "Hello, OS!", assesses: [os.boot.entry, os.sbi.service] }
+    - { id: kernel-running, kind: output-contains, text: "EVOLVE kernel lab1 is running on QEMU virt.", assesses: [os.boot.entry, os.boot.memory-init] }
+misconceptions:
+  - { id: firmware-is-kernel, statement: 把 OpenSBI 固件入口等同于内核入口, counter: 固件先运行并把控制权交给链接到约定地址的内核入口 }
+  - { id: bss-already-zero, statement: 认为裸机环境会自动初始化 BSS, counter: 内核必须在使用静态未初始化数据前显式清零 BSS }
+  - { id: ecall-always-enters-kernel, statement: 认为所有 ecall 都直接进入当前内核, counter: Lab1 的 S 态内核通过 ecall 请求更高特权级的 SBI 服务 }
+

@@ -1,0 +1,24 @@
+id: os.boot.entry
+title: 固件到内核入口
+level: mechanism
+summary: QEMU 先进入 OpenSBI，固件再把控制权交给链接脚本约定地址上的内核入口，入口建立栈后进入 Rust 主函数。
+source_anchors: [kernel/linker.ld, kernel/src/entry.asm, kernel/src/main.rs]
+invariants: [链接地址与固件交接地址一致, 进入 Rust 前启动栈有效]
+observable_evidence: [Hello, OS!, EVOLVE kernel lab1 is running on QEMU virt.]
+---
+id: os.boot.memory-init
+title: 启动栈与 BSS 初始化
+level: mechanism
+summary: 裸机入口必须先建立可用栈并清零 BSS，Rust 代码才能安全使用栈帧和未初始化静态数据。
+source_anchors: [kernel/src/entry.asm, kernel/linker.ld, kernel/src/main.rs]
+invariants: [栈指针位于预留栈范围, BSS 在首次读取前清零]
+observable_evidence: [内核稳定打印并正常退出]
+---
+id: os.sbi.service
+title: SBI 控制台与关机服务
+level: mechanism
+summary: S 态内核通过 SBI ecall 请求 M 态固件完成早期字符输出和系统关机。
+source_anchors: [kernel/src/console.rs, os-sbi/src/lib.rs]
+invariants: [扩展号和参数遵循 SBI 约定, 返回值由封装层解释]
+observable_evidence: [Hello, OS!, QEMU 正常退出]
+
