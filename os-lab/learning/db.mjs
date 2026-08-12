@@ -333,6 +333,10 @@ CREATE TABLE IF NOT EXISTS tutor_topic_checks (
   PRIMARY KEY(user_id, session_id, lab_id, topic_key)
 );
 `)
+applyMigration('20260812_socratic_review_lifecycle_v1', `
+ALTER TABLE reports ADD COLUMN review_grandfathered INTEGER NOT NULL DEFAULT 0;
+UPDATE reports SET review_grandfathered = 1;
+`)
 applyMigration('20260807_student_data_v1', `
 CREATE TABLE IF NOT EXISTS report_drafts (
   user_id INTEGER NOT NULL REFERENCES users(id),
@@ -515,11 +519,12 @@ export function listMyReports(userId) {
 export function listAllReports() {
   return db
     .prepare(
-      `SELECT u.username AS user, u.class_name AS className, r.lab_id AS labId, r.updated_at AS updatedAt, r.content, r.feedback, r.attachments, r.content_path AS contentPath
+      `SELECT u.username AS user, u.class_name AS className, r.lab_id AS labId, r.updated_at AS updatedAt, r.content, r.feedback, r.attachments, r.content_path AS contentPath,
+              r.review_grandfathered AS reviewGrandfathered
        FROM reports r JOIN users u ON u.id = r.user_id ORDER BY u.class_name, u.username, r.lab_id`,
     )
     .all()
-    .map((row) => ({ ...row, attachments: parseAttachments(row.attachments) }))
+    .map((row) => ({ ...row, attachments: parseAttachments(row.attachments), reviewGrandfathered: Boolean(row.reviewGrandfathered) }))
 }
 
 /** 按用户名取某份报告的附件元数据（教师下载用）。 */
@@ -594,17 +599,42 @@ export function getLearningEvidence(userId) {
       .all(userId)
       .map((row) => row.labId),
   )
-  const reflected = new Set(
+  const reviewCompleted = new Set(
     db
-      .prepare("SELECT DISTINCT lab_id AS labId FROM events WHERE user_id = ? AND type = 'reflection_submitted'")
+      .prepare("SELECT DISTINCT lab_id AS labId FROM socratic_reviews WHERE user_id = ? AND status = 'review_completed'")
       .all(userId)
       .map((row) => row.labId),
   )
-  return [...new Set([...verified, ...reflected])].map((labId) => ({
+  // Reflection events created before this migration belong to the former free-text
+  // workflow. They remain valid only to avoid relocking existing student progress.
+  const lifecycleMigration = db
+    .prepare("SELECT applied_at AS appliedAt FROM schema_migrations WHERE version = '20260812_socratic_review_lifecycle_v1'")
+    .get()
+  const legacyReflected = new Set(
+    db
+      .prepare(
+        "SELECT DISTINCT lab_id AS labId FROM events WHERE user_id = ? AND type = 'reflection_submitted' AND created_at < ?",
+      )
+      .all(userId, lifecycleMigration?.appliedAt || '')
+      .map((row) => row.labId),
+  )
+  return [...new Set([...verified, ...reviewCompleted, ...legacyReflected])].map((labId) => ({
     labId,
     verified: verified.has(labId),
-    reflected: reflected.has(labId),
+    reviewCompleted: reviewCompleted.has(labId),
+    legacyReflected: legacyReflected.has(labId),
+    // `reflected` is retained for older callers. New lifecycle decisions must use
+    // reviewCompleted or legacyReflected explicitly.
+    reflected: reviewCompleted.has(labId) || legacyReflected.has(labId),
   }))
+}
+
+/** A pre-review report keeps its submission entitlement when re-submitted. */
+export function isReportReviewGrandfathered(userId, labId) {
+  const row = db
+    .prepare('SELECT review_grandfathered AS reviewGrandfathered FROM reports WHERE user_id = ? AND lab_id = ?')
+    .get(userId, String(labId || ''))
+  return Boolean(row?.reviewGrandfathered)
 }
 
 export function getTutorSessionState(userId, sessionId, labId) {
@@ -1085,6 +1115,24 @@ export function getLatestSocraticReview(userId, sessionId, labId) {
      FROM socratic_reviews
      WHERE user_id = ? AND session_id = ? AND lab_id = ? ORDER BY created_at DESC LIMIT 1`,
   ).get(userId, sessionId, labId)
+  return parseSocraticReviewRow(row)
+}
+
+/** Teacher-only callers use this to inspect the immutable review record. */
+export function getLatestSocraticReviewForStudent(username, labId) {
+  const student = db
+    .prepare("SELECT id FROM users WHERE username = ? AND role = 'student'")
+    .get(String(username || ''))
+  if (!student) return null
+  const row = db.prepare(
+    `SELECT id, session_id AS sessionId, lab_id AS labId, status, plan_version AS planVersion,
+            source_assessment_id AS sourceAssessmentId, max_questions AS maxQuestions,
+            plan_json AS planJson, final_summary AS finalSummary,
+            transcript_markdown AS transcriptMarkdown, created_at AS createdAt,
+            updated_at AS updatedAt, completed_at AS completedAt
+     FROM socratic_reviews
+     WHERE user_id = ? AND lab_id = ? ORDER BY created_at DESC LIMIT 1`,
+  ).get(student.id, String(labId || ''))
   return parseSocraticReviewRow(row)
 }
 

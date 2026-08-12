@@ -99,6 +99,7 @@ import {
   getLearningEvidence,
   getReportAttachmentMeta,
   getReportDraftMeta,
+  getLatestSocraticReviewForStudent,
   getLatestSocraticReview,
   getSocraticReview,
   getRun,
@@ -109,6 +110,7 @@ import {
   getTutorTopicHintState,
   insertLearningEvents,
   insertSocraticReviewFollowup,
+  isReportReviewGrandfathered,
   enqueueAssessmentReview,
   listAssessmentReviews,
   listAllReports,
@@ -2694,6 +2696,16 @@ const server = http.createServer(async (request, response) => {
         json(response, 403, { error: labAccess?.reason || '该实验尚未解锁', access: labAccess }, origin)
         return
       }
+      const reviewCompleted = Boolean(labAccess.reviewCompleted)
+      const grandfathered = isReportReviewGrandfathered(session.id, labId)
+      if (!reviewCompleted && !grandfathered) {
+        json(response, 409, {
+          error: '请先完成本实验的苏格拉底复盘，再提交报告。',
+          lifecycle: 'review_required',
+          access: labAccess,
+        }, origin)
+        return
+      }
       await ensureStudentReportDraft(session.id, labId)
       const savedAttachments = await saveReportAttachments(session.id, labId, body.attachments)
       const submission = await saveReportSubmissionFile(session.id, labId, content)
@@ -3577,6 +3589,58 @@ const server = http.createServer(async (request, response) => {
 
       if (request.method === 'GET' && pathname === '/teacher/reports') {
         json(response, 200, { ok: true, reports: listAllReports() }, origin)
+        return
+      }
+
+      if (request.method === 'GET' && pathname === '/teacher/socratic-review') {
+        const username = String(requestUrl.searchParams.get('user') || '')
+        const labId = String(requestUrl.searchParams.get('labId') || '')
+        if (!username || !labIds.has(labId)) {
+          json(response, 400, { error: 'user 和 labId 必须有效' }, origin)
+          return
+        }
+        const review = getLatestSocraticReviewForStudent(username, labId)
+        if (!review) {
+          json(response, 200, { ok: true, review: null, tutorConversation: [] }, origin)
+          return
+        }
+        const input = getAssessmentInput(
+          listStudentAccounts().find((student) => student.username === username)?.id,
+          review.sessionId,
+          labId,
+        )
+        const tutorConversation = input.events
+          .filter((event) =>
+            ['student_message', 'ai_response'].includes(event.type) && event.metadata?.authority === 'server',
+          )
+          .map((event) => ({
+            id: event.id,
+            role: event.type === 'ai_response' ? 'assistant' : 'student',
+            content: event.content || '',
+            timestamp: event.timestamp,
+            stage: event.stage,
+            category: event.category || '',
+          }))
+        json(response, 200, {
+          ok: true,
+          review: {
+            ...review,
+            sourceAssessmentId: review.sourceAssessmentId,
+            plan: review.plan,
+            turns: review.turns.map((turn) => ({
+              ...turn,
+              evaluation: turn.evaluation
+                ? {
+                    verdict: turn.evaluation.verdict,
+                    rationale: turn.evaluation.rationale,
+                    evidenceRefs: turn.evaluation.evidenceRefs || [],
+                    missingEvidence: turn.evaluation.missingEvidence || [],
+                  }
+                : null,
+            })),
+          },
+          tutorConversation,
+        }, origin)
         return
       }
 

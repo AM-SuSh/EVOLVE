@@ -17,6 +17,8 @@ function evidenceMap(rows) {
         labId,
         {
           verified: Boolean(row.verified),
+          reviewCompleted: Boolean(row.reviewCompleted),
+          legacyReflected: Boolean(row.legacyReflected),
           reflected: Boolean(row.reflected),
         },
       ]
@@ -60,10 +62,13 @@ export function buildLearningAccess({
     const own = byLab.get(labId)
     const previousId = LEARNING_LABS[index - 1]
     const previous = previousId ? byLab.get(previousId) : null
-    const completed = own.verified && own.reflected
+    const reviewSatisfied = own.reviewCompleted || own.legacyReflected
+    const completed = own.verified && reviewSatisfied
     const published = index <= openIndex
     const alreadyIssued = appliedSet.has(labId)
-    const prerequisiteComplete = index === 0 || Boolean(previous?.verified && previous?.reflected)
+    const prerequisiteComplete = index === 0 || Boolean(
+      previous?.verified && (previous.reviewCompleted || previous.legacyReflected),
+    )
     const schedule = schedules[labId] || {}
     const unlockAt = schedule.unlockAt || null
     const lockAt = schedule.lockAt || null
@@ -96,7 +101,11 @@ export function buildLearningAccess({
       unlocked,
       completed,
       verified: own.verified,
-      reflected: own.reflected,
+      reviewCompleted: own.reviewCompleted,
+      legacyReflected: own.legacyReflected,
+      // Compatibility for existing consumers. It indicates either completed
+      // Socratic review or an explicitly grandfathered legacy reflection.
+      reflected: reviewSatisfied,
       alreadyIssued,
       state,
       reason,

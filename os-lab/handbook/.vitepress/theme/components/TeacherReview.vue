@@ -30,6 +30,40 @@ interface StudentReport {
   attachments?: ReportAttachment[]
 }
 
+interface ReviewTurn {
+  id: string
+  ordinal: number
+  conceptId: string
+  kind: string
+  prompt: string
+  studentAnswer: string
+  evidenceRefs: string[]
+  evaluation: null | {
+    verdict: string
+    rationale: string
+    evidenceRefs: string[]
+    missingEvidence: string[]
+  }
+}
+
+interface TeacherSocraticReview {
+  reviewId: string
+  status: string
+  sourceAssessmentId: string
+  finalSummary: string
+  transcriptMarkdown: string
+  completedAt: string | null
+  plan: { rationale?: string; evidenceRefs?: string[] }
+  turns: ReviewTurn[]
+}
+
+interface TutorConversationTurn {
+  id: string
+  role: 'student' | 'assistant'
+  content: string
+  timestamp: string
+}
+
 const authed = ref(false)
 const denied = ref(false)
 const reports = ref<StudentReport[]>([])
@@ -43,6 +77,10 @@ const feedbackSaved = ref('')
 const busy = ref(false)
 const note = ref('')
 const teacherName = loadAuth()?.username || '教师'
+const socraticReview = ref<TeacherSocraticReview | null>(null)
+const tutorConversation = ref<TutorConversationTurn[]>([])
+const reviewLoading = ref(false)
+const reviewError = ref('')
 
 const classes = computed(() => [...new Set(reports.value.map((r) => r.className).filter(Boolean))])
 const labs = computed(() => [...new Set(reports.value.map((r) => r.labId))].sort())
@@ -151,6 +189,39 @@ function open(report: StudentReport) {
   feedbackDraft.value = report.feedback || ''
   feedbackSaved.value = feedbackDraft.value
   note.value = ''
+  void loadSocraticReview(report)
+}
+
+function reviewVerdictLabel(value: string) {
+  return ({
+    passed: '已掌握',
+    partial: '部分掌握',
+    'needs-evidence': '待补证据',
+    misconception: '存在误解',
+    defer: '待教师跟进',
+  } as Record<string, string>)[value] || value
+}
+
+async function loadSocraticReview(report: StudentReport) {
+  reviewLoading.value = true
+  reviewError.value = ''
+  socraticReview.value = null
+  tutorConversation.value = []
+  try {
+    const query = new URLSearchParams({ user: report.user, labId: report.labId })
+    const response = await fetch(`${endpoint}/teacher/socratic-review?${query.toString()}`, { headers: authHeaders() })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload?.error || `导师服务返回 ${response.status}`)
+    if (reportKey(report) !== activeKey.value) return
+    socraticReview.value = payload.review || null
+    tutorConversation.value = Array.isArray(payload.tutorConversation) ? payload.tutorConversation : []
+  } catch (err) {
+    if (reportKey(report) === activeKey.value) {
+      reviewError.value = err instanceof Error ? err.message : '无法加载苏格拉底复盘记录'
+    }
+  } finally {
+    if (reportKey(report) === activeKey.value) reviewLoading.value = false
+  }
 }
 
 function formatTime(value: string) {
@@ -178,6 +249,7 @@ async function load() {
     if (current) {
       feedbackDraft.value = current.feedback || ''
       feedbackSaved.value = feedbackDraft.value
+      void loadSocraticReview(current)
     }
   } catch (err) {
     note.value =
@@ -325,6 +397,40 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             </button>
           </div>
           <div class="tr-content tr-md" v-html="activeHtml" />
+          <section class="tr-socratic" aria-label="苏格拉底复盘记录">
+            <header>
+              <div><span>苏格拉底复盘</span><strong>{{ socraticReview ? socraticReview.status : '未记录' }}</strong></div>
+              <small v-if="socraticReview?.sourceAssessmentId">Assessment {{ socraticReview.sourceAssessmentId }}</small>
+            </header>
+            <p v-if="reviewLoading" class="tr-review-state">正在加载复盘证据...</p>
+            <p v-else-if="reviewError" class="tr-review-state is-error">{{ reviewError }}</p>
+            <p v-else-if="!socraticReview" class="tr-review-state">此报告没有服务端复盘记录。</p>
+            <template v-else>
+              <p v-if="socraticReview.plan?.rationale" class="tr-review-rationale">{{ socraticReview.plan.rationale }}</p>
+              <div v-for="turn in socraticReview.turns" :key="turn.id" class="tr-review-turn">
+                <div class="tr-review-turn-head"><strong>问题 {{ turn.ordinal }}</strong><span>{{ turn.conceptId }} · {{ turn.kind }}</span></div>
+                <p><b>AI 导师：</b>{{ turn.prompt }}</p>
+                <p><b>学生：</b>{{ turn.studentAnswer || '未回答' }}</p>
+                <div v-if="turn.evaluation" class="tr-review-evaluation">
+                  <strong>{{ reviewVerdictLabel(turn.evaluation.verdict) }}</strong>
+                  <span>{{ turn.evaluation.rationale }}</span>
+                  <code v-for="ref in turn.evaluation.evidenceRefs" :key="ref">{{ ref }}</code>
+                  <code v-for="ref in turn.evidenceRefs" :key="`plan-${ref}`">{{ ref }}</code>
+                </div>
+              </div>
+              <div v-if="socraticReview.finalSummary" class="tr-review-summary"><strong>学生最终总结</strong><p>{{ socraticReview.finalSummary }}</p></div>
+              <details v-if="socraticReview.transcriptMarkdown" class="tr-review-conversation">
+                <summary>原始复盘 transcript</summary>
+                <pre>{{ socraticReview.transcriptMarkdown }}</pre>
+              </details>
+              <details v-if="tutorConversation.length" class="tr-review-conversation">
+                <summary>导师日常对话证据（{{ tutorConversation.length }} 条）</summary>
+                <ol>
+                  <li v-for="message in tutorConversation" :key="message.id"><strong>{{ message.role === 'assistant' ? 'AI 导师' : '学生' }}</strong><span>{{ message.content }}</span></li>
+                </ol>
+              </details>
+            </template>
+          </section>
         </template>
       </main>
 
@@ -872,6 +978,95 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   border-radius: 6px;
   background: var(--ws-surface-alt);
 }
+
+.tr-socratic {
+  padding: var(--ws-space-4) clamp(var(--ws-space-5), 4vw, 48px) var(--ws-space-7);
+  border-top: 1px solid var(--ws-line);
+  background: var(--ws-surface-alt);
+}
+
+.tr-socratic > header,
+.tr-review-turn-head,
+.tr-review-evaluation,
+.tr-socratic code {
+  display: flex;
+  align-items: center;
+}
+
+.tr-socratic > header {
+  justify-content: space-between;
+  gap: var(--ws-space-3);
+  margin-bottom: var(--ws-space-3);
+}
+
+.tr-socratic > header div {
+  display: grid;
+  gap: 2px;
+}
+
+.tr-socratic > header span,
+.tr-socratic > header small,
+.tr-review-turn-head span {
+  color: var(--ws-ink-faint);
+  font-size: var(--ws-text-xs);
+}
+
+.tr-socratic > header strong {
+  font-size: var(--ws-text-base);
+}
+
+.tr-review-state,
+.tr-review-rationale {
+  margin: 0 0 var(--ws-space-3);
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-sm);
+}
+
+.tr-review-state.is-error { color: var(--ws-danger, #b42318); }
+
+.tr-review-turn,
+.tr-review-summary,
+.tr-review-conversation {
+  margin-top: var(--ws-space-3);
+  padding: var(--ws-space-3);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface);
+}
+
+.tr-review-turn p,
+.tr-review-summary p { margin: var(--ws-space-2) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.tr-review-turn-head { justify-content: space-between; gap: var(--ws-space-3); }
+
+.tr-review-evaluation {
+  flex-wrap: wrap;
+  gap: var(--ws-space-2);
+  margin-top: var(--ws-space-3);
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+}
+
+.tr-review-evaluation strong { color: var(--ws-accent); }
+
+.tr-socratic code {
+  max-width: 100%;
+  padding: 2px 5px;
+  overflow-wrap: anywhere;
+  color: var(--ws-ink-muted);
+  border-radius: 3px;
+  background: var(--ws-surface-alt);
+  font-size: 11px;
+}
+
+.tr-review-summary strong { font-size: var(--ws-text-sm); }
+
+.tr-review-conversation summary { cursor: pointer; color: var(--ws-ink-muted); font-size: var(--ws-text-sm); }
+.tr-review-conversation pre { margin: var(--ws-space-3) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.tr-review-conversation ol { margin: var(--ws-space-3) 0 0; padding-left: 20px; }
+.tr-review-conversation li + li { margin-top: var(--ws-space-2); }
+.tr-review-conversation li strong { display: block; color: var(--ws-accent); font-size: var(--ws-text-xs); }
+.tr-review-conversation li span { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .tr-attachments {
   display: flex;

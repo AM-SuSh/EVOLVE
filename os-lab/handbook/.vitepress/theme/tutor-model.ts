@@ -1047,6 +1047,8 @@ export interface LearningAccessItem {
   unlocked: boolean
   completed: boolean
   verified: boolean
+  reviewCompleted: boolean
+  legacyReflected: boolean
   reflected: boolean
   alreadyIssued: boolean
   state:
@@ -1076,10 +1078,12 @@ export function buildLabJourney(
       passedVerification: labEvents.some(
         (event) => event.type === 'verification_attempt' && event.metadata?.passed === true,
       ),
-      reflected: labEvents.some((event) => event.type === 'reflection_submitted'),
+      // Browser events are only local continuity data. They cannot complete the
+      // Socratic lifecycle; the server access response is authoritative.
+      reflected: false,
       sessions: new Set(labEvents.map((event) => event.sessionId)).size,
       evidenceCount: labEvents.filter((event) =>
-        ['student_message', 'verification_attempt', 'reflection_submitted'].includes(event.type),
+        ['student_message', 'verification_attempt'].includes(event.type),
       ).length,
     }
   })
@@ -1089,7 +1093,7 @@ export function buildLabJourney(
     const trusted = serverAccess.find((access) => access.labId === item.lab.id)
     const unlocked = trusted ? trusted.unlocked : index === 0
     const passedVerification = trusted ? trusted.verified : item.passedVerification
-    const reflected = trusted ? trusted.reflected : item.reflected
+    const reflected = trusted ? trusted.reviewCompleted || trusted.legacyReflected : false
     const completed = trusted ? trusted.completed : unlocked && passedVerification && reflected
     previousCompleted = completed
     const previousLab = tutorLabs[index - 1]

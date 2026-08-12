@@ -170,3 +170,39 @@ test('follow-up throttle persists pending checks until explicitly resolved', () 
   assert.equal(resolved.pending, false)
   assert.equal(resolved.resolved, true)
 })
+
+test('new reflection events never become legacy completion evidence', () => {
+  const registration = learningDb.register('review-lifecycle-student', 'secret1', '计算2301')
+  const student = learningDb.resolveSession(registration.token)
+  learningDb.insertLearningEvents(student.id, [{
+    version: 2,
+    id: 'new-reflection-event',
+    sessionId: 'review-lifecycle-session',
+    labId: 'lab1',
+    timestamp: new Date().toISOString(),
+    type: 'reflection_submitted',
+    stage: 'reflect',
+    content: '这是一条新系统中的旧事件类型。',
+  }])
+  const beforeReview = learningDb.getLearningEvidence(student.id).find((item) => item.labId === 'lab1')
+  assert.equal(beforeReview, undefined)
+
+  const completed = learningDb.createSocraticReview(student.id, reviewPlan('review-lifecycle-session'))
+  learningDb.markSocraticReviewTurnAsked(student.id, completed.reviewId, 'q1')
+  learningDb.answerSocraticReviewTurn(student.id, completed.reviewId, 'q1', {
+    answer: 'yield 后回到 Ready，exit 后进入 Exited，并可用运行现象验证。',
+    evaluation: { verdict: 'passed', evidenceRefs: [] },
+  })
+  learningDb.markSocraticReviewTurnAsked(student.id, completed.reviewId, 'q2')
+  learningDb.answerSocraticReviewTurn(student.id, completed.reviewId, 'q2', {
+    answer: '如果 sepc 不推进，返回后会重复执行同一条 ecall。',
+    evaluation: { verdict: 'passed', evidenceRefs: [] },
+  })
+  learningDb.completeSocraticReview(student.id, completed.reviewId, {
+    finalSummary: '我能用过程证据解释两个机制。',
+    transcriptMarkdown: '## transcript',
+  })
+  const afterReview = learningDb.getLearningEvidence(student.id).find((item) => item.labId === 'lab2')
+  assert.equal(afterReview.reviewCompleted, true)
+  assert.equal(afterReview.legacyReflected, false)
+})

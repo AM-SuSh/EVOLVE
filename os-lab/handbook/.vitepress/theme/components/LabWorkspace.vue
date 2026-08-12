@@ -1850,7 +1850,7 @@ async function syncEvent(event: LearningEvent) {
       body: JSON.stringify({ event }),
       keepalive: true,
     })
-    if (response.ok && ['verification_attempt', 'reflection_submitted'].includes(event.type)) {
+    if (response.ok && event.type === 'verification_attempt') {
       await refreshLearningAccess()
       announceUnlock(wasCompleted)
     }

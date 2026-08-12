@@ -38,6 +38,43 @@ const mockUpstream = http.createServer(async (request, response) => {
     let raw = ''
     for await (const chunk of request) raw += chunk.toString('utf8')
     const payload = JSON.parse(raw)
+    if (payload.response_format?.type === 'json_object') {
+      let input = {}
+      try {
+        input = JSON.parse(payload.messages?.at(-1)?.content || '{}')
+      } catch {
+        input = {}
+      }
+      if (input.question && typeof input.answer === 'string') {
+        const needsEvidence = input.answer.includes('[needs-evidence]')
+        response.end(JSON.stringify({
+          choices: [{
+            message: {
+              role: 'assistant',
+              content: JSON.stringify(needsEvidence
+                ? {
+                    verdict: 'needs-evidence',
+                    rationale: '需要先补充新的可信运行证据。',
+                    evidenceRefs: [],
+                    missingEvidence: ['新的可信运行'],
+                    followUpObjective: input.question.objective || '',
+                  }
+                : {
+                    verdict: 'passed',
+                    rationale: '回答覆盖了本题要求，并引用了当前过程证据。',
+                    evidenceRefs: input.question.evidenceRefs || [],
+                    missingEvidence: [],
+                    followUpObjective: '',
+                  }),
+            },
+          }],
+        }))
+        return
+      }
+      // An incomplete plan deliberately exercises the deterministic planning fallback.
+      response.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: '{}' } }] }))
+      return
+    }
     mockChatRequests.push(payload)
     if (payload.messages?.some((message) => String(message.content || '').includes('offline fallback check'))) {
       response.statusCode = 503
@@ -136,6 +173,34 @@ async function runLab(headers, sessionId) {
   })
   assert.equal(response.status, 200)
   return parseSseFrames(await response.text())
+}
+
+async function answerCurrentReview(headers, review, answer) {
+  const turn = review.turns.find((item) => item.askedAt && !item.answeredAt)
+  assert.ok(turn, 'review must expose exactly one unanswered question')
+  const response = await postJson('/learning/review/answer', headers, {
+    reviewId: review.reviewId,
+    questionId: turn.questionId,
+    answer,
+  })
+  assert.equal(response.status, 200)
+  return (await response.json()).review
+}
+
+async function completeReview(headers, { labId, sessionId, firstAnswer = '我用可信运行、断言和代码路径说明了自己的判断。' }) {
+  const started = await postJson('/learning/review/start', headers, { labId, sessionId })
+  assert.equal(started.status, 201)
+  let review = (await started.json()).review
+  while (review.status === 'review_active' && review.turns.some((turn) => turn.askedAt && !turn.answeredAt)) {
+    review = await answerCurrentReview(headers, review, firstAnswer)
+  }
+  assert.equal(review.status, 'review_active')
+  const summary = await postJson('/learning/review/summary', headers, {
+    reviewId: review.reviewId,
+    finalSummary: '我能结合自己的运行过程、导师对话和断言结果解释本实验的关键机制。',
+  })
+  assert.equal(summary.status, 200)
+  return (await summary.json()).review
 }
 
 try {
@@ -505,10 +570,28 @@ try {
     assignment: { labId: 'lab2', variant: 'fill' },
   })
   assert.equal(distributeLab2.status, 200)
+  const staleReflectionAccess = await fetch(`${endpoint}/learning/access`, { headers: studentHeaders })
+    .then((response) => response.json())
+  assert.equal(staleReflectionAccess.labs.find((lab) => lab.labId === 'lab1').reviewCompleted, false)
+  assert.equal(staleReflectionAccess.labs.find((lab) => lab.labId === 'lab2').unlocked, false)
+  assert.equal(staleReflectionAccess.labs.find((lab) => lab.labId === 'lab2').state, 'waiting_prerequisite')
+
+  const lab1Review = await completeReview(studentHeaders, {
+    labId: 'lab1', sessionId: 'smoke-lab1-session',
+    firstAnswer: '我先检查启动链的状态，再用可信运行的通过结果和代码入口验证该判断。',
+  })
+  assert.equal(lab1Review.status, 'review_completed')
   const distributedAccess = await fetch(`${endpoint}/learning/access`, { headers: studentHeaders })
     .then((response) => response.json())
+  assert.equal(distributedAccess.labs.find((lab) => lab.labId === 'lab1').reviewCompleted, true)
   assert.equal(distributedAccess.labs.find((lab) => lab.labId === 'lab2').unlocked, true)
   assert.equal((await fetch(`${endpoint}/manual?labId=lab2`, { headers: studentHeaders })).status, 200)
+
+  const otherLab1Review = await completeReview(otherStudentHeaders, {
+    labId: 'lab1', sessionId: 'smoke-lab1-session-2',
+    firstAnswer: '我用可信运行和启动路径说明了自己如何验证 Lab1 的关键判断。',
+  })
+  assert.equal(otherLab1Review.status, 'review_completed')
 
   const lab2Upgrade = await postJson('/scaffold/upgrade', studentHeaders, { variant: 'fill' })
   assert.equal(lab2Upgrade.status, 200)
@@ -827,6 +910,49 @@ try {
   assert.equal(eventSync.status, 202)
   assert.equal((await eventSync.json()).accepted, learningEvents.length)
 
+  const reportBeforeReview = await postJson('/reports', studentHeaders, {
+    labId: 'lab2', content: '# Lab2 report before Socratic review',
+  })
+  assert.equal(reportBeforeReview.status, 409)
+  assert.equal((await reportBeforeReview.json()).lifecycle, 'review_required')
+
+  const reviewStart = await postJson('/learning/review/start', studentHeaders, {
+    labId: 'lab2', sessionId: 'smoke-learning-session',
+  })
+  assert.equal(reviewStart.status, 201)
+  let lab2Review = (await reviewStart.json()).review
+  lab2Review = await answerCurrentReview(
+    studentHeaders,
+    lab2Review,
+    '[needs-evidence] 我还没有把这项判断和新的可信运行对应起来。',
+  )
+  assert.equal(lab2Review.status, 'awaiting_evidence')
+
+  const freshRunFrames = await runLab(studentHeaders, 'smoke-learning-session')
+  const freshRunExit = freshRunFrames.find((frame) => frame.type === 'exit')
+  assert.equal(freshRunExit.verified, true)
+  const resumeReview = await postJson('/learning/review/resume', studentHeaders, { reviewId: lab2Review.reviewId })
+  assert.equal(resumeReview.status, 200)
+  lab2Review = (await resumeReview.json()).review
+  assert.equal(lab2Review.status, 'review_active')
+  while (lab2Review.turns.some((turn) => turn.askedAt && !turn.answeredAt)) {
+    lab2Review = await answerCurrentReview(
+      studentHeaders,
+      lab2Review,
+      '我比较了任务状态变化、调度路径和可信运行断言；这些证据说明当前判断在条件改变时仍需要重新验证。',
+    )
+  }
+  const finishReview = await postJson('/learning/review/summary', studentHeaders, {
+    reviewId: lab2Review.reviewId,
+    finalSummary: '我能够用自己的运行过程、导师问答和断言证据解释调度机制，并说明证据如何修正原来的判断。',
+  })
+  assert.equal(finishReview.status, 200)
+  const finishedReview = (await finishReview.json()).review
+  assert.equal(finishedReview.status, 'review_completed')
+  assert.equal(finishedReview.turns.length <= 5, true)
+  const afterReviewAccess = await fetch(`${endpoint}/learning/access`, { headers: studentHeaders }).then((response) => response.json())
+  assert.equal(afterReviewAccess.labs.find((lab) => lab.labId === 'lab2').reviewCompleted, true)
+
   const blockedLab3Upgrade = await postJson('/scaffold/upgrade', studentHeaders, { variant: 'debug' })
   assert.equal(blockedLab3Upgrade.status, 403)
 
@@ -908,7 +1034,9 @@ try {
   assert.equal(backupResponse.status, 200)
   const backupPayload = await backupResponse.json()
   assert.equal(backupPayload.manifest.integrity, 'ok')
-  assert.equal(backupPayload.manifest.counts.assessments, 1)
+  assert.equal(backupPayload.manifest.counts.assessments >= 4, true)
+  assert.equal(backupPayload.manifest.counts.socratic_reviews >= 3, true)
+  assert.equal(backupPayload.manifest.counts.socratic_review_turns >= 6, true)
 
   const reportContent = `# Lab2 报告\n\n可信运行：run:${runId}\n\nTrace：trace:${runId}\n\n${learningEvents[6].content}`
   const reportSubmit = await fetch(`${endpoint}/reports`, {
@@ -917,6 +1045,17 @@ try {
     body: JSON.stringify({ labId: 'lab2', content: reportContent }),
   })
   assert.equal(reportSubmit.status, 200)
+
+  const teacherSocraticReview = await fetch(
+    `${endpoint}/teacher/socratic-review?user=member-c-smoke&labId=lab2`,
+    { headers: teacherHeaders },
+  )
+  assert.equal(teacherSocraticReview.status, 200)
+  const teacherSocraticPayload = await teacherSocraticReview.json()
+  assert.equal(teacherSocraticPayload.review.status, 'review_completed')
+  assert.equal(teacherSocraticPayload.review.turns.length <= 5, true)
+  assert.equal(teacherSocraticPayload.review.turns.some((turn) => turn.evaluation?.verdict === 'needs-evidence'), true)
+  assert.equal(teacherSocraticPayload.tutorConversation.length >= 4, true)
 
   const reportDraft = await fetch(`${endpoint}/reports/draft`, {
     method: 'PUT',
@@ -1014,25 +1153,31 @@ try {
     reviews: db.prepare('SELECT count(*) AS value FROM review_queue').get().value,
     reviewDecisions: db.prepare('SELECT count(*) AS value FROM review_decisions').get().value,
     teacherReviews: db.prepare("SELECT count(*) AS value FROM events WHERE type = 'teacher_reviewed'").get().value,
+    completedSocraticReviews: db.prepare("SELECT count(*) AS value FROM socratic_reviews WHERE status = 'review_completed'").get().value,
+    needsEvidenceTurns: db.prepare(
+      "SELECT count(*) AS value FROM socratic_review_turns WHERE json_extract(evaluation_json, '$.verdict') = 'needs-evidence'",
+    ).get().value,
     reports: db.prepare("SELECT count(*) AS value FROM reports WHERE lab_id = 'lab2'").get().value,
     factoryPublishes: Object.keys(JSON.parse(readFileSync(factoryCatalogPath, 'utf8')).labs || {}).length,
     issuedLabs: JSON.parse(readFileSync(path.join(studentsRoot, 'member-c-smoke', '.scaffold-state.json'), 'utf8')).applied.length,
   }
   db.close()
-  assert.equal(counts.runs, 4)
-  assert.equal(counts.events, 6)
-  assert.equal(counts.assertions, 12)
+  assert.equal(counts.runs >= 5, true)
+  assert.equal(counts.events >= 8, true)
+  assert.equal(counts.assertions >= 18, true)
   assert.equal(counts.diagnostics > 0, true)
   assert.equal(counts.diagnosticOpens, 1)
   assert.equal(counts.learningChain >= 14, true)
   assert.equal(counts.authoritativeChat, 4)
   assert.equal(counts.serverStages, 2)
   assert.equal(counts.tutorSessions, 1)
-  assert.equal(counts.assessments, 1)
-  assert.equal(counts.mastery, 4)
+  assert.equal(counts.assessments >= 2, true)
+  assert.equal(counts.mastery >= 4, true)
   assert.equal(counts.reviews, 1)
   assert.equal(counts.reviewDecisions, 1)
   assert.equal(counts.teacherReviews, 1)
+  assert.equal(counts.completedSocraticReviews >= 3, true)
+  assert.equal(counts.needsEvidenceTurns, 1)
   assert.equal(counts.reports, 1)
   assert.equal(counts.factoryPublishes, 1)
   assert.equal(counts.issuedLabs, 3)

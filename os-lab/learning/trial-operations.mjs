@@ -27,7 +27,11 @@ function integrityCheck(database) {
 }
 
 function tableCounts(database) {
-  const names = ['users', 'runs', 'run_assertions', 'events', 'assessments', 'mastery_evidence', 'review_queue', 'review_decisions', 'reports']
+  const names = [
+    'users', 'runs', 'run_assertions', 'events', 'assessments', 'mastery_evidence',
+    'review_queue', 'review_decisions', 'socratic_reviews', 'socratic_review_turns',
+    'mastery_observations', 'reports',
+  ]
   return Object.fromEntries(names.map((name) => [name, Number(database.prepare(`SELECT count(*) AS value FROM ${name}`).get().value)]))
 }
 

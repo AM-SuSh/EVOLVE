@@ -76,3 +76,20 @@
   - `node --test learning/report-template.test.mjs`，4 项通过。
   - `npm run build`，VitePress 客户端、服务端 bundle 与页面渲染全部通过。
 - 本地提交：`feat(workbench): replace freeform reflection with review dialogue`。
+
+### 阶段 5：生命周期、报告门禁与教师可见性
+
+- 状态：完成
+- 主要修改：
+  - 新增数据库迁移 `20260812_socratic_review_lifecycle_v1`。新实验的完成与前置解锁严格要求“可信 verified run + `socratic_reviews.status = review_completed`”。`reflection_submitted` 不再是新闭环的完成依据。
+  - 历史兼容被显式拆为 `legacyReflected`：仅迁移生效前已经存在的旧反思事件可以保留已完成资格；新写入的同类事件不会被误判为旧数据。访问 API 同时返回 `reviewCompleted`、`legacyReflected` 和兼容字段 `reflected`。
+  - `POST /reports` 在服务端执行复盘门禁，未完成当前 Lab 的服务端复盘会返回 `409 review_required`。迁移前已提交报告使用 `review_grandfathered` 继续允许重提交，避免影响已有课程记录。
+  - 新增教师只读接口 `GET /teacher/socratic-review?user=&labId=`。它返回复盘计划、导师问题、学生原答、Assessment verdict 与 evidenceRefs、最终总结、原始 transcript，以及该复盘会话中的服务端权威 Tutor 对话。
+  - 教师“实验验收”页按当前报告按需读取上述数据并展示结构化复盘、证据引用、最终总结、原始 transcript 和日常对话证据；不会一次性下发其他学生的数据。
+  - 备份 manifest 增加 `socratic_reviews`、`socratic_review_turns`、`mastery_observations` 三张表的计数。
+  - 前端学习路径不再使用本地 `reflection_submitted` 推断完成；本地同步只在可信验证后刷新 access，复盘完成由服务端组件主动刷新。
+- 验证：
+  - `node --test access.test.mjs socratic-review-db.test.mjs trial-operations.test.mjs`：14 项通过，涵盖新旧完成状态隔离、五题上限与备份表计数。
+  - `npm run test:smoke`：通过旧反思不可解锁、Lab1/2 复盘完成、`awaiting_evidence -> 新可信运行 -> resume`、最多五题、服务端报告门禁、教师复盘读取与备份链路。
+  - `npm run build`：VitePress 客户端、服务端 bundle 与渲染页面通过。
+- 本地提交：`650a92a feat(lifecycle): enforce reviewed completion and teacher visibility`。
