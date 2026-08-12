@@ -18,6 +18,33 @@
 4. 将前端固定反思文本框替换为复盘对话区，并生成报告章节。
 5. 统一完成状态、教师可见记录、端到端测试和技术文档。
 6. 执行全量回归、构建和真实服务验收。
+7. 根据学生端实测修复题目重复、澄清后提前终止、评价不可操作、延期报告不可提交和教师队列不可见问题。
+
+## 实施总账
+
+本闭环以 `5450314` 为开发前基线，从 `881881e` 到 `8feab4b` 连续完成 7 次本地提交。以下统计直接来自 Git 提交记录，不只计算最后一次修复。
+
+| 阶段 | 提交 | 日期 | 实际提交统计 |
+| --- | --- | --- | --- |
+| 1 · 领域底座 | `881881e feat(review): establish socratic review domain foundation` | 2026-08-12 11:05 | 10 files，+801 / -1 |
+| 2 · Assessment Agent | `7b5843d feat(assessment): generate evidence-backed review plans` | 2026-08-12 11:13 | 6 files，+646 / -3 |
+| 3 · Tutor 编排与 API | `1c39192 feat(tutor): orchestrate throttled checks and socratic reviews` | 2026-08-12 11:42 | 12 files，+982 / -15 |
+| 4 · 前端复盘与报告 | `06daeb8 feat(workbench): replace freeform reflection with review dialogue` | 2026-08-12 11:57 | 9 files，+1015 / -109 |
+| 5 · 生命周期与教师可见性 | `8977d70 feat(lifecycle): enforce reviewed completion and teacher visibility` | 2026-08-12 12:33 | 11 files，+562 / -22 |
+| 6 · 契约收口 | `723aca3 feat(contracts): close authoritative review lifecycle` | 2026-08-12 13:10 | 9 files，+147 / -47 |
+| 7 · 实测可用性修复 | `8feab4b fix(review): make Socratic feedback actionable and teacher-visible` | 2026-08-12 16:32 | 13 files，+1006 / -87 |
+
+- 阶段提交累计：7 commits、70 次文件变更记录、+5159 / -284。
+- 相对开发前基线的最终净变化：36 个唯一文件、+5091 / -216。累计值包含同一文件在多个阶段的反复演进，因此高于最终净变化。
+- 本次历史补账属于纯文档归档提交，不作为新的功能实现阶段，也不计入上述 7 次实现提交统计。
+- 覆盖范围：概念目录、Assessment Agent、Tutor 答疑节流、复盘状态机、服务端权威事件、SQLite 持久化、学习访问门禁、报告模板、学生复盘 UI、教师验收 UI、JSON Schema、单元测试、行为 harness、HTTP smoke 和本 process 文档。
+
+### 累计文件索引
+
+- 领域与数据：`lab-packages/lab1/lab.yaml`、`lab-packages/lab1/concepts/boot.yaml`、`lab-packages/lab1/checkpoints.yaml`、`learning/concept-catalog.mjs`、`learning/review-contracts.mjs`、`learning/assessment-agent.mjs`、`learning/db.mjs`、`learning/access.mjs`、`learning/report-template.mjs`、`learning/trial-operations.mjs`。
+- Tutor 与契约：`handbook/tutor-server.mjs`、`tutor/baseline.mjs`、`tutor/contracts.mjs`、`tutor/turn-policy.mjs`、`tutor/state-machine.mjs`、`tutor/schema/assessment-review-plan-v1.schema.json`、`tutor/schema/event-v2.schema.json`。
+- 学生与教师前端：`handbook/.vitepress/theme/components/LabWorkspace.vue`、`ReportPanel.vue`、`SocraticReviewPanel.vue`、`TeacherPublishPanel.vue`、`TeacherReview.vue`、`handbook/.vitepress/theme/report-template.ts`、`handbook/.vitepress/theme/tutor-model.ts`。
+- 测试与工程：`learning/concept-catalog.test.mjs`、`assessment-agent.test.mjs`、`socratic-review-db.test.mjs`、`access.test.mjs`、`report-template.test.mjs`、`tutor/baseline.test.mjs`、`contracts.test.mjs`、`turn-policy.test.mjs`、`state-machine.test.mjs`、`handbook/tutor-server.smoke.mjs`、`handbook/package.json`、`docs/process/socratic-review-implementation.md`。
 
 ## 实施记录
 
@@ -32,7 +59,8 @@
   - 新增 `socratic_reviews`、`socratic_review_turns`、`mastery_observations` 及事务 CRUD。
   - 新增概念目录与复盘数据库测试。
 - 验证：`node --test ../learning/concept-catalog.test.mjs ../learning/socratic-review-db.test.mjs`。
-- 本地提交：`feat(review): establish socratic review domain foundation`。
+- 实际变更范围：Lab1 教学规格 3 个 YAML；`learning/concept-catalog.mjs`、`review-contracts.mjs`、`db.mjs` 及对应测试；测试脚本和本 process 文档，共 10 个文件，+801 / -1。
+- 本地提交：`881881ec91fc22c75b2c9b4ce522b78dcc83f6d0 feat(review): establish socratic review domain foundation`。
 
 ### 阶段 2：Assessment Agent 与全过程证据
 
@@ -45,7 +73,8 @@
   - 实现类概念缺少对应可信通过 run 时，口头回答最多进入 `needs-evidence`。
   - 新增可版本化 JSON Schema 和 Assessment Agent 回归测试。
 - 验证：`node --test ../learning/assessment-agent.test.mjs ../learning/concept-catalog.test.mjs`，6 项通过。
-- 本地提交：`feat(assessment): generate evidence-backed review plans`。
+- 实际变更范围：`learning/assessment-agent.mjs` 及测试、复盘契约、Assessment 计划 JSON Schema、测试脚本和本 process 文档，共 6 个文件，+646 / -3。
+- 本地提交：`7b5843db0533eb78eef1b82c7bd7a1d81af63c86 feat(assessment): generate evidence-backed review plans`。
 
 ### 阶段 3：Tutor 编排与复盘 API
 
@@ -60,7 +89,8 @@
 - 验证：
   - `node --test learning/assessment-agent.test.mjs learning/socratic-review-db.test.mjs tutor/turn-policy.test.mjs tutor/contracts.test.mjs`，27 项通过。
   - `npm run test:smoke`，真实 HTTP/SSE/运行/评价/报告链路通过；确认两轮 Tutor 问答生成 4 条服务端权威事件。
-- 本地提交：`feat(tutor): orchestrate throttled checks and socratic reviews`。
+- 实际变更范围：Tutor 服务与 smoke、Assessment 和数据库编排、事件契约与 Schema、日常追问策略及其测试、本 process 文档，共 12 个文件，+982 / -15。
+- 本地提交：`1c39192daac802b14bddb658703901b534e8ebb6 feat(tutor): orchestrate throttled checks and socratic reviews`。
 
 ### 阶段 4：前端复盘对话与报告 transcript
 
@@ -75,7 +105,8 @@
 - 验证：
   - `node --test learning/report-template.test.mjs`，4 项通过。
   - `npm run build`，VitePress 客户端、服务端 bundle 与页面渲染全部通过。
-- 本地提交：`feat(workbench): replace freeform reflection with review dialogue`。
+- 实际变更范围：新增 `SocraticReviewPanel.vue`；修改工作台、报告面板、教师发布提示、前端模型、前后端报告模板和测试、本 process 文档，共 9 个文件，+1015 / -109。
+- 本地提交：`06daeb8dcfbcb10b910021317640e33ee640676c feat(workbench): replace freeform reflection with review dialogue`。
 
 ### 阶段 5：生命周期、报告门禁与教师可见性
 
@@ -92,7 +123,8 @@
   - `node --test access.test.mjs socratic-review-db.test.mjs trial-operations.test.mjs`：14 项通过，涵盖新旧完成状态隔离、五题上限与备份表计数。
   - `npm run test:smoke`：通过旧反思不可解锁、Lab1/2 复盘完成、`awaiting_evidence -> 新可信运行 -> resume`、最多五题、服务端报告门禁、教师复盘读取与备份链路。
   - `npm run build`：VitePress 客户端、服务端 bundle 与渲染页面通过。
-- 本地提交：`8977d70 feat(lifecycle): enforce reviewed completion and teacher visibility`。
+- 实际变更范围：学习访问与迁移、复盘数据库、Tutor 服务与 smoke、学生工作台模型、教师验收页、备份统计和对应测试、本 process 文档，共 11 个文件，+562 / -22。
+- 本地提交：`8977d70d223f7626611bcbf148177aec7f518200 feat(lifecycle): enforce reviewed completion and teacher visibility`。
 
 ### 阶段 6：全量验收与契约收口
 
@@ -111,7 +143,8 @@
   - `npm run test:smoke`：通过真实 HTTP/SSE/SQLite 链路，包括旧反思不解锁、复盘阻塞恢复、报告门禁、客户端伪造报告事件被拒绝、服务端权威报告事件落库、教师复盘读取和备份。
   - `npm run build`：VitePress 客户端、服务端 bundle 与静态渲染通过。
   - 运行态：Tutor `GET /health` 返回 `ok: true`，VitePress 开发站点根路径返回 HTTP 200；本次环境没有可用的浏览器控制实例，因此未能补充截图式人工页面检查。
-- 本地提交 message：`feat(contracts): close authoritative review lifecycle`。
+- 实际变更范围：Tutor 基线、stage 状态机、服务端权威报告事件、工作台事件模型、HTTP smoke 和对应测试、本 process 文档，共 9 个文件，+147 / -47。
+- 本地提交：`723aca34e7924096d9923b31687bc54e36ea47f8 feat(contracts): close authoritative review lifecycle`。
 
 ### 阶段 7：复盘可用性修复与教师验收队列闭环
 
@@ -136,4 +169,5 @@
   - `npm run build`：VitePress 客户端、服务端 bundle 与页面渲染通过。
   - `node --check` 与 `git diff --check` 通过；仅有工作区 LF/CRLF 提示。
   - 最新隔离服务的 Tutor `8788` 与 VitePress `5174` 均正常监听。当前运行环境没有可用的浏览器控制实例，因此无法补充截图式桌面/移动端验收；本轮 UI 已通过生产构建、类型编译、真实 API smoke 与长文本响应式样式审查。
-- 本地提交 message：`fix(review): make Socratic feedback actionable and teacher-visible`。
+- 实际变更范围：Assessment 题目轮换和结构化评价、复盘状态机、报告门禁、教师联合队列、学生与教师复盘 UI、前端类型、HTTP smoke 和数据库/契约测试、本 process 文档，共 13 个文件，+1006 / -87。
+- 本地提交：`8feab4b0d75ed39b2ecad6697dc6b10ca010a938 fix(review): make Socratic feedback actionable and teacher-visible`。
