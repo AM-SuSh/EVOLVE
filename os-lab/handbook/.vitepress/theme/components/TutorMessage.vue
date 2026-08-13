@@ -26,7 +26,8 @@ const displayContent = computed(() => {
   if (isAssistant.value || !attached.value.length) return props.message.content
   return studentQuestionFromChat(props.message.content) || '（已附带工作台内容）'
 })
-const html = computed(() => renderTutorMarkdown(displayContent.value))
+// 引用数据仍随消息持久化并参与服务端校验，学生端只隐藏来源展示。
+const html = computed(() => renderTutorMarkdown(displayContent.value, { showKnowledgeCitations: false }))
 const messageCopyText = computed(() => displayContent.value.trim() || props.message.content.trim())
 const messageCopyTitle = computed(() => {
   if (messageCopyStatus.value === 'copied') return '已复制这条消息'
@@ -476,28 +477,6 @@ async function onBodyClick(event: MouseEvent) {
 
 .ws-message-content :deep(.ws-evidence-link:hover) {
   background: var(--ws-accent-soft);
-}
-
-.ws-message-content :deep(.ws-kb-citation) {
-  display: inline-flex;
-  align-items: center;
-  min-height: 1.35em;
-  margin: 0 2px;
-  padding: 0 4px;
-  color: var(--ws-accent);
-  border: 1px solid var(--ws-accent);
-  border-radius: var(--ws-radius-full);
-  background: var(--ws-accent-soft);
-  font-family: inherit;
-  font-size: 0.72em;
-  line-height: 1.1;
-  cursor: help;
-  user-select: none;
-  vertical-align: super;
-}
-
-.ws-message-content :deep(.ws-kb-citation:hover) {
-  background: var(--ws-surface);
 }
 
 /* 行内寄存器名、指令名：sepc / sscratch / csrrw / cargo run … */

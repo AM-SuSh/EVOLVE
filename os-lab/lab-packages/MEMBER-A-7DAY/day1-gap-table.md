@@ -23,7 +23,7 @@
 | 能力 | 证据 |
 | --- | --- |
 | Lab2 手册层次与变体说明 | `labs/lab2-trap-and-task.md` |
-| 可信 recipe / 断言 / Trace Viewer | smoke + Trace 面板 |
+| 可信 recipe / 断言 / Trace 证据 | smoke + 测试结果；Trace Viewer 已从学生端移除 |
 | 文件状态 A/M/T/G/!、Problems | `/fs/status`、诊断 API |
 | 教师开放 Lab、报告反馈 | `TeacherPublish` / `TeacherReview` |
 | Lab2/3 包与量规草案文件 | `lab-packages/`、`learning/rubric-v2-draft.md` |

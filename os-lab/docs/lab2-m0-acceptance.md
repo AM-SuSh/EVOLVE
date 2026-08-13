@@ -45,7 +45,7 @@ M0 公开契约由 `tutor/schema/m0-contract-baseline-v1.json` 统一登记：
 2. 在工作台阅读 Lab2 手册，打开 `kernel/src/task.rs`，完成 fill/debug 任务并保存。
 3. 执行 `lab2.verify-trace.v1`。服务端生成 `runId` 和 `workspaceVersion`，而不是接受浏览器自报成功。
 4. 检查 4 项输出断言和 `trap_enter`、`task_switch` 两项 trace 断言全部通过。
-5. 用观察到的任务切换现象向 AI 导师提问；同步 `student_message`、`ai_response` 和 `trace_inspected`。
+5. 用测试结果中由真实 Trace 统计形成的任务切换现象向 AI 导师提问；同步 `student_message` 和 `ai_response`。
 6. 将 `run:<runId>` 与 `trace:<runId>` 写入报告证据，提交反思并生成评分摘要。
 7. 教师从运行、断言、trace 和报告回查评分依据；AI 不拥有最终裁决权。
 

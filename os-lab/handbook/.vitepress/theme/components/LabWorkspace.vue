@@ -10,7 +10,6 @@ import ReportPanel from './ReportPanel.vue'
 import AssessmentPane from './AssessmentPane.vue'
 import CodePanel from './CodePanel.vue'
 import ProblemsPanel from './ProblemsPanel.vue'
-import TraceViewer from './TraceViewer.vue'
 import TeacherDocPanel from './TeacherDocPanel.vue'
 import TeacherPublishPanel from './TeacherPublishPanel.vue'
 import {
@@ -75,7 +74,6 @@ const codePanelRef = ref<InstanceType<typeof CodePanel> | null>(null)
 const manualPaneRef = ref<InstanceType<typeof ManualPane> | null>(null)
 const manualTocOpen = ref(false)
 const problemsPanelRef = ref<InstanceType<typeof ProblemsPanel> | null>(null)
-const traceViewerRef = ref<InstanceType<typeof TraceViewer> | null>(null)
 const tutorPaneRef = ref<InstanceType<typeof TutorPane> | null>(null)
 /** 各面板「添加到对话」累积的附件，发送时一并交给导师。 */
 const chatAttachments = ref<ChatAttachment[]>([])
@@ -237,8 +235,8 @@ function routeParam(name: string) {
 }
 
 const teachingVariantHint = computed(() => routeParam('variant'))
-/** 右栏学习支持页签（报告 / Trace）；AI 导师通过悬浮入口打开。 */
-const rightTab = ref<'report' | 'assessment' | 'trace'>('report')
+/** 右栏学习支持页签；AI 导师通过悬浮入口打开。 */
+const rightTab = ref<'report' | 'assessment'>('report')
 
 const TUTOR_CONVERSATION_STORAGE_KEY = 'os-lab-tutor-conversations-v2'
 const MAX_STORED_TUTOR_MESSAGES = 120
@@ -2207,16 +2205,15 @@ async function openChatAttachment(item: {
   }
 
   if (source === 'trace') {
-    mobileView.value = 'practice'
-    rightTab.value = 'trace'
-    if (origin.runId) lastRunId.value = origin.runId
-    await nextTick()
-    if (typeof origin.seq === 'number') {
-      traceViewerRef.value?.seekSeq?.(origin.seq)
-    } else {
-      traceViewerRef.value?.seek?.(0)
+    if (origin.runId) {
+      await navigateEvidenceRef(`run:${origin.runId}`)
+      return
     }
-    toast(typeof origin.seq === 'number' ? `已溯源到 Trace #${origin.seq}` : '已打开 Trace')
+    mobileView.value = 'practice'
+    terminalDockOpen.value = true
+    bottomTab.value = 'terminal'
+    toast('已打开终端')
+    return
   }
 }
 
@@ -2569,14 +2566,6 @@ function onProblemJump(payload: { path: string; line: number; code: string }) {
   })
 }
 
-/** Trace / 手册源码跳转：只打开文件行，不强制切到底部 Problems。 */
-function onTraceJump(payload: { path: string; line: number }) {
-  mobileView.value = 'practice'
-  panelOpen.value.practice = true
-  persistPanels()
-  void codePanelRef.value?.openAtLine(payload.path, payload.line)
-}
-
 /**
  * 导师消息 / 证据条中的 run: / trace: / 诊断引用跳转。
  * 无真实数据时只切面板并走可信空态，不造假事件或诊断行。
@@ -2630,11 +2619,7 @@ async function navigateEvidenceRef(refValue: string) {
 
   if (raw.startsWith('trace:')) {
     const runId = raw.slice(6).trim()
-    if (runId) lastRunId.value = runId
-    rightTab.value = 'trace'
-    await nextTick()
-    traceViewerRef.value?.seek(0)
-    toast(`已打开 Trace · run:${(runId || '').slice(0, 8)}…`)
+    if (runId) await navigateEvidenceRef(`run:${runId}`)
     return
   }
 
@@ -2659,16 +2644,6 @@ async function navigateEvidenceRef(refValue: string) {
       toast('已打开 Problems（当前无可用诊断行）')
     }
   }
-}
-
-/** Trace Viewer 查看：上报 trace_inspected 事件（事件 v2）。 */
-function onTraceInspected(payload: { runId: string; view: string; eventRange: { start: number; end: number } }) {
-  record('trace_inspected', {
-    content: '查看 trace',
-    runId: payload.runId,
-    view: payload.view,
-    eventRange: payload.eventRange,
-  })
 }
 
 /** 报告面板请 AI 点评：打开对话并把报告作为提问发送。 */
@@ -3378,14 +3353,6 @@ onBeforeUnmount(() => {
                 title="量规 v2 学习评价与证据链"
                 @click="rightTab = 'assessment'"
               >学习评价</button>
-              <button
-                type="button"
-                role="tab"
-                :aria-selected="rightTab === 'trace'"
-                :class="{ active: rightTab === 'trace' }"
-                title="运行时 trap / 任务切换事件回放"
-                @click="rightTab = 'trace'"
-              >Trace</button>
             </div>
             <button
               type="button"
@@ -3433,14 +3400,6 @@ onBeforeUnmount(() => {
               :can-assess="Boolean(auth && !isTeacherRole)"
               @notice="toast"
               @open-evidence="navigateEvidenceRef"
-            />
-            <TraceViewer
-              ref="traceViewerRef"
-              v-show="rightTab === 'trace'"
-              :run-id="lastRunId"
-              :endpoint="endpoint"
-              @jump="onTraceJump"
-              @trace-inspected="onTraceInspected"
             />
           </div>
         </section>
@@ -5166,9 +5125,7 @@ onBeforeUnmount(() => {
 }
 
 .ws-assistant-body > :deep(.ws-report),
-.ws-assistant-body > :deep(.ws-tutor-pane),
-.ws-assistant-body > :deep(.ws-trace),
-.ws-assistant-body > :deep(.ws-trace-viewer) {
+.ws-assistant-body > :deep(.ws-tutor-pane) {
   grid-area: 1 / 1;
   min-width: 0;
   min-height: 0;

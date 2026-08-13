@@ -13,7 +13,7 @@
 | AI 导师对话 | 工作台右下角的 AI 图标 | 可见；点击后打开对话窗，导师会根据阶段和证据继续追问 |
 | 可信运行结果 | 工作台下方的“终端”页签 | 可见 |
 | 编译诊断 | 工作台下方的“Problems”页签 | 可见，可跳回源码位置 |
-| Trace 查询与回放 | 工作台“学习支持”区的“Trace”页签 | 可见，可查看 Trap 时序和任务时间线 |
+| Trace 运行证据 | 无独立学生端页面 | 后端继续采集、校验并供断言、AI 与评价使用 |
 | 教师发布与课程配置 | 教师账号登录后进入 `/guide/ai-tutor`，查看教师工作区 | 可见 |
 | 学生报告验收与反馈 | `/teacher-review` | 可见，但这是已有的报告反馈页面 |
 | C4 评价与掌握画像 | 暂无专门页面 | 后端接口已完成 |
@@ -51,8 +51,8 @@ npm run dev
 3. 选择教师已经开放、并且当前已解锁的 Lab。
 4. 点击右下角 AI 图标打开导师，提交判断、问题和复盘。默认窗口停靠在右侧；桌面端可拖动图标、窗口和左右/底边握把，刷新后会保留对话、位置与尺寸。
 5. 在下方“终端”运行受信命令；失败诊断进入 “Problems”。
-6. 运行产生教学 Trace 后，在“学习支持”区进入 “Trace”查看 Trap 时序或任务时间线。
-7. 在 Trace 中检查事件会形成 `trace_inspected` 学习事件，可作为后续评价证据。
+6. 运行产生教学 Trace 后，在“测试结果”查看由真实 Trace 统计形成的可信断言；Trace 原始制品仍由服务端保存。
+7. 学习支持区不再提供 Trace 回放页；历史 `trace_inspected` 学习事件仍兼容并可作为评价证据。
 
 ### 教师查看路径
 
@@ -111,13 +111,13 @@ Rubric v3 证据行为评价 + 概念掌握画像
 - 从可信运行输出中采集结构化 Trace，并将制品哈希、事件数和路径绑定到 run。
 - 提供 `GET /runs/:id/trace` 分页查询。
 - 查询时重新验证路径边界、文件大小、SHA-256、JSON、事件结构、序号单调性和事件总数。
-- 前端 Trace Viewer 查询成功后记录 `trace_inspected`，使“看过运行机制”成为可审计证据。
+- 服务端继续校验 Trace 制品和历史 `trace_inspected` 事件；当前学生端不再提供 Trace Viewer，也不新增该查看事件。
 
 主要文件：
 
 - [`../tutor/trace-store.mjs`](../tutor/trace-store.mjs)
-- `os-lab/handbook/.vitepress/theme/components/TraceViewer.vue`
-- [`../handbook/.vitepress/theme/composables/useTracePlayback.ts`](../handbook/.vitepress/theme/composables/useTracePlayback.ts)
+- `os-lab/handbook/tutor-server.mjs`
+- [`../tutor/trace-store.mjs`](../tutor/trace-store.mjs)
 
 ### C2：AI 导师离线回归 Harness
 

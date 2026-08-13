@@ -1,5 +1,29 @@
 # EVOLVE 项目进度总览
 
+## 2026-08-13 - Task: 精简学生端 AI 来源标记并移除 Trace 展示页
+
+### What was done
+- AI 导师回复正文不再渲染 `[kb:...]` / `kb:...` 形成的「来源」小标签和无意义知识块编号，避免引用标记干扰正文阅读。
+- 保留复制按钮同一行的知识库图标；悬停后仍可查看本轮知识块标题、章节路径、候选数量和检索降级状态，知识检索结果及诊断数据没有删除。
+- 学习支持区移除 `Trace` 页签、`TraceViewer` 挂载、回放跳转和仅供该页面使用的四个 Vue 视图组件及播放 composable；学习支持区现在只保留「实验报告」和「学习评价」。
+- 历史 `trace:` 证据引用和 Trace 附件按 `runId` 回退到对应测试结果或终端，避免跳转到已删除页面；评价面板和学生指南同步改为运行、诊断与报告证据口径。
+- 后端 Trace 采集、`trace.jsonl` 存储、`GET /runs/:id/trace`、哈希完整性校验、可信断言、AI 引用校验、`trace_inspected` 历史事件兼容及评分轨迹统计全部保留，未影响学生运行过程记录与既有评价。
+- 新增 Tutor Markdown 回归测试，固定“正文隐藏知识库来源标签，同时保留 `run:` / `trace:` 可导航证据”的行为；同步更新工作台说明、入门指南、Lab2 验收和 Trace/评分相关文档。
+
+### Testing
+- `npm test`：通过，133 项测试全绿；覆盖新增来源隐藏测试、Trace 存储与篡改校验、事件契约、评分、RAG 引用及既有业务链路。
+- `npm run test:smoke`：通过；Tutor 服务运行、Trace API/权限/完整性、历史 `trace_inspected` 校验、评价、报告和 Lab Factory 链路正常。
+- `npm run build`：通过；同步 26 份 Markdown，VitePress 客户端/服务端 bundle 与页面渲染完成。
+- `git diff --check`：通过；仅提示仓库现有 LF/CRLF 行尾转换信息。
+- 本地开发站点 `http://localhost:5173/` 返回 HTTP 200；当前应用内浏览器无可用连接，因此未完成截图级视觉检查。
+
+### Notes
+- 删除边界仅限学生端 Trace 展示与播放代码；服务端 Trace 制品和评分兼容逻辑仍是可信运行证据链的一部分，不能随页面删除。
+- AI 导师仅隐藏正文末尾的知识块引用标签；消息操作栏的知识库图标与悬停摘要按产品要求保留。
+- 主要改动：`TutorMessage.vue`、`markdown.ts`、`LabWorkspace.vue`、`AssessmentPane.vue`、Trace 前端组件、`tutor-markdown.test.mjs` 及对应说明文档。
+
+---
+
 ## 2026-08-12 - Task: 收口教师工作台入口并完成 EVOLVE 品牌迁移
 
 ### What was done

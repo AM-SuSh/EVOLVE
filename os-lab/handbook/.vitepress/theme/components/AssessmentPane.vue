@@ -30,7 +30,7 @@ const assessError = ref('')
 const assessEmptyHint = computed(() => {
   if (!props.canAssess) return '登录学生账号后，可按量规 v2 生成评价并查看细项证据链。'
   if (!props.sessionId) return '学习会话尚未就绪，稍后再生成评价。'
-  return '还没有服务端评价。点击「生成 / 刷新评价」后，可按细项查看 run / trace / 事件证据。'
+  return '还没有服务端评价。点击「生成 / 刷新评价」后，可按细项查看运行 / 诊断 / 事件证据。'
 })
 
 async function refreshAssessment() {
@@ -76,7 +76,7 @@ watch(
     <header class="ws-assessment-pane-head">
       <div>
         <strong>{{ lab.label }} 学习评价</strong>
-        <small>规则评分（量规 v2）· 可点细项证据跳到 run / Trace / 报告</small>
+        <small>规则评分（量规 v2）· 可点细项证据跳到运行结果 / 诊断 / 报告</small>
       </div>
     </header>
     <div class="ws-assessment-pane-body">

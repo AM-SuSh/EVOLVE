@@ -46,23 +46,40 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
 
 /** 匹配正文中的证据与知识库引用；code / fence 内不替换。 */
 const EVIDENCE_REF_RE =
-  /\b((?:run|trace):[A-Za-z0-9][A-Za-z0-9._-]{3,120}|kb:[A-Za-z0-9][A-Za-z0-9._:-]{1,160})\b/g
+  /(\[?)\b((?:run|trace):[A-Za-z0-9][A-Za-z0-9._-]{3,120}|kb:[A-Za-z0-9][A-Za-z0-9._:-]{1,160})\b(\]?)/g
+const KNOWLEDGE_REF_RE = /\[?\bkb:[A-Za-z0-9][A-Za-z0-9._:-]{1,160}\b\]?/g
 
-function linkifyEvidenceRefs(html: string): string {
+export function stripTutorKnowledgeCitations(source: string): string {
+  return String(source || '')
+    .replace(KNOWLEDGE_REF_RE, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+([，。！？；：、])/g, '$1')
+}
+
+function linkifyEvidenceRefs(html: string, showKnowledgeCitations: boolean): string {
   // 只处理标签外文本，避免破坏 code / button / a 属性。
   return html.replace(/(<[^>]+>)|([^<]+)/g, (chunk, tag: string | undefined, text: string | undefined) => {
     if (tag) return tag
     if (!text) return chunk
-    return text.replace(EVIDENCE_REF_RE, (_match, ref: string) => {
+    return text.replace(EVIDENCE_REF_RE, (_match, open: string, ref: string, close: string) => {
       const safe = md.utils.escapeHtml(ref)
       if (ref.startsWith('kb:')) {
-        return `<span class="ws-kb-citation" aria-label="知识库来源 ${safe}" title="知识库来源 ${safe}">来源</span>`
+        return showKnowledgeCitations
+          ? `<span class="ws-kb-citation" aria-label="知识库来源 ${safe}" title="知识库来源 ${safe}">来源</span>`
+          : ''
       }
-      return `<button type="button" class="ws-evidence-link" data-ref="${safe}">${safe}</button>`
+      const prefix = open && !close ? open : ''
+      const suffix = close && !open ? close : ''
+      return `${prefix}<button type="button" class="ws-evidence-link" data-ref="${safe}">${safe}</button>${suffix}`
     })
   })
 }
 
-export function renderTutorMarkdown(source: string): string {
-  return linkifyEvidenceRefs(md.render(source || ''))
+export function renderTutorMarkdown(
+  source: string,
+  options: { showKnowledgeCitations?: boolean } = {},
+): string {
+  const showKnowledgeCitations = options.showKnowledgeCitations !== false
+  const markdown = showKnowledgeCitations ? source : stripTutorKnowledgeCitations(source)
+  return linkifyEvidenceRefs(md.render(markdown || ''), showKnowledgeCitations)
 }

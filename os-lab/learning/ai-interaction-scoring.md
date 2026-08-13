@@ -68,7 +68,7 @@ aiInteraction = 0.30×提问质量Q + 0.30×轨迹形态T + 0.25×证据跟进E 
 | `guardrail_triggered` | 触发护栏（如硬要完整答案） | 扣分 |
 | 可信运行 / `verification_attempt` | 学生点了编译、测试等 | 算「有没有验证」 |
 | `diagnostic_opened` | 点开了编译错误并跳转 | 算证据消费 |
-| `trace_inspected` | 看了 Trace 回放 | 算证据消费 |
+| `trace_inspected` | 历史客户端查看过 Trace 回放 | 兼容计入证据消费；当前学生端不再新增 |
 | `reflection_submitted` / 报告反思 | 学生写的复盘 | 算元认知 |
 
 **重要**：运行必须是**本账号、本会话**产生的；不能拿别人的 run 凑证据。
