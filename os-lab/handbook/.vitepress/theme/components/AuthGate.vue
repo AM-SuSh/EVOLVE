@@ -91,7 +91,10 @@ onMounted(async () => {
 <template>
   <div v-if="locked" class="ag-overlay">
     <div class="ag-card">
-      <p class="ag-brand"><img :src="withBase('/logo.svg')" alt="" />EVOLVE 操作系统学习平台</p>
+      <p class="ag-brand">
+        <img class="ag-brand-mark" :src="withBase('/logo.svg')" width="34" height="34" alt="" />
+        <strong class="ag-brand-name">EVOlVE</strong>
+      </p>
       <h1>{{ mode === 'login' ? '登录' : '学生注册' }}</h1>
 
       <p v-if="serverDown" class="ag-warn">
@@ -175,18 +178,28 @@ onMounted(async () => {
 .ag-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin: 0 0 6px;
+  gap: 12px;
+  margin: 0 0 10px;
   color: var(--vp-c-text-2);
   font-size: 14px;
   font-weight: 600;
 }
 
-.ag-brand img {
+.ag-brand-mark {
+  flex: 0 0 auto;
   width: 34px;
   height: 34px;
   border-radius: 8px;
   box-shadow: 0 4px 12px color-mix(in srgb, var(--vp-c-brand-1) 34%, transparent);
+}
+
+.ag-brand-name {
+  color: var(--vp-c-brand-1);
+  font-family: var(--vp-font-family-mono);
+  font-size: 18px;
+  font-weight: 760;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
 }
 
 .ag-card h1 {
