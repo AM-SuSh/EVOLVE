@@ -25,6 +25,66 @@
 
 ---
 
+## 2026-08-11 - Task: 修复高阶 Lab 工作区回跑 Lab2 误开 default=lab8
+
+### What was done
+- 查明 `dtdt` Lab2 最新失败并非 fill 代码回退：`find_next_task` 仍正确；失败因学生工作区 `default = ["lab8"]`，工作台 `cargo run --features lab2` 叠加 default 后跑成 Lab8，VirtIO 无磁盘镜像而 panic。
+- 验证 recipe 的 cargo 步骤改为 `--no-default-features --features <lab>`，避免回跑低阶 Lab 时被 default 污染。
+
+### Testing
+- 对照失败日志：`os-lab kernel lab8...` + `virtio mmio transport: ZeroDeviceId`；断言全未观察到用户输出。
+- 对照通过跑（同日较早）：有 Hello / Yield / All exited。代码侧 fill 仍在。
+
+### Notes
+- 改动：`os-lab/tutor/run-recipes.mjs`；`progress.md`
+- 回滚：还原 `cargoRunStep` / `diskSteps` 去掉 `--no-default-features`。
+- 需重启 `npm run tutor` 后前端验证命令才生效。
+
+---
+
+## 2026-08-11 - Task: 登录门去掉 EVOlVE 全称
+
+### What was done
+- 登录门品牌区仅保留 EV 图标与 `EVOlVE` 名称，删除全称副标题。
+
+### Testing
+- 刷新未登录页，确认登录卡片不再显示 Evolving Virtual OS Learning & Verification Environment。
+
+### Notes
+- 改动：`AuthGate.vue`；`progress.md`
+- 回滚：还原品牌区含全称的版本。
+
+---
+
+## 2026-08-11 - Task: 登录门品牌改为 EVOlVE
+
+### What was done
+- 登录/注册门 `AuthGate`：图标改为站点 `logo.svg`（EV），名称改为 EVOlVE，并附全称。
+
+### Testing
+- 未登录状态刷新站点，对照登录卡片左上角应为 EV 方标 + EVOlVE。
+
+### Notes
+- 改动：`os-lab/handbook/.vitepress/theme/components/AuthGate.vue`；`progress.md`
+- 回滚：还原 AuthGate 品牌段与样式。
+
+---
+
+## 2026-08-11 - Task: 补全缺失的 FinalProjectPane 恢复前端
+
+### What was done
+- 补写 `FinalProjectPane.vue`：同伴提交的 `LabWorkspace.vue` 已引用该组件但仓库中缺失，导致 VitePress 无法解析首页/工作台。
+- 组件按 `FinalProjectAccess` 展示期末探索任务说明、锁定态与验证命令。
+
+### Testing
+- 对照终端错误：此前 `Failed to resolve import "./FinalProjectPane.vue"`；补文件后刷新 `http://localhost:5173/` 应可正常加载。
+
+### Notes
+- 改动：`os-lab/handbook/.vitepress/theme/components/FinalProjectPane.vue`；`progress.md`
+- 回滚：删除该组件文件（前端会再次因缺文件失败）。
+
+---
+
 ## 2026-08-11 - Task: 首页全称两行排版
 
 ### What was done
