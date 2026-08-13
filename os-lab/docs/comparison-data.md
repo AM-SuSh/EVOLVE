@@ -60,7 +60,7 @@ Method: PowerShell file count (`.rs`/`.asm`, exclude `target/`), line count, `#[
 
 ### 三方对比速览（定量，供 comparison.md 用）
 
-| 维度 | 自研 os-lab | 参考 tg-rcore-tutorial | 本校 xv6-riscv |
+| 维度 | EVOLVE | 参考 tg-rcore-tutorial | 本校 xv6-riscv |
 |------|------------|----------------------|---------------|
 | 语言 | Rust | Rust | C |
 | 架构 | 单内核+feature gate | 8 独立内核 | 单一源码树 |

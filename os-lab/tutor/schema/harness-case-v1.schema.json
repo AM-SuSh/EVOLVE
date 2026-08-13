@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://os-lab.local/schema/harness-case-v1.schema.json",
-  "title": "OS Lab tutor harness case v1",
+  "title": "EVOLVE tutor harness case v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "id", "labId", "initialStage", "turns", "expected"],

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://os-lab.local/schema/knowledge-document-v1.json",
-  "title": "OS Lab normalized knowledge document",
+  "title": "EVOLVE normalized knowledge document",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "documentId", "sourceId", "title", "format", "language", "contentHash", "metadata", "blocks"],

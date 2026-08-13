@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://os-lab.local/schema/assessment-review-plan-v1.schema.json",
-  "title": "OS Lab Socratic review plan v1",
+  "title": "EVOLVE Socratic review plan v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "labId", "sessionId", "maxQuestions", "questions", "evidenceRefs", "generator"],

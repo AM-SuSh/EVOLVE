@@ -1,4 +1,4 @@
-# os-lab 架构说明
+# EVOLVE 架构说明
 
 ## 设计目标
 
@@ -12,7 +12,7 @@
 
 ```mermaid
 graph TD
-    subgraph workspace [os-lab workspace]
+    subgraph workspace [EVOLVE workspace]
         kernel[kernel bin]
         osSbi[os-sbi]
         osContext[os-context]
@@ -50,6 +50,9 @@ flowchart LR
 | lab3 | + `mm` | os-alloc, os-vm |
 | lab4 | + `process` | （沿用 lab3） |
 | lab5 | + `fs`, `sync` | os-fs |
+| lab6 | + `virtio_block`, `fs/disk` | easy-fs, virtio-drivers |
+| lab7 | + `signal` | os-signal |
+| lab8 | + `sync_syscall`、线程调度 | os-sync |
 
 ## Lab1 启动流程（当前已实现）
 

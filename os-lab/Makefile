@@ -1,4 +1,4 @@
-# os-lab build entrypoints
+# EVOLVE build entrypoints
 
 FEATURE ?= lab1
 KERNEL := kernel

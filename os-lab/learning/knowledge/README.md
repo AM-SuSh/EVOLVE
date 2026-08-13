@@ -1,4 +1,4 @@
-# OS Lab Knowledge Source Inventory
+# EVOLVE Knowledge Source Inventory
 
 This directory contains the versioned source inventory and access policy used
 to build the tutor knowledge base. The inventory only contains canonical

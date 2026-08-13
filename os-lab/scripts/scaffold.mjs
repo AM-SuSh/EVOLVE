@@ -651,7 +651,7 @@ ${members.map((m) => `    "${m}",`).join('\n')}
 version = "0.1.0"
 edition = "2021"
 license = "BSD-3-Clause"
-authors = ["OS Lab Student"]
+authors = ["EVOLVE Student"]
 repository = ""
 
 [profile.dev]

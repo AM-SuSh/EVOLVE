@@ -17,7 +17,7 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "BSD-3-Clause"
-authors = ["OS Lab Team"]
+authors = ["EVOLVE Team"]
 repository = "https://github.com/AM-SuSh/Or2-1-OS"
 
 [profile.dev]

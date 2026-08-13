@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://os-lab.local/schema/knowledge-chunk-set-v1.json",
-  "title": "OS Lab chapter-aware knowledge chunk set",
+  "title": "EVOLVE chapter-aware knowledge chunk set",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "chunkSetId", "documentId", "sourceId", "chunking", "chunks"],

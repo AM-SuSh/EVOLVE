@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://os-lab.local/schema/run-result-v1.schema.json",
-  "title": "OS Lab trusted run result v1",
+  "title": "EVOLVE trusted run result v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "runId", "labId", "recipeId", "workspaceVersion", "trusted", "startedAt", "finishedAt", "exitCode", "durationMs", "assertions", "output", "trace", "verified"],

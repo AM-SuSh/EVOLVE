@@ -1,15 +1,15 @@
 # 实验总览
 
-> 本文档由成员 C 维护，是 os-lab 教学实验环境的入口。后续每个 Lab 的详细指导见同目录下对应文件。
+> 本文档由成员 C 维护，是 EVOLVE 教学实验环境的入口。后续每个 Lab 的详细指导见同目录下对应文件。
 
 ## 一、本环境是什么
 
-os-lab 是一套基于 **Rust + RISC-V 64 + QEMU** 的自研操作系统教学实验环境。它和参考环境 `tg-rcore-tutorial` 最大的区别是：**只有一个内核，通过 feature gate 让内核从裸机到完整系统逐步"长出来"**。学生始终在同一个代码库中工作，能清晰看到内核演进的脉络，而不是面对 8 个互相独立的内核。
+EVOLVE 是一套基于 **Rust + RISC-V 64 + QEMU** 的自研操作系统教学实验环境。它和参考环境 `tg-rcore-tutorial` 最大的区别是：**只有一个内核，通过 feature gate 让内核从裸机到完整系统逐步"长出来"**。学生始终在同一个代码库中工作，能清晰看到内核演进的脉络，而不是面对 8 个互相独立的内核。
 
 - 编程语言：Rust（stable）
 - 目标平台：`riscv64gc-unknown-none-elf`
 - 运行环境：QEMU `virt` 机器（`qemu-system-riscv64`）
-- 组件化：内核主体之外，另有 6 个独立的库 crate（`os-sbi`/`os-context`/`os-syscall`/`os-alloc`/`os-vm`/`os-fs`），外加 `user` 用户态程序 crate；组件 crate 各自具备单独发布到 crates.io 的条件
+- 组件化：内核主体之外，另有 8 个独立的库 crate（`os-sbi`/`os-context`/`os-syscall`/`os-alloc`/`os-vm`/`os-fs`/`os-signal`/`os-sync`），外加 `user` 用户态程序 crate；组件 crate 各自具备独立测试边界
 
 ## 二、前置准备
 
@@ -99,7 +99,7 @@ Lab6–8 依赖、分工、验收与进度见 [docs/lab6-8.md](../../docs/lab6-8
 
 ## 五、组件 Crate 依赖关系
 
-内核之外的 6 个 `os-*` 库 crate 按实验阶段逐步引入。下图展示它们与内核主体 `kernel` 的依赖关系。
+内核之外的 8 个 `os-*` 库 crate 按实验阶段逐步引入。下图展示它们与内核主体 `kernel` 的依赖关系。
 
 ```mermaid
 graph LR
@@ -124,7 +124,7 @@ graph LR
     sync --> alloc
 ```
 
-对比参考环境 `tg-rcore-tutorial` 的 23 个 crate、4 层依赖，本环境只有 `kernel` + 6 个 `os-*`（另加 `user`）、约 2 层依赖，认知负担显著降低。
+对比参考环境 `tg-rcore-tutorial` 的多内核、多 crate 结构，本环境保持 `kernel` + 8 个职责聚焦的 `os-*` 库（另加 `user`）、约 2 层依赖，让学生能沿单一演进链理解组件边界。
 
 ## 六、快速开始
 

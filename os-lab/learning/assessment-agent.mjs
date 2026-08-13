@@ -403,7 +403,7 @@ export async function createAssessmentReviewPlan(bundle, options = {}) {
       llm: options.llm,
       fetchImpl: options.fetchImpl,
       system: [
-        '你是独立的 OS Lab Assessment Agent，不直接面向学生。',
+        '你是独立的 EVOLVE Assessment Agent，不直接面向学生。',
         '根据完整行为证据生成 2-5 个苏格拉底复盘问题，默认 3 个。',
         '必须综合 Tutor 对话、工作区事件、可信运行、诊断/Trace 和报告；不能只看最终运行。',
         '只输出 JSON。conceptId 必须来自输入目录，evidenceRefs 必须逐字来自 validEvidenceRefs。',
@@ -507,7 +507,7 @@ export async function evaluateAssessmentReviewAnswer(question, answer, bundle, o
       llm: options.llm,
       fetchImpl: options.fetchImpl,
       system: [
-        '你是独立的 OS Lab Assessment Agent，评价一条复盘回答。只输出 JSON。',
+        '你是独立的 EVOLVE Assessment Agent，评价一条复盘回答。只输出 JSON。',
         'verdict 只能是 passed, partial, needs-evidence, misconception, defer。',
         '只根据回答是否体现了正确的机制理解来判定，不评价表达方式或叙事顺序；学生不需要先复述自己曾经的错误判断。',
         '只要回答覆盖了 passCriteria 中的知识要点且与证据一致，即使措辞简短或顺序不同也应判 passed。',

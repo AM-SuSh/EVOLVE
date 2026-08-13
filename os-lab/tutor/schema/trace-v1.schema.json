@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://os-lab.local/schema/trace-v1.schema.json",
-  "title": "OS Lab educational kernel trace v1",
+  "title": "EVOLVE educational kernel trace v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["v", "seq", "ts", "cpu", "pid", "tid", "type"],
