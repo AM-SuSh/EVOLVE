@@ -116,6 +116,7 @@ import {
   listAssessmentReviews,
   listAllReports,
   listFinalPerformance,
+  listLearningEvents,
   listMastery,
   listMasteryObservations,
   listRecentSocraticReviews,
@@ -4167,6 +4168,21 @@ const server = http.createServer(async (request, response) => {
           return
         }
       }
+    }
+
+    if (request.method === 'GET' && pathname === '/events/mine') {
+      if (!session) {
+        json(response, 401, { error: '请先登录再读取学习事件' }, origin)
+        return
+      }
+      const labId = String(requestUrl.searchParams.get('labId') || '')
+      if (labId && !labIds.has(labId)) {
+        json(response, 400, { error: 'unknown lab' }, origin)
+        return
+      }
+      const events = listLearningEvents(session.id, labId)
+      json(response, 200, { ok: true, events }, origin)
+      return
     }
 
     if (request.method === 'POST' && pathname === '/events') {

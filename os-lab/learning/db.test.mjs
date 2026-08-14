@@ -280,3 +280,28 @@ test('migration binds events and immutable runs to the authenticated user', () =
   assert.equal(mastery.length, 4)
   assert.equal(mastery.every((item) => item.assessmentId === saved.assessmentId), true)
 })
+
+test('listLearningEvents returns only the authenticated user events', () => {
+  const registration = learningDb.register('events-reader-test', 'secret1', 'class1')
+  const session = learningDb.resolveSession(registration.token)
+  const base = {
+    version: 2,
+    sessionId: 'learning-events',
+    labId: 'lab2',
+    timestamp: '2026-07-28T00:00:00.000Z',
+    type: 'student_message',
+    stage: 'read',
+    category: 'concept',
+    content: 'what is a trap?',
+  }
+  learningDb.insertLearningEvents(session.id, [
+    { ...base, id: 'events-read-1' },
+    { ...base, id: 'events-read-2', labId: 'lab3' },
+  ])
+  const all = learningDb.listLearningEvents(session.id)
+  assert.ok(all.some((event) => event.id === 'events-read-1'))
+  assert.ok(all.some((event) => event.id === 'events-read-2'))
+  const lab2 = learningDb.listLearningEvents(session.id, 'lab2')
+  assert.deepEqual(lab2.map((event) => event.id), ['events-read-1'])
+  assert.deepEqual(learningDb.listLearningEvents(999999), [])
+})

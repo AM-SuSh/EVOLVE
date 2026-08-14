@@ -34,10 +34,13 @@ import {
   type ChatAttachmentSource,
 } from '../chat-attachments'
 import {
+  anonymousLocalId,
   appendEvent,
   buildLabJourney,
   createId,
+  enqueueEventSync,
   exportEventsAsJsonl,
+  eventOwner,
   getTutorLab,
   authHeaders,
   hasCustomLlmConfig,
@@ -47,8 +50,13 @@ import {
   loadAuth,
   loadEvents,
   loadLlmConfig,
+  loadPendingEvents,
+  markEventsSynced,
+  mergeLearningEvents,
   offlineTutorReply,
+  rotateAnonymousOwner,
   saveAuth,
+  saveEvents,
   saveLlmConfig,
   tutorStages,
   type LearningEvent,
@@ -85,6 +93,7 @@ const endpoint = String(
 /* -- 账号：注册/登录，工作区、终端、代码、报告提交都凭会话鉴权 --------------- */
 const auth = ref(loadAuth())
 const studentId = computed(() => auth.value?.username || '')
+const owner = computed(() => eventOwner(auth.value))
 /**
  * 教师进工作台=备课模式：左栏是指导书渲染效果（点「编辑手册」整栏切换为
  * Markdown 编辑器增补知识点）；右栏整栏是作业发布面板（任务类型 × 目标班级）。
@@ -190,6 +199,7 @@ async function doLogout() {
   }
   auth.value = null
   saveAuth(null)
+  rotateAnonymousOwner()
   scaffold.value = null
   learningAccess.value = []
   finalProjectAccess.value = null
@@ -250,7 +260,7 @@ interface StoredTutorConversation {
 }
 
 function tutorConversationKey() {
-  const user = studentId.value || 'local'
+  const user = studentId.value || anonymousLocalId()
   return `${user}:${props.labId}`
 }
 
@@ -281,7 +291,7 @@ function loadTutorConversation() {
   }
 }
 
-function persistTutorConversation() {
+function persistTutorConversation(options: { skipServer?: boolean } = {}) {
   if (typeof localStorage !== 'undefined' && sessionId.value && messages.value.length) {
     try {
       const raw = localStorage.getItem(TUTOR_CONVERSATION_STORAGE_KEY)
@@ -298,7 +308,7 @@ function persistTutorConversation() {
       // Storage failures must not interrupt the active conversation.
     }
   }
-  if (auth.value && sessionId.value && messages.value.length) {
+  if (!options.skipServer && auth.value && sessionId.value && messages.value.length) {
     void fetch(`${endpoint}/conversations/mine`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -338,7 +348,7 @@ async function loadServerTutorConversation() {
     activeStage.value = tutorStages.some((item) => item.id === stored.stage) ? stored.stage : 'orient'
     messages.value = restored.slice(-MAX_STORED_TUTOR_MESSAGES)
     lastTutorState.value = stored.tutorState || null
-    persistTutorConversation()
+    persistTutorConversation({ skipServer: true })
     return true
   } catch {
     return false
@@ -1824,37 +1834,85 @@ const connectionLabel = computed(() => {
 
 /* -- 事件记录 --------------------------------------------------------------- */
 
+const pendingFlushes = new Map<string, Promise<void>>()
+let eventRefreshSeq = 0
+
 function record(
   type: LearningEvent['type'],
   options: Pick<LearningEvent, 'category' | 'content' | 'metadata' | 'runId' | 'recipeId' | 'assertions' | 'file' | 'line' | 'code' | 'view' | 'eventRange'> = {},
 ) {
-  const result = appendEvent(events.value, {
-    sessionId: sessionId.value,
-    labId: props.labId,
-    stage: activeStage.value,
-    type,
-    ...options,
-  })
+  const result = appendEvent(
+    events.value,
+    {
+      sessionId: sessionId.value,
+      labId: props.labId,
+      stage: activeStage.value,
+      type,
+      ...options,
+    },
+    owner.value,
+  )
   events.value = result.next
-  // 解锁证据属于导师服务，不应依赖上游大模型是否在线。
-  if (auth.value) void syncEvent(result.event)
+  // 登录账号的事件进入独立 outbox；未登录事件只保留本地分区，避免跨账号混传。
+  if (auth.value) {
+    enqueueEventSync(owner.value, result.event)
+    void flushPendingEvents()
+  }
 }
 
-async function syncEvent(event: LearningEvent) {
-  try {
-    const wasCompleted = Boolean(journeyItem.value?.completed)
-    const response = await fetch(`${endpoint}/events`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ event }),
-      keepalive: true,
-    })
-    if (response.ok && event.type === 'verification_attempt') {
-      await refreshLearningAccess()
-      announceUnlock(wasCompleted)
+async function flushPendingEvents(): Promise<void> {
+  if (!auth.value) return
+  const currentOwner = owner.value
+  const pending = loadPendingEvents(currentOwner)
+  if (!pending.length) return
+  const inFlight = pendingFlushes.get(currentOwner)
+  if (inFlight) return inFlight
+  const run = (async () => {
+    try {
+      const response = await fetch(`${endpoint}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ events: pending }),
+        keepalive: true,
+      })
+      if (response.ok) {
+        markEventsSynced(currentOwner, pending.map((event) => event.id))
+        if (pending.some((event) => event.type === 'verification_attempt')) {
+          const wasCompleted = Boolean(journeyItem.value?.completed)
+          await refreshLearningAccess()
+          announceUnlock(wasCompleted)
+        }
+      } else if (response.status >= 400 && response.status < 500 && response.status !== 401) {
+        // 服务端明确拒绝的事件停止重试，但仍保留在本地档案中。
+        markEventsSynced(currentOwner, pending.map((event) => event.id))
+      }
+    } catch {
+      // 网络/服务异常时保留 outbox，登录后或下次重试时补传。
+    } finally {
+      pendingFlushes.delete(currentOwner)
     }
+  })()
+  pendingFlushes.set(currentOwner, run)
+  return run
+}
+
+async function refreshEventState() {
+  if (!auth.value) {
+    events.value = loadEvents(owner.value)
+    return
+  }
+  const seq = ++eventRefreshSeq
+  const currentOwner = owner.value
+  try {
+    const response = await fetch(`${endpoint}/events/mine`, { headers: authHeaders() })
+    if (!response.ok) return
+    const payload = await response.json().catch(() => ({}))
+    if (seq !== eventRefreshSeq || owner.value !== currentOwner) return
+    const serverEvents = Array.isArray(payload.events) ? payload.events : []
+    events.value = mergeLearningEvents(loadEvents(currentOwner), serverEvents)
+    saveEvents(events.value, currentOwner)
   } catch {
-    // 本地档案仍保留；服务恢复后可继续学习，但服务端解锁必须等待证据同步成功。
+    // 服务不可用时保留本地分区档案。
   }
 }
 
@@ -2399,7 +2457,7 @@ async function sendMessage(text: string, attached: ChatAttachment[] = []) {
       content: reply,
       metadata: { guarded: guarded || serverGuardrail, mode: connection.value },
     })
-    persistTutorConversation()
+    persistTutorConversation({ skipServer: true })
   } catch (error) {
     const detail = error instanceof Error && error.message ? error.message : '未知错误'
     // 单次失败（超时/限流/网络抖动）不该把整个会话打成离线：
@@ -2724,17 +2782,23 @@ watchEffect(syncWorkspaceNavState)
 
 watch(studentId, (next, previous) => {
   if (next === previous) return
+  eventRefreshSeq += 1
+  events.value = []
+  messages.value = []
+  sessionId.value = ''
+  activeStage.value = 'orient'
+  lastTutorState.value = null
+  chatAttachments.value = []
   if (next) {
+    events.value = loadEvents(owner.value)
+    void flushPendingEvents().then(() => refreshEventState())
     void loadServerTutorConversation().then((restored) => {
       if (!restored && !loadTutorConversation()) startSession()
     })
     return
   }
   tutorOpen.value = false
-  messages.value = []
-  sessionId.value = ''
-  activeStage.value = 'orient'
-  lastTutorState.value = null
+  events.value = loadEvents(owner.value)
 })
 onBeforeMount(() => {
   syncMobileLayout()
@@ -2755,7 +2819,8 @@ onMounted(async () => {
   clampPaneSplitToViewport()
   clampTutorPanelToViewport()
   clampTutorFabToViewport()
-  events.value = loadEvents()
+  events.value = loadEvents(owner.value)
+  if (auth.value) void flushPendingEvents().then(() => refreshEventState())
   if (!studentId.value) showIdentity.value = true
   void loadClassNames()
   await checkConnection()

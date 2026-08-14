@@ -172,18 +172,38 @@ export async function appendConversationTurn(userId, sessionId, labId, turn) {
   await appendFile(filePath, `${JSON.stringify({ version: 1, labId: lab, ...turn })}\n`, 'utf8')
 }
 
+function conversationSnapshotsEqual(a, b) {
+  if (!a || !b) return false
+  if (a.sessionId !== b.sessionId || a.labId !== b.labId || a.stage !== b.stage) return false
+  if (JSON.stringify(a.tutorState || null) !== JSON.stringify(b.tutorState || null)) return false
+  const aMessages = Array.isArray(a.messages) ? a.messages : []
+  const bMessages = Array.isArray(b.messages) ? b.messages : []
+  if (aMessages.length !== bMessages.length) return false
+  return aMessages.every((item, index) => {
+    const other = bMessages[index]
+    return Boolean(item && other) &&
+      item.role === other.role &&
+      String(item.content || '') === String(other.content || '') &&
+      String(item.stage || '') === String(other.stage || '')
+  })
+}
+
 export async function saveConversationSnapshot(userId, snapshot) {
   const session = sessionKey(snapshot.sessionId)
   const lab = labKey(snapshot.labId)
   const now = new Date().toISOString()
   const record = { version: 1, ...snapshot, sessionId: session, labId: lab, updatedAt: snapshot.updatedAt || now }
   const root = path.join(studentRootForData(userId), 'conversations')
-  await writeAtomic(path.join(root, `${session}.json`), `${JSON.stringify(record, null, 2)}\n`)
-  await appendFile(path.join(root, `${session}.jsonl`), `${JSON.stringify(record)}\n`, 'utf8')
+  const snapshotPath = path.join(root, `${session}.json`)
+  const existing = await readJson(snapshotPath)
+  // 相同内容（忽略 updatedAt/消息 id）跳过落盘，避免前端与服务端重复写同一快照。
+  if (existing && conversationSnapshotsEqual(existing, record)) return existing
+
+  await writeAtomic(snapshotPath, `${JSON.stringify(record, null, 2)}\n`)
 
   const indexPath = conversationIndexPath(userId)
-  const existing = (await readJson(indexPath)) || { version: 1, labs: {} }
-  const labs = existing.labs && typeof existing.labs === 'object' ? existing.labs : {}
+  const existingIndex = (await readJson(indexPath)) || { version: 1, labs: {} }
+  const labs = existingIndex.labs && typeof existingIndex.labs === 'object' ? existingIndex.labs : {}
   labs[lab] = { sessionId: session, updatedAt: record.updatedAt }
   await writeAtomic(indexPath, `${JSON.stringify({ version: 1, labs }, null, 2)}\n`)
   return record

@@ -90,7 +90,6 @@ export interface TutorMessage {
       assertionId?: string
       h2?: string
       h3?: string
-      seq?: number
       scope?: 'selection' | 'full' | 'context' | 'single' | 'all'
     }
   }>
@@ -1193,7 +1192,10 @@ export function tutorPromptsFor(lab: TutorLab, stage: TutorStageId): TutorPrompt
   }))
 }
 
-const STORAGE_KEY = 'os-lab-tutor-events-v4'
+/** Per-owner local event archive and pending sync outbox. */
+const EVENTS_STORAGE_PREFIX = 'os-lab-tutor-events-v5'
+const EVENTS_PENDING_PREFIX = 'os-lab-tutor-events-pending-v1'
+const ANONYMOUS_OWNER_KEY = 'os-lab-anonymous-owner-v1'
 const LLM_CONFIG_KEY = 'os-lab-llm-config-v1'
 const AUTH_KEY = 'os-lab-auth-v2'
 const RESET_STUDENT_STORAGE_KEYS = [
@@ -1202,10 +1204,46 @@ const RESET_STUDENT_STORAGE_KEYS = [
   'os-lab-tutor-conversations-v1',
   'os-lab-run-results-v1',
 ]
+const MAX_PENDING_EVENTS = 1000
 
 function clearPreviousStudentStorage() {
   if (typeof localStorage === 'undefined') return
   for (const key of RESET_STUDENT_STORAGE_KEYS) localStorage.removeItem(key)
+}
+
+function eventsStorageKey(owner: string) {
+  return `${EVENTS_STORAGE_PREFIX}:${owner}`
+}
+
+function pendingEventsStorageKey(owner: string) {
+  return `${EVENTS_PENDING_PREFIX}:${owner}`
+}
+
+function anonymousOwnerId(): string {
+  if (typeof localStorage === 'undefined') return ''
+  let id = localStorage.getItem(ANONYMOUS_OWNER_KEY)
+  if (!id) {
+    id = createId('anon')
+    localStorage.setItem(ANONYMOUS_OWNER_KEY, id)
+  }
+  return id
+}
+
+/** Each logged-in account gets its own partition; anonymous users get a random id. */
+export function eventOwner(session: AuthSession | null | undefined): string {
+  if (session?.username) return `user:${session.username}`
+  return `anon:${anonymousOwnerId()}`
+}
+
+/** Rotate the anonymous id on logout so the next anonymous session starts fresh. */
+export function rotateAnonymousOwner() {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(ANONYMOUS_OWNER_KEY, createId('anon'))
+}
+
+/** Stable anonymous identity used for local conversation partitions. */
+export function anonymousLocalId(): string {
+  return anonymousOwnerId()
 }
 
 /** 登录会话：注册/登录后由 tutor-server 签发，工作区/报告/教师端都凭它鉴权。 */
@@ -1290,10 +1328,10 @@ export function createId(prefix: string) {
   return `${prefix}-${random}`
 }
 
-export function loadEvents(): LearningEvent[] {
+export function loadEvents(owner?: string): LearningEvent[] {
   if (typeof localStorage === 'undefined') return []
   try {
-    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+    const value = JSON.parse(localStorage.getItem(eventsStorageKey(owner || eventOwner(loadAuth()))) || '[]')
     return Array.isArray(value)
       ? value.filter(
           (event) =>
@@ -1308,14 +1346,15 @@ export function loadEvents(): LearningEvent[] {
   }
 }
 
-export function saveEvents(events: LearningEvent[]) {
+export function saveEvents(events: LearningEvent[], owner?: string) {
   if (typeof localStorage === 'undefined') return
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(events))
+  localStorage.setItem(eventsStorageKey(owner || eventOwner(loadAuth())), JSON.stringify(events))
 }
 
 export function appendEvent(
   events: LearningEvent[],
   input: Omit<LearningEvent, 'version' | 'id' | 'timestamp'>,
+  owner?: string,
 ) {
   const event: LearningEvent = {
     version: 2,
@@ -1324,8 +1363,49 @@ export function appendEvent(
     ...input,
   }
   const next = [...events, event]
-  saveEvents(next)
+  saveEvents(next, owner)
   return { event, next }
+}
+
+export function loadPendingEvents(owner: string): LearningEvent[] {
+  if (typeof localStorage === 'undefined') return []
+  try {
+    const value = JSON.parse(localStorage.getItem(pendingEventsStorageKey(owner)) || '[]')
+    return Array.isArray(value)
+      ? value.filter((event) => event && typeof event.id === 'string')
+      : []
+  } catch {
+    return []
+  }
+}
+
+export function savePendingEvents(owner: string, events: LearningEvent[]) {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(pendingEventsStorageKey(owner), JSON.stringify(events))
+}
+
+export function enqueueEventSync(owner: string, event: LearningEvent) {
+  const pending = loadPendingEvents(owner)
+  if (pending.some((item) => item.id === event.id)) return
+  savePendingEvents(owner, [...pending, event].slice(-MAX_PENDING_EVENTS))
+}
+
+export function markEventsSynced(owner: string, ids: string[]) {
+  const pending = loadPendingEvents(owner)
+  const synced = new Set(ids)
+  const next = pending.filter((event) => !synced.has(event.id))
+  if (next.length !== pending.length) savePendingEvents(owner, next)
+}
+
+/** Merge local and server events by id, sorted by timestamp. */
+export function mergeLearningEvents(base: LearningEvent[], incoming: LearningEvent[]): LearningEvent[] {
+  const byId = new Map<string, LearningEvent>()
+  for (const event of [...incoming, ...base]) {
+    if (event && typeof event.id === 'string') byId.set(event.id, event)
+  }
+  return [...byId.values()].sort((a, b) =>
+    String(a.timestamp).localeCompare(String(b.timestamp)),
+  )
 }
 
 /** 评分唯一实现在 `learning/rubric.mjs`，此处仅转发，权重与算法不再在前端重复。 */

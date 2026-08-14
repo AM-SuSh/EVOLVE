@@ -1726,6 +1726,34 @@ export function insertLearningEvents(userId, events) {
   }
 }
 
+/** 只读取当前账号自己的学习事件，供前端在登录/切换账号后重建本地旅程。 */
+export function listLearningEvents(userId, labId = '') {
+  const rows = labId
+    ? db
+        .prepare(
+          `SELECT payload_json AS payload FROM events
+           WHERE user_id = ? AND lab_id = ? ORDER BY row_id ASC`,
+        )
+        .all(userId, String(labId))
+    : db
+        .prepare(
+          `SELECT payload_json AS payload FROM events
+           WHERE user_id = ? ORDER BY row_id ASC`,
+        )
+        .all(userId)
+  const events = []
+  for (const row of rows) {
+    try {
+      const event = JSON.parse(row.payload)
+      if (event && typeof event.id === 'string') events.push(event)
+    } catch {
+      // 跳过损坏的历史行，不影响其他事件回读。
+    }
+    if (events.length >= 50_000) break
+  }
+  return events
+}
+
 export function createRun(input) {
   db.prepare(
     `INSERT INTO runs
