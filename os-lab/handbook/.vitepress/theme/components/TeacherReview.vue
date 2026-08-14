@@ -330,22 +330,6 @@ function onFinalScoreInput(event: Event) {
   finalScoreDraft.value = clampScore(Number((event.target as HTMLInputElement).value))
 }
 
-function scoreReason(assessment: ReportAssessment | null) {
-  if (!assessment) return '当前没有关联的服务端评分记录。'
-  const llmReasons = Array.isArray(assessment.llmSuggestion?.reasons)
-    ? assessment.llmSuggestion?.reasons?.filter(Boolean) || []
-    : []
-  if (llmReasons.length) return llmReasons.join('；')
-  if (assessment.llmSuggestion?.rationale) return assessment.llmSuggestion.rationale
-  const itemReasons = assessment.automaticResult.items
-    .filter((item) => item.note && item.status !== 'unobserved')
-    .slice(0, 4)
-    .map((item) => `${item.label}：${item.note}`)
-  return itemReasons.length
-    ? itemReasons.join('；')
-    : '评分依据来自实验过程事件、可信运行结果与复盘证据；展开细项可核对 evidenceRefs。'
-}
-
 async function onOpenEvidence(refValue: string) {
   const raw = String(refValue || '').trim()
   if (!raw) return
@@ -624,7 +608,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
                 <span>过程 <b>{{ automaticAssessment.dimensions.process }}</b></span>
                 <span>反思 <b>{{ automaticAssessment.dimensions.reflection }}</b></span>
               </div>
-              <p>{{ scoreReason(reportAssessment) }}</p>
               <details v-if="automaticAssessment" class="tr-score-details">
                 <summary>查看评分细项与证据</summary>
                 <AssessmentScorePanel
@@ -1515,8 +1498,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   padding-right: 2px;
 }
 
-.tr-feedback-hint,
-.tr-auto-score p {
+.tr-feedback-hint {
   margin: 0;
   color: var(--ws-ink-faint);
   font-size: var(--ws-text-xs);
