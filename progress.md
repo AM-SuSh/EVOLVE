@@ -1,5 +1,23 @@
 # EVOLVE 项目进度总览
 
+## 2026-08-14 - Task: 教师批量开放增加账号与班级管理入口
+
+### What was done
+- 教师工作台「批量开放」增加「管理账号」「管理班级」入口：弹窗列出全部学生与班级。
+- 账号管理支持改班级、重置密码；尚无学习记录的学生账号可删除。
+- 班级管理支持创建、重命名；班内无学生时可删除。同步更新教师配置与用户表班级字段。
+
+### Testing
+- `node --test learning/db.test.mjs`：4/4 通过（含改班级、重命名、重置密码、删除空账号）。
+- 重启 tutor 后接口冒烟：`/teacher/classes/create|rename|delete` 对中文班级名返回 200。
+- 前端 `http://localhost:5173/` 仍为 200；请教师登录工作台点「管理账号 / 管理班级」做一次页面确认。
+
+### Notes
+- 改动：`os-lab/learning/db.mjs`、`os-lab/handbook/tutor-server.mjs`、`TeacherBatchOpen.vue`、`db.test.mjs`、`handbook/docs/workbench-ui.md`、`progress.md`
+- 回滚：还原上述文件；删除新增 `/teacher/accounts/*` 与 `/teacher/classes/*` 路由即可。
+
+---
+
 ## 2026-08-13 - Task: 精简学生端 AI 来源标记并移除 Trace 展示页
 
 ### What was done

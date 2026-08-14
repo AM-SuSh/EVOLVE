@@ -5,7 +5,11 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  KeyRound,
+  Pencil,
+  School,
   Send,
+  Trash2,
   Users,
   X,
 } from 'lucide-vue-next'
@@ -26,6 +30,7 @@ interface ScopeConfig {
 
 interface Overview {
   classNames: string[]
+  students?: Array<{ user: string; className: string; createdAt?: string }>
   config: {
     schedules?: Record<string, ScheduleEntry>
     classes: Record<string, ScopeConfig>
@@ -50,6 +55,14 @@ const noteOk = ref(false)
 const calendarOpen = ref(false)
 const selectedDate = ref('')
 const calendarMonth = ref(monthStart(new Date()))
+const manageOpen = ref<'accounts' | 'classes' | null>(null)
+const manageBusy = ref(false)
+const manageNote = ref('')
+const manageNoteOk = ref(false)
+const newClassName = ref('')
+const renameDrafts = ref<Record<string, string>>({})
+const accountClassDrafts = ref<Record<string, string>>({})
+const resetPasswordDrafts = ref<Record<string, string>>({})
 
 function monthStart(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1)
@@ -61,6 +74,25 @@ function dateKey(date: Date) {
 }
 
 const classList = computed(() => overview.value?.classNames || [])
+const studentAccounts = computed(() =>
+  [...(overview.value?.students || [])]
+    .map((student) => ({
+      user: String(student.user || '').trim(),
+      className: String(student.className || '').trim(),
+      createdAt: String(student.createdAt || '').trim(),
+    }))
+    .filter((student) => student.user)
+    .sort((left, right) =>
+      left.className.localeCompare(right.className, 'zh')
+      || left.user.localeCompare(right.user, 'zh'),
+    ),
+)
+const classRows = computed(() =>
+  classList.value.map((name) => ({
+    name,
+    studentCount: studentAccounts.value.filter((student) => student.className === name).length,
+  })),
+)
 const hasClassSelection = computed(() => selectedClasses.value.length > 0)
 const allClassesSelected = computed(
   () => classList.value.length > 0 && classList.value.every((name) => selectedClasses.value.includes(name)),
@@ -222,6 +254,119 @@ async function openCalendar() {
   calendarOpen.value = true
 }
 
+function syncManageDrafts() {
+  const nextRename: Record<string, string> = {}
+  for (const name of classList.value) nextRename[name] = renameDrafts.value[name] ?? name
+  renameDrafts.value = nextRename
+  const nextClass: Record<string, string> = {}
+  const nextPassword: Record<string, string> = {}
+  for (const student of studentAccounts.value) {
+    nextClass[student.user] = accountClassDrafts.value[student.user] || student.className || classList.value[0] || ''
+    nextPassword[student.user] = resetPasswordDrafts.value[student.user] || ''
+  }
+  accountClassDrafts.value = nextClass
+  resetPasswordDrafts.value = nextPassword
+}
+
+async function openManage(kind: 'accounts' | 'classes') {
+  manageNote.value = ''
+  manageNoteOk.value = false
+  await load()
+  syncManageDrafts()
+  manageOpen.value = kind
+}
+
+async function manageRequest(path: string, body: Record<string, unknown>, okText: string) {
+  if (manageBusy.value) return false
+  manageBusy.value = true
+  manageNote.value = ''
+  try {
+    const response = await fetch(`${endpoint}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(body),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload?.error || `服务返回 ${response.status}`)
+    manageNote.value = okText
+    manageNoteOk.value = true
+    await load()
+    syncManageDrafts()
+    return true
+  } catch (error) {
+    manageNote.value = error instanceof Error ? error.message : '操作失败'
+    manageNoteOk.value = false
+    return false
+  } finally {
+    manageBusy.value = false
+  }
+}
+
+async function createManagedClass() {
+  const name = newClassName.value.trim()
+  if (!name) return
+  const ok = await manageRequest('/teacher/classes/create', { name }, `已创建班级：${name}`)
+  if (ok) newClassName.value = ''
+}
+
+async function renameManagedClass(from: string) {
+  const to = String(renameDrafts.value[from] || '').trim()
+  if (!to || to === from) {
+    manageNote.value = to === from ? '班级名未变化。' : '请填写新班级名。'
+    manageNoteOk.value = false
+    return
+  }
+  await manageRequest('/teacher/classes/rename', { from, to }, `已将班级「${from}」重命名为「${to}」`)
+}
+
+async function deleteManagedClass(name: string) {
+  if (!window.confirm(`确认删除班级「${name}」？仅当班内没有学生时可删除。`)) return
+  await manageRequest('/teacher/classes/delete', { name }, `已删除班级：${name}`)
+}
+
+async function saveStudentClass(username: string) {
+  const className = String(accountClassDrafts.value[username] || '').trim()
+  if (!className) {
+    manageNote.value = '请选择班级。'
+    manageNoteOk.value = false
+    return
+  }
+  await manageRequest(
+    '/teacher/accounts/set-class',
+    { username, className },
+    `已将 ${username} 调整到班级「${className}」`,
+  )
+}
+
+async function resetManagedStudentPassword(username: string) {
+  const password = String(resetPasswordDrafts.value[username] || '')
+  if (password.length < 6) {
+    manageNote.value = '新密码至少 6 位。'
+    manageNoteOk.value = false
+    return
+  }
+  if (!window.confirm(`确认重置 ${username} 的密码？该生当前登录会话会立即失效。`)) return
+  const ok = await manageRequest(
+    '/teacher/accounts/reset-password',
+    { username, password },
+    `已重置 ${username} 的密码`,
+  )
+  if (ok) resetPasswordDrafts.value[username] = ''
+}
+
+async function deleteManagedStudent(username: string) {
+  if (!window.confirm(`确认删除学生账号「${username}」？仅当该账号尚无学习记录时可删除。`)) return
+  await manageRequest('/teacher/accounts/delete', { username }, `已删除账号：${username}`)
+}
+
+function formatCreatedAt(value: string) {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
 function formatTime(value: string) {
   const date = new Date(value)
   const pad = (part: number) => String(part).padStart(2, '0')
@@ -262,9 +407,17 @@ onMounted(load)
         <h3>批量开放</h3>
         <p>选择班级和实验，设置起始时间后一键安排。</p>
       </div>
-      <button type="button" class="ghost" :disabled="busy" @click="openCalendar">
-        <CalendarDays :size="15" aria-hidden="true" />查看日程
-      </button>
+      <div class="ws-batch-header-actions">
+        <button type="button" class="ghost" :disabled="busy || manageBusy" @click="openManage('accounts')">
+          <Users :size="15" aria-hidden="true" />管理账号
+        </button>
+        <button type="button" class="ghost" :disabled="busy || manageBusy" @click="openManage('classes')">
+          <School :size="15" aria-hidden="true" />管理班级
+        </button>
+        <button type="button" class="ghost" :disabled="busy" @click="openCalendar">
+          <CalendarDays :size="15" aria-hidden="true" />查看日程
+        </button>
+      </div>
     </header>
 
     <div class="ws-batch-form">
@@ -323,6 +476,129 @@ onMounted(load)
       <span v-if="note" :class="{ ok: noteOk }">{{ note }}</span>
     </div>
   </section>
+
+  <Teleport to="body">
+    <div v-if="manageOpen" class="ws-batch-calendar-backdrop" @click.self="manageOpen = null">
+      <section
+        class="ws-batch-manage"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="manageOpen === 'accounts' ? '管理账号' : '管理班级'"
+      >
+        <header>
+          <div>
+            <span>{{ manageOpen === 'accounts' ? '账号' : '班级' }}</span>
+            <h3>{{ manageOpen === 'accounts' ? '管理所有学生账号' : '管理所有班级' }}</h3>
+            <p v-if="manageOpen === 'accounts'">可改班级、重置密码；尚无学习记录的账号可删除。</p>
+            <p v-else>可创建、重命名班级；班内无学生时可删除。</p>
+          </div>
+          <button type="button" aria-label="关闭管理面板" @click="manageOpen = null">
+            <X :size="18" aria-hidden="true" />
+          </button>
+        </header>
+
+        <p v-if="manageNote" class="ws-batch-manage-note" :class="{ ok: manageNoteOk }">{{ manageNote }}</p>
+
+        <div v-if="manageOpen === 'classes'" class="ws-batch-manage-body">
+          <div class="ws-batch-manage-create">
+            <input
+              v-model="newClassName"
+              type="text"
+              maxlength="32"
+              placeholder="新班级名称，如 计科2302"
+              @keydown.enter.prevent="createManagedClass"
+            />
+            <button type="button" :disabled="manageBusy || !newClassName.trim()" @click="createManagedClass">
+              创建班级
+            </button>
+          </div>
+          <table v-if="classRows.length">
+            <thead>
+              <tr>
+                <th>班级</th>
+                <th>学生数</th>
+                <th>重命名</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in classRows" :key="row.name">
+                <td><strong>{{ row.name }}</strong></td>
+                <td>{{ row.studentCount }}</td>
+                <td>
+                  <input v-model="renameDrafts[row.name]" type="text" maxlength="32" :aria-label="`${row.name} 新名称`" />
+                </td>
+                <td class="ws-batch-manage-actions">
+                  <button type="button" class="ghost" :disabled="manageBusy" @click="renameManagedClass(row.name)">
+                    <Pencil :size="14" aria-hidden="true" />保存
+                  </button>
+                  <button
+                    type="button"
+                    class="ghost danger"
+                    :disabled="manageBusy || row.studentCount > 0"
+                    :title="row.studentCount > 0 ? '班内仍有学生，不能删除' : '删除班级'"
+                    @click="deleteManagedClass(row.name)"
+                  >
+                    <Trash2 :size="14" aria-hidden="true" />删除
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-else class="ws-batch-manage-empty">还没有班级，先在上方创建。</p>
+        </div>
+
+        <div v-else class="ws-batch-manage-body">
+          <table v-if="studentAccounts.length">
+            <thead>
+              <tr>
+                <th>用户名</th>
+                <th>注册日</th>
+                <th>班级</th>
+                <th>重置密码</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="student in studentAccounts" :key="student.user">
+                <td><strong>{{ student.user }}</strong></td>
+                <td>{{ formatCreatedAt(student.createdAt) }}</td>
+                <td>
+                  <select v-model="accountClassDrafts[student.user]" :aria-label="`${student.user} 班级`">
+                    <option v-if="student.className && !classList.includes(student.className)" :value="student.className">
+                      {{ student.className }}
+                    </option>
+                    <option v-for="name in classList" :key="name" :value="name">{{ name }}</option>
+                  </select>
+                </td>
+                <td>
+                  <input
+                    v-model="resetPasswordDrafts[student.user]"
+                    type="text"
+                    maxlength="72"
+                    placeholder="至少 6 位"
+                    :aria-label="`${student.user} 新密码`"
+                  />
+                </td>
+                <td class="ws-batch-manage-actions">
+                  <button type="button" class="ghost" :disabled="manageBusy" @click="saveStudentClass(student.user)">
+                    改班级
+                  </button>
+                  <button type="button" class="ghost" :disabled="manageBusy" @click="resetManagedStudentPassword(student.user)">
+                    <KeyRound :size="14" aria-hidden="true" />重置
+                  </button>
+                  <button type="button" class="ghost danger" :disabled="manageBusy" @click="deleteManagedStudent(student.user)">
+                    <Trash2 :size="14" aria-hidden="true" />删除
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-else class="ws-batch-manage-empty">还没有注册学生。</p>
+        </div>
+      </section>
+    </div>
+  </Teleport>
 
   <Teleport to="body">
     <div v-if="calendarOpen" class="ws-batch-calendar-backdrop" @click.self="calendarOpen = false">
@@ -422,6 +698,13 @@ onMounted(load)
 .ws-batch-open > header > div {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+.ws-batch-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--ws-space-2);
 }
 
 .ws-batch-step {
@@ -779,6 +1062,117 @@ onMounted(load)
 
 .ws-batch-calendar-empty {
   padding: var(--ws-space-3) 0;
+  text-align: center;
+}
+
+.ws-batch-manage {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  width: min(920px, 100%);
+  max-height: min(760px, calc(100dvh - 2 * var(--ws-space-4)));
+  color: var(--ws-ink);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-lg);
+  background: var(--ws-surface);
+  box-shadow: var(--ws-shadow-3);
+  overflow: hidden;
+}
+
+.ws-batch-manage > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ws-space-3);
+  padding: var(--ws-space-4) var(--ws-space-5);
+  border-bottom: 1px solid var(--ws-line);
+}
+
+.ws-batch-manage > header button {
+  width: var(--ws-control-md);
+  padding: 0;
+}
+
+.ws-batch-manage-note {
+  margin: 0;
+  padding: var(--ws-space-2) var(--ws-space-5);
+  color: var(--ws-danger);
+  border-bottom: 1px solid var(--ws-line);
+  font-size: var(--ws-text-xs);
+}
+
+.ws-batch-manage-note.ok {
+  color: var(--ws-ok);
+}
+
+.ws-batch-manage-body {
+  min-height: 0;
+  padding: var(--ws-space-4) var(--ws-space-5) var(--ws-space-5);
+  overflow: auto;
+}
+
+.ws-batch-manage-create {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ws-space-2);
+  margin-bottom: var(--ws-space-3);
+}
+
+.ws-batch-manage-create input,
+.ws-batch-manage-body input,
+.ws-batch-manage-body select {
+  min-height: var(--ws-control-md);
+  padding: var(--ws-space-1) var(--ws-space-2);
+  color: var(--ws-ink);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-md);
+  background: var(--ws-surface-alt);
+  font: inherit;
+  font-size: var(--ws-text-sm);
+}
+
+.ws-batch-manage-create input {
+  flex: 1 1 220px;
+}
+
+.ws-batch-manage-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--ws-text-sm);
+}
+
+.ws-batch-manage-body th,
+.ws-batch-manage-body td {
+  padding: var(--ws-space-2);
+  border-bottom: 1px solid var(--ws-line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.ws-batch-manage-body th {
+  color: var(--ws-ink-muted);
+  font-size: var(--ws-text-xs);
+  font-weight: var(--ws-weight-bold);
+}
+
+.ws-batch-manage-body td input,
+.ws-batch-manage-body td select {
+  width: 100%;
+  min-width: 120px;
+}
+
+.ws-batch-manage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ws-space-1);
+}
+
+.ws-batch-manage-actions .danger {
+  color: var(--ws-danger);
+}
+
+.ws-batch-manage-empty {
+  margin: var(--ws-space-4) 0 0;
+  color: var(--ws-ink-faint);
   text-align: center;
 }
 

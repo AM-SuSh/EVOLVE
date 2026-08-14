@@ -803,6 +803,104 @@ export function listUsers() {
     .all()
 }
 
+const CLASS_NAME_RE = /^[A-Za-z0-9_一-龥-]{1,32}$/
+
+function requireStudent(username) {
+  const name = String(username || '').trim()
+  if (!USERNAME_RE.test(name)) return { ok: false, error: '用户名无效' }
+  const user = db.prepare('SELECT id, username, role, class_name AS className FROM users WHERE username = ?').get(name)
+  if (!user) return { ok: false, error: '用户不存在' }
+  if (user.role !== 'student') return { ok: false, error: '只能管理学生账号' }
+  return { ok: true, user }
+}
+
+/** 教师把学生调到已有班级。 */
+export function setStudentClassName(username, className) {
+  const checked = requireStudent(username)
+  if (!checked.ok) return checked
+  const cls = String(className || '').trim()
+  if (!CLASS_NAME_RE.test(cls)) return { ok: false, error: '班级名需为 1-32 位字母、数字、中文、_ 或 -' }
+  db.prepare('UPDATE users SET class_name = ? WHERE id = ?').run(cls, checked.user.id)
+  return { ok: true, username: checked.user.username, className: cls }
+}
+
+/** 教师重置学生密码（无需原密码）。 */
+export function resetStudentPassword(username, newPassword) {
+  const checked = requireStudent(username)
+  if (!checked.ok) return checked
+  if (typeof newPassword !== 'string' || newPassword.length < 6 || newPassword.length > 72) {
+    return { ok: false, error: '新密码至少 6 位（最多 72 位）' }
+  }
+  const salt = randomBytes(16).toString('hex')
+  db.prepare('UPDATE users SET password_hash = ?, salt = ? WHERE id = ?')
+    .run(hash(newPassword, salt), salt, checked.user.id)
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(checked.user.id)
+  return { ok: true, username: checked.user.username }
+}
+
+/** 删除尚无学习记录的学生账号；已有 runs/报告等关联数据时拒绝。 */
+export function deleteStudentAccount(username) {
+  const checked = requireStudent(username)
+  if (!checked.ok) return checked
+  const id = checked.user.id
+  const checks = [
+    ['runs', 'user_id'],
+    ['reports', 'user_id'],
+    ['events', 'user_id'],
+    ['tutor_sessions', 'user_id'],
+    ['assessments', 'user_id'],
+    ['mastery_evidence', 'user_id'],
+    ['review_queue', 'student_user_id'],
+    ['socratic_reviews', 'user_id'],
+    ['mastery_observations', 'user_id'],
+    ['tutor_followup_sessions', 'user_id'],
+    ['tutor_topic_checks', 'user_id'],
+    ['report_acceptances', 'user_id'],
+    ['report_drafts', 'user_id'],
+    ['final_performance_scores', 'user_id'],
+  ]
+  for (const [table, column] of checks) {
+    try {
+      const row = db.prepare(`SELECT 1 AS hit FROM ${table} WHERE ${column} = ? LIMIT 1`).get(id)
+      if (row) {
+        return { ok: false, error: '该账号已有学习记录，暂不能删除。可改班级或重置密码。' }
+      }
+    } catch {
+      /* 部分表在旧库可能不存在，忽略 */
+    }
+  }
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id)
+    db.prepare('DELETE FROM users WHERE id = ?').run(id)
+    db.exec('COMMIT')
+  } catch (error) {
+    db.exec('ROLLBACK')
+    return { ok: false, error: error instanceof Error ? error.message : '删除失败' }
+  }
+  return { ok: true, username: checked.user.username }
+}
+
+/** 批量把用户表中的班级名从 oldName 改成 newName。 */
+export function renameUserClassName(oldName, newName) {
+  const from = String(oldName || '').trim()
+  const to = String(newName || '').trim()
+  if (!CLASS_NAME_RE.test(from) || !CLASS_NAME_RE.test(to)) {
+    return { ok: false, error: '班级名需为 1-32 位字母、数字、中文、_ 或 -' }
+  }
+  if (from === to) return { ok: true, updated: 0, from, to }
+  const result = db.prepare('UPDATE users SET class_name = ? WHERE class_name = ? AND role = ?').run(to, from, 'student')
+  return { ok: true, updated: Number(result.changes || 0), from, to }
+}
+
+export function countStudentsInClass(className) {
+  const cls = String(className || '').trim()
+  const row = db
+    .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'student' AND class_name = ?")
+    .get(cls)
+  return Number(row?.count || 0)
+}
+
 export function listStudentUserIds() {
   return db
     .prepare("SELECT id FROM users WHERE role = 'student' ORDER BY id")

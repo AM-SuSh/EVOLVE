@@ -161,7 +161,7 @@ V3 的过程评分观察 `judgment`、`evidence`、`hypothesis`、`verification`
 
 ## 教学安排直接下发
 
-Lab 工厂页面与入口已从前端移除，教师只通过工作台右栏「教学安排」（`TeacherPublishPanel`）完成班级创建、按班级/学生/全局范围分发与任务变体下发，不再需要先走包校验/发布流程。学生注册时只能从老师已创建的班级下拉中选择，不能自行填写班级。
+Lab 工厂页面与入口已从前端移除，教师只通过工作台右栏「教学安排」（`TeacherPublishPanel`）完成班级创建、按班级/学生/全局范围分发与任务变体下发，不再需要先走包校验/发布流程。学生注册时只能从老师已创建的班级下拉中选择，不能自行填写班级。教师工作台顶部「批量开放」另提供「管理账号」「管理班级」入口：可查看全部学生、改班级、重置密码、删除无学习记录账号，以及创建/重命名/删除空班级。
 
 - **变体来源**：`GET /teacher/overview` 直接读取 `scaffold/exercises/<lab>/<variant>/` 与 `lab-packages/published.json` 目录；目录里存在的变体自动出现在任务类型下拉框。
 - **下发动作**：选择变体后点「分发并下发」，面板先 `POST /teacher/config` 写入 `openLab`，再写入 `assignments[labId] = variant`；学生刷新后，只有在老师已分发的范围内才能经 `/scaffold/upgrade` 领取对应代码。
