@@ -53,8 +53,8 @@ export function normalizeReviewPlan(raw, options = {}) {
   const questions = (Array.isArray(raw?.questions) ? raw.questions : [])
     .map(normalizeReviewQuestion)
     .filter((question) => question.questionId && question.conceptId && question.prompt)
-  if (questions.length < 2 || questions.length > 5) {
-    throw new TypeError('复盘计划必须包含 2-5 个问题')
+  if (questions.length < 3 || questions.length > 5) {
+    throw new TypeError('复盘计划必须包含 3-5 个问题')
   }
   if (new Set(questions.map((question) => question.questionId)).size !== questions.length) {
     throw new TypeError('复盘问题 questionId 必须唯一')
@@ -65,7 +65,7 @@ export function normalizeReviewPlan(raw, options = {}) {
   if (options.requireEvidence === true && questions.some((question) => question.evidenceRefs.length === 0)) {
     throw new TypeError('每个复盘问题都必须引用至少一条过程或运行证据')
   }
-  const maxQuestions = Math.max(2, Math.min(5, Number(raw?.maxQuestions) || questions.length))
+  const maxQuestions = Math.max(3, Math.min(5, Number(raw?.maxQuestions) || questions.length))
   if (questions.length > maxQuestions) throw new TypeError('复盘初始问题数不能超过 maxQuestions')
   return {
     version: REVIEW_PLAN_VERSION,

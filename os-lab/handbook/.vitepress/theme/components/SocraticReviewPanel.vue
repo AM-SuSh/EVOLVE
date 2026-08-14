@@ -44,7 +44,7 @@ const emit = defineEmits<{
 
 type ReviewAction = 'load' | 'start' | 'answer' | 'resume' | 'summary' | ''
 
-/** 进行中的复盘按“书页”组织：每道已提出的题一页，队尾可能跟补证页或总结页。 */
+/** 进行中的复盘按“书页”组织：每道已提出的题一页，队尾可能跟补证页或旧会话收尾页。 */
 type ReviewPage =
   | { kind: 'turn'; turn: SocraticReviewTurn }
   | { kind: 'evidence' }
@@ -54,7 +54,6 @@ const review = ref<SocraticReview | null>(null)
 const action = ref<ReviewAction>('')
 const error = ref('')
 const answerDraft = ref('')
-const summaryDraft = ref('')
 const viewIndex = ref(0)
 const mounted = ref(false)
 let loadSequence = 0
@@ -90,13 +89,11 @@ const canStart = computed(() => readyToLoad.value && props.verified && !action.v
 const canSubmitAnswer = computed(
   () => Boolean(currentTurn.value && answerDraft.value.trim() && !action.value),
 )
-const canSubmitSummary = computed(
-  () => Boolean(summaryReady.value && summaryDraft.value.trim() && !action.value),
-)
+const canGenerateReflection = computed(() => Boolean(summaryReady.value && !action.value))
 
 const pages = computed<ReviewPage[]>(() => {
   const value = review.value
-  if (!value || value.status === 'review_completed' || value.status === 'deferred') return []
+  if (!value || value.status === 'deferred') return []
   const list: ReviewPage[] = askedTurns.value.map((turn) => ({ kind: 'turn', turn }))
   if (value.status === 'awaiting_evidence') list.push({ kind: 'evidence' })
   else if (summaryReady.value) list.push({ kind: 'summary' })
@@ -112,7 +109,7 @@ const forwardLabel = computed(() => {
   const next = pages.value[viewIndex.value + 1]
   if (!next) return ''
   if (next.kind === 'evidence') return '查看补证要求'
-  if (next.kind === 'summary') return '写最终总结'
+  if (next.kind === 'summary') return '生成反思评价'
   return '继续下一题'
 })
 const composerVisible = computed(() => {
@@ -128,8 +125,8 @@ const statusLabel = computed(() => {
   const labels: Record<SocraticReviewStatus, string> = {
     review_planning: '正在生成复盘计划',
     review_ready: '复盘已就绪',
-    review_active: summaryReady.value ? '等待最终总结' : '复盘进行中',
-    awaiting_evidence: '等待补充证据',
+    review_active: summaryReady.value ? '等待生成反思评价' : '复盘进行中',
+    awaiting_evidence: '结合已有验证继续复盘',
     review_completed: '复盘已完成',
     deferred: '转为后续关注',
   }
@@ -143,7 +140,7 @@ const latestFeedback = computed(() => {
 
 function pageLabel(page: ReviewPage, index: number) {
   if (page.kind === 'evidence') return '补充证据'
-  if (page.kind === 'summary') return '最终总结'
+  if (page.kind === 'summary') return '反思评价'
   return `第 ${index + 1} 题`
 }
 
@@ -182,7 +179,6 @@ function llmPayload() {
 interface ReviewDraftStore {
   reviewId: string
   answers: Record<string, string>
-  summary: string
 }
 
 function draftStorageKey(target: SocraticReview) {
@@ -190,7 +186,7 @@ function draftStorageKey(target: SocraticReview) {
 }
 
 function readDraftStore(target: SocraticReview): ReviewDraftStore {
-  const empty: ReviewDraftStore = { reviewId: target.reviewId, answers: {}, summary: '' }
+  const empty: ReviewDraftStore = { reviewId: target.reviewId, answers: {} }
   if (typeof localStorage === 'undefined') return empty
   try {
     const parsed = JSON.parse(localStorage.getItem(draftStorageKey(target)) || 'null') as ReviewDraftStore | null
@@ -198,7 +194,6 @@ function readDraftStore(target: SocraticReview): ReviewDraftStore {
     return {
       reviewId: target.reviewId,
       answers: parsed.answers && typeof parsed.answers === 'object' ? { ...parsed.answers } : {},
-      summary: typeof parsed.summary === 'string' ? parsed.summary : '',
     }
   } catch {
     return empty
@@ -207,7 +202,7 @@ function readDraftStore(target: SocraticReview): ReviewDraftStore {
 
 function writeDraftStore(target: SocraticReview, store: ReviewDraftStore) {
   if (typeof localStorage === 'undefined') return
-  const hasContent = store.summary.trim() || Object.values(store.answers).some((text) => String(text || '').trim())
+  const hasContent = Object.values(store.answers).some((text) => String(text || '').trim())
   try {
     if (hasContent) localStorage.setItem(draftStorageKey(target), JSON.stringify(store))
     else localStorage.removeItem(draftStorageKey(target))
@@ -238,7 +233,6 @@ function persistDraftsNow() {
     if (answerDraft.value.trim()) store.answers[activeQuestionId] = answerDraft.value
     else delete store.answers[activeQuestionId]
   }
-  store.summary = summaryDraft.value
   writeDraftStore(target, store)
 }
 
@@ -266,7 +260,6 @@ function applyReview(next: SocraticReview | null) {
     answerDraft.value = (nextQuestionId && store.answers[nextQuestionId]) || ''
   }
   if (next.reviewId !== previousReviewId) {
-    summaryDraft.value = store.summary || next.finalSummary || ''
     viewIndex.value = actionPageIndex.value
   } else {
     viewIndex.value = Math.min(viewIndex.value, Math.max(pages.value.length - 1, 0))
@@ -376,18 +369,17 @@ async function resumeReview() {
     'resume',
     '/learning/review/resume',
     { reviewId: review.value.reviewId },
-    '已读取新的可信验证，继续复盘。',
+    '已读取本实验已有的可信验证，继续复盘。',
   )
 }
 
-async function submitSummary() {
-  const finalSummary = summaryDraft.value.trim()
-  if (!review.value || !finalSummary) return
+async function generateReflectionAssessment() {
+  if (!review.value) return
   await runAction(
     'summary',
     '/learning/review/summary',
-    { reviewId: review.value.reviewId, finalSummary },
-    '复盘已完成并写入实验记录。',
+    { reviewId: review.value.reviewId },
+    '已根据反问作答表现生成反思评价。',
   )
 }
 
@@ -398,15 +390,7 @@ function onAnswerKeydown(event: KeyboardEvent) {
   }
 }
 
-function onSummaryKeydown(event: KeyboardEvent) {
-  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-    event.preventDefault()
-    submitSummary()
-  }
-}
-
 watch(answerDraft, scheduleDraftPersist)
-watch(summaryDraft, scheduleDraftPersist)
 
 watch(
   () => [props.endpoint, props.authenticated, props.labId, props.sessionId] as const,
@@ -416,7 +400,6 @@ watch(
     review.value = null
     error.value = ''
     answerDraft.value = ''
-    summaryDraft.value = ''
     viewIndex.value = 0
     activeQuestionId = ''
     completedEmittedId = ''
@@ -510,42 +493,12 @@ defineExpose({ refreshReview, startReview })
             <CheckCircle2 :size="20" aria-hidden="true" />
             <div>
               <strong>本次复盘已完成</strong>
-              <small>问题、原始回答与最终总结已写入实验记录。</small>
+              <small>记录已保存在当前报告中；点击“提交给老师”后才会与报告一起送出。</small>
             </div>
           </div>
-          <pre class="transcript">{{ review.transcriptMarkdown || '复盘记录已保存。' }}</pre>
-          <ol v-if="askedTurns.some((turn) => turn.evaluation)" class="turn-history completed-evaluations">
-            <li v-for="(turn, index) in askedTurns" :key="turn.questionId">
-              <strong>问题 {{ index + 1 }} 的评价</strong>
-              <div
-                v-if="turn.evaluation"
-                class="evaluation-detail"
-                :class="evaluationTone(turn.evaluation)"
-              >
-                <div class="evaluation-heading">
-                  <span class="verdict-label">{{ evaluationLabel(turn.evaluation) }}</span>
-                  <span v-if="evaluationSummary(turn.evaluation)">{{ evaluationSummary(turn.evaluation) }}</span>
-                </div>
-                <div v-if="turn.evaluation.missingPoints?.length" class="evaluation-section">
-                  <strong>缺失点</strong>
-                  <ul>
-                    <li v-for="item in turn.evaluation.missingPoints" :key="item">{{ item }}</li>
-                  </ul>
-                </div>
-                <div v-if="turn.evaluation.correctReasoning" class="evaluation-section">
-                  <strong>参考因果链</strong>
-                  <p>{{ turn.evaluation.correctReasoning }}</p>
-                </div>
-                <div v-if="turn.evaluation.correctiveExplanation" class="evaluation-section">
-                  <strong>纠正说明</strong>
-                  <p>{{ turn.evaluation.correctiveExplanation }}</p>
-                </div>
-              </div>
-            </li>
-          </ol>
         </div>
 
-        <div v-else-if="review.status === 'deferred'" class="deferred-view">
+        <div v-if="review.status === 'deferred'" class="deferred-view">
           <div class="status-callout deferred">
             <CircleAlert :size="19" aria-hidden="true" />
             <div>
@@ -716,8 +669,8 @@ defineExpose({ refreshReview, startReview })
             <div class="status-callout evidence">
               <FileCheck2 :size="20" aria-hidden="true" />
               <div>
-                <strong>需要一条新的可信验证</strong>
-                <p>{{ latestFeedback ? evaluationSummary(latestFeedback) : '完成新的可信运行或断言后，再继续本次复盘。' }}</p>
+                <strong>结合已有验证继续复盘</strong>
+                <p>{{ latestFeedback ? evaluationSummary(latestFeedback) : '系统会读取本实验已有的可信运行或断言，不需要重新运行。' }}</p>
                 <div v-if="latestFeedback?.missingPoints?.length" class="evaluation-section">
                   <strong>缺失点</strong>
                   <ul>
@@ -740,7 +693,7 @@ defineExpose({ refreshReview, startReview })
             <button class="primary-action" type="button" :disabled="Boolean(action)" @click="resumeReview">
               <LoaderCircle v-if="action === 'resume'" class="spinning" :size="16" aria-hidden="true" />
               <RefreshCw v-else :size="16" aria-hidden="true" />
-              已完成新验证，继续复盘
+              继续复盘
             </button>
           </template>
 
@@ -748,28 +701,20 @@ defineExpose({ refreshReview, startReview })
             <div class="summary-headline">
               <FileCheck2 :size="20" aria-hidden="true" />
               <div>
-                <strong>写下最终总结</strong>
-                <small>这段总结将与复盘问答一同进入实验记录。</small>
+                <strong>生成反思评价</strong>
+                <small>系统将根据已经完成的反问题目、首答与追问修正情况形成评价。</small>
               </div>
             </div>
-            <label class="composer">
-              <span>我的最终总结</span>
-              <textarea
-                v-model="summaryDraft"
-                rows="7"
-                maxlength="8000"
-                :disabled="action === 'summary'"
-                @keydown="onSummaryKeydown"
-              />
-            </label>
-            <div class="composer-actions">
-              <span>草稿已自动暂存 · {{ summaryDraft.length }} / 8000</span>
-              <button type="button" :disabled="!canSubmitSummary" @click="submitSummary">
-                <LoaderCircle v-if="action === 'summary'" class="spinning" :size="16" aria-hidden="true" />
-                <CheckCircle2 v-else :size="16" aria-hidden="true" />
-                完成复盘
-              </button>
-            </div>
+            <button
+              class="primary-action"
+              type="button"
+              :disabled="!canGenerateReflection"
+              @click="generateReflectionAssessment"
+            >
+              <LoaderCircle v-if="action === 'summary'" class="spinning" :size="16" aria-hidden="true" />
+              <CheckCircle2 v-else :size="16" aria-hidden="true" />
+              生成反思评价
+            </button>
           </template>
         </div>
 
@@ -1222,29 +1167,10 @@ button:disabled {
   color: var(--ws-ok, var(--vp-c-green-1));
 }
 
-.transcript {
-  margin: 16px 0 0;
-  padding: 16px;
-  overflow: auto;
-  color: var(--ws-ink, var(--vp-c-text-1));
-  border: 1px solid var(--ws-line, var(--vp-c-divider));
-  border-radius: 6px;
-  background: var(--ws-surface-soft, var(--vp-c-bg-soft));
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 1.7;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
 .turn-history {
   margin: 16px 0 0;
   padding: 0;
   list-style: none;
-}
-
-.completed-evaluations {
-  margin-top: 8px;
 }
 
 .turn-history li {
@@ -1384,8 +1310,7 @@ button:disabled {
   }
 
   .question-block,
-  .status-callout,
-  .transcript {
+  .status-callout {
     padding: 12px;
   }
 

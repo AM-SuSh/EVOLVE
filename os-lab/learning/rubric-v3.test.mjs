@@ -69,11 +69,56 @@ function fullEvidence(stage = 'debug') {
       },
       {
         ...common,
+        id: 'review-q1-asked',
+        type: 'review_question_asked',
+        stage,
+        timestamp: '2026-08-10T00:03:59.000Z',
+        reviewId: 'review-1',
+        questionId: 'review-q1',
+        content: '请说明任务状态切换的关键因果链。',
+      },
+      {
+        ...common,
         id: 'reflection',
-        type: 'reflection_submitted',
+        type: 'review_reflection_assessed',
         stage,
         timestamp: '2026-08-10T00:04:00.000Z',
-        content: '我的判断是状态写回顺序导致异常，因为 trace 中缺少 Ready；AI 提醒我检查切换路径，我用 QEMU 输出和 trace 验证。改变为抢占调度时我会先预测并对照；仅退出码 0 不够，还需要断言和边界条件。',
+        reviewId: 'review-1',
+        content: '系统根据反问作答表现形成评价。',
+        metadata: {
+          authority: 'server',
+          source: 'socratic-review',
+          reviewPerformance: {
+            chains: [
+              {
+                rootQuestionId: 'review-q1',
+                kind: 'causal-explanation',
+                score: 2,
+                evidenceRefs: ['event:message-judgment'],
+              },
+              {
+                rootQuestionId: 'review-q2',
+                prompt: '哪条运行证据可以支持你的判断？',
+                kind: 'evidence-reflection',
+                score: 2,
+                evidenceRefs: ['run:run-pass'],
+              },
+              {
+                rootQuestionId: 'review-q3',
+                prompt: '调度条件变化后，哪些结论需要重新验证？',
+                kind: 'transfer',
+                score: 2,
+                evidenceRefs: ['event:message-hypothesis'],
+              },
+            ],
+            items: {
+              F1: { score: 2, note: '机制解释首答通过', evidenceRefs: ['event:message-judgment'] },
+              F2: { score: 2, note: '证据题首答通过', evidenceRefs: ['run:run-pass'] },
+              T1: { score: 2, note: '边界题首答通过', evidenceRefs: ['event:message-evidence'] },
+              T2: { score: 2, note: '迁移题首答通过', evidenceRefs: ['event:message-hypothesis'] },
+            },
+          },
+        },
       },
     ],
     runs: [
@@ -105,11 +150,19 @@ function itemScore(assessment, id) {
   return assessment.items.find((entry) => entry.id === id)?.score
 }
 
-test('rubric v3 detects judgment, evidence, hypothesis, verification, iteration, reflection and transfer', () => {
+test('rubric v3 exposes structured Socratic performance as per-question reflection scores', () => {
   const assessment = assess(fullEvidence())
-  for (const id of ['J1', 'E1', 'H1', 'V1', 'I1', 'F1', 'F2', 'T1', 'T2']) {
+  for (const id of ['J1', 'E1', 'H1', 'V1', 'I1', 'RQ1', 'RQ2', 'RQ3']) {
     assert.equal(itemScore(assessment, id), 2, `${id} should be met`)
   }
+  assert.deepEqual(
+    assessment.items.filter((item) => item.dimension === 'reflection').map(({ id, label, note }) => ({ id, label, note })),
+    [
+      { id: 'RQ1', label: '请说明任务状态切换的关键因果链。', note: '首答完成' },
+      { id: 'RQ2', label: '哪条运行证据可以支持你的判断？', note: '首答完成' },
+      { id: 'RQ3', label: '调度条件变化后，哪些结论需要重新验证？', note: '首答完成' },
+    ],
+  )
   assert.deepEqual(assessment.learningDimensions, {
     judgment: 100,
     evidence: 100,
@@ -119,6 +172,21 @@ test('rubric v3 detects judgment, evidence, hypothesis, verification, iteration,
     reflection: 100,
     transfer: 100,
   })
+})
+
+test('rubric v3 keeps legacy handwritten reflection scoring for historical events', () => {
+  const input = fullEvidence()
+  input.events = input.events.filter((event) => event.type !== 'review_reflection_assessed')
+  input.events.push({
+    ...common,
+    id: 'legacy-reflection',
+    type: 'reflection_submitted',
+    stage: 'reflect',
+    timestamp: '2026-08-10T00:04:00.000Z',
+    content: '我的判断是状态写回顺序导致异常，因为 trace 中缺少 Ready；AI 提醒我检查切换路径，我用 QEMU 输出和 trace 验证。改变为抢占调度时我会先预测并对照；仅退出码 0 不够，还需要断言和边界条件。',
+  })
+  const assessment = assess(input)
+  for (const id of ['F1', 'F2', 'T1', 'T2']) assert.equal(itemScore(assessment, id), 2)
 })
 
 test('stage events and message stage do not change rubric v3 scores', () => {
@@ -155,7 +223,7 @@ test('hint telemetry does not change rubric v3 scores', () => {
   assert.deepEqual(hinted.dimensions, baseline.dimensions)
 })
 
-test('untrusted verification cannot receive full verification or result credit', () => {
+test('untrusted verification cannot receive full verification credit', () => {
   const assessment = assess({
     events: [{
       ...common,
@@ -169,7 +237,26 @@ test('untrusted verification cannot receive full verification or result credit',
     runs: [{ runId: 'custom-run', trusted: false, verified: true, assertions }],
   })
   assert.equal(itemScore(assessment, 'V1'), 1)
-  assert.equal(itemScore(assessment, 'R1'), 0)
+  assert.equal(assessment.items.some((item) => item.dimension === 'result'), false)
+})
+
+test('rule baseline and evidence-backed Agent score are fused', () => {
+  const input = fullEvidence()
+  const baseline = assess(input)
+  const assessment = assess({
+    ...input,
+    agentAssessment: {
+      status: 'scored',
+      score: 40,
+      model: 'assessment-model',
+      evidenceRefs: ['event:message-judgment', 'run:run-pass'],
+    },
+  })
+  assert.equal(assessment.version, 'rubric-v3.3.0')
+  assert.equal(assessment.fusion.mode, 'rule-agent')
+  assert.equal(assessment.fusion.ruleScore, baseline.total)
+  assert.equal(assessment.total, Math.round(baseline.total * 0.6 + 40 * 0.4))
+  assert.equal(assessment.items.some((item) => item.dimension === 'result'), false)
 })
 
 test('requesting a direct answer does not receive judgment or hypothesis credit', () => {

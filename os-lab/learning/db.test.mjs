@@ -202,7 +202,7 @@ test('migration binds events and immutable runs to the authenticated user', () =
     decision: 'corrected',
     rationale: '复核可信运行后修正过程维度',
     evidenceRefs: [`run:${runId}`],
-    correctedResult: { total: 88, dimensions: { process: 82, result: 100, reflection: 70 } },
+    correctedResult: { total: 88, dimensions: { process: 82, reflection: 70 } },
   })
   assert.equal(corrected.ok, true)
   assert.equal(corrected.revision, 1)
@@ -227,14 +227,14 @@ test('migration binds events and immutable runs to the authenticated user', () =
   const latestSaved = learningDb.saveAssessment(session.id, latestAssessment)
   const beforeReport = learningDb.getReportAssessment('member-c-test', 'lab2')
   assert.equal(beforeReport.hasReport, false)
-  assert.equal(beforeReport.assessment.assessmentId, latestSaved.assessmentId)
+  assert.equal(beforeReport.assessment, null)
   assert.equal(beforeReport.assessmentReview, null)
   assert.equal(beforeReport.acceptance, null)
   const noReportAcceptance = learningDb.submitReportAcceptance(teacher.id, {
     user: 'member-c-test',
     labId: 'lab2',
     assessmentId: latestSaved.assessmentId,
-    finalScore: { total: 91, dimensions: { process: 90, result: 100, reflection: 75 } },
+    finalScore: { total: 91, dimensions: { process: 90, reflection: 75 } },
     feedback: '报告反馈',
     acceptanceAdvice: '继续保留证据链。',
   })
@@ -246,7 +246,7 @@ test('migration binds events and immutable runs to the authenticated user', () =
     user: 'member-c-test',
     labId: 'lab2',
     assessmentId: latestSaved.assessmentId,
-    finalScore: { total: 91, dimensions: { process: 90, result: 100, reflection: 75 } },
+    finalScore: { total: 91, dimensions: { process: 90, reflection: 75 } },
     feedback: '报告结构完整，证据引用有效。',
     acceptanceAdvice: '后续说明调度边界条件。',
   })
@@ -256,7 +256,7 @@ test('migration binds events and immutable runs to the authenticated user', () =
     user: 'member-c-test',
     labId: 'lab2',
     assessmentId: latestSaved.assessmentId,
-    finalScore: { total: 93, dimensions: { process: 92, result: 100, reflection: 80 } },
+    finalScore: { total: 93, dimensions: { process: 92, reflection: 80 } },
     feedback: '补充说明后通过最终验收。',
     acceptanceAdvice: '将因果链迁移到下一实验。',
   })

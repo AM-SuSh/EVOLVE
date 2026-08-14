@@ -19,6 +19,7 @@ function evidenceMap(rows) {
           verified: Boolean(row.verified),
           reviewCompleted: Boolean(row.reviewCompleted),
           legacyReflected: Boolean(row.legacyReflected),
+          reportSubmitted: Boolean(row.reportSubmitted),
           reflected: Boolean(row.reflected),
         },
       ]
@@ -63,11 +64,13 @@ export function buildLearningAccess({
     const previousId = LEARNING_LABS[index - 1]
     const previous = previousId ? byLab.get(previousId) : null
     const reviewSatisfied = own.reviewCompleted || own.legacyReflected
-    const completed = own.verified && reviewSatisfied
+    const completed = own.verified && reviewSatisfied && own.reportSubmitted
     const published = index <= openIndex
     const alreadyIssued = appliedSet.has(labId)
     const prerequisiteComplete = index === 0 || Boolean(
-      previous?.verified && (previous.reviewCompleted || previous.legacyReflected),
+      previous?.verified
+        && (previous.reviewCompleted || previous.legacyReflected)
+        && previous.reportSubmitted,
     )
     const schedule = schedules[labId] || {}
     const unlockAt = schedule.unlockAt || null
@@ -91,7 +94,7 @@ export function buildLearningAccess({
       reason = `任务已截止（${scheduleText(lockAt)}），已自动加锁`
     } else if (!unlocked) {
       state = 'waiting_prerequisite'
-      reason = `先完成 ${previousId.toUpperCase()} 的可信验证与学习复盘`
+      reason = `先完成 ${previousId.toUpperCase()} 的可信验证，并提交实验报告与复盘`
     } else if (completed) state = 'completed'
     else if (alreadyIssued && index < applied.length - 1) state = 'review'
 
@@ -103,6 +106,7 @@ export function buildLearningAccess({
       verified: own.verified,
       reviewCompleted: own.reviewCompleted,
       legacyReflected: own.legacyReflected,
+      reportSubmitted: own.reportSubmitted,
       // Compatibility for existing consumers. It indicates either completed
       // Socratic review or an explicitly grandfathered legacy reflection.
       reflected: reviewSatisfied,

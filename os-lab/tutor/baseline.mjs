@@ -32,7 +32,7 @@ export const tutorStages = Object.freeze([
     id: 'reflect',
     allowedNext: ['transfer'],
     exitEvidence: ['review_completed', 'report_submitted'],
-    description: 'Student completes the evidence-backed Socratic review and records a final synthesis.',
+    description: 'Student completes the evidence-backed Socratic review and the server records an answer-performance synthesis.',
   },
   {
     id: 'transfer',
@@ -57,6 +57,7 @@ export const evidenceCatalog = Object.freeze({
   review_question_asked: { authority: 'server', durable: true },
   review_answer_submitted: { authority: 'server', durable: true },
   review_answer_evaluated: { authority: 'server', durable: true },
+  review_reflection_assessed: { authority: 'server', durable: true },
   review_completed: { authority: 'server', durable: true },
   report_submitted: { authority: 'server-verified', durable: true },
   teacher_reviewed: { authority: 'teacher', durable: true },

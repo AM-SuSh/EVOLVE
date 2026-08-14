@@ -6,10 +6,10 @@ const CONCEPT_ITEMS_V2 = Object.freeze({
 })
 
 const CONCEPT_ITEMS_V3 = Object.freeze({
-  'os.trap.syscall-abi': ['R1', 'R2', 'V1'],
-  'os.sched.context-switch': ['R3', 'R4', 'I1'],
+  'os.trap.syscall-abi': ['V1'],
+  'os.sched.context-switch': ['V1', 'I1'],
   'os.debug.evidence-chain': ['E1', 'H1', 'V1', 'I1'],
-  'os.learning.transfer': ['F1', 'F2', 'T1', 'T2'],
+  'os.learning.transfer': [],
 })
 
 export function deriveMasteryUpdates(assessment) {
@@ -17,7 +17,13 @@ export function deriveMasteryUpdates(assessment) {
     ? CONCEPT_ITEMS_V3
     : CONCEPT_ITEMS_V2
   return Object.entries(conceptItems).map(([conceptId, itemIds]) => {
-    const items = assessment.items.filter((item) => itemIds.includes(item.id) && item.score !== null)
+    const items = assessment.items.filter((item) =>
+      item.score !== null
+      && (
+        itemIds.includes(item.id)
+        || (conceptId === 'os.learning.transfer' && item.dimension === 'reflection')
+      ),
+    )
     const average = items.length ? items.reduce((sum, item) => sum + item.score, 0) / items.length : 0
     const independent = assessment.trajectory.independentSuccess ? 1 : 0
     const status = average >= 1.6 && independent ? 'proficient' : average >= 0.8 ? 'developing' : 'needs-support'

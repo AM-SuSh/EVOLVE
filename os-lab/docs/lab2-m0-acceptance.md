@@ -17,7 +17,7 @@ flowchart LR
     E --> F["SQLite 证据层<br/>runs / events / run_assertions"]
     E --> G["AI 导师追问<br/>引用观察与运行结果"]
     G --> H["实验报告<br/>反思 + evidenceRefs"]
-    F --> I["评分输出<br/>过程 / 结果 / 反思"]
+    F --> I["评分输出<br/>规则基线 + Agent 融合"]
     H --> I
     I --> J["教师复核<br/>原始 run / trace / 报告"]
 ```

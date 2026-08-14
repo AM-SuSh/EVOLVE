@@ -74,6 +74,18 @@ test('event-v2 validates server-authoritative Socratic review events', () => {
     ...common, type: 'review_answer_evaluated', questionId: 'q1',
     conceptIds: ['os.trap.syscall-abi'], verdict: 'invented', evidenceRefs: [],
   }), false)
+  assert.equal(validateInteractionEvent({
+    ...common,
+    type: 'review_reflection_assessed',
+    evidenceRefs: ['event:answer-1'],
+    metadata: {
+      authority: 'server',
+      source: 'socratic-review',
+      reviewPerformance: {
+        items: Object.fromEntries(['F1', 'F2', 'T1', 'T2'].map((id) => [id, { score: 2 }])),
+      },
+    },
+  }), true)
 })
 
 test('trace-v1 parser ignores malformed frames and accepts Lab2 events', () => {

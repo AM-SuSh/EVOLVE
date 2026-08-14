@@ -351,7 +351,6 @@ export interface LearningEvent {
 export interface TutorScore {
   total: number
   process: number
-  result: number
   thinking: number
   questionQuality: number
   depth: number
@@ -440,7 +439,7 @@ export type AssessmentItemStatus = 'unobserved' | 'met' | 'partial' | 'not-met' 
 
 export interface AssessmentItem {
   id: string
-  dimension: 'process' | 'result' | 'reflection' | string
+  dimension: 'process' | 'reflection' | string
   label: string
   score: number | null
   status: AssessmentItemStatus
@@ -450,8 +449,38 @@ export interface AssessmentItem {
 
 export interface AssessmentDimensions {
   process: number
-  result: number
   reflection: number
+}
+
+export interface AssessmentAgentCriterion {
+  id: string
+  label: string
+  status: AssessmentItemStatus
+  rationale: string
+  evidenceRefs: string[]
+}
+
+export interface AssessmentAgentResult {
+  status: string
+  mode: string
+  score: number | null
+  model: string
+  promptVersion: string
+  rationale: string
+  strengths: string[]
+  improvements: string[]
+  evidenceRefs: string[]
+  criteria: AssessmentAgentCriterion[]
+  error?: string
+}
+
+export interface AssessmentFusion {
+  mode: 'rule-agent' | 'rule-only' | string
+  ruleScore: number
+  agentScore: number | null
+  ruleWeight: number
+  agentWeight: number
+  finalScore: number
 }
 
 export interface AssessmentV2 {
@@ -461,6 +490,10 @@ export interface AssessmentV2 {
   total: number
   dimensions: AssessmentDimensions
   items: AssessmentItem[]
+  ruleScore?: number
+  agentAssessment?: AssessmentAgentResult
+  llmSuggestion?: AssessmentAgentResult
+  fusion?: AssessmentFusion
   uncertainty?: string
 }
 
@@ -470,8 +503,13 @@ export type AssessmentEvidenceChip = { ref: string; label: string; kind: Assessm
 
 const ASSESSMENT_DIMENSION_LABELS: Record<string, string> = {
   process: '过程',
-  result: '结果',
-  reflection: '反思',
+  reflection: '收获与反思',
+}
+
+function normalizeAssessmentItemStatus(value: unknown): AssessmentItemStatus {
+  return ['met', 'partial', 'not-met', 'unobserved'].includes(String(value))
+    ? String(value) as AssessmentItemStatus
+    : 'unobserved'
 }
 
 /** 细项状态 → 中文；unobserved / 无分一律「未观察到」。 */
@@ -495,6 +533,45 @@ export function normalizeAssessmentV2(
   if (!raw || typeof raw !== 'object') return null
   const dimensions = raw.dimensions
   if (!dimensions || typeof raw.total !== 'number' || !Array.isArray(raw.items)) return null
+  const agentRaw = raw.agentAssessment || raw.llmSuggestion
+  const agentAssessment: AssessmentAgentResult | undefined = agentRaw && typeof agentRaw === 'object'
+    ? {
+        status: String(agentRaw.status || 'not-requested'),
+        mode: String(agentRaw.mode || 'unavailable'),
+        score: agentRaw.score !== null && agentRaw.score !== undefined && Number.isFinite(Number(agentRaw.score))
+          ? Math.round(Number(agentRaw.score))
+          : null,
+        model: String(agentRaw.model || ''),
+        promptVersion: String(agentRaw.promptVersion || ''),
+        rationale: String(agentRaw.rationale || ''),
+        strengths: Array.isArray(agentRaw.strengths) ? agentRaw.strengths.map(String) : [],
+        improvements: Array.isArray(agentRaw.improvements) ? agentRaw.improvements.map(String) : [],
+        evidenceRefs: Array.isArray(agentRaw.evidenceRefs) ? agentRaw.evidenceRefs.map(String) : [],
+        criteria: Array.isArray(agentRaw.criteria)
+          ? agentRaw.criteria.map((criterion) => ({
+              id: String(criterion.id || ''),
+              label: String(criterion.label || criterion.id || ''),
+              status: normalizeAssessmentItemStatus(criterion.status),
+              rationale: String(criterion.rationale || ''),
+              evidenceRefs: Array.isArray(criterion.evidenceRefs) ? criterion.evidenceRefs.map(String) : [],
+            }))
+          : [],
+        error: agentRaw.error ? String(agentRaw.error) : '',
+      }
+    : undefined
+  const fusionRaw = raw.fusion
+  const fusion: AssessmentFusion | undefined = fusionRaw && typeof fusionRaw === 'object'
+    ? {
+        mode: String(fusionRaw.mode || 'rule-only'),
+        ruleScore: Math.round(Number(fusionRaw.ruleScore) || 0),
+        agentScore: fusionRaw.agentScore !== null && fusionRaw.agentScore !== undefined && Number.isFinite(Number(fusionRaw.agentScore))
+          ? Math.round(Number(fusionRaw.agentScore))
+          : null,
+        ruleWeight: Number(fusionRaw.ruleWeight) || 0,
+        agentWeight: Number(fusionRaw.agentWeight) || 0,
+        finalScore: Math.round(Number(fusionRaw.finalScore ?? raw.total) || 0),
+      }
+    : undefined
   return {
     version: String(raw.version || extras?.version || 'rubric-v2'),
     labId: raw.labId || extras?.labId,
@@ -502,10 +579,9 @@ export function normalizeAssessmentV2(
     total: Math.round(raw.total),
     dimensions: {
       process: Math.round(Number(dimensions.process) || 0),
-      result: Math.round(Number(dimensions.result) || 0),
       reflection: Math.round(Number(dimensions.reflection) || 0),
     },
-    items: raw.items.map((item) => ({
+    items: raw.items.filter((item) => item.dimension !== 'result').map((item) => ({
       id: String(item.id || ''),
       dimension: String(item.dimension || ''),
       label: String(item.label || item.id || ''),
@@ -514,6 +590,12 @@ export function normalizeAssessmentV2(
       evidenceRefs: Array.isArray(item.evidenceRefs) ? item.evidenceRefs.map(String) : [],
       note: item.note ? String(item.note) : '',
     })),
+    ruleScore: Number.isFinite(Number(raw.ruleScore))
+      ? Math.round(Number(raw.ruleScore))
+      : fusion?.ruleScore,
+    agentAssessment,
+    llmSuggestion: agentAssessment,
+    fusion,
     uncertainty: raw.uncertainty ? String(raw.uncertainty) : undefined,
   }
 }
@@ -546,7 +628,7 @@ export function assessmentEvidenceChips(refs: string[] | undefined | null): Asse
 }
 
 export function groupAssessmentItems(items: AssessmentItem[]): Array<{ dimension: string; label: string; items: AssessmentItem[] }> {
-  const order = ['process', 'result', 'reflection']
+  const order = ['process', 'reflection']
   const groups = new Map<string, AssessmentItem[]>()
   for (const item of items) {
     const key = item.dimension || 'other'
@@ -1054,6 +1136,7 @@ export interface LearningAccessItem {
   verified: boolean
   reviewCompleted: boolean
   legacyReflected: boolean
+  reportSubmitted: boolean
   reflected: boolean
   alreadyIssued: boolean
   state:

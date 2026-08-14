@@ -46,7 +46,7 @@ export function evaluatePlanCase(testCase, bundle, outcome) {
   const validRefs = new Set(bundle.validEvidenceRefs)
   const knownConcepts = new Set(bundle.catalog.concepts.map((concept) => concept.conceptId))
   const requiredKinds = testCase.expected?.requiredKinds || []
-  const shapeOk = questions.length >= 2 && questions.length <= 5
+  const shapeOk = questions.length >= 3 && questions.length <= 5
     && requiredKinds.every((kind) => questions.some((question) => question.kind === kind))
   const invalidRefs = questions.flatMap((question) =>
     (question.evidenceRefs || []).filter((ref) => !validRefs.has(ref)))

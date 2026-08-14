@@ -4,6 +4,7 @@ import { loadConceptCatalog } from './concept-catalog.mjs'
 import { normalizeReviewEvaluation, normalizeReviewPlan } from './review-contracts.mjs'
 
 export const ASSESSMENT_AGENT_PROMPT_VERSION = 'assessment-review-v2'
+export const ASSESSMENT_SCORING_PROMPT_VERSION = 'assessment-behavior-score-v1'
 
 const MAX_EVENTS = 160
 const MAX_MESSAGES = 120
@@ -253,7 +254,9 @@ export function generateDeterministicReviewPlan(bundle, options = {}) {
       return historyDelta || right.score - left.score
         || left.concept.conceptId.localeCompare(right.concept.conceptId)
     })
-  const selected = ranked.slice(0, Math.min(3, Math.max(2, ranked.length)))
+  const selected = ranked.length >= 3
+    ? ranked.slice(0, 3)
+    : [ranked[0], ranked[1] || ranked[0], ranked[0]].filter(Boolean)
   const globalRefs = fallbackRefs(bundle)
   const questions = selected.map((entry, index) => {
     const concept = entry.concept
@@ -376,6 +379,148 @@ async function callJsonAgent({ llm, system, input, fetchImpl = fetch }) {
   }
 }
 
+const BEHAVIOR_CRITERIA = Object.freeze([
+  ['B1', '是否用自己的话提出判断、假设或机制解释'],
+  ['B2', '是否主要用概念、现象或调试问题推进，而不是索要完整答案'],
+  ['B3', 'AI 给出提示后是否继续追问、检查代码或修改实现'],
+  ['B4', '是否把对话推进到可信运行、诊断或失败后的再次验证'],
+  ['B5', '是否较少在没有证据时重复索要完整答案'],
+  ['B6', '是否能区分自己的判断、AI 的帮助和实际验证证据'],
+])
+
+function boundedScore(value) {
+  const score = Number(value)
+  return Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : null
+}
+
+function boundedTextList(value, maxItems = 4, maxLength = 500) {
+  return (Array.isArray(value) ? value : [])
+    .map((item) => text(item, maxLength))
+    .filter(Boolean)
+    .slice(0, maxItems)
+}
+
+function validBehaviorRefs(value, validRefs) {
+  return [...new Set((Array.isArray(value) ? value : [])
+    .map((ref) => text(ref, 200))
+    .filter((ref) => ref && validRefs.has(ref)))]
+}
+
+function normalizeBehaviorScore(raw, bundle, llm) {
+  const validRefs = new Set(bundle.validEvidenceRefs)
+  const citedRefs = [
+    ...(Array.isArray(raw?.evidenceRefs) ? raw.evidenceRefs : []),
+    ...(Array.isArray(raw?.criteria) ? raw.criteria.flatMap((criterion) => criterion?.evidenceRefs || []) : []),
+  ].map((ref) => text(ref, 200)).filter(Boolean)
+  const invalidRef = citedRefs.find((ref) => !validRefs.has(ref))
+  if (invalidRef) throw new TypeError(`Assessment scoring Agent 引用了不存在的证据：${invalidRef}`)
+
+  const score = boundedScore(raw?.score)
+  const evidenceRefs = validBehaviorRefs(raw?.evidenceRefs, validRefs)
+  if (score === null) throw new TypeError('Assessment scoring Agent 未返回 0-100 分数')
+  if (validRefs.size && !evidenceRefs.length) {
+    throw new TypeError('Assessment scoring Agent 未提供总评证据引用')
+  }
+
+  const incomingCriteria = new Map((Array.isArray(raw?.criteria) ? raw.criteria : [])
+    .map((criterion) => [text(criterion?.id, 10), criterion]))
+  const criteria = BEHAVIOR_CRITERIA.map(([id, label]) => {
+    const criterion = incomingCriteria.get(id) || {}
+    const status = ['met', 'partial', 'not-met', 'unobserved'].includes(criterion.status)
+      ? criterion.status
+      : 'unobserved'
+    return {
+      id,
+      label,
+      status,
+      rationale: text(criterion.rationale, 600),
+      evidenceRefs: validBehaviorRefs(criterion.evidenceRefs, validRefs),
+    }
+  })
+  return {
+    status: 'scored',
+    mode: 'remote',
+    score,
+    model: text(llm?.model, 160) || 'unknown',
+    promptVersion: ASSESSMENT_SCORING_PROMPT_VERSION,
+    rationale: text(raw?.rationale, 1_200),
+    strengths: boundedTextList(raw?.strengths),
+    improvements: boundedTextList(raw?.improvements),
+    evidenceRefs,
+    criteria,
+    error: '',
+  }
+}
+
+/**
+ * 独立 Assessment Agent 只评价学生如何借助 AI 推进学习。
+ * Lab 断言是否通过仅能作为“完成了可信验证”的行为证据，不能形成单独结果分。
+ */
+export async function scoreAssessmentBehavior(bundle, options = {}) {
+  if (!options.llm) {
+    return {
+      assessment: {
+        status: 'not-requested', mode: 'unavailable', score: null, model: '',
+        promptVersion: ASSESSMENT_SCORING_PROMPT_VERSION, rationale: '', strengths: [],
+        improvements: [], evidenceRefs: [], criteria: [], error: '',
+      },
+      agent: { mode: 'unavailable', error: '' },
+    }
+  }
+  if (!bundle.validEvidenceRefs.length) {
+    return {
+      assessment: {
+        status: 'insufficient-evidence', mode: 'unavailable', score: null,
+        model: text(options.llm.model, 160), promptVersion: ASSESSMENT_SCORING_PROMPT_VERSION,
+        rationale: '当前没有可供 Agent 核对的学习行为证据。', strengths: [], improvements: [],
+        evidenceRefs: [], criteria: [], error: '',
+      },
+      agent: { mode: 'unavailable', model: options.llm.model, error: '' },
+    }
+  }
+  try {
+    const raw = await callJsonAgent({
+      llm: options.llm,
+      fetchImpl: options.fetchImpl,
+      system: [
+        '你是独立的 EVOLVE Assessment scoring Agent，只评价学生如何借助 AI 推进学习。只输出 JSON。',
+        '综合学生消息、AI 回复、工作区行为、可信运行、诊断与反思；不得只看最终运行是否通过。',
+        '可信运行通过只能证明学生完成了验证行为，不得另设实验结果分，也不得因断言数量多重复加分。',
+        '按 B1-B6 六项检查学生是否提出判断、进行非代做式提问、跟进 AI 提示、用证据验证、避免无证据索要答案并完成元认知区分。',
+        '总分为 0-100。每个肯定判断必须引用 validEvidenceRefs 中的 event:/run:/report:；没有证据必须标为 unobserved。',
+        '不得引用输入中不存在的证据，不得评价学生身份、写作风格、消息数量或最终代码质量。',
+        '输出字段：score,rationale,strengths[],improvements[],evidenceRefs[],criteria[]。',
+        'criteria 必须覆盖 B1-B6；每项含 id,status(met|partial|not-met|unobserved),rationale,evidenceRefs。',
+      ].join('\n'),
+      input: {
+        task: 'score-learning-behavior',
+        rubric: BEHAVIOR_CRITERIA.map(([id, label]) => ({ id, label })),
+        labId: bundle.labId,
+        sessionId: bundle.sessionId,
+        events: bundle.events,
+        runs: bundle.runs,
+        conversation: bundle.conversation,
+        report: bundle.report,
+        ruleAssessment: bundle.rubricAssessment,
+        validEvidenceRefs: bundle.validEvidenceRefs,
+      },
+    })
+    const assessment = normalizeBehaviorScore(raw, bundle, options.llm)
+    return { assessment, agent: { mode: 'remote', model: assessment.model, error: '' } }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return {
+      assessment: {
+        status: 'unavailable', mode: 'unavailable', score: null,
+        model: text(options.llm.model, 160), promptVersion: ASSESSMENT_SCORING_PROMPT_VERSION,
+        rationale: 'Agent 本次未完成评价，综合分已回退到规则基线。', strengths: [],
+        improvements: [], evidenceRefs: [], criteria: [], error: message,
+      },
+      agent: { mode: 'unavailable', model: options.llm.model, error: message },
+    }
+  }
+}
+
 function validatePlanEvidence(plan, validEvidenceRefs) {
   const valid = new Set(validEvidenceRefs)
   const invalid = [
@@ -404,7 +549,7 @@ export async function createAssessmentReviewPlan(bundle, options = {}) {
       fetchImpl: options.fetchImpl,
       system: [
         '你是独立的 EVOLVE Assessment Agent，不直接面向学生。',
-        '根据完整行为证据生成 2-5 个苏格拉底复盘问题，默认 3 个。',
+        '根据完整行为证据生成 3-5 个苏格拉底复盘问题，默认 3 个。',
         '必须综合 Tutor 对话、工作区事件、可信运行、诊断/Trace 和报告；不能只看最终运行。',
         '只输出 JSON。conceptId 必须来自输入目录，evidenceRefs 必须逐字来自 validEvidenceRefs。',
         '不要因为未观察到就断言学生不掌握；低置信度应使用诊断性问题。',

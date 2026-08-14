@@ -357,6 +357,29 @@ CREATE INDEX IF NOT EXISTS report_acceptances_user_lab_revision_idx
 CREATE INDEX IF NOT EXISTS report_acceptances_assessment_idx
   ON report_acceptances(assessment_id, revision DESC);
 `)
+applyMigration('20260814_report_review_submission_v1', `
+ALTER TABLE reports ADD COLUMN review_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE reports ADD COLUMN learning_session_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE reports ADD COLUMN review_status TEXT NOT NULL DEFAULT '';
+UPDATE reports
+SET review_id = COALESCE((
+  SELECT sr.id FROM socratic_reviews sr
+  WHERE sr.user_id = reports.user_id
+    AND sr.lab_id = reports.lab_id
+    AND sr.status IN ('review_completed', 'deferred')
+    AND sr.completed_at <= reports.updated_at
+  ORDER BY sr.completed_at DESC LIMIT 1
+), '')
+WHERE review_grandfathered = 0;
+UPDATE reports
+SET learning_session_id = COALESCE((
+      SELECT sr.session_id FROM socratic_reviews sr WHERE sr.id = reports.review_id
+    ), ''),
+    review_status = COALESCE((
+      SELECT sr.status FROM socratic_reviews sr WHERE sr.id = reports.review_id
+    ), '')
+WHERE review_id <> '';
+`)
 applyMigration('20260807_student_data_v1', `
 CREATE TABLE IF NOT EXISTS report_drafts (
   user_id INTEGER NOT NULL REFERENCES users(id),
@@ -507,7 +530,7 @@ function parseAttachments(raw) {
   }
 }
 
-export function submitReport(userId, labId, content, attachments = [], contentPath = '') {
+export function submitReport(userId, labId, content, attachments = [], contentPath = '', review = null) {
   const meta = JSON.stringify(
     (Array.isArray(attachments) ? attachments : []).map((item) => ({
       name: String(item.name || ''),
@@ -517,13 +540,27 @@ export function submitReport(userId, labId, content, attachments = [], contentPa
     })),
   )
   db.prepare(
-    `INSERT INTO reports (user_id, lab_id, content, updated_at, attachments, content_path) VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO reports
+       (user_id, lab_id, content, updated_at, attachments, content_path,
+        review_id, learning_session_id, review_status, review_grandfathered)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(user_id, lab_id) DO UPDATE SET
        content = excluded.content,
        updated_at = excluded.updated_at,
        attachments = excluded.attachments,
-       content_path = excluded.content_path`,
-  ).run(userId, labId, content, now(), meta, String(contentPath || ''))
+       content_path = excluded.content_path,
+       review_id = CASE WHEN excluded.review_id <> '' THEN excluded.review_id ELSE reports.review_id END,
+       learning_session_id = CASE
+         WHEN excluded.review_id <> '' THEN excluded.learning_session_id ELSE reports.learning_session_id END,
+       review_status = CASE
+         WHEN excluded.review_id <> '' THEN excluded.review_status ELSE reports.review_status END,
+       review_grandfathered = CASE
+         WHEN excluded.review_id <> '' THEN 0 ELSE reports.review_grandfathered END`,
+  ).run(
+    userId, labId, content, now(), meta, String(contentPath || ''),
+    String(review?.reviewId || ''), String(review?.sessionId || ''), String(review?.status || ''),
+    0,
+  )
   return { ok: true }
 }
 
@@ -539,28 +576,16 @@ export function listMyReports(userId) {
 export function listAllReports() {
   return db
     .prepare(
-      `WITH queue AS (
-         SELECT user_id, lab_id FROM reports
-         UNION
-         SELECT user_id, lab_id FROM socratic_reviews
-       ), latest_reviews AS (
-         SELECT user_id, lab_id, status, updated_at,
-                ROW_NUMBER() OVER (PARTITION BY user_id, lab_id ORDER BY created_at DESC) AS position
-         FROM socratic_reviews
-       )
-       SELECT u.username AS user, u.class_name AS className, q.lab_id AS labId,
-              COALESCE(r.updated_at, sr.updated_at) AS updatedAt,
-              COALESCE(r.content, '') AS content, COALESCE(r.feedback, '') AS feedback,
+      `SELECT u.username AS user, u.class_name AS className, r.lab_id AS labId,
+              r.updated_at AS updatedAt, r.content, COALESCE(r.feedback, '') AS feedback,
               COALESCE(r.attachments, '[]') AS attachments, COALESCE(r.content_path, '') AS contentPath,
-              COALESCE(r.review_grandfathered, 0) AS reviewGrandfathered,
-              CASE WHEN r.user_id IS NULL THEN 0 ELSE 1 END AS hasReport,
-              COALESCE(sr.status, '') AS reviewStatus, COALESCE(sr.updated_at, '') AS reviewUpdatedAt
-       FROM queue q
-       JOIN users u ON u.id = q.user_id AND u.role = 'student'
-       LEFT JOIN reports r ON r.user_id = q.user_id AND r.lab_id = q.lab_id
-       LEFT JOIN latest_reviews sr
-         ON sr.user_id = q.user_id AND sr.lab_id = q.lab_id AND sr.position = 1
-       ORDER BY u.class_name, u.username, q.lab_id`,
+              r.review_grandfathered AS reviewGrandfathered, 1 AS hasReport,
+              r.review_id AS reviewId, r.review_status AS reviewStatus,
+              COALESCE(sr.updated_at, '') AS reviewUpdatedAt
+       FROM reports r
+       JOIN users u ON u.id = r.user_id AND u.role = 'student'
+       LEFT JOIN socratic_reviews sr ON sr.id = r.review_id AND sr.user_id = r.user_id
+       ORDER BY u.class_name, u.username, r.lab_id`,
     )
     .all()
     .map((row) => ({
@@ -618,6 +643,10 @@ export function setReportFeedback(username, labId, feedback) {
 
 function parseAssessmentRow(row) {
   if (!row) return null
+  const parsedAgentAssessment = JSON.parse(row.llmSuggestionJson || '{}')
+  const agentAssessment = parsedAgentAssessment && typeof parsedAgentAssessment === 'object'
+    ? parsedAgentAssessment
+    : {}
   return {
     assessmentId: row.assessmentId,
     sessionId: row.sessionId,
@@ -627,10 +656,13 @@ function parseAssessmentRow(row) {
       total: row.total,
       dimensions: JSON.parse(row.dimensionsJson),
       items: JSON.parse(row.itemsJson),
+      fusion: agentAssessment.fusion || null,
+      agentAssessment,
       uncertainty: row.uncertainty,
     },
     trajectory: JSON.parse(row.trajectoryJson),
-    llmSuggestion: JSON.parse(row.llmSuggestionJson),
+    agentAssessment,
+    llmSuggestion: agentAssessment,
     createdAt: row.createdAt,
   }
 }
@@ -673,20 +705,24 @@ export function getReportAssessment(username, labId) {
   const report = db.prepare(
     'SELECT id, feedback, updated_at AS updatedAt FROM reports WHERE user_id = ? AND lab_id = ?',
   ).get(student.id, normalizedLabId)
-  const assessment = parseAssessmentRow(db.prepare(
-    `${reportAssessmentSelect}
-     WHERE user_id = ? AND lab_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
-  ).get(student.id, normalizedLabId))
+  const assessment = report
+    ? parseAssessmentRow(db.prepare(
+        `${reportAssessmentSelect}
+         WHERE user_id = ? AND lab_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      ).get(student.id, normalizedLabId))
+    : null
   const assessmentReview = assessment
     ? (() => {
         const review = parseReviewRow(db.prepare(`${reviewSelect} WHERE q.assessment_id = ?`).get(assessment.assessmentId))
         return review ? { ...review, decisions: listReviewDecisions(review.reviewId) } : null
       })()
     : null
-  const acceptanceRows = db.prepare(
-    `${reportAcceptanceSelect}
-     WHERE ra.user_id = ? AND ra.lab_id = ? ORDER BY ra.revision DESC`,
-  ).all(student.id, normalizedLabId)
+  const acceptanceRows = report
+    ? db.prepare(
+        `${reportAcceptanceSelect}
+         WHERE ra.user_id = ? AND ra.lab_id = ? ORDER BY ra.revision DESC`,
+      ).all(student.id, normalizedLabId)
+    : []
   const acceptanceHistory = acceptanceRows.map((row) =>
     parseReportAcceptanceRow(row, assessment?.assessmentId || ''),
   )
@@ -708,14 +744,13 @@ function normalizeFinalScore(input) {
   const total = Number(input?.total)
   const dimensions = input?.dimensions
   if (!Number.isInteger(total) || total < 0 || total > 100 || !dimensions ||
-      ['process', 'result', 'reflection'].some((key) =>
+      ['process', 'reflection'].some((key) =>
         !Number.isInteger(Number(dimensions[key])) || Number(dimensions[key]) < 0 || Number(dimensions[key]) > 100,
       )) return null
   return {
     total,
     dimensions: {
       process: Number(dimensions.process),
-      result: Number(dimensions.result),
       reflection: Number(dimensions.reflection),
     },
   }
@@ -928,6 +963,15 @@ export function getLearningEvidence(userId) {
       .all(userId)
       .map((row) => row.labId),
   )
+  const reportSubmitted = new Set(
+    db
+      .prepare(
+        `SELECT DISTINCT lab_id AS labId FROM reports
+         WHERE user_id = ? AND (review_id <> '' OR review_grandfathered = 1)`,
+      )
+      .all(userId)
+      .map((row) => row.labId),
+  )
   // Reflection events created before this migration belong to the former free-text
   // workflow. They remain valid only to avoid relocking existing student progress.
   const lifecycleMigration = db
@@ -941,11 +985,12 @@ export function getLearningEvidence(userId) {
       .all(userId, lifecycleMigration?.appliedAt || '')
       .map((row) => row.labId),
   )
-  return [...new Set([...verified, ...reviewCompleted, ...legacyReflected])].map((labId) => ({
+  return [...new Set([...verified, ...reviewCompleted, ...legacyReflected, ...reportSubmitted])].map((labId) => ({
     labId,
     verified: verified.has(labId),
     reviewCompleted: reviewCompleted.has(labId),
     legacyReflected: legacyReflected.has(labId),
+    reportSubmitted: reportSubmitted.has(labId),
     // `reflected` is retained for older callers. New lifecycle decisions must use
     // reviewCompleted or legacyReflected explicitly.
     reflected: reviewCompleted.has(labId) || legacyReflected.has(labId),
@@ -1131,7 +1176,10 @@ export function saveAssessment(userId, assessment, masteryUpdates = []) {
       JSON.stringify(assessment.dimensions),
       JSON.stringify(assessment.items),
       JSON.stringify(assessment.trajectory),
-      JSON.stringify(assessment.llmSuggestion),
+      JSON.stringify({
+        ...(assessment.agentAssessment || assessment.llmSuggestion || {}),
+        fusion: assessment.fusion || null,
+      }),
       assessment.uncertainty,
       createdAt,
     )
@@ -1174,6 +1222,10 @@ export function saveAssessment(userId, assessment, masteryUpdates = []) {
 
 function parseReviewRow(row) {
   if (!row) return null
+  const parsedAgentAssessment = JSON.parse(row.llmSuggestionJson || '{}')
+  const agentAssessment = parsedAgentAssessment && typeof parsedAgentAssessment === 'object'
+    ? parsedAgentAssessment
+    : {}
   return {
     reviewId: row.reviewId,
     assessmentId: row.assessmentId,
@@ -1193,6 +1245,8 @@ function parseReviewRow(row) {
       total: row.total,
       dimensions: JSON.parse(row.dimensionsJson),
       items: JSON.parse(row.itemsJson),
+      fusion: agentAssessment.fusion || null,
+      agentAssessment,
       uncertainty: row.uncertainty,
     },
     createdAt: row.createdAt,
@@ -1207,7 +1261,8 @@ const reviewSelect = `
          q.model_version AS modelVersion, q.prompt_version AS promptVersion,
          q.gates_json AS gatesJson, q.evidence_refs_json AS evidenceRefsJson,
          a.total, a.dimensions_json AS dimensionsJson, a.items_json AS itemsJson,
-         a.uncertainty, q.created_at AS createdAt, q.updated_at AS updatedAt
+         a.llm_suggestion_json AS llmSuggestionJson, a.uncertainty,
+         q.created_at AS createdAt, q.updated_at AS updatedAt
   FROM review_queue q JOIN assessments a ON a.id = q.assessment_id
   JOIN users u ON u.id = q.student_user_id`
 
@@ -1290,10 +1345,10 @@ export function submitAssessmentReview(teacherUserId, input) {
     const total = Number(input.correctedResult?.total)
     const dimensions = input.correctedResult?.dimensions
     if (!Number.isInteger(total) || total < 0 || total > 100 || !dimensions ||
-        ['process', 'result', 'reflection'].some((key) => !Number.isInteger(dimensions[key]) || dimensions[key] < 0 || dimensions[key] > 100)) {
+        ['process', 'reflection'].some((key) => !Number.isInteger(dimensions[key]) || dimensions[key] < 0 || dimensions[key] > 100)) {
       return { ok: false, error: '教师修正分数必须是 0-100 的整数' }
     }
-    correctedResult = { total, dimensions: { process: dimensions.process, result: dimensions.result, reflection: dimensions.reflection } }
+    correctedResult = { total, dimensions: { process: dimensions.process, reflection: dimensions.reflection } }
   }
   const timestamp = now()
   const revision = Number(db.prepare('SELECT coalesce(max(revision), 0) + 1 AS value FROM review_decisions WHERE review_id = ?').get(review.reviewId).value)
@@ -1473,11 +1528,23 @@ export function getLatestSocraticReviewForStudent(username, labId) {
   return parseSocraticReviewRow(row)
 }
 
+/** Return only the review explicitly linked to the student's submitted report. */
+export function getSubmittedSocraticReviewForStudent(username, labId) {
+  const row = db.prepare(
+    `SELECT r.user_id AS userId, r.review_id AS reviewId
+     FROM reports r
+     JOIN users u ON u.id = r.user_id AND u.role = 'student'
+     WHERE u.username = ? AND r.lab_id = ?`,
+  ).get(String(username || ''), String(labId || ''))
+  if (!row?.reviewId) return null
+  return getSocraticReview(row.userId, row.reviewId)
+}
+
 export function createSocraticReview(userId, plan) {
-  if (!plan || !Array.isArray(plan.questions) || plan.questions.length < 2 || plan.questions.length > 5) {
-    throw new TypeError('复盘计划必须包含 2-5 个问题')
+  if (!plan || !Array.isArray(plan.questions) || plan.questions.length < 3 || plan.questions.length > 5) {
+    throw new TypeError('复盘计划必须包含 3-5 个问题')
   }
-  const maxQuestions = Math.max(2, Math.min(5, Number(plan.maxQuestions) || plan.questions.length))
+  const maxQuestions = Math.max(3, Math.min(5, Number(plan.maxQuestions) || plan.questions.length))
   if (plan.questions.length > maxQuestions) throw new TypeError('复盘问题数超过 maxQuestions')
   const existing = getLatestSocraticReview(userId, plan.sessionId, plan.labId)
   if (existing && !['review_completed', 'deferred'].includes(existing.status)) return existing
@@ -1619,9 +1686,8 @@ export function answerSocraticReviewTurn(userId, reviewId, questionId, input) {
     answer, String(input?.answerEventRef || '').slice(0, 200),
     input?.evaluation ? JSON.stringify(input.evaluation) : null, timestamp, timestamp, turn.id,
   )
-  const nextStatus = input?.evaluation?.verdict === 'needs-evidence' ? 'awaiting_evidence' : 'review_active'
-  db.prepare('UPDATE socratic_reviews SET status = ?, updated_at = ? WHERE id = ?')
-    .run(nextStatus, timestamp, reviewId)
+  db.prepare("UPDATE socratic_reviews SET status = 'review_active', updated_at = ? WHERE id = ?")
+    .run(timestamp, reviewId)
   return getSocraticReview(userId, reviewId)
 }
 
@@ -1630,20 +1696,16 @@ export function completeSocraticReview(userId, reviewId, input = {}) {
   if (!review) throw new Error('复盘会话不存在或不属于当前账号')
   if (['review_completed', 'deferred'].includes(review.status)) throw new Error('复盘会话已经结束')
   const answeredTurns = review.turns.filter((turn) => turn.answeredAt)
-  if (answeredTurns.length < 2) throw new Error('至少完成 2 个复盘问题后才能结束')
+  if (answeredTurns.length < 3) throw new Error('至少完成 3 个复盘问题后才能结束')
   if (answeredTurns.length !== review.turns.length) throw new Error('还有复盘问题未回答')
-  const parentIds = new Set(review.turns.map((turn) => turn.parentTurnId).filter(Boolean))
-  const unresolvedLeaves = answeredTurns.filter((turn) => !parentIds.has(turn.id))
-  if (unresolvedLeaves.some((turn) => ['needs-evidence', 'partial', 'misconception', 'defer'].includes(turn.evaluation?.verdict))) {
-    throw new Error('复盘中仍有回答需要补充或修正')
-  }
-  if (!String(input.finalSummary || '').trim()) throw new Error('复盘结束前需要提交自己的最终总结')
+  const performanceSummary = String(input.performanceSummary || input.finalSummary || '').trim()
+  if (!performanceSummary) throw new Error('复盘结束前需要生成问题表现总结')
   const timestamp = now()
   db.prepare(
     `UPDATE socratic_reviews SET status = 'review_completed', final_summary = ?,
             transcript_markdown = ?, updated_at = ?, completed_at = ? WHERE id = ?`,
   ).run(
-    String(input.finalSummary || '').trim().slice(0, 8_000),
+    performanceSummary.slice(0, 8_000),
     String(input.transcriptMarkdown || '').trim().slice(0, 64_000),
     timestamp, timestamp, reviewId,
   )

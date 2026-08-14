@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ChevronDown, ClipboardList, RefreshCw } from 'lucide-vue-next'
+import { Bot, ChevronDown, ClipboardList, RefreshCw } from 'lucide-vue-next'
 import {
   assessmentEvidenceChips,
   describeAssessmentStatus,
   groupAssessmentItems,
+  type AssessmentItem,
   type AssessmentV2,
 } from '../tutor-model'
 
@@ -42,6 +43,34 @@ const expanded = ref<Record<string, boolean>>({})
 const groups = computed(() =>
   props.assessment ? groupAssessmentItems(props.assessment.items) : [],
 )
+const agentAssessment = computed(() => props.assessment?.agentAssessment || null)
+const fusion = computed(() => props.assessment?.fusion || null)
+const agentScored = computed(() =>
+  agentAssessment.value?.status === 'scored' && agentAssessment.value.score !== null,
+)
+
+function agentStatusLabel() {
+  if (agentScored.value) return '已参与融合'
+  if (agentAssessment.value?.status === 'insufficient-evidence') return '证据不足'
+  if (agentAssessment.value?.status === 'unavailable') return '本次未参与'
+  return '尚未运行'
+}
+
+function isReviewQuestion(item: AssessmentItem) {
+  return item.dimension === 'reflection' && /^RQ\d+$/.test(item.id)
+}
+
+function itemDisplayId(item: AssessmentItem, index: number) {
+  return isReviewQuestion(item) ? `第 ${index + 1} 题` : item.id
+}
+
+function itemStatusLabel(item: AssessmentItem) {
+  if (!isReviewQuestion(item)) return describeAssessmentStatus(item.status, item.score)
+  if (item.score === 2) return '首答完成'
+  if (item.score === 1) return '追问后完成'
+  if (item.score === 0) return '已回答'
+  return '待评价'
+}
 
 watch(
   () => props.assessment?.items.map((item) => item.id).join(','),
@@ -52,7 +81,7 @@ watch(
     }
     const next: Record<string, boolean> = { ...expanded.value }
     for (const item of props.assessment.items) {
-      if (next[item.id] === undefined) next[item.id] = item.status !== 'unobserved'
+      if (next[item.id] === undefined) next[item.id] = false
     }
     expanded.value = next
   },
@@ -70,14 +99,16 @@ function onChip(refValue: string) {
 </script>
 
 <template>
-  <section class="asp" aria-label="学习评价 rubric v2">
+  <section class="asp" aria-label="学习行为融合评价">
     <header class="asp-head">
       <div class="asp-title">
         <ClipboardList :size="16" aria-hidden="true" />
         <div>
           <strong>学习评价</strong>
-          <small v-if="assessment">{{ assessment.version }} · 规则评分，非 LLM 直接定分</small>
-          <small v-else>量规 v2 · 过程 / 结果 / 反思细项</small>
+          <small v-if="assessment">
+            {{ assessment.version }} · {{ fusion?.mode === 'rule-agent' ? '规则 + Agent 融合' : '规则基线' }}
+          </small>
+          <small v-else>过程行为 / 可信验证 / 收获与反思</small>
         </div>
       </div>
       <button
@@ -95,7 +126,7 @@ function onChip(refValue: string) {
     <p v-if="error" class="asp-error" role="alert">{{ error }}</p>
 
     <div v-if="loading && !assessment" class="asp-empty">
-      <p>正在根据可信 run 与学习事件生成评价…</p>
+      <p>正在汇总学习行为、可信运行并请求评分 Agent…</p>
     </div>
 
     <div v-else-if="!assessment" class="asp-empty">
@@ -106,21 +137,47 @@ function onChip(refValue: string) {
       <div class="asp-band" :aria-label="`综合分 ${assessment.total}`">
         <div class="asp-total">
           <strong>{{ assessment.total }}</strong>
-          <span>综合分</span>
+          <span>融合分</span>
+        </div>
+        <div>
+          <span>规则基线</span>
+          <strong>{{ fusion?.ruleScore ?? assessment.ruleScore ?? '—' }}</strong>
+        </div>
+        <div>
+          <span>Agent 评价</span>
+          <strong>{{ agentScored ? agentAssessment?.score : '—' }}</strong>
         </div>
         <div>
           <span>过程</span>
           <strong>{{ assessment.dimensions.process }}</strong>
         </div>
         <div>
-          <span>结果</span>
-          <strong>{{ assessment.dimensions.result }}</strong>
-        </div>
-        <div>
-          <span>反思</span>
+          <span>收获与反思</span>
           <strong>{{ assessment.dimensions.reflection }}</strong>
         </div>
       </div>
+      <section class="asp-agent" :data-status="agentScored ? 'scored' : 'fallback'" aria-label="评分 Agent 评价">
+        <header>
+          <span class="asp-agent-title"><Bot :size="16" aria-hidden="true" />评分 Agent</span>
+          <strong>{{ agentStatusLabel() }}</strong>
+        </header>
+        <template v-if="agentScored && agentAssessment">
+          <p>{{ agentAssessment.rationale || 'Agent 已根据当前学习行为和证据完成评价。' }}</p>
+          <details v-if="agentAssessment.criteria.length" class="asp-agent-criteria">
+            <summary>查看 Agent 判定项</summary>
+            <ul>
+              <li v-for="criterion in agentAssessment.criteria" :key="criterion.id">
+                <span>{{ criterion.id }}</span>
+                <div><strong>{{ criterion.label }}</strong><small>{{ criterion.rationale || describeAssessmentStatus(criterion.status) }}</small></div>
+              </li>
+            </ul>
+          </details>
+        </template>
+        <p v-else>{{ agentAssessment?.rationale || '本次没有可用的 Agent 评价，融合分等于规则基线。' }}</p>
+        <small v-if="fusion?.mode === 'rule-agent'" class="asp-fusion-note">
+          规则 {{ Math.round(fusion.ruleWeight * 100) }}% · Agent {{ Math.round(fusion.agentWeight * 100) }}%
+        </small>
+      </section>
       <p v-if="assessment.uncertainty === 'incomplete-evidence'" class="asp-hint">
         证据不完整：部分细项为「未观察到」，不会凭空满分。
       </p>
@@ -131,11 +188,11 @@ function onChip(refValue: string) {
           <span>{{ group.items.length }} 项</span>
         </header>
         <ul class="asp-items">
-          <li v-for="item in group.items" :key="item.id" class="asp-item" :data-status="item.status">
+          <li v-for="(item, index) in group.items" :key="item.id" class="asp-item" :data-status="item.status">
             <button type="button" class="asp-item-toggle" @click="toggle(item.id)">
-              <span class="asp-item-id">{{ item.id }}</span>
+              <span class="asp-item-id">{{ itemDisplayId(item, index) }}</span>
               <span class="asp-item-label">{{ item.label }}</span>
-              <span class="asp-item-status">{{ describeAssessmentStatus(item.status, item.score) }}</span>
+              <span class="asp-item-status">{{ itemStatusLabel(item) }}</span>
               <span class="asp-item-score">
                 {{ item.score === null ? '—' : `${item.score}/2` }}
               </span>
@@ -220,7 +277,7 @@ function onChip(refValue: string) {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-  min-height: 32px;
+  min-height: 40px;
   padding: 0 10px;
   border: 1px solid var(--ws-line-strong, var(--vp-c-divider));
   border-radius: 8px;
@@ -233,6 +290,12 @@ function onChip(refValue: string) {
 
 .asp-refresh:hover:not(:disabled) {
   border-color: var(--ws-accent, var(--vp-c-brand-1));
+}
+
+.asp button:focus-visible,
+.asp summary:focus-visible {
+  outline: 2px solid var(--ws-accent, var(--vp-c-brand-1));
+  outline-offset: 2px;
 }
 
 .asp-refresh:disabled {
@@ -282,7 +345,7 @@ function onChip(refValue: string) {
 
 .asp-band {
   display: grid;
-  grid-template-columns: 96px repeat(3, 1fr);
+  grid-template-columns: 104px repeat(4, 1fr);
   border: 1px solid var(--ws-line, var(--vp-c-divider));
   border-radius: 8px;
   overflow: hidden;
@@ -323,6 +386,83 @@ function onChip(refValue: string) {
   opacity: 0.9;
 }
 
+.asp-agent {
+  display: grid;
+  gap: 8px;
+  padding: 10px 2px;
+  border-top: 1px solid var(--ws-line, var(--vp-c-divider));
+  border-bottom: 1px solid var(--ws-line, var(--vp-c-divider));
+}
+
+.asp-agent > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.asp-agent-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.asp-agent > header > strong {
+  color: var(--ws-accent, var(--vp-c-brand-1));
+  font-size: 12px;
+}
+
+.asp-agent[data-status='fallback'] > header > strong {
+  color: var(--ws-ink-muted, var(--vp-c-text-2));
+}
+
+.asp-agent > p,
+.asp-fusion-note,
+.asp-agent-criteria small {
+  margin: 0;
+  color: var(--ws-ink-muted, var(--vp-c-text-2));
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.asp-agent-criteria summary {
+  padding: 7px 0;
+  color: var(--ws-ink-muted, var(--vp-c-text-2));
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.asp-agent-criteria ul {
+  display: grid;
+  gap: 6px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.asp-agent-criteria li {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.asp-agent-criteria li > span {
+  color: var(--ws-accent, var(--vp-c-brand-1));
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.asp-agent-criteria li strong,
+.asp-agent-criteria li small {
+  display: block;
+}
+
+.asp-agent-criteria li strong {
+  font-size: 12px;
+}
+
 .asp-group-head {
   display: flex;
   align-items: center;
@@ -356,10 +496,11 @@ function onChip(refValue: string) {
 
 .asp-item-toggle {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) auto auto 16px;
+  grid-template-columns: 54px minmax(0, 1fr) auto auto 16px;
   align-items: center;
   gap: 8px;
   width: 100%;
+  min-height: 44px;
   padding: 8px 10px;
   border: 0;
   background: transparent;
@@ -381,9 +522,7 @@ function onChip(refValue: string) {
 
 .asp-item-label {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   font-size: 13px;
 }
 
@@ -475,8 +614,12 @@ function onChip(refValue: string) {
     border-bottom: 1px solid var(--ws-line, var(--vp-c-divider));
   }
 
+  .asp-total {
+    grid-column: 1 / -1;
+  }
+
   .asp-item-toggle {
-    grid-template-columns: 32px minmax(0, 1fr) auto 16px;
+    grid-template-columns: 50px minmax(0, 1fr) auto 16px;
   }
 
   .asp-item-score {
@@ -485,6 +628,16 @@ function onChip(refValue: string) {
 
   .asp-item-body {
     padding-left: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .asp-refresh .spin {
+    animation: none;
+  }
+
+  .asp-chevron {
+    transition: none;
   }
 }
 </style>

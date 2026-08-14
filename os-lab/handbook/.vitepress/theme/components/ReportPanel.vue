@@ -703,13 +703,13 @@ async function submitToTeacher() {
     return
   }
   if (!reviewSubmittable.value) {
-    emit('notice', '完成苏格拉底复盘，或转入教师后续关注后再提交报告。')
+    emit('notice', '请先回答完本次复盘问题，再提交报告与复盘记录。')
     return
   }
   const deferredNotice = socraticReview.value?.status === 'deferred'
     ? '当前复盘已转为后续关注，复盘记录将随报告提交，由教师继续确认。\n\n'
     : ''
-  const ok = window.confirm(`${deferredNotice}确认把当前实验报告提交给老师吗？\n\n重复提交会覆盖本实验上一份提交；提交后老师可在验收页查看。`)
+  const ok = window.confirm(`${deferredNotice}确认把当前实验报告、附件和完整复盘记录一起提交给老师吗？\n\n重复提交会覆盖本实验上一份提交；提交前老师无法查看本次复盘。`)
   if (!ok) return
   if (!(await persist(false))) {
     emit('notice', '草稿尚未保存成功，暂不能提交。')
@@ -1423,7 +1423,7 @@ function onReviewCompleted(review: SocraticReview) {
           type="button"
           :title="socraticReview?.status === 'deferred'
             ? '复盘已转为后续关注，仍可连同记录提交给老师'
-            : '按当前格式提交给老师（会先确认）'"
+            : '将报告、附件和复盘记录一起提交给老师（会先确认）'"
           :disabled="busyAttach || !reviewSubmittable"
           @click="submitToTeacher"
         >

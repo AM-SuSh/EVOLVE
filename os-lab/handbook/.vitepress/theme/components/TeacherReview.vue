@@ -41,11 +41,13 @@ interface ReportAssessment {
   rubricVersion: string
   automaticResult: {
     total: number
-    dimensions: { process: number; result: number; reflection: number }
+    dimensions: { process: number; reflection: number }
     items: AssessmentV2['items']
+    fusion?: AssessmentV2['fusion']
+    agentAssessment?: AssessmentV2['agentAssessment']
     uncertainty?: string
   }
-  llmSuggestion?: { rationale?: string; reasons?: string[] }
+  llmSuggestion?: AssessmentV2['agentAssessment'] & { reasons?: string[] }
 }
 
 interface ReportAcceptance {
@@ -55,7 +57,7 @@ interface ReportAcceptance {
   teacher: string
   finalScore: {
     total: number
-    dimensions: { process: number; result: number; reflection: number }
+    dimensions: { process: number; reflection: number }
   }
   feedback: string
   acceptanceAdvice: string
@@ -599,7 +601,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
                 </footer>
               </article>
               <div v-if="socraticReview.finalSummary" class="tr-review-summary">
-                <strong><Sparkles :size="14" aria-hidden="true" />学生最终总结</strong>
+                <strong><Sparkles :size="14" aria-hidden="true" />反问表现总结</strong>
                 <p>{{ socraticReview.finalSummary }}</p>
               </div>
             </template>
@@ -620,7 +622,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
               <header><span>自动评分</span><strong>{{ automaticAssessment ? `${automaticAssessment.total} 分` : '暂无' }}</strong></header>
               <div v-if="automaticAssessment" class="tr-score-dimensions">
                 <span>过程 <b>{{ automaticAssessment.dimensions.process }}</b></span>
-                <span>结果 <b>{{ automaticAssessment.dimensions.result }}</b></span>
                 <span>反思 <b>{{ automaticAssessment.dimensions.reflection }}</b></span>
               </div>
               <p>{{ scoreReason(reportAssessment) }}</p>

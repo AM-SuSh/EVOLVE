@@ -44,23 +44,33 @@ function reviewPlan(sessionId = 'review-session-1') {
         passCriteria: ['会重复执行同一条 ecall'],
         evidenceRefs: ['run:passed-1'],
       },
+      {
+        questionId: 'q3',
+        conceptId: 'os.sched.task-state',
+        kind: 'transfer',
+        objective: '迁移任务状态判断',
+        prompt: '如果调度策略改变，哪些任务状态不变量仍需保持？',
+        reason: '检查迁移理解',
+        passCriteria: ['指出至少一个不变量'],
+        evidenceRefs: ['run:passed-1'],
+      },
     ],
   }, { knownConceptIds })
 }
 
-test('socratic review persists an auditable 2-5 question lifecycle', () => {
+test('socratic review persists an auditable 3-5 question lifecycle without a correctness gate', () => {
   const registration = learningDb.register('review-student', 'secret1', '计科2301')
   const student = learningDb.resolveSession(registration.token)
   const created = learningDb.createSocraticReview(student.id, reviewPlan())
   assert.equal(created.status, 'review_ready')
-  assert.equal(created.turns.length, 2)
+  assert.equal(created.turns.length, 3)
   assert.equal(created.maxQuestions, 5)
   assert.equal(learningDb.createSocraticReview(student.id, reviewPlan()).reviewId, created.reviewId)
 
   const asked = learningDb.markSocraticReviewTurnAsked(student.id, created.reviewId, 'q1')
   assert.equal(asked.status, 'review_active')
   assert.equal(asked.askedCount, 1)
-  assert.throws(() => learningDb.completeSocraticReview(student.id, created.reviewId), /至少完成 2 个/)
+  assert.throws(() => learningDb.completeSocraticReview(student.id, created.reviewId), /至少完成 3 个/)
 
   learningDb.answerSocraticReviewTurn(student.id, created.reviewId, 'q1', {
     answer: 'yield 后回到 Ready，exit 后进入 Exited。',
@@ -73,12 +83,18 @@ test('socratic review persists an auditable 2-5 question lifecycle', () => {
     answerEventRef: 'event:review-answer-2',
     evaluation: { verdict: 'passed', evidenceRefs: ['event:review-answer-2'] },
   })
+  learningDb.markSocraticReviewTurnAsked(student.id, created.reviewId, 'q3')
+  learningDb.answerSocraticReviewTurn(student.id, created.reviewId, 'q3', {
+    answer: '我还不能完整说明调度策略变化后的边界。',
+    answerEventRef: 'event:review-answer-3',
+    evaluation: { verdict: 'partial', evidenceRefs: ['event:review-answer-3'] },
+  })
   const completed = learningDb.completeSocraticReview(student.id, created.reviewId, {
     finalSummary: '我理解了状态机和 syscall 返回点。',
     transcriptMarkdown: '## 收获与复盘\n',
   })
   assert.equal(completed.status, 'review_completed')
-  assert.equal(completed.answeredCount, 2)
+  assert.equal(completed.answeredCount, 3)
   assert.ok(completed.completedAt)
   assert.equal(learningDb.getSocraticReview(999999, created.reviewId), null)
 
@@ -102,7 +118,7 @@ test('database refuses review turns beyond the five-question cap', () => {
   const registration = learningDb.register('review-cap-student', 'secret1', '计科2301')
   const student = learningDb.resolveSession(registration.token)
   const created = learningDb.createSocraticReview(student.id, reviewPlan('review-session-cap'))
-  for (let index = 3; index <= 5; index += 1) {
+  for (let index = 4; index <= 5; index += 1) {
     learningDb.appendSocraticReviewTurn(student.id, created.reviewId, {
       questionId: `q${index}`,
       conceptId: 'os.sched.task-state',
@@ -119,7 +135,7 @@ test('database refuses review turns beyond the five-question cap', () => {
   }), /5 题上限/)
 })
 
-test('review ordering, immutability and unresolved verdicts are enforced', () => {
+test('review ordering and answer immutability are enforced', () => {
   const registration = learningDb.register('review-guard-student', 'secret1', '计科2301')
   const student = learningDb.resolveSession(registration.token)
   const created = learningDb.createSocraticReview(student.id, reviewPlan('review-session-guards'))
@@ -150,14 +166,14 @@ test('review ordering, immutability and unresolved verdicts are enforced', () =>
     passCriteria: ['说明 Ready 与 Exited'],
     evidenceRefs: ['run:failed-1'],
   })
-  assert.deepEqual(followed.turns.map((turn) => turn.questionId), ['q1', 'q1-followup', 'q2'])
+  assert.deepEqual(followed.turns.map((turn) => turn.questionId), ['q1', 'q1-followup', 'q2', 'q3'])
   assert.throws(
     () => learningDb.completeSocraticReview(student.id, created.reviewId, { finalSummary: '总结' }),
     /至少完成|未回答/,
   )
 })
 
-test('deferred review persists its transcript and enters the teacher queue without a report', () => {
+test('a review enters the teacher queue only when submitted with a report', () => {
   const username = 'review-only-deferred-student'
   const registration = learningDb.register(username, 'secret1', 'review-only-class')
   const student = learningDb.resolveSession(registration.token)
@@ -192,16 +208,18 @@ test('deferred review persists its transcript and enters the teacher queue witho
   assert.equal(persisted.plan.deferredReason, 'Trusted runtime evidence could not be collected.')
   assert.ok(persisted.completedAt)
 
-  const queueItem = learningDb.listAllReports().find((item) =>
+  const hiddenQueueItem = learningDb.listAllReports().find((item) =>
     item.user === username && item.labId === 'lab2',
   )
-  assert.ok(queueItem)
-  assert.equal(queueItem.hasReport, false)
+  assert.equal(hiddenQueueItem, undefined)
+  assert.equal(learningDb.getSubmittedSocraticReviewForStudent(username, 'lab2'), null)
+
+  learningDb.submitReport(student.id, 'lab2', '# submitted report', [], '', deferred)
+  const queueItem = learningDb.listAllReports().find((item) => item.user === username && item.labId === 'lab2')
+  assert.equal(queueItem.hasReport, true)
+  assert.equal(queueItem.reviewId, deferred.reviewId)
   assert.equal(queueItem.reviewStatus, 'deferred')
-  assert.equal(queueItem.content, '')
-  assert.equal(queueItem.feedback, '')
-  assert.equal(queueItem.contentPath, '')
-  assert.deepEqual(queueItem.attachments, [])
+  assert.equal(learningDb.getSubmittedSocraticReviewForStudent(username, 'lab2').reviewId, deferred.reviewId)
 })
 
 test('follow-up throttle persists pending checks until explicitly resolved', () => {
@@ -245,6 +263,11 @@ test('new reflection events never become legacy completion evidence', () => {
     answer: '如果 sepc 不推进，返回后会重复执行同一条 ecall。',
     evaluation: { verdict: 'passed', evidenceRefs: [] },
   })
+  learningDb.markSocraticReviewTurnAsked(student.id, completed.reviewId, 'q3')
+  learningDb.answerSocraticReviewTurn(student.id, completed.reviewId, 'q3', {
+    answer: '调度策略改变后，任务状态仍必须保持可区分且转换合法。',
+    evaluation: { verdict: 'misconception', evidenceRefs: [] },
+  })
   learningDb.completeSocraticReview(student.id, completed.reviewId, {
     finalSummary: '我能用过程证据解释两个机制。',
     transcriptMarkdown: '## transcript',
@@ -252,4 +275,8 @@ test('new reflection events never become legacy completion evidence', () => {
   const afterReview = learningDb.getLearningEvidence(student.id).find((item) => item.labId === 'lab2')
   assert.equal(afterReview.reviewCompleted, true)
   assert.equal(afterReview.legacyReflected, false)
+  assert.equal(afterReview.reportSubmitted, false)
+  learningDb.submitReport(student.id, 'lab2', '# report', [], '', learningDb.getSocraticReview(student.id, completed.reviewId))
+  const afterSubmission = learningDb.getLearningEvidence(student.id).find((item) => item.labId === 'lab2')
+  assert.equal(afterSubmission.reportSubmitted, true)
 })

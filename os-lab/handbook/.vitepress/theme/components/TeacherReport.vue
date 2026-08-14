@@ -32,7 +32,7 @@ interface ReviewGate {
 
 interface CorrectedResult {
   total: number
-  dimensions: { process: number; result: number; reflection: number }
+  dimensions: { process: number; reflection: number }
 }
 
 interface ReviewDecision {
@@ -59,8 +59,10 @@ interface AssessmentReview {
   evidenceRefs?: string[]
   automaticResult: {
     total: number
-    dimensions: { process: number; result: number; reflection: number }
+    dimensions: { process: number; reflection: number }
     items: AssessmentV2['items']
+    fusion?: AssessmentV2['fusion']
+    agentAssessment?: AssessmentV2['agentAssessment']
     uncertainty?: string
   }
   decisions?: ReviewDecision[]
@@ -84,7 +86,6 @@ const rationale = ref('')
 const selectedRefs = ref<string[]>([])
 const correctedTotal = ref(0)
 const correctedProcess = ref(0)
-const correctedResultDim = ref(0)
 const correctedReflection = ref(0)
 
 const filtered = computed(() => {
@@ -159,14 +160,12 @@ function resetFormFromActive() {
   if (!review) {
     correctedTotal.value = 0
     correctedProcess.value = 0
-    correctedResultDim.value = 0
     correctedReflection.value = 0
     return
   }
   const dims = review.automaticResult.dimensions
   correctedTotal.value = clampScore(review.automaticResult.total)
   correctedProcess.value = clampScore(dims.process)
-  correctedResultDim.value = clampScore(dims.result)
   correctedReflection.value = clampScore(dims.reflection)
 }
 
@@ -240,7 +239,6 @@ async function submitReview() {
       total: clampScore(correctedTotal.value),
       dimensions: {
         process: clampScore(correctedProcess.value),
-        result: clampScore(correctedResultDim.value),
         reflection: clampScore(correctedReflection.value),
       },
     }
@@ -449,10 +447,6 @@ onMounted(() => {
                 <input v-model.number="correctedProcess" type="number" min="0" max="100" step="1">
               </label>
               <label>
-                <span>结果</span>
-                <input v-model.number="correctedResultDim" type="number" min="0" max="100" step="1">
-              </label>
-              <label>
                 <span>反思</span>
                 <input v-model.number="correctedReflection" type="number" min="0" max="100" step="1">
               </label>
@@ -500,7 +494,6 @@ onMounted(() => {
               <p v-if="item.correctedResult">
                 修正分：总分 {{ item.correctedResult.total }}
                 （过程 {{ item.correctedResult.dimensions.process }}
-                / 结果 {{ item.correctedResult.dimensions.result }}
                 / 反思 {{ item.correctedResult.dimensions.reflection }}）
               </p>
               <p v-if="item.evidenceRefs?.length" class="teacher-audit-refs">

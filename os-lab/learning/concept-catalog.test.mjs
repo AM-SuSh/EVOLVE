@@ -16,7 +16,7 @@ test('concept catalog loads Lab1-Lab8 from lab packages', () => {
   assert.equal(conceptForLab('lab3', 'os.sched.task-state'), null)
 })
 
-test('review plan enforces 2-5 questions and current-lab concepts', () => {
+test('review plan enforces 3-5 questions and current-lab concepts', () => {
   const knownConceptIds = new Set(loadConceptCatalog().labs.lab2.conceptIds)
   const question = (index, conceptId = 'os.sched.task-state') => ({
     questionId: `q${index}`,
@@ -29,11 +29,13 @@ test('review plan enforces 2-5 questions and current-lab concepts', () => {
     evidenceRefs: [`event:e${index}`],
   })
   const plan = normalizeReviewPlan({
-    labId: 'lab2', sessionId: 's1', maxQuestions: 5, questions: [question(1), question(2)],
+    labId: 'lab2', sessionId: 's1', maxQuestions: 5, questions: [question(1), question(2), question(3)],
   }, { knownConceptIds })
-  assert.equal(plan.questions.length, 2)
-  assert.throws(() => normalizeReviewPlan({ questions: [question(1)] }, { knownConceptIds }), /2-5/)
-  assert.throws(() => normalizeReviewPlan({ questions: [question(1), question(2, 'os.mm.sv39-walk')] }, { knownConceptIds }), /conceptId/)
+  assert.equal(plan.questions.length, 3)
+  assert.throws(() => normalizeReviewPlan({ questions: [question(1), question(2)] }, { knownConceptIds }), /3-5/)
+  assert.throws(() => normalizeReviewPlan({
+    questions: [question(1), question(2, 'os.mm.sv39-walk'), question(3)],
+  }, { knownConceptIds }), /conceptId/)
   assert.equal(normalizeReviewEvaluation({ verdict: 'needs-evidence' }).verdict, 'needs-evidence')
 })
 

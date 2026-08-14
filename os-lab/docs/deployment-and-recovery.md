@@ -13,7 +13,7 @@
 - Tutor Server 默认使用问题意图路由：`concept`、`code-reading`、`debug`、`verification`、`reflection`、`transfer` 和 `direct-answer`。生产环境无需设置额外变量即可使用该模式。
 - `OS_LAB_TUTOR_ROUTING_MODE=intent` 可显式声明默认模式；`OS_LAB_TUTOR_ROUTING_MODE=stage` 只用于旧会话回放、兼容排障和对照实验，不应作为新部署的教学默认值。
 - intent 模式仍保存 `activeStage`、`current_stage` 和 `stage_enter` 事件，供导航、遥测、历史数据和兼容旧客户端使用；这些字段不选择 `/chat` 的回答策略，也不应进入学习评分奖励。
-- 学习评价接口使用 `rubric-v3.0.0`。结果仍保存 `process/result/reflection` 和 14 个细项，新增 `learningDimensions` 记录判断、证据、假设、验证、迭代、反思和迁移行为；可信 run、答案护栏、RAG 权限和引用白名单不因路由迁移而放宽。
+- 学习评价接口使用 `rubric-v3.2.0`。新评价保存 `process/reflection` 和 10 个通用行为细项；Lab 通过由 `V1` 可信验证与 `I1` 失败后复验覆盖，不再保存 Lab2 专属“结果”维度。反思细项由服务端汇总苏格拉底反问的首答、追问修正、证据与迁移表现，不要求学生另写总结。总分默认按 60% 规则基线与 40% Assessment Agent 评价融合；Agent 不可用时明确回退到规则基线。可信 run、答案护栏、RAG 权限和引用白名单不因路由迁移而放宽。
 - 暂不删除旧 stage 路由。只有在所有部署客户端停止依赖旧门控响应、历史会话兼容读取完成、教师报告消费端完成 V3 观察，并经过至少一轮真实数据稳定性验证后，才可移除 `stage` 模式和旧阶段 Prompt。
 
 ## 数据最小化

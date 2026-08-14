@@ -6,17 +6,20 @@ function gate(code, severity, reason, evidenceRefs = []) {
 
 export function evaluateReviewGates(assessment, context = {}) {
   const gates = []
-  const items = new Map(assessment.items.map((item) => [item.id, item]))
   const allRefs = assessment.items.flatMap((item) => item.evidenceRefs)
-  if (assessment.dimensions.result === 100 && assessment.dimensions.process < 35) {
-    gates.push(gate('H1', 'hard', '结果满分但过程证据极低', allRefs))
+  const ruleScore = Number(assessment.fusion?.ruleScore)
+  const agentScore = Number(assessment.fusion?.agentScore)
+  if (assessment.fusion?.mode === 'rule-agent' && Number.isFinite(ruleScore) && Number.isFinite(agentScore) &&
+      Math.abs(ruleScore - agentScore) >= 30) {
+    gates.push(gate('H1', 'hard', '规则基线与 Agent 评价差异较大', [
+      ...allRefs,
+      ...(assessment.agentAssessment?.evidenceRefs || []),
+    ]))
   }
-  const yieldItem = items.get('R3')
-  if (yieldItem?.status === 'unobserved' || context.outputTruncated) {
-    gates.push(gate('H2', 'hard', 'Yield 断言缺失或输出被截断', yieldItem?.evidenceRefs || []))
-  }
-  const reflectionItems = ['F1', 'F2'].map((id) => items.get(id)).filter(Boolean)
-  if (reflectionItems.every((item) => item.score === 2) && reflectionItems.every((item) => item.evidenceRefs.every((ref) => !ref.startsWith('run:')))) {
+  const reflectionItems = assessment.items.filter((item) =>
+    item.dimension === 'reflection' && item.score !== null,
+  )
+  if (reflectionItems.length && reflectionItems.every((item) => item.score === 2) && reflectionItems.every((item) => item.evidenceRefs.every((ref) => !ref.startsWith('run:')))) {
     gates.push(gate('H3', 'hard', '反思满分但没有直接运行引用', reflectionItems.flatMap((item) => item.evidenceRefs)))
   }
   if (Number(context.guardrailCount || 0) >= 3 && assessment.dimensions.process >= 70) {

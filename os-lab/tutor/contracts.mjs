@@ -29,6 +29,7 @@ const EVENT_V2_TYPES = new Set([
   'review_question_asked',
   'review_answer_submitted',
   'review_answer_evaluated',
+  'review_reflection_assessed',
   'review_completed',
 ])
 
@@ -159,6 +160,21 @@ export function validateInteractionEvent(event) {
   }
   if (event.type === 'review_completed') {
     return isText(event.reviewId, 160) && Array.isArray(event.evidenceRefs) && event.evidenceRefs.every((item) => isText(item, 200))
+  }
+  if (event.type === 'review_reflection_assessed') {
+    const items = event.metadata?.reviewPerformance?.items
+    return Boolean(
+      isText(event.reviewId, 160) &&
+      Array.isArray(event.evidenceRefs) &&
+      event.evidenceRefs.every((item) => isText(item, 200)) &&
+      event.metadata?.authority === 'server' &&
+      event.metadata?.source === 'socratic-review' &&
+      isRecord(items) &&
+      ['F1', 'F2', 'T1', 'T2'].every((id) => {
+        const score = items[id]?.score
+        return isRecord(items[id]) && (score === null || (Number.isInteger(score) && score >= 0 && score <= 2))
+      }),
+    )
   }
   return true
 }

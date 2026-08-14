@@ -6,6 +6,7 @@ import {
   createAssessmentReviewPlan,
   evaluateAssessmentReviewAnswer,
   generateDeterministicReviewPlan,
+  scoreAssessmentBehavior,
 } from './assessment-agent.mjs'
 
 function evidenceInput() {
@@ -79,7 +80,7 @@ test('evidence bundle combines Tutor history, workspace behavior, trusted runs a
 test('deterministic Assessment plan is evidence-backed and capped below five', () => {
   const bundle = buildReviewEvidenceBundle(evidenceInput())
   const plan = generateDeterministicReviewPlan(bundle)
-  assert.ok(plan.questions.length >= 2 && plan.questions.length <= 3)
+  assert.equal(plan.questions.length, 3)
   assert.equal(plan.maxQuestions, 5)
   assert.equal(plan.generator.mode, 'deterministic')
   assert.ok(plan.questions.every((question) => question.evidenceRefs.length > 0))
@@ -108,7 +109,7 @@ test('Assessment review plans rotate historical questions and reject repeated re
   const repeatedRemotePlan = {
     maxQuestions: 5,
     rationale: 'Repeat recent prompts to exercise novelty validation.',
-    questions: firstPlan.questions.slice(0, 2).map((question, index) => ({
+    questions: firstPlan.questions.slice(0, 3).map((question, index) => ({
       ...question,
       questionId: `remote-repeat-${index + 1}`,
     })),
@@ -151,6 +152,11 @@ test('Assessment Agent accepts valid JSON and rejects fabricated evidence by fal
         objective: '迁移 syscall 理解', prompt: '改变调用来源后，入口约定有何变化？', reason: '检查迁移',
         passCriteria: ['指出不变量和变化'], evidenceRefs: ['run:run-passed'], requiresRunEvidence: false,
       },
+      {
+        questionId: 'remote-q3', conceptId: 'os.sched.task-state', kind: 'counterexample',
+        objective: '检查状态判断边界', prompt: '如果任务没有回到 Ready，哪条现象会最先变化？', reason: '检查边界条件',
+        passCriteria: ['指出可观察变化'], evidenceRefs: ['event:student-question'], requiresRunEvidence: false,
+      },
     ],
   }
   const fetchImpl = async () => ({
@@ -178,6 +184,51 @@ test('Assessment Agent accepts valid JSON and rejects fabricated evidence by fal
   assert.equal(invalid.agent.mode, 'deterministic')
   assert.match(invalid.agent.error, /不存在的证据/)
   assert.ok(invalid.plan.questions.every((question) => !question.evidenceRefs.includes('run:fabricated')))
+})
+
+test('Assessment scoring Agent returns an evidence-backed behavior score', async () => {
+  const bundle = buildReviewEvidenceBundle(evidenceInput())
+  const result = await scoreAssessmentBehavior(bundle, {
+    llm: { upstream: 'http://assessment.test/v1', model: 'assessment-model' },
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({
+        score: 82,
+        rationale: '学生提出假设，并在提示后完成了失败到通过的验证。',
+        strengths: ['能把调度假设与运行现象对应'],
+        improvements: ['在反思中进一步区分 AI 提醒与自己的判断'],
+        evidenceRefs: ['event:student-question', 'run:run-passed'],
+        criteria: [
+          { id: 'B1', status: 'met', rationale: '提出了状态假设', evidenceRefs: ['event:student-question'] },
+          { id: 'B4', status: 'met', rationale: '存在可信复验', evidenceRefs: ['run:run-passed'] },
+        ],
+      }) } }] }),
+    }),
+  })
+  assert.equal(result.agent.mode, 'remote')
+  assert.equal(result.assessment.status, 'scored')
+  assert.equal(result.assessment.score, 82)
+  assert.equal(result.assessment.criteria.length, 6)
+})
+
+test('Assessment scoring Agent cannot cite fabricated behavior evidence', async () => {
+  const bundle = buildReviewEvidenceBundle(evidenceInput())
+  const result = await scoreAssessmentBehavior(bundle, {
+    llm: { upstream: 'http://assessment.test/v1', model: 'assessment-model' },
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({
+        score: 100,
+        rationale: 'fabricated',
+        evidenceRefs: ['run:not-real'],
+        criteria: [],
+      }) } }] }),
+    }),
+  })
+  assert.equal(result.agent.mode, 'unavailable')
+  assert.equal(result.assessment.status, 'unavailable')
+  assert.equal(result.assessment.score, null)
+  assert.match(result.agent.error, /不存在的证据/)
 })
 
 test('answer evaluation cannot pass an implementation concept without required trusted run evidence', async () => {

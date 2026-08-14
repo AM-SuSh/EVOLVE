@@ -83,6 +83,7 @@ const manualPaneRef = ref<InstanceType<typeof ManualPane> | null>(null)
 const manualTocOpen = ref(false)
 const problemsPanelRef = ref<InstanceType<typeof ProblemsPanel> | null>(null)
 const tutorPaneRef = ref<InstanceType<typeof TutorPane> | null>(null)
+const assessmentPaneRef = ref<InstanceType<typeof AssessmentPane> | null>(null)
 /** 各面板「添加到对话」累积的附件，发送时一并交给导师。 */
 const chatAttachments = ref<ChatAttachment[]>([])
 
@@ -1636,6 +1637,7 @@ async function submitReportToTeacher(payload: {
     showIdentity.value = true
     return
   }
+  const wasCompleted = Boolean(journeyItem.value?.completed)
   try {
     const response = await fetch(apiUrl('/reports'), {
       method: 'POST',
@@ -1649,8 +1651,10 @@ async function submitReportToTeacher(payload: {
     })
     const result = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(result?.error || `服务返回 ${response.status}`)
+    await refreshLearningAccess()
+    announceUnlock(wasCompleted)
     const n = payload.attachments?.length || 0
-    toast(n ? `报告已提交给老师（含 ${n} 个附件）。` : '报告已提交给老师（重复提交会覆盖旧版本）。')
+    toast(n ? `报告、${n} 个附件和复盘记录已提交给老师。` : '报告与复盘记录已提交给老师。')
   } catch (err) {
     toast(err instanceof Error ? err.message : '提交失败，稍后再试。')
   }
@@ -2715,11 +2719,10 @@ function reviewReport(content: string) {
 }
 
 async function onSocraticReviewCompleted() {
-  const wasCompleted = Boolean(journeyItem.value?.completed)
   activeStage.value = 'reflect'
   await refreshLearningAccess()
-  toast('苏格拉底复盘已完成，并已写入实验报告。')
-  announceUnlock(wasCompleted)
+  await assessmentPaneRef.value?.refreshAssessment()
+  toast('复盘回答已完成。提交报告时会连同复盘记录一起交给老师。')
 }
 
 /* -- 导航与导出 ------------------------------------------------------------- */
@@ -3458,11 +3461,13 @@ onBeforeUnmount(() => {
               @notice="toast"
             />
             <AssessmentPane
+              ref="assessmentPaneRef"
               v-show="rightTab === 'assessment'"
               :lab="lab"
               :endpoint="endpoint"
               :session-id="sessionId"
               :can-assess="Boolean(auth && !isTeacherRole)"
+              :llm-config="llmConfig"
               @notice="toast"
               @open-evidence="navigateEvidenceRef"
             />

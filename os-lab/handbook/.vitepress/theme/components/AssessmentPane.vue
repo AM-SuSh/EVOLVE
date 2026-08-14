@@ -3,8 +3,10 @@ import { computed, ref, watch } from 'vue'
 import AssessmentScorePanel from './AssessmentScorePanel.vue'
 import {
   authHeaders,
+  hasCustomLlmConfig,
   normalizeAssessmentV2,
   type AssessmentV2,
+  type LlmConfig,
   type TutorLab,
 } from '../tutor-model'
 
@@ -16,6 +18,7 @@ const props = defineProps<{
   endpoint: string
   sessionId: string
   canAssess: boolean
+  llmConfig: LlmConfig
 }>()
 
 const emit = defineEmits<{
@@ -28,7 +31,7 @@ const assessLoading = ref(false)
 const assessError = ref('')
 
 const assessEmptyHint = computed(() => {
-  if (!props.canAssess) return '登录学生账号后，可按量规 v2 生成评价并查看细项证据链。'
+  if (!props.canAssess) return '登录学生账号后，可生成规则与 Agent 融合的学习评价。'
   if (!props.sessionId) return '学习会话尚未就绪，稍后再生成评价。'
   return '还没有服务端评价。点击「生成 / 刷新评价」后，可按细项查看运行 / 诊断 / 事件证据。'
 })
@@ -41,7 +44,11 @@ async function refreshAssessment() {
     const response = await fetch(`${props.endpoint.replace(/\/$/, '')}/assessment`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ labId: props.lab.id, sessionId: props.sessionId }),
+      body: JSON.stringify({
+        labId: props.lab.id,
+        sessionId: props.sessionId,
+        ...(hasCustomLlmConfig(props.llmConfig) ? { llm: props.llmConfig } : {}),
+      }),
     })
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) {
@@ -69,6 +76,8 @@ watch(
     assessError.value = ''
   },
 )
+
+defineExpose({ refreshAssessment })
 </script>
 
 <template>
@@ -76,7 +85,7 @@ watch(
     <header class="ws-assessment-pane-head">
       <div>
         <strong>{{ lab.label }} 学习评价</strong>
-        <small>规则评分（量规 v2）· 可点细项证据跳到运行结果 / 诊断 / 报告</small>
+        <small>行为规则与评分 Agent 融合 · 可按证据回看对话、运行与诊断</small>
       </div>
     </header>
     <div class="ws-assessment-pane-body">

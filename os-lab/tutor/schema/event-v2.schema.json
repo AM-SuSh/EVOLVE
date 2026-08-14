@@ -18,7 +18,7 @@
         "code_open", "code_save", "run_started", "run_finished", "diagnostic_opened",
         "trace_inspected", "hint_requested", "checkpoint_answered", "report_submitted", "teacher_reviewed",
         "review_started", "review_question_asked", "review_answer_submitted",
-        "review_answer_evaluated", "review_completed"
+        "review_answer_evaluated", "review_reflection_assessed", "review_completed"
       ]
     },
     "stage": { "enum": ["orient", "read", "run", "debug", "reflect", "transfer"] },
@@ -124,6 +124,10 @@
     {
       "if": { "properties": { "type": { "const": "review_completed" } }, "required": ["type"] },
       "then": { "required": ["reviewId", "evidenceRefs"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "review_reflection_assessed" } }, "required": ["type"] },
+      "then": { "required": ["reviewId", "evidenceRefs", "metadata"] }
     }
   ]
 }

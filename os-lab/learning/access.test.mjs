@@ -12,7 +12,7 @@ test('students only receive published labs after the previous trusted completion
   const progressed = buildLearningAccess({
     role: 'student',
     openLab: 'lab3',
-    evidence: [{ labId: 'lab1', verified: true, reviewCompleted: true }],
+    evidence: [{ labId: 'lab1', verified: true, reviewCompleted: true, reportSubmitted: true }],
   })
   assert.equal(accessForLab(progressed, 'lab2').unlocked, true)
   assert.equal(accessForLab(progressed, 'lab3').unlocked, false)
@@ -22,7 +22,7 @@ test('trusted evidence alone does not unlock later labs before the teacher distr
   const notDistributed = buildLearningAccess({
     role: 'student',
     openLab: 'lab1',
-    evidence: [{ labId: 'lab1', verified: true, reviewCompleted: true }],
+    evidence: [{ labId: 'lab1', verified: true, reviewCompleted: true, reportSubmitted: true }],
   })
   assert.equal(accessForLab(notDistributed, 'lab1').unlocked, true)
   assert.equal(accessForLab(notDistributed, 'lab2').unlocked, false)
@@ -42,10 +42,29 @@ test('new lifecycle ignores a reflected compatibility field unless it is explici
   const grandfathered = buildLearningAccess({
     role: 'student',
     openLab: 'lab2',
-    evidence: [{ labId: 'lab1', verified: true, legacyReflected: true }],
+    evidence: [{ labId: 'lab1', verified: true, legacyReflected: true, reportSubmitted: true }],
   })
   assert.equal(accessForLab(grandfathered, 'lab1').completed, true)
   assert.equal(accessForLab(grandfathered, 'lab2').unlocked, true)
+})
+
+test('completed review does not unlock the next lab until report and review are submitted', () => {
+  const reviewOnly = buildLearningAccess({
+    role: 'student',
+    openLab: 'lab2',
+    evidence: [{ labId: 'lab1', verified: true, reviewCompleted: true }],
+  })
+  assert.equal(accessForLab(reviewOnly, 'lab1').completed, false)
+  assert.equal(accessForLab(reviewOnly, 'lab2').unlocked, false)
+  assert.match(accessForLab(reviewOnly, 'lab2').reason, /提交实验报告与复盘/)
+
+  const submitted = buildLearningAccess({
+    role: 'student',
+    openLab: 'lab2',
+    evidence: [{ labId: 'lab1', verified: true, reviewCompleted: true, reportSubmitted: true }],
+  })
+  assert.equal(accessForLab(submitted, 'lab1').completed, true)
+  assert.equal(accessForLab(submitted, 'lab2').unlocked, true)
 })
 
 test('already issued labs remain readable and teachers can preview every manual', () => {
