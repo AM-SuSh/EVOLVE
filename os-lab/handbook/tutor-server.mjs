@@ -128,7 +128,12 @@ import {
   listUsers,
   login,
   logout,
+  countStudentsInClass,
+  deleteStudentAccount,
   register,
+  renameUserClassName,
+  resetStudentPassword,
+  setStudentClassName,
   resolveSession,
   saveAssessment,
   saveMasteryObservations,
@@ -3828,6 +3833,96 @@ const server = http.createServer(async (request, response) => {
         json(response, 200, { ok: true, scores: listFinalPerformance(metric) }, origin)
         return
       }
+      if (request.method === 'POST' && pathname === '/teacher/accounts/set-class') {
+        const body = await readBody(request)
+        const result = setStudentClassName(body.username, body.className)
+        json(response, result.ok ? 200 : 400, result, origin)
+        return
+      }
+      if (request.method === 'POST' && pathname === '/teacher/accounts/reset-password') {
+        const body = await readBody(request)
+        const result = resetStudentPassword(body.username, body.password)
+        json(response, result.ok ? 200 : 400, result, origin)
+        return
+      }
+      if (request.method === 'POST' && pathname === '/teacher/accounts/delete') {
+        const body = await readBody(request)
+        const result = deleteStudentAccount(body.username)
+        json(response, result.ok ? 200 : 400, result, origin)
+        return
+      }
+      if (request.method === 'POST' && pathname === '/teacher/classes/create') {
+        const body = await readBody(request)
+        const name = String(body.name || '').trim()
+        if (!CLASS_NAME_RE.test(name)) {
+          json(response, 400, { error: '班级名需为 1-32 位字母、数字、中文、_ 或 -' }, origin)
+          return
+        }
+        const classNames = await availableClassNames()
+        if (classNames.includes(name)) {
+          json(response, 400, { error: `班级 ${name} 已存在` }, origin)
+          return
+        }
+        const config = await readTeacherConfig()
+        const classes = { ...(config.classes || {}) }
+        classes[name] = classes[name] || { assignments: {} }
+        const next = await writeTeacherConfig({ classes })
+        json(response, 200, { ok: true, name, classNames: await availableClassNames(), config: { ...next, llm: { ...next.llm, apiKey: next.llm?.apiKey ? '（已设置）' : '' } } }, origin)
+        return
+      }
+      if (request.method === 'POST' && pathname === '/teacher/classes/rename') {
+        const body = await readBody(request)
+        const from = String(body.from || '').trim()
+        const to = String(body.to || '').trim()
+        if (!CLASS_NAME_RE.test(from) || !CLASS_NAME_RE.test(to)) {
+          json(response, 400, { error: '班级名需为 1-32 位字母、数字、中文、_ 或 -' }, origin)
+          return
+        }
+        if (from === to) {
+          json(response, 200, { ok: true, from, to, updated: 0 }, origin)
+          return
+        }
+        const classNames = await availableClassNames()
+        if (!classNames.includes(from)) {
+          json(response, 400, { error: `班级 ${from} 不存在` }, origin)
+          return
+        }
+        if (classNames.includes(to)) {
+          json(response, 400, { error: `班级 ${to} 已存在` }, origin)
+          return
+        }
+        const config = await readTeacherConfig()
+        const classes = { ...(config.classes || {}) }
+        classes[to] = { ...(classes[from] || { assignments: {} }) }
+        delete classes[from]
+        await writeTeacherConfig({ classes })
+        const renamed = renameUserClassName(from, to)
+        json(response, 200, { ok: true, from, to, updated: renamed.updated || 0, classNames: await availableClassNames() }, origin)
+        return
+      }
+      if (request.method === 'POST' && pathname === '/teacher/classes/delete') {
+        const body = await readBody(request)
+        const name = String(body.name || '').trim()
+        if (!CLASS_NAME_RE.test(name)) {
+          json(response, 400, { error: '班级名需为 1-32 位字母、数字、中文、_ 或 -' }, origin)
+          return
+        }
+        const studentCount = countStudentsInClass(name)
+        if (studentCount > 0) {
+          json(response, 400, { error: `班级 ${name} 仍有 ${studentCount} 名学生，请先调整班级后再删除` }, origin)
+          return
+        }
+        const config = await readTeacherConfig()
+        const classes = { ...(config.classes || {}) }
+        if (!Object.prototype.hasOwnProperty.call(classes, name)) {
+          json(response, 400, { error: `班级 ${name} 不在教师配置中` }, origin)
+          return
+        }
+        delete classes[name]
+        await writeTeacherConfig({ classes })
+        json(response, 200, { ok: true, name, classNames: await availableClassNames() }, origin)
+        return
+      }
       if (request.method === 'GET' && pathname === '/teacher/overview') {
         const config = await readTeacherConfig()
         const classNames = await availableClassNames()
@@ -3837,9 +3932,12 @@ const server = http.createServer(async (request, response) => {
         const byUser = new Map(workspaces.map((w) => [w.user, w]))
         const students = registered.map((u) => ({
           className: u.className || '',
+          createdAt: u.createdAt || '',
           ...(byUser.get(u.username) || { user: u.username, applied: [], current: null, variants: {}, extraBins: [] }),
         }))
-        for (const w of workspaces) if (!students.some((s) => s.user === w.user)) students.push({ className: '', ...w })
+        for (const w of workspaces) {
+          if (!students.some((s) => s.user === w.user)) students.push({ className: '', createdAt: '', ...w })
+        }
         json(response, 200, {
           config: { ...config, llm: { ...config.llm, apiKey: config.llm?.apiKey ? '（已设置）' : '' } },
           classNames,
