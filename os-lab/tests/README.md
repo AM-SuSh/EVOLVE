@@ -339,7 +339,7 @@ Linux/macOS：将 `cargo test` 的 `--target` 换为对应 host triple；`os-vm`
 - [ ] Lab1 QEMU：`Hello, OS!`、`EVOLVE kernel lab1 is running on QEMU virt.`
 - [ ] `cargo check -p kernel --features lab1`…`lab5` 均可编译
 
-**说明**：全 workspace 与各 lab feature 的 `cargo clippy -- -D warnings` 均已通过（2026-06-27 终验）。详见 [`docs/os-lab.md` §5.11](../../docs/os-lab.md#511-完整验证) 与 [仓库总览](../../README.md)。
+**说明**：全 workspace 与各 lab feature 的 `cargo clippy -- -D warnings` 均已通过（2026-06-27 终验）。详见 [`docs/os-lab.md` §5.14](../../docs/os-lab.md#514-完整验证) 与 [仓库总览](../../README.md)。
 
 ## 二期 / Lab6 验证（成员 B，2026-07-25）
 
@@ -379,4 +379,4 @@ All processes exited.
 - [ ] `make test-lab6` 输出含上表全部关键行
 - [ ] 阅读 `labs/lab6-disk-fs.md` 并完成【任务二】，对照 `labs/answers/lab6-answers.md`
 
-专项进度见 [docs/lab6-8.md](../../docs/lab6-8.md)。
+专项验收与 syscall 接口见 [docs/os-lab.md](../../docs/os-lab.md)；分工与进度见 [progress.md](../../progress.md)。

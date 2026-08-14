@@ -4,7 +4,7 @@
 
 ## 1. 环境要求
 
-依据赛题 [Task.md](../Task.md) 与参考环境 [tg-rcore-tutorial](https://github.com/rcore-os/tg-rcore-tutorial)：
+依据赛题要求（赛题基线见 [README.md](../README.md)）与参考环境 [tg-rcore-tutorial](https://github.com/rcore-os/tg-rcore-tutorial)：
 
 
 | 类别           | 要求                                                           |
