@@ -5,10 +5,14 @@ import { normalizeReviewEvaluation, normalizeReviewPlan } from './review-contrac
 
 export const ASSESSMENT_AGENT_PROMPT_VERSION = 'assessment-review-v2'
 export const ASSESSMENT_SCORING_PROMPT_VERSION = 'assessment-behavior-score-v1'
+export const DEFAULT_ASSESSMENT_AGENT_TIMEOUT_MS = 120_000
 
 const MAX_EVENTS = 160
 const MAX_MESSAGES = 120
 const MAX_TEXT = 1_200
+const MAX_SCORING_EVENTS = 80
+const MAX_SCORING_RUNS = 20
+const MAX_SCORING_MESSAGES = 48
 
 function text(value, max = MAX_TEXT) {
   return String(value || '').trim().slice(0, max)
@@ -348,10 +352,14 @@ function completionText(payload) {
   return ''
 }
 
-async function callJsonAgent({ llm, system, input, fetchImpl = fetch }) {
+async function callJsonAgent({ llm, system, input, maxTokens = 2_400, fetchImpl = fetch }) {
   if (!llm?.upstream || !llm?.model) throw new Error('Assessment Agent model is not configured')
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), Math.max(1_000, Number(llm.timeoutMs || 45_000)))
+  const configuredTimeout = Number(llm.timeoutMs || DEFAULT_ASSESSMENT_AGENT_TIMEOUT_MS)
+  const timeoutMs = Number.isFinite(configuredTimeout)
+    ? Math.max(1_000, Math.min(configuredTimeout, 300_000))
+    : DEFAULT_ASSESSMENT_AGENT_TIMEOUT_MS
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const response = await fetchImpl(`${String(llm.upstream).replace(/\/$/, '')}/chat/completions`, {
       method: 'POST',
@@ -363,7 +371,7 @@ async function callJsonAgent({ llm, system, input, fetchImpl = fetch }) {
       body: JSON.stringify({
         model: llm.model,
         temperature: 0.1,
-        max_tokens: 2_400,
+        max_tokens: maxTokens,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: system },
@@ -374,6 +382,13 @@ async function callJsonAgent({ llm, system, input, fetchImpl = fetch }) {
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(payload?.error?.message || `Assessment Agent returned ${response.status}`)
     return parseJsonObject(completionText(payload))
+  } catch (error) {
+    if (controller.signal.aborted || error?.name === 'AbortError') {
+      const timeoutError = new Error(`Assessment Agent request timed out after ${Math.round(timeoutMs / 1_000)} seconds`)
+      timeoutError.name = 'AssessmentTimeoutError'
+      throw timeoutError
+    }
+    throw error
   } finally {
     clearTimeout(timeout)
   }
@@ -398,6 +413,12 @@ function boundedTextList(value, maxItems = 4, maxLength = 500) {
     .map((item) => text(item, maxLength))
     .filter(Boolean)
     .slice(0, maxItems)
+}
+
+function sampleTimeline(items, limit) {
+  if (items.length <= limit) return items
+  return Array.from({ length: limit }, (_, index) =>
+    items[Math.round(index * (items.length - 1) / (limit - 1))])
 }
 
 function validBehaviorRefs(value, validRefs) {
@@ -452,6 +473,70 @@ function normalizeBehaviorScore(raw, bundle, llm) {
   }
 }
 
+function compactBehaviorScoringInput(bundle) {
+  const events = sampleTimeline(bundle.events, MAX_SCORING_EVENTS).map((event) => ({
+    ...event,
+    content: text(event.content, 600),
+    path: text(event.path, 240),
+    file: text(event.file, 240),
+  }))
+  const runs = sampleTimeline(bundle.runs, MAX_SCORING_RUNS).map((run) => ({
+    ...run,
+    assertions: run.assertions.slice(0, 16).map((assertion) => ({
+      id: assertion.id,
+      label: assertion.label,
+      passed: assertion.passed,
+    })),
+  }))
+  const messages = sampleTimeline(bundle.conversation.messages, MAX_SCORING_MESSAGES).map((message) => ({
+    ...message,
+    content: text(message.content, 1_000),
+    evidenceRefs: message.evidenceRefs.slice(0, 8),
+  }))
+  const visibleRefs = new Set([
+    ...events.map((event) => event.ref),
+    ...runs.map((run) => run.ref),
+    bundle.report?.ref,
+  ].filter(Boolean))
+  const ruleAssessment = bundle.rubricAssessment
+    ? {
+        version: bundle.rubricAssessment.version,
+        total: bundle.rubricAssessment.total,
+        ruleScore: bundle.rubricAssessment.ruleScore,
+        dimensions: bundle.rubricAssessment.dimensions,
+        trajectory: bundle.rubricAssessment.trajectory,
+        items: (Array.isArray(bundle.rubricAssessment.items) ? bundle.rubricAssessment.items : []).map((item) => ({
+          id: item.id,
+          dimension: item.dimension,
+          label: item.label,
+          score: item.score,
+          status: item.status,
+          evidenceRefs: (Array.isArray(item.evidenceRefs) ? item.evidenceRefs : [])
+            .filter((ref) => visibleRefs.has(ref)),
+          note: text(item.note, 240),
+        })),
+      }
+    : null
+  return {
+    task: 'score-learning-behavior',
+    rubric: BEHAVIOR_CRITERIA.map(([id, label]) => ({ id, label })),
+    labId: bundle.labId,
+    sessionId: bundle.sessionId,
+    events,
+    runs,
+    conversation: {
+      messageCount: bundle.conversation.messageCount,
+      sampledCount: messages.length,
+      messages,
+    },
+    report: bundle.report
+      ? { ref: bundle.report.ref, content: text(bundle.report.content, 3_000) }
+      : null,
+    ruleAssessment,
+    validEvidenceRefs: bundle.validEvidenceRefs.filter((ref) => visibleRefs.has(ref)),
+  }
+}
+
 /**
  * 独立 Assessment Agent 只评价学生如何借助 AI 推进学习。
  * Lab 断言是否通过仅能作为“完成了可信验证”的行为证据，不能形成单独结果分。
@@ -482,6 +567,7 @@ export async function scoreAssessmentBehavior(bundle, options = {}) {
     const raw = await callJsonAgent({
       llm: options.llm,
       fetchImpl: options.fetchImpl,
+      maxTokens: 1_600,
       system: [
         '你是独立的 EVOLVE Assessment scoring Agent，只评价学生如何借助 AI 推进学习。只输出 JSON。',
         '综合学生消息、AI 回复、工作区行为、可信运行、诊断与反思；不得只看最终运行是否通过。',
@@ -492,28 +578,21 @@ export async function scoreAssessmentBehavior(bundle, options = {}) {
         '输出字段：score,rationale,strengths[],improvements[],evidenceRefs[],criteria[]。',
         'criteria 必须覆盖 B1-B6；每项含 id,status(met|partial|not-met|unobserved),rationale,evidenceRefs。',
       ].join('\n'),
-      input: {
-        task: 'score-learning-behavior',
-        rubric: BEHAVIOR_CRITERIA.map(([id, label]) => ({ id, label })),
-        labId: bundle.labId,
-        sessionId: bundle.sessionId,
-        events: bundle.events,
-        runs: bundle.runs,
-        conversation: bundle.conversation,
-        report: bundle.report,
-        ruleAssessment: bundle.rubricAssessment,
-        validEvidenceRefs: bundle.validEvidenceRefs,
-      },
+      input: compactBehaviorScoringInput(bundle),
     })
     const assessment = normalizeBehaviorScore(raw, bundle, options.llm)
     return { assessment, agent: { mode: 'remote', model: assessment.model, error: '' } }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    const timedOut = error?.name === 'AssessmentTimeoutError'
     return {
       assessment: {
-        status: 'unavailable', mode: 'unavailable', score: null,
+        status: timedOut ? 'timeout' : 'unavailable', mode: 'unavailable', score: null,
         model: text(options.llm.model, 160), promptVersion: ASSESSMENT_SCORING_PROMPT_VERSION,
-        rationale: 'Agent 本次未完成评价，综合分已回退到规则基线。', strengths: [],
+        rationale: timedOut
+          ? '评分 Agent 响应超时，本次综合分暂时回退到规则基线；可以稍后刷新评价。'
+          : 'Agent 本次未完成评价，综合分已回退到规则基线。',
+        strengths: [],
         improvements: [], evidenceRefs: [], criteria: [], error: message,
       },
       agent: { mode: 'unavailable', model: options.llm.model, error: message },

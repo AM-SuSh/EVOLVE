@@ -188,27 +188,97 @@ test('Assessment Agent accepts valid JSON and rejects fabricated evidence by fal
 
 test('Assessment scoring Agent returns an evidence-backed behavior score', async () => {
   const bundle = buildReviewEvidenceBundle(evidenceInput())
+  let remoteInput
   const result = await scoreAssessmentBehavior(bundle, {
     llm: { upstream: 'http://assessment.test/v1', model: 'assessment-model' },
-    fetchImpl: async () => ({
-      ok: true,
-      json: async () => ({ choices: [{ message: { content: JSON.stringify({
-        score: 82,
-        rationale: '学生提出假设，并在提示后完成了失败到通过的验证。',
-        strengths: ['能把调度假设与运行现象对应'],
-        improvements: ['在反思中进一步区分 AI 提醒与自己的判断'],
-        evidenceRefs: ['event:student-question', 'run:run-passed'],
-        criteria: [
-          { id: 'B1', status: 'met', rationale: '提出了状态假设', evidenceRefs: ['event:student-question'] },
-          { id: 'B4', status: 'met', rationale: '存在可信复验', evidenceRefs: ['run:run-passed'] },
-        ],
-      }) } }] }),
-    }),
+    fetchImpl: async (_url, init) => {
+      const request = JSON.parse(init.body)
+      remoteInput = JSON.parse(request.messages.at(-1).content)
+      assert.equal(request.max_tokens, 1_600)
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: JSON.stringify({
+          score: 82,
+          rationale: '学生提出假设，并在提示后完成了失败到通过的验证。',
+          strengths: ['能把调度假设与运行现象对应'],
+          improvements: ['在反思中进一步区分 AI 提醒与自己的判断'],
+          evidenceRefs: ['event:student-question', 'run:run-passed'],
+          criteria: [
+            { id: 'B1', status: 'met', rationale: '提出了状态假设', evidenceRefs: ['event:student-question'] },
+            { id: 'B4', status: 'met', rationale: '存在可信复验', evidenceRefs: ['run:run-passed'] },
+          ],
+        }) } }] }),
+      }
+    },
   })
   assert.equal(result.agent.mode, 'remote')
   assert.equal(result.assessment.status, 'scored')
   assert.equal(result.assessment.score, 82)
   assert.equal(result.assessment.criteria.length, 6)
+  assert.equal(remoteInput.conversation.sampledCount, 3)
+  assert.equal(remoteInput.ruleAssessment, null)
+  assert.deepEqual(remoteInput.validEvidenceRefs, bundle.validEvidenceRefs)
+})
+
+test('Assessment scoring Agent reports a distinct timeout fallback', async () => {
+  const bundle = buildReviewEvidenceBundle(evidenceInput())
+  const result = await scoreAssessmentBehavior(bundle, {
+    llm: { upstream: 'http://assessment.test/v1', model: 'assessment-model' },
+    fetchImpl: async () => {
+      const error = new Error('This operation was aborted')
+      error.name = 'AbortError'
+      throw error
+    },
+  })
+  assert.equal(result.agent.mode, 'unavailable')
+  assert.equal(result.assessment.status, 'timeout')
+  assert.match(result.assessment.rationale, /响应超时/)
+  assert.match(result.assessment.error, /120 seconds/)
+})
+
+test('Assessment scoring Agent samples the full behavior timeline without dropping its endpoints', async () => {
+  const input = evidenceInput()
+  input.events = Array.from({ length: 120 }, (_, index) => ({
+    id: `timeline-${index}`,
+    type: index % 2 === 0 ? 'student_message' : 'ai_response',
+    timestamp: new Date(Date.UTC(2026, 7, 12, 1, index)).toISOString(),
+    content: `timeline event ${index}`,
+  }))
+  input.runs = Array.from({ length: 25 }, (_, index) => ({
+    runId: `run-${index}`,
+    trusted: true,
+    verified: index === 24,
+    assertions: [{ id: `assertion-${index}`, passed: index === 24 }],
+  }))
+  input.conversation.messages = Array.from({ length: 60 }, (_, index) => ({
+    role: index % 2 === 0 ? 'student' : 'assistant',
+    content: `message ${index}`,
+  }))
+  input.reportDraft.markdownBody = '报告证据'.repeat(1_200)
+  const bundle = buildReviewEvidenceBundle(input)
+  let remoteInput
+  const result = await scoreAssessmentBehavior(bundle, {
+    llm: { upstream: 'http://assessment.test/v1', model: 'assessment-model' },
+    fetchImpl: async (_url, init) => {
+      remoteInput = JSON.parse(JSON.parse(init.body).messages.at(-1).content)
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: JSON.stringify({
+          score: 70,
+          rationale: '覆盖完整时间线。',
+          evidenceRefs: ['event:timeline-0', 'event:timeline-119'],
+          criteria: [],
+        }) } }] }),
+      }
+    },
+  })
+  assert.equal(result.assessment.status, 'scored')
+  assert.equal(remoteInput.events.length, 80)
+  assert.equal(remoteInput.events[0].ref, 'event:timeline-0')
+  assert.equal(remoteInput.events.at(-1).ref, 'event:timeline-119')
+  assert.equal(remoteInput.runs.length, 20)
+  assert.equal(remoteInput.conversation.messages.length, 48)
+  assert.equal(remoteInput.report.content.length, 3_000)
 })
 
 test('Assessment scoring Agent cannot cite fabricated behavior evidence', async () => {

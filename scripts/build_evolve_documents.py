@@ -313,12 +313,12 @@ def prepare_markdown(source: Path, output: Path, kind: str):
         title = "EVOLVE 总体实验技术文档"
         subtitle = "Evolving Virtual OS Learning & Verification Environment"
         kicker = "总体实验报告 · 技术实现与代码闭合审查"
-        date = "版本基线：2026 年 8 月 13 日"
+        date = "版本基线：2026 年 8 月 14 日"
     else:
         title = "EVOLVE 答辩演讲稿"
         subtitle = "配套《EVOLVE 答辩演示》逐页讲稿"
         kicker = "技术方案深层讲解版"
-        date = "演讲基线：2026 年 8 月 13 日"
+        date = "演讲基线：2026 年 8 月 14 日"
     front = f"""---
 title: "{title}"
 subtitle: "{subtitle}"

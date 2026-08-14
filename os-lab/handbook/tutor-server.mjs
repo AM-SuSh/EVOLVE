@@ -26,6 +26,7 @@ import { deriveMasteryUpdates } from '../learning/mastery.mjs'
 import {
   buildReviewEvidenceBundle,
   createAssessmentReviewPlan,
+  DEFAULT_ASSESSMENT_AGENT_TIMEOUT_MS,
   evaluateAssessmentReviewAnswer,
   scoreAssessmentBehavior,
 } from '../learning/assessment-agent.mjs'
@@ -1338,11 +1339,17 @@ async function buildCurrentReviewBundle(userId, sessionId, labId, assessment = n
 
 async function assessmentLlm(studentLlm) {
   const tutorLlm = await resolveLlm(studentLlm)
+  const configuredTimeout = Number(
+    process.env.OS_LAB_ASSESSMENT_TIMEOUT_MS || DEFAULT_ASSESSMENT_AGENT_TIMEOUT_MS,
+  )
   return {
     ...tutorLlm,
     upstream: (process.env.OS_LAB_ASSESSMENT_BASE_URL || tutorLlm.upstream).replace(/\/$/, ''),
     model: process.env.OS_LAB_ASSESSMENT_MODEL || tutorLlm.model,
     apiKey: process.env.OS_LAB_ASSESSMENT_API_KEY || tutorLlm.apiKey,
+    timeoutMs: Number.isFinite(configuredTimeout)
+      ? Math.max(1_000, Math.min(configuredTimeout, 300_000))
+      : DEFAULT_ASSESSMENT_AGENT_TIMEOUT_MS,
   }
 }
 

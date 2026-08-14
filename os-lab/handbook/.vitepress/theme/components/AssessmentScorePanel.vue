@@ -52,6 +52,7 @@ const agentScored = computed(() =>
 function agentStatusLabel() {
   if (agentScored.value) return '已参与融合'
   if (agentAssessment.value?.status === 'insufficient-evidence') return '证据不足'
+  if (agentAssessment.value?.status === 'timeout') return '响应超时'
   if (agentAssessment.value?.status === 'unavailable') return '本次未参与'
   return '尚未运行'
 }
@@ -189,7 +190,13 @@ function onChip(refValue: string) {
         </header>
         <ul class="asp-items">
           <li v-for="(item, index) in group.items" :key="item.id" class="asp-item" :data-status="item.status">
-            <button type="button" class="asp-item-toggle" @click="toggle(item.id)">
+            <div v-if="isReviewQuestion(item)" class="asp-item-toggle asp-item-toggle--review">
+              <span class="asp-item-id">{{ itemDisplayId(item, index) }}</span>
+              <span class="asp-item-score">
+                {{ item.score === null ? '—' : `${item.score}/2` }}
+              </span>
+            </div>
+            <button v-else type="button" class="asp-item-toggle" @click="toggle(item.id)">
               <span class="asp-item-id">{{ itemDisplayId(item, index) }}</span>
               <span class="asp-item-label">{{ item.label }}</span>
               <span class="asp-item-status">{{ itemStatusLabel(item) }}</span>
@@ -203,7 +210,7 @@ function onChip(refValue: string) {
                 aria-hidden="true"
               />
             </button>
-            <div v-if="expanded[item.id]" class="asp-item-body">
+            <div v-if="!isReviewQuestion(item) && expanded[item.id]" class="asp-item-body">
               <p v-if="item.note" class="asp-note">{{ item.note }}</p>
               <p v-else-if="item.status === 'unobserved' || item.score === null" class="asp-note faint">
                 未观察到对应证据
@@ -514,6 +521,10 @@ function onChip(refValue: string) {
   background: color-mix(in srgb, var(--ws-accent, var(--vp-c-brand-1)) 6%, transparent);
 }
 
+.asp-item-toggle--review {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .asp-item-id {
   color: var(--ws-accent, var(--vp-c-brand-1));
   font-size: 12px;
@@ -624,6 +635,10 @@ function onChip(refValue: string) {
 
   .asp-item-score {
     display: none;
+  }
+
+  .asp-item-toggle--review .asp-item-score {
+    display: block;
   }
 
   .asp-item-body {

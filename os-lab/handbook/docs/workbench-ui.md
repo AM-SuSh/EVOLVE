@@ -131,7 +131,7 @@
 
 挂载位置：学习支持 · **学习评价**页签（与实验报告同级；`AssessmentPane` → `AssessmentScorePanel`）。
 
-- **生成**：学生登录后点「生成 / 刷新评价」→ `POST /assessment`，body `{ labId, sessionId, llm? }`；服务端聚合权威对话、学习事件、可信运行与报告证据，返回 `rubric-v3.2.0` 的规则基线、Assessment Agent 评价和融合结果。
+- **生成**：学生登录后点「生成 / 刷新评价」→ `POST /assessment`，body `{ labId, sessionId, llm? }`；服务端聚合权威对话、学习事件、可信运行与报告证据，返回 `rubric-v3.3.0` 的规则基线、Assessment Agent 评价和融合结果。评分 Agent 默认允许 120 秒响应，可通过 `OS_LAB_ASSESSMENT_TIMEOUT_MS` 配置；超时会明确显示“响应超时”并回退规则基线，学生可以稍后刷新。
 - **展示**：融合分 + 规则基线 + Agent 评价 + 过程/反思。评分细项默认收起，不再重复展示成组的运行结果标签；`status === unobserved` 或无分显示「未观察到」，禁止凭空满分话术。
 - **跳转**：细项 chips 经 `LabWorkspace.navigateEvidenceRef`：
   - `run:` → 底部测试结果（无断言则终端）
