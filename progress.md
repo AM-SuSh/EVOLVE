@@ -1,5 +1,50 @@
 # EVOLVE 项目进度总览
 
+## 2026-08-14 - Task: 加强多账号浏览器隔离并收口事件同步与会话快照
+
+### What was done
+- 本地学习事件从全局 `os-lab-tutor-events-v4` 改为按账号分区存储（`os-lab-tutor-events-v5:<owner>`），登录账号按 username 分区，未登录使用随机匿名标识；退出登录轮换匿名标识，避免多账号共用浏览器时混用历史事件与匿名记录。
+- 事件同步改为 per-account outbox：新事件先写本账号分区并进入待同步队列，失败保留、成功清除；页面加载、登录和切换账号时自动补传，服务端明确拒绝（非 401 的 4xx）后停止重试但保留本地档案。
+- 新增 `GET /events/mine`：登录后从服务端回读当前账号自己的事件，前端按事件 id 与本地合并重建旅程；切换账号时清空内存事件/对话并按新账号重载。
+- 会话快照不再追加完整 `.jsonl`，`saveConversationSnapshot` 只维护原子 `.json`；内容相同（忽略 `updatedAt` 与消息 id）时跳过重复落盘，消除服务端权威保存与前端 PUT 造成的重复写盘。
+- 成功完成一次服务端聊天气回合后，前端不再重复 PUT `/conversations/mine`（服务端已保存权威快照）；本地 localStorage 仍作为离线缓冲。
+- 匿名对话分区改用随机匿名标识，退出登录后不再被下一位匿名用户复用。
+- 新增 `student-data-store.test.mjs`，并在 `db.test.mjs` 增加 `listLearningEvents` 回读用例；测试列表同步更新。
+
+### Testing
+- `npm test`：通过，136 项测试全绿；覆盖新快照去重/JSONL 停止增长、按账号事件回读及既有业务链路。
+- `npx vitepress build`：通过；VitePress 客户端/服务端 bundle 与页面渲染完成。
+- `node --check`：`tutor-server.mjs`、`db.mjs`、`student-data-store.mjs` 语法通过。
+
+### Notes
+- 主要改动：`tutor-model.ts`、`LabWorkspace.vue`、`tutor-server.mjs`、`db.mjs`、`db.test.mjs`、`student-data-store.mjs`、`student-data-store.test.mjs`、`package.json`。
+- 旧的全局 `os-lab-tutor-events-v4` 保留但不再读写，避免继续误用跨账号历史；未做自动迁移到任一账号，防止历史数据被错误归属。
+- 工作区中与本任务无关的既有修改保持原样，未回退。
+
+---
+
+## 2026-08-14 - Task: 清理 Trace 页面删除后的前端残留入口与文档
+
+### What was done
+- 工作台顶栏“学习支持”按钮提示由“显示/隐藏报告与 Trace”改为“显示/隐藏学习支持”，移除对已删除 Trace 页的 UI 文案引用。
+- 删除聊天附件溯源类型中仅供旧 TraceViewer 定位帧使用的 `seq?: number` 死字段（`chat-attachments.ts` 与 `tutor-model.ts` 中的重复定义）。
+- `guide/beginner.md`：运行反馈检查第 3 条改为“测试结果中是否出现由真实 Trace 统计形成的事件断言”；证据表格“Trace 事件”改为“Trace 统计断言（在测试结果中查看）”；附件溯源说明改为历史 Trace 附件打开对应测试结果或终端；删除“在 Trace 中使用插入报告”的过时指引。
+- `docs/day7-demo-runbook.md`：不再要求“打开 Trace”展示原始 `task_switch`，改为展示测试结果中的 `trace-task-switch` 断言；AI 导师证据门控不再把 Trace 作为可添加附件，`trace:` 引用回到对应测试结果或终端。
+- `lab-packages/MEMBER-A-7DAY/day1-gap-table.md`：演示脚本第 4 步改为在测试结果中查看由真实 Trace 统计形成的断言并写入报告。
+- 保留 1.md 第三点要求的 Trace 数据链：`GET /runs/:id/trace`、`trace.jsonl` 生成与哈希校验、`trace:<runId>` 引用、历史 `trace_inspected` 兼容统计、`ChatAttachmentSource` 的 `trace` 证据来源类型、`LabWorkspace` 的 `trace:` 回退、评估面板 trace chip 样式与终端 `TRACE_V1` 过滤。
+
+### Testing
+- `npm test`：通过，136 项测试全绿；覆盖 Trace 存储与篡改校验、事件契约、评分、RAG 引用及既有业务链路。
+- `npm run build`：通过；同步 26 份 Markdown，VitePress 客户端/服务端 bundle 与页面渲染完成。
+- 本地开发站点 `http://localhost:5173/` 返回 200；Tutor 服务 `http://127.0.0.1:8787/health` 返回 200。
+
+### Notes
+- 主要改动：`WorkspaceNav.vue`、`chat-attachments.ts`、`tutor-model.ts`、`guide/beginner.md`、`docs/day7-demo-runbook.md`、`lab-packages/MEMBER-A-7DAY/day1-gap-table.md`。
+- 删除边界仅限学生端已删除 Trace 页的残留 UI、死字段与过时文档；Trace 数据链和评分兼容逻辑保留。
+- 工作区中另有并发的“多账号事件同步”未提交改动，与本任务无关，未回退；`tutor-model.ts` 仅删除 `seq` 字段。
+
+---
+
 ## 2026-08-13 - Task: 精简学生端 AI 来源标记并移除 Trace 展示页
 
 ### What was done

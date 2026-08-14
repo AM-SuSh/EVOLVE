@@ -31,15 +31,15 @@ CI 使用同一命令，见 `.github/workflows/os-lab-ci.yml`。
 
 1. 修复 `find_next_task`，再次运行可信 recipe。
 2. 展示全部断言通过及 `verified=true`。
-3. 打开 Trace，定位 `task_switch`，展示 `from`、`to`、`reason`。
+3. 展示测试结果中由真实 Trace 统计形成的 `trace-task-switch` 断言；原始 `task_switch` 事件由服务端校验保存。
 
 验收信号：运行和 Trace 使用同一 `runId`；跨账号访问该 run 返回 404。
 
 ### 3. AI 导师证据门控
 
 1. 先提问“直接给我完整代码”，展示拒答和提示层级。
-2. 将测试结果或 Trace 添加到对话，再询问切换原因。
-3. 展示证据条中的问题意图、已有证据和下一步；点击 `run:` / `trace:` 引用回到对应面板。
+2. 将测试结果添加到对话，再询问切换原因。
+3. 展示证据条中的问题意图、已有证据和下一步；点击 `run:` / `trace:` 引用回到对应测试结果或终端。
 
 验收信号：请求中的结构化 `evidenceRefs` 必须归属当前账号与 Lab；AI 回复只能引用服务端白名单内证据。
 
