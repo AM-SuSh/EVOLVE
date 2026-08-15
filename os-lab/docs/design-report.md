@@ -2,7 +2,7 @@
 
 > 本报告总结自研操作系统教学实验环境 EVOLVE 的设计思路、与 AI 合作的实现过程，以及学习效果评估。
 >
-> 配套文档：架构说明见 [architecture.md](architecture.md)、三方对比见 [comparison.md](comparison.md)、AI 协作记录见 [ai-collaboration.md](ai-collaboration.md)、原始对比数据见 [comparison-data.md](comparison-data.md)。
+> 配套文档：架构说明见 [architecture.md](architecture.md)、三方对比见 [comparison.md](comparison.md)、AI 系统技术说明见 [agent-system-technical.md](agent-system-technical.md)、原始对比数据见 [comparison-data.md](comparison-data.md)。
 
 ## 一、设计思路与目标
 
@@ -102,7 +102,7 @@ graph TD
 
 ### 2.3 AI 协作的关键经验
 
-完整记录见 [ai-collaboration.md](ai-collaboration.md)，核心经验：
+AI 系统技术说明见 [agent-system-technical.md](agent-system-technical.md)，核心经验：
 
 1. **先想后问**：自己先读代码/读书，带着具体困惑问 AI，收益最大。
 2. **要思路不要答案**：让 AI 解释"为什么"，而非直接要代码。
@@ -233,4 +233,4 @@ EVOLVE 是一套面向 OS 初学者的自研教学实验环境，通过渐进式
 
 ---
 
-> 本报告基于项目实际交付物撰写。原始对比数据见 [comparison-data.md](comparison-data.md)，AI 协作全过程见 [ai-collaboration.md](ai-collaboration.md)。
+> 本报告基于项目实际交付物撰写。原始对比数据见 [comparison-data.md](comparison-data.md)，AI 系统技术实现见 [agent-system-technical.md](agent-system-technical.md)。
