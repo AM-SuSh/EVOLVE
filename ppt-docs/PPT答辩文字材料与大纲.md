@@ -381,7 +381,7 @@ Lab Factory：
 | 初赛技术方案与总报告 | 项目总报告.md |
 | 参考练习报告 | docs/reference-report.md |
 | 自研环境验证与复现 | docs/os-lab.md、docs/environment_setup.md |
-| 二期 Lab6-8 | docs/lab6-8.md |
+| 二期 Lab6-8 | docs/os-lab.md §6 |
 | 设计总结 | os-lab/docs/design-report.md |
 | 架构说明 | os-lab/docs/architecture.md |
 | 三方对比 | os-lab/docs/comparison.md、comparison-data.md |

@@ -48,7 +48,7 @@ EVOLVE 是一套面向操作系统课程的渐进式实验、可信验证与智�
 | 文档或目录 | 说明 |
 | --- | --- |
 | [8.12阶段性实验技术文档.md](8.12阶段性实验技术文档.md) | **当前阶段完整技术说明与实现边界** |
-| [docs/os-lab.md](docs/os-lab.md) | 环境验证、复现和 Web 学习手册入口 |
+| [docs/os-lab.md](docs/os-lab.md) | 环境验证、复现和教学工作台入口 |
 | [os-lab/docs/agent-system-technical.md](os-lab/docs/agent-system-technical.md) | AI 导师、证据门控、RAG 与评价技术说明 |
 | [os-lab/handbook/docs/workbench-ui.md](os-lab/handbook/docs/workbench-ui.md) | 学生工作台和教师端交互契约 |
 | [os-lab/docs/deployment-and-recovery.md](os-lab/docs/deployment-and-recovery.md) | 部署、安全、备份与恢复 |

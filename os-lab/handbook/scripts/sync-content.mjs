@@ -37,11 +37,6 @@ const SINGLE_FILES = [
     hideSidebar: true,
   },
   {
-    from: path.join(REPO_ROOT, 'docs', 'lab6-8.md'),
-    to: path.join(HANDBOOK_ROOT, 'project', 'lab6-8.md'),
-    hideSidebar: true,
-  },
-  {
     from: path.join(REPO_ROOT, '赛题.md'),
     to: path.join(HANDBOOK_ROOT, 'project', 'competition.md'),
     hideSidebar: true,
@@ -64,8 +59,6 @@ function rewriteLinks(text) {
     text
       // 仓库 docs 相对路径
       .replace(/\]\(\.\.\/\.\.\/docs\/environment_setup\.md\)/g, '](/setup/environment)')
-      .replace(/\]\((?:\.\/)?(?:\.\.\/){2,3}docs\/lab6-8\.md(?:#[^)]*)?\)/g, '](/project/lab6-8)')
-      .replace(/\]\(\.\/lab6-8\.md(?:#[^)]*)?\)/g, '](/project/lab6-8)')
       .replace(/\]\(\.\.\/handbook\/guide\/([a-z-]+)\.md\)/g, '](/guide/$1)')
       .replace(/\]\(\.\.\/\.\.\/docs\/os-lab\.md(?:#[^)]*)?\)/g, '](/setup/verify-full)')
       .replace(/\]\(\.\.\/\.\.\/docs\/os-lab_verify\.md(?:#[^)]*)?\)/g, '](/setup/verify-full)')

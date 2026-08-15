@@ -29,7 +29,7 @@ Visual Studio C++ Build Tools（仅 Windows 原生编译需要）
 
 ## 三、知识点地图
 
-下图展示了 8 个实验覆盖的操作系统核心知识点及其先后依赖关系。建议按从上到下的顺序学习，每一层都建立在前一层之上。Lab6–8 二期总览见 [docs/lab6-8.md](../../docs/lab6-8.md)。
+下图展示了 8 个实验覆盖的操作系统核心知识点及其先后依赖关系。建议按从上到下的顺序学习，每一层都建立在前一层之上。Lab6–8 依赖与 syscall 接口见 [docs/os-lab.md](../../docs/os-lab.md)。
 
 ```mermaid
 graph TD
@@ -95,7 +95,7 @@ lab7 = ["lab6", "dep:os-signal"]
 lab8 = ["lab7", "dep:os-sync"]
 ```
 
-Lab6–8 依赖、分工、验收与进度见 [docs/lab6-8.md](../../docs/lab6-8.md)。
+Lab6–8 依赖与 syscall 接口见 [docs/os-lab.md](../../docs/os-lab.md)；分工与进度见 [progress.md](../../progress.md)。
 
 ## 五、组件 Crate 依赖关系
 
