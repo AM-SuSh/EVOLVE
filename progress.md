@@ -1,7 +1,7 @@
 # EVOLVE 项目进度总览
 
 > 文档定位：本文件为 EVOLVE 项目阶段性交付的进度文档，记录从环境搭建、参考练习、自研内核到教学工作台完整闭环的开发过程与验证结果。
-> 最近更新：2026-08-14
+> 最近更新：2026-08-15
 
 ## 目录
 
@@ -5946,4 +5946,48 @@ ariants/fill/manifest.yaml、published.json 与 scripts/scaffold.mjs LEGACY 表�
 
 - 改动：`os-lab/learning/db.mjs`、`os-lab/handbook/tutor-server.mjs`、`TeacherBatchOpen.vue`、`db.test.mjs`、`handbook/docs/workbench-ui.md`、`progress.md`
 - 回滚：还原上述文件；删除新增 `/teacher/accounts/*` 与 `/teacher/classes/*` 路由即可。
+
+## 2026-08-15 - Task: 修复 Lab8 Problems 中 process.rs 的 never used 告警
+
+### What was done
+- 对照参考内核，给学生仓 `dtfinaltest` 的 `process.rs` 补上 lab8 条件编译门控：`KERNEL_STACKS` / `kernel_stack_top` / `find_next_ready` / `all_done` 仅在非 lab8 编译，`Running` 加 `allow(dead_code)`，并拆分 `println` 导入。
+- 同步修正 Lab4 fill/debug 模板中的同名门控，避免后续学生升到 lab8 再出现同类 Problems。
+- 参考内核 `os-lab/kernel/src/process.rs` 此前已干净，本轮未改。
+
+### Testing
+- `cargo check -p kernel --no-default-features --features lab8`（`student-labs/dtfinaltest`）：无 warning。
+- `cargo check -p kernel --no-default-features --features lab4`（`os-lab`）：通过。
+
+### Notes
+- 改动：`student-labs/dtfinaltest/kernel/src/process.rs`；`os-lab/scaffold/exercises/lab4/{fill,debug}/kernel/src/process.rs`；`progress.md`
+- 回滚：还原上述文件。
+- 其他仍带旧 `process.rs` 的 lab8 学生仓，可按同一门控补丁或从参考内核同步对应片段。
+
+## 2026-08-15 - Task: 再次修复 dtfinaltest Lab8 process.rs never used 告警
+
+### What was done
+- 学生仓 `dtfinaltest` 的 `process.rs` 再次被覆盖为无 lab8 门控的旧版，Problems 重新出现 5 条 unused 告警；已按参考内核重新补上门控与 `Running` 的 `allow(dead_code)`。
+
+### Testing
+- `cargo check -p kernel --no-default-features --features lab8`（`student-labs/dtfinaltest`）：通过，无 warning/error。
+
+### Notes
+- 改动：`student-labs/dtfinaltest/kernel/src/process.rs`；`progress.md`
+- 回滚：还原上述文件。
+- 若前端 Problems 仍显示旧告警，刷新/重新打开 Lab8 或重新触发一次检查即可。
+
+## 2026-08-15 - Task: 排查 Lab8 刷新后仍见报错并重新落盘门控
+
+### What was done
+- 确认用户看到的“报错”是 Problems 收集的 5 条 `process.rs` unused warning（`cargo` 仍 exit 0），不是语法/链接失败。
+- 发现磁盘上的门控曾被再次覆盖为旧版；已重新写入 lab8 条件编译门控并验证无 warning。
+- 说明常见回退原因：工作台编辑器若仍打开旧版 `process.rs` 缓冲区并保存，会覆盖磁盘修复。
+
+### Testing
+- `cargo check -p kernel --no-default-features --features lab8`（`student-labs/dtfinaltest`）：通过，无 warning/error。
+
+### Notes
+- 改动：`student-labs/dtfinaltest/kernel/src/process.rs`；`progress.md`
+- 回滚：还原上述文件。
+- 用户侧：关闭/重载 `kernel/src/process.rs`（勿保存旧缓冲），再跑一次 Lab8 验证。
 

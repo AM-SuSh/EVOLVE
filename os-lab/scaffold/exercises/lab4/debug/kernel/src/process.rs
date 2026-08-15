@@ -23,9 +23,10 @@ use os_sync::{Condvar, MutexBlocking, Semaphore};
 
 use crate::cell::SyncUnsafeCell;
 use crate::config::{
-    APP_BASE_ADDRESS, APP_REGION_SIZE, INITPROC_APP_ID, KERNEL_STACK_SIZE, MAX_CHILDREN,
-    MAX_PROCESS_NUM,
+    APP_BASE_ADDRESS, APP_REGION_SIZE, INITPROC_APP_ID, MAX_CHILDREN, MAX_PROCESS_NUM,
 };
+#[cfg(not(feature = "lab8"))]
+use crate::config::KERNEL_STACK_SIZE;
 use crate::loader::{get_app_elf, get_app_elf_by_name, get_app_entry};
 use crate::mm;
 use crate::trap::{run_user_task, trap_cx_init};
@@ -35,13 +36,16 @@ use crate::fs;
 use crate::deadlock::DeadlockState;
 #[cfg(feature = "lab8")]
 use crate::processor;
-use crate::{print, println};
+use crate::print;
+#[cfg(not(feature = "lab8"))]
+use crate::println;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum ProcessStatus {
     #[allow(dead_code)]
     UnInit,
     Ready,
+    #[allow(dead_code)] // lab8 用线程 Running，进程层不再置此状态
     Running,
     Zombie,
 }
@@ -80,9 +84,11 @@ pub struct ProcessControlBlock {
     pub deadlock: DeadlockState,
 }
 
+#[cfg(not(feature = "lab8"))]
 static mut KERNEL_STACKS: [[u8; KERNEL_STACK_SIZE]; MAX_PROCESS_NUM] =
     [[0; KERNEL_STACK_SIZE]; MAX_PROCESS_NUM];
 
+#[cfg(not(feature = "lab8"))]
 fn kernel_stack_top(slot: usize) -> usize {
     unsafe { KERNEL_STACKS[slot].as_ptr() as usize + KERNEL_STACK_SIZE }
 }
@@ -129,6 +135,7 @@ impl ProcessManager {
         parent.child_count += 1;
     }
 
+    #[cfg(not(feature = "lab8"))]
     fn find_next_ready(&mut self) -> Option<usize> {
         if self.process_count == 0 {
             return None;
@@ -172,6 +179,7 @@ impl ProcessManager {
         }
     }
 
+    #[cfg(not(feature = "lab8"))]
     fn all_done(&self) -> bool {
         self.process_count == 0
     }
