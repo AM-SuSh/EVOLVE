@@ -37,6 +37,11 @@ const SINGLE_FILES = [
     hideSidebar: true,
   },
   {
+    from: path.join(REPO_ROOT, 'xv6-comparison.md'),
+    to: path.join(HANDBOOK_ROOT, 'project', 'xv6-comparison.md'),
+    hideSidebar: true,
+  },
+  {
     from: path.join(REPO_ROOT, '赛题.md'),
     to: path.join(HANDBOOK_ROOT, 'project', 'competition.md'),
     hideSidebar: true,
@@ -71,6 +76,8 @@ function rewriteLinks(text) {
       .replace(/\]\(\.\.\/reference-patches\/(?:README\.md)?\)/g, '](/project/reference-report)')
       .replace(/\]\(\.\.\/项目总报告\.md(?:#[^)]*)?\)/g, '](/project/design-report)')
       .replace(/\]\(\.\.\/README\.md(?:#[^)]*)?\)/g, '](/)')
+      .replace(/\]\(\.\.\/\.\.\/xv6-comparison\.md(?:#[^)]*)?\)/g, '](/project/xv6-comparison)')
+      .replace(/\]\(\.\.\/xv6-comparison\.md(?:#[^)]*)?\)/g, '](/project/xv6-comparison)')
       // os-lab 内部
       .replace(/\]\(\.\.\/docs\/([^)]+)\)/g, '](/project/$1)')
       .replace(/\]\(\.\.\/os-lab\/docs\/([^)]+)\)/g, '](/project/$1)')

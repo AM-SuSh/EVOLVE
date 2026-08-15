@@ -10,7 +10,7 @@
 | 类别             | 入口                                                                                                                |
 | -------------- | ----------------------------------------------------------------------------------------------------------------- |
 | 设计总结报告         | [os-lab/docs/design-report.md](../os-lab/docs/design-report.md)                                                   |
-| 三方对比与学习效率      | [os-lab/docs/comparison.md](../os-lab/docs/comparison.md)、[comparison-data.md](../os-lab/docs/comparison-data.md) |
+| EVOLVE 与 xv6 对比      | [xv6-comparison.md](../xv6-comparison.md)（根目录独立对比文档） | 
 | 架构与 feature 设计 | [os-lab/docs/architecture.md](../os-lab/docs/architecture.md)                                                     |
 | AI 协作记录        | [os-lab/docs/ai-collaboration.md](../os-lab/docs/ai-collaboration.md)                                             |
 | 实验指导（lab1–8）   | [os-lab/labs/overview.md](../os-lab/labs/overview.md)；syscall 接口见本文 §6                          |

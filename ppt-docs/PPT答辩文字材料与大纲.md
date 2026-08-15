@@ -384,7 +384,7 @@ Lab Factory：
 | 二期 Lab6-8 | docs/os-lab.md §6 |
 | 设计总结 | os-lab/docs/design-report.md |
 | 架构说明 | os-lab/docs/architecture.md |
-| 三方对比 | os-lab/docs/comparison.md、comparison-data.md |
+| EVOLVE 与 xv6 对比 | xv6-comparison.md |
 | AI 协作记录 | os-lab/docs/ai-collaboration.md |
 | AI 导师设计 | os-lab/docs/ai-tutor-stage-guide.md、agent-system-technical.md |
 | M0 验收 | os-lab/docs/lab2-m0-acceptance.md |
