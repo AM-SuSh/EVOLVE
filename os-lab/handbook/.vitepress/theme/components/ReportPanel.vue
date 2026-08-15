@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import SocraticReviewPanel from './SocraticReviewPanel.vue'
 import {
   Bold,
+  CheckCircle2,
   Code2,
   Columns3,
   Download,
@@ -57,7 +58,7 @@ import {
 const props = defineProps<{
   lab: TutorLab
   insertPayload: { id: number; text: string } | null
-  teacherFeedback?: string
+  accepted?: boolean
   reportTemplate?: ReportTemplate | null
   endpoint?: string
   authenticated?: boolean
@@ -127,8 +128,10 @@ let previouslyReferencedImageIds = new Set<string>()
 
 const canSyncServer = computed(() => Boolean(props.authenticated && props.endpoint))
 const reviewSubmittable = computed(() =>
-  socraticReview.value?.status === 'review_completed'
-  || socraticReview.value?.status === 'deferred',
+  !props.accepted && (
+    socraticReview.value?.status === 'review_completed'
+    || socraticReview.value?.status === 'deferred'
+  ),
 )
 
 const imageLibrary = computed(() =>
@@ -698,6 +701,10 @@ async function askReview() {
 }
 
 async function submitToTeacher() {
+  if (props.accepted) {
+    emit('notice', '教师已完成本实验验收，无需再次提交。')
+    return
+  }
   if (!canSyncServer.value) {
     emit('notice', '请先登录再提交实验报告。')
     return
@@ -1410,6 +1417,7 @@ function onReviewCompleted(review: SocraticReview) {
       </div>
       <div class="ws-report-actions">
         <button
+          v-if="!accepted"
           type="button"
           title="把当前报告发给 AI 助手点评（不是真人老师）"
           @click="askReview"
@@ -1420,6 +1428,7 @@ function onReviewCompleted(review: SocraticReview) {
           <Download :size="14" aria-hidden="true" /><span>导出报告</span>
         </button>
         <button
+          v-if="!accepted"
           type="button"
           :title="socraticReview?.status === 'deferred'
             ? '复盘已转为后续关注，仍可连同记录提交给老师'
@@ -1436,11 +1445,6 @@ function onReviewCompleted(review: SocraticReview) {
     </header>
 
     <div class="ws-report-body">
-      <div v-if="teacherFeedback" class="ws-report-feedback">
-        <strong>老师批语</strong>
-        <p>{{ teacherFeedback }}</p>
-      </div>
-
       <div class="ws-report-modes ws-report-composer-toolbar">
         <div class="ws-report-view-tabs" role="tablist" aria-label="报告视图">
         <button
@@ -1565,7 +1569,16 @@ function onReviewCompleted(review: SocraticReview) {
 
       </div>
 
+      <section v-if="accepted" class="ws-report-terminal" aria-label="实验验收状态">
+        <CheckCircle2 :size="18" aria-hidden="true" />
+        <div>
+          <strong>本实验已完成教师验收</strong>
+          <small>无需再次复盘或提交报告，最终评价请在“学习评价”中查看。</small>
+        </div>
+      </section>
+
       <SocraticReviewPanel
+        v-else
         :endpoint="endpoint || ''"
         :authenticated="Boolean(authenticated)"
         :lab-id="lab.id"
@@ -1958,27 +1971,35 @@ function onReviewCompleted(review: SocraticReview) {
   overflow-y: auto;
 }
 
-.ws-report-feedback {
-  margin-bottom: var(--ws-space-3);
-  padding: var(--ws-space-2) var(--ws-space-3);
-  border-left: 3px solid var(--ws-accent);
-  border-radius: var(--ws-radius-sm);
-  background: var(--ws-accent-soft);
+.ws-report-terminal {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: var(--ws-space-4) 0;
+  padding: var(--ws-space-3) 0;
+  color: var(--ws-ink-muted);
+  border-top: 1px solid var(--ws-line);
+  border-bottom: 1px solid var(--ws-line);
 }
 
-.ws-report-feedback strong {
+.ws-report-terminal > svg {
+  flex: 0 0 auto;
+  color: var(--ws-ok, #15803d);
+}
+
+.ws-report-terminal strong,
+.ws-report-terminal small {
   display: block;
-  margin-bottom: 2px;
-  color: var(--ws-accent);
-  font-size: var(--ws-text-xs);
 }
 
-.ws-report-feedback p {
-  margin: 0;
+.ws-report-terminal strong {
   color: var(--ws-ink);
   font-size: var(--ws-text-sm);
-  line-height: var(--ws-leading-normal);
-  white-space: pre-wrap;
+}
+
+.ws-report-terminal small {
+  margin-top: 2px;
+  font-size: var(--ws-text-xs);
 }
 
 .ws-report-modes {

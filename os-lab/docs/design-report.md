@@ -105,7 +105,7 @@ graph TD
 
 ### 2.3 AI 协作的关键经验
 
-完整记录见 [ai-collaboration.md](ai-collaboration.md)，核心经验：
+AI 系统技术说明见 [agent-system-technical.md](agent-system-technical.md)，核心经验：
 
 1. **先想后问**：自己先读代码/读书，带着具体困惑问 AI，收益最大。
 2. **要思路不要答案**：让 AI 解释"为什么"，而非直接要代码。

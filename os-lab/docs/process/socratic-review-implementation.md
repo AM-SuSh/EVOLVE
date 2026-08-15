@@ -238,3 +238,11 @@
 - **验证结果**：`npm test` 142/142 通过，`npm run test:smoke` 通过，`npm run build` 通过，`git diff --check` 通过；本地 Tutor 服务健康检查已连接 `gpt-5.5`。当前环境没有可连接的浏览器控制实例，因此未补做插件截图验收。
 - **评分 Agent 超时修复**：数据库排查确认评分 Agent 已有成功参与记录，近期回退的真实错误均为 `This operation was aborted`。原因是评分请求固定 45 秒超时，而 `gpt-5.5` 对完整行为证据的真实响应耗时可达 42 秒以上，轻微波动即会被服务端取消。现改为独立的 120 秒默认超时（可由 `OS_LAB_ASSESSMENT_TIMEOUT_MS` 配置，最大 300 秒），评分输入沿完整时间线抽取最多 80 条事件、20 次运行、48 条对话和 3000 字报告摘要，输出上限缩至 1600 token；前端将超时单独显示为“响应超时”，并提示稍后刷新。
 - **评分 Agent 修复验证**：同一份 Lab1 真实证据调用 `gpt-5.5` 在 42.4 秒返回 `status=scored`、Agent 分 56 和 8 条有效证据引用；修复后全量 `npm test` 144/144、`npm run test:smoke`、`npm run build` 与 `git diff --check` 均通过。
+
+### 本轮文档实现：按真实代码重组双 Agent 技术说明（2026-08-15）
+
+- **重组目标**：基于当前代码、实验手册与现有运行约束，重写 `docs/agent-system-technical.md`，将 Tutor Agent、Tutor RAG、Assessment Agent、Socratic 复盘、教师验收、Harness 与接口排障组织为一条可核验的技术链路，删除旧文档中已经过时的阶段流水账和未落地能力描述。
+- **核验范围**：重点核对 `handbook/tutor-server.mjs`、`tutor/turn-policy.mjs`、`tutor/state-machine.mjs`、`tutor/baseline.mjs`、`learning/knowledge/*`、`learning/assessment-agent.mjs`、`learning/rubric-v3.mjs`、`learning/review-contracts.mjs`、`learning/review-gates.mjs` 与 `learning/mastery.mjs`，并将配置、接口、数据权威性和 Harness 用例入口写入技术文档。
+- **实现边界**：文档明确记录 `OS_LAB_TUTOR_ROUTING_MODE` 默认值为 `intent`，`stage` 只是兼容路由；Tutor 会先处理学生当前问题，再按节流策略进行一次理解检查；Assessment Agent 已独立参与评分和复盘计划，规则分与 Agent 分按 `0.6/0.4` 融合，模型不可用时降级为规则分。
+- **尚未落地的能力**：当前评分结果会进入 Assessment 复盘计划、逐题评价、掌握度与教师验收视图，但尚未形成独立持久化的弱点摘要，并在后续每轮 `/chat` 中自动注入 Tutor prompt；技术文档将该项保留为明确的后续工程边界。
+- **验证记录**：本轮先纠正验证目录为 `os-lab/handbook`；此前从 `os-lab` 根目录执行 npm 脚本只会因找不到 `package.json` 失败，不能视为代码测试失败。正式验证中 Tutor Harness 34 个场景、Assessment Harness 5 个场景、RAG Harness 3 个单测与 6 个 CLI 用例通过，`npm test` 通过 144/144，`npm run test:smoke` 通过。`npm run build` 被工作区已有的 `docs/ai-collaboration.md` 删除与 `docs/design-report.md` 中 3 处旧链接之间的 VitePress dead-link 检查拦截；这不是本轮两个文档文件引入的构建错误，且本轮未恢复该已有删除。

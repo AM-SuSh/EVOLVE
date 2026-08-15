@@ -30,6 +30,7 @@ interface StudentReport {
   feedback?: string
   attachments?: ReportAttachment[]
   hasReport?: boolean
+  hasAcceptance?: boolean
   reviewStatus?: string
   reviewUpdatedAt?: string
 }
@@ -163,7 +164,7 @@ function reportExists(report?: StudentReport | null) {
 }
 
 function reportReviewed(report: StudentReport) {
-  return reportExists(report) && Boolean(report.feedback?.trim())
+  return reportExists(report) && report.hasAcceptance === true
 }
 
 function reportTimestamp(report: StudentReport) {
@@ -305,7 +306,9 @@ async function loadSocraticReview(report: StudentReport) {
       const latest = reportAcceptance.value?.finalScore?.total
       finalScoreDraft.value = Number.isInteger(latest)
         ? Number(latest)
-        : Number(reportAssessment.value?.automaticResult?.total || 0)
+        : report.hasAcceptance
+          ? 0
+          : Number(reportAssessment.value?.automaticResult?.total || 0)
       finalScoreSaved.value = finalScoreDraft.value
       if (reportAcceptance.value) {
         feedbackDraft.value = reportAcceptance.value.acceptanceAdvice || reportAcceptance.value.feedback || report.feedback || ''
@@ -379,6 +382,9 @@ async function load() {
 
 async function saveFeedback() {
   if (!active.value || !reportExists(active.value) || busy.value) return
+  const target = active.value
+  const targetKey = reportKey(target)
+  const targetAssessment = reportAssessment.value
   busy.value = true
   note.value = ''
   try {
@@ -387,32 +393,37 @@ async function saveFeedback() {
       note.value = '请填写验收建议，作为教师最终评分的理由。'
       return
     }
-    if (!reportAssessment.value) {
+    if (!targetAssessment) {
       note.value = '当前没有关联的自动评分，请让学生先生成学习评价。'
       return
     }
-    const dimensions = reportAcceptance.value?.finalScore.dimensions || reportAssessment.value.automaticResult.dimensions
+    const dimensions = reportAcceptance.value?.finalScore.dimensions || targetAssessment.automaticResult.dimensions
+    const savedScore = clampScore(finalScoreDraft.value)
     const response = await fetch(`${endpoint}/teacher/report-acceptance`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({
-        user: active.value.user,
-        labId: active.value.labId,
-        assessmentId: reportAssessment.value.assessmentId,
-        finalScore: { total: clampScore(finalScoreDraft.value), dimensions },
+        user: target.user,
+        labId: target.labId,
+        assessmentId: targetAssessment.assessmentId,
+        finalScore: { total: savedScore, dimensions },
         feedback: advice,
         acceptanceAdvice: advice,
       }),
     })
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(payload?.error || `服务返回 ${response.status}`)
-    active.value.feedback = advice
+    target.feedback = advice
+    target.hasAcceptance = true
+    reportAcceptance.value = payload.acceptance || null
     feedbackDraft.value = advice
     feedbackSaved.value = advice
-    finalScoreDraft.value = clampScore(finalScoreDraft.value)
-    finalScoreSaved.value = finalScoreDraft.value
+    finalScoreDraft.value = savedScore
+    finalScoreSaved.value = savedScore
+    statusFilter.value = 'reviewed'
+    activeKey.value = targetKey
     note.value = '最终评分与验收建议已保存，学生端已同步。'
-    void loadSocraticReview(active.value)
+    await loadSocraticReview(target)
   } catch (err) {
     note.value = err instanceof Error ? err.message : '保存失败'
   } finally {
@@ -494,7 +505,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
                 {{ reportExists(report) ? '报告已提交' : '复盘待验收' }}
               </em>
             </span>
-            <CheckCircle2 v-if="reportExists(report) && report.feedback?.trim()" class="reviewed" :size="16" aria-label="已完成验收" />
+            <CheckCircle2 v-if="reportReviewed(report)" class="reviewed" :size="16" aria-label="已完成验收" />
           </button>
           <div v-if="!filtered.length" class="tr-empty">
             <ClipboardCheck :size="24" aria-hidden="true" />
@@ -597,7 +608,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       <aside class="tr-feedback" :class="{ disabled: !active || !reportExists(active) }">
         <header>
           <span>实验验收</span>
-          <strong>{{ active && !reportExists(active) ? '等待报告' : active?.feedback?.trim() ? '已完成' : '待验收' }}</strong>
+          <strong>{{ active && !reportExists(active) ? '等待报告' : active && reportReviewed(active) ? '已完成' : '待验收' }}</strong>
         </header>
         <div class="tr-feedback-scroll">
           <p v-if="active && !reportExists(active)" class="tr-feedback-hint">学生提交实验报告后，才可完成验收。</p>

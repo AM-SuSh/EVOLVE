@@ -11,6 +11,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const HANDBOOK_ROOT = path.resolve(__dirname, '..')
 const OS_LAB_ROOT = path.resolve(HANDBOOK_ROOT, '..')
 const REPO_ROOT = path.resolve(OS_LAB_ROOT, '..')
+const TECHNICAL_REPORT_URL =
+  'https://github.com/AM-SuSh/Or2-1-OS/blob/main/8.12%E9%98%B6%E6%AE%B5%E6%80%A7%E5%AE%9E%E9%AA%8C%E6%8A%80%E6%9C%AF%E6%96%87%E6%A1%A3.md'
 
 // exercises 保留在清理列表中，用于删掉历史同步残留；题目已并入各 Lab【任务二】，不再复制。
 const SYNC_DIRS = ['labs', 'exercises', 'answers', 'project', 'setup', 'learn']
@@ -71,6 +73,7 @@ function rewriteLinks(text) {
       .replace(/\]\(\.\/os-lab\.md(?:#[^)]*)?\)/g, '](/setup/verify-full)')
       .replace(/\]\(\.\/os-lab_verify\.md(?:#[^)]*)?\)/g, '](/setup/verify-full)')
       .replace(/\]\(\.\.\/(?:Task|赛题)\.md\)/g, '](/project/competition)')
+      .replace(/\]\(\.\.\/8\.12阶段性实验技术文档\.md\)/g, `](${TECHNICAL_REPORT_URL})`)
       .replace(/\]\(\.\.\/scripts\/activate-os-env\.ps1\)/g, '](/downloads/activate-os-env.ps1)')
       .replace(/\]\(reference-report\.md\)/g, '](/project/reference-report)')
       .replace(/\]\(\.\.\/reference-patches\/(?:README\.md)?\)/g, '](/project/reference-report)')
@@ -81,6 +84,7 @@ function rewriteLinks(text) {
       // os-lab 内部
       .replace(/\]\(\.\.\/docs\/([^)]+)\)/g, '](/project/$1)')
       .replace(/\]\(\.\.\/os-lab\/docs\/([^)]+)\)/g, '](/project/$1)')
+      .replace(/\]\(\.\.\/os-lab\/handbook\/docs\/workbench-ui\.md\)/g, '](/docs/workbench-ui)')
       .replace(/\]\(\.\.\/os-lab\/labs\/([^)]+)\)/g, '](/labs/$1)')
       .replace(/\]\(\.\.\/os-lab\/README\.md\)/g, '](/guide/start)')
       .replace(/\]\(\.\.\/os-lab\/tests\/README\.md\)/g, '](/guide/ai-tutor)')

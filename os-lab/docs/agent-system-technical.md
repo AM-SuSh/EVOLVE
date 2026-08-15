@@ -1,540 +1,773 @@
-# Agent 系统技术设计与实现记录
+# EVOLVE 双 Agent 系统技术实现说明
 
-本文记录 EVOLVE 中 AI 导师、AI 学习评价和 Harness 工程的可执行技术契约。它描述当前已经落地的边界与接口，对尚未落地的能力明确标为后续步骤，不把设计设想写成既成事实。
+> 本文以当前仓库中的可运行代码为准，记录 Tutor Agent、Assessment Agent、二者的证据闭环、RAG 知识工程以及 Harness 验证体系。文中的“已实现”表示代码已经存在并被 HTTP 路由或测试调用；“兼容”表示代码仍然保留，但不是默认路径；“未实现”表示当前代码没有把某个设计意图真正接通，不能把它写成现状。
+>
+> 主要实现目录：`os-lab/handbook/`、`os-lab/tutor/`、`os-lab/learning/`。当前默认 Tutor 路由由 `OS_LAB_TUTOR_ROUTING_MODE` 决定：只有显式设置为 `stage` 才进入旧阶段状态机，否则使用 `intent`。
 
-## 1. 总体目标与边界
+## 1. 先给出当前结论
 
-系统中的两个 Agent 应保持职责分离：
+| 能力 | 当前状态 | 实际含义 |
+| --- | --- | --- |
+| Tutor Agent | 已实现 | `POST /chat` 由 Tutor Server 负责证据校验、意图识别、Prompt 组装、RAG、模型调用、输出护栏和对话落库。 |
+| Tutor 默认路由 | 已实现，默认 `intent` | 问题先按 `concept`、`debug`、`verification` 等意图处理；`stage` 只作为兼容模式，不再是默认的机械门控。 |
+| Tutor 日常即时追问 | 已实现为选择性检查 | 先回答学生当前问题；只有学生确认已经理解、同一主题尚未检查且冷却条件满足时，才追加一次理解检查，每个主题最多一次。 |
+| Assessment Agent | 已实现 | `POST /assessment` 会把行为证据交给独立的 JSON 评分 Agent；模型不可用时退回规则基线。 |
+| 规则评分 | 已实现 | `rubric-v3.3.0` 对学习过程和结构化复盘分别评分，过程占规则分 75%，复盘占 25%。 |
+| 规则与 Agent 融合 | 已实现 | Agent 有效时使用 `rule * 0.6 + agent * 0.4`；Agent 超时、不可用或输出非法时使用规则分。 |
+| 实验结束复盘 | 已实现 | 复盘计划使用事件、可信运行、Tutor 对话、报告草稿、概念目录和掌握记录，默认生成 3 题，初始题数约束为 3--5 题，总追问上限为 5 题。 |
+| 复盘不重复 | 已实现 | 服务端读取最近 5 次复盘、最多 25 个历史问题，拒绝逐字重复，并轮换概念和题型。 |
+| 报告与复盘联合提交 | 已实现 | 学生提交报告时，服务端要求复盘为 `review_completed` 或 `deferred`；教师端按“学生 + Lab”同时查看报告、复盘和 Tutor 证据。 |
+| 教师最终验收 | 已实现 | 自动评分只读展示在实验验收右栏；教师可另外提交最终分、反馈和验收建议。 |
+| 评分结果实时改写日常 Tutor prompt | 尚未完全实现 | Assessment 结果会进入复盘、掌握度和教师验收链路，但当前没有在每次 `/assessment` 后自动建立一个专门的“薄弱点摘要”并注入后续每轮 `/chat` 的 Prompt。Tutor 仍主要读取实时事件、运行证据和自己的会话状态。 |
 
-| 组件 | 输入 | 核心职责 | 输出 | 权限边界 |
-| --- | --- | --- | --- | --- |
-| AI Tutor | 当前 Lab、学生消息、本轮意图、阶段遥测、代码/运行/Trace 证据、允许的知识片段 | 通过问题相关的递进提示促成判断、观察、假设、验证和迁移；拒绝直接交付答案 | 一轮教学回复、最多一个反问、动作和合法引用 | 不能伪造服务端证据，不能读取 `teacher-only`；阶段字段不决定默认回答策略 |
-| AI Assessment | 学习事件、运行断言、报告、Tutor 对话、知识库元数据 | 汇总学习过程并给出带证据的量规建议 | 细项分数、证据引用、待复核项、学习摘要 | 不拥有最终成绩裁决权；没有证据的项必须标为未观察到 |
-| Tutor Harness | Tutor fixture、问题意图/阶段遥测、证据上下文、候选回复 | 离线回归教学安全与行为契约 | 问题相关性、引导动作、答案泄漏、引用准确率和跨阶段一致性 | 不访问真实学生数据，不调用生产模型 |
-| Assessment Harness | 事件序列、报告和评分候选 | 回归评分稳定性、证据完整性和边界行为 | 量规断言、证据覆盖率、越权/幻觉统计 | 与 Tutor Harness 分开计分，允许共享事件 fixture |
+这一区分很重要：当前工程已经形成“行为采集 -> Assessment -> 复盘 -> 报告/验收”的闭环，但不是“Assessment Agent 直接调用 Tutor Agent 生成日常回复”的双向 RPC。两个 Agent 通过服务端持久化证据和复盘事件联通。
 
-## 2. 运行时架构
+## 2. 总体架构与权威边界
 
-```mermaid
-flowchart LR
-  UI[Workbench / Tutor UI] --> S[handbook/tutor-server.mjs]
-  S --> I[身份与 Lab 解锁]
-  S --> E[可信证据汇总\nrun / trace / diagnostics / report]
-  I --> D[tutor/turn-policy.mjs\n本轮意图与问题线程]
-  E --> D
-  D --> P[knowledge access-policy.json\n内容级别与范围过滤]
-  P --> R[Retriever\n当前 Lab + 公共概念]
-  R --> A[Prompt Assembly\nsystem + Lab + intent + context + KB]
-  A --> M[LLM Adapter]
-  M --> G[tutor/turn-policy.mjs + enforceTutorOutput()\n输出护栏与引用校验]
-  G --> UI
-  G --> T[(Trace / audit log)]
-  T --> AS[Assessment Pipeline\nlearning/rubric-v3.mjs]
-```
-
-当前 Tutor 的权威控制点在服务端：`planTutorTurn()` 先于模型调用识别本轮意图、问题线程和允许动作，`enforceTutorOutput()` 在模型输出后执行答案泄漏与 `run:/trace:/event:` 引用校验。RAG 只能提供不可信的教学材料，不能覆盖这两个控制点。
-
-### Tutor 一轮的回答策略
-
-```text
-concept       -> 必要概念回应 + ask-for-judgment
-code-reading  -> 代码上下文回应 + request-source-evidence
-debug         -> 承认失败现象 + request-falsifiable-hypothesis
-verification  -> 定义可观察证据 + request-minimal-verification
-reflection    -> 连接结论与证据 + ask-reflection-limit
-transfer      -> 区分不变量/变化 + ask-transfer-prediction
-direct-answer -> 答案护栏 + request-student-attempt
-```
-
-阶段只记录学生在工作台中的位置，不决定上述映射。直接索要完整代码时，执行 `apply-answer-guardrail`；提示层级最多递进到 L4，并按当前 `topicKey` 独立累计。
-
-## 3. Harness 工程
-
-Tutor Harness 的实现入口是 [tutor/harness.mjs](../tutor/harness.mjs)，Prompt Eval V3 的实现入口是 [tutor/prompt-eval/scoring-v3.mjs](../tutor/prompt-eval/scoring-v3.mjs)，命令入口是 `tutor/harness-cli.mjs`。当前评测关注问题相关性、引导动作正确性、答案泄漏率、证据引用准确率和跨阶段不变性；阶段关键词和阶段分数不再作为主要奖励。
-
-Harness 对每一轮同时检查：
-
-1. 回复是否命中 `forbiddenPatterns`（完整实现、patch、直接答案等）。
-2. 服务端选择的问题意图是否命中预期，是否包含该意图的 `requiredActions`；阶段只作为跨阶段不变性测试的变量。
-3. 回复中的引用是否属于本轮输入证据；任何越权引用都失败。
-4. `mastered/passed/correct/incorrect` 等判断是否绑定了有效证据。
-5. 是否只问一个可执行问题。
-
-Assessment Harness 已实现于 [learning/assessment-harness.mjs](../learning/assessment-harness.mjs)，命令入口是 `learning/assessment-harness-cli.mjs`（`npm run test:assessment-harness`），fixture 为 `learning/fixtures/assessment-harness-cases-v1.json`，其中包含“相同代码结果、不同反思质量”的对照样例。它与 Tutor Harness 独立，检查两类用例：
-
-- 计划用例：题目数量与题型（3-5 题、必含 evidence-reflection 与 transfer）、`conceptId` 属于当前 Lab 目录、`evidenceRefs` 逐字来自 bundle 白名单、与近期问题不重复，以及叙事中立性——学生可见的 prompt/objective/passCriteria 不得要求固定叙事格式（如“先复述最初的错误判断”“按原假设 -> 修正后结论还原判断过程”）。
-- 回答用例：verdict 落在期望集合内、评价只引用 `event:`、`run:`、`report:` 等真实记录、`requiresRunEvidence` 的题目没有可信 verified run 时不得判 `passed`（口头回答不能覆盖运行证据），且未通过的评价必须给出 `missingPoints`/`missingEvidence` 与参考解释，不能只下结论。
-
-Tutor Harness 的通过不代表 Assessment Harness 通过，二者在 CI 中分别报告。
-
-## 4. 知识库分层与 RAG 契约
-
-知识库采用“公共概念 + Lab 专属 + 运行时证据”的三层检索上下文：
-
-```mermaid
-flowchart TB
-  Q[学生问题] --> C[查询理解\nlab / concept / intent / topic]
-  C --> L1[Lab 专属层\n当前手册、concepts、检查点]
-  C --> L2[公共概念层\nOSTEP、讲义、RISC-V、CSAPP]
-  C --> L3[证据层\n可信 run / trace / diagnostics]
-  L1 --> X[权限过滤 + authority 排序]
-  L2 --> X
-  L3 --> X
-  X --> H[最多 5 个知识 chunk\n公共层最多 2 个]
-  H --> T[生成意图适配的提示\n而非答案]
-```
-
-证据层不是普通文本 RAG：它来自服务端验证过的运行和 Trace，优先级高于书本解释。知识片段必须携带 `sourceId`、`contentClass`、`labScope`、`sectionPath` 和稳定 locator；Tutor 的 `kb:` 引用只能指向本轮实际召回的 chunk。未解锁 Lab 不允许通过公共资源回退获取专属材料。
-
-### Step 1：规范知识源
-
-机器可读清单位于 [learning/knowledge/sources.json](../learning/knowledge/sources.json)，只登记去重后实际入库的 8 个 canonical source：
-
-- 平台 Lab 手册、Lab package 概念/检查点、发布目录（平台行为的最高权威）。
-- OSTEP 官方中文核心章节 PDF 快照和 RISC-V Reader 本地 PDF（逐文件 hash，可复现）。
-- LearningOS 讲义 Markdown 源仓库（固定 commit 后快照）。
-- rCore Tutorial Guide 和 CSAPP 中文 GitBook（快照后作为补充资料）。
-
-镜像、拆分 PDF、参考实现和测试仓库不作为重复 Source 记录；去重决策写在 `learning/knowledge/README.md`。远程资料只有在 commit/content hash 和许可证复核完成后才可进入发布索引。`validate-sources.mjs` 会检查 ID 唯一性、格式、路径存在性以及路径是否越出工作区。
-
-### Step 2：权限与敏感级别
-
-[learning/knowledge/access-policy.json](../learning/knowledge/access-policy.json) 定义四类内容：
-
-- `student-safe`：可检索、可有限引用（最多 240 字符）。
-- `guided-hint`：只能转换成一个与本轮意图匹配的问题或观察目标，不得原文引用。
-- `teacher-only`：仅评分和教师复核使用。
-- `system-metadata`：仅服务端门控使用，不进入全文索引。
-
-策略同时绑定来源权威等级、Lab 作用域、冲突规则和硬拒绝路径。当前 Tutor 只允许前两类，最多召回 5 个 chunk，其中公共概念最多 2 个；运行/Trace 证据优先于知识；直接索要答案时跳过知识检索。教师上传通过 `uploaded -> parsing -> pending-review -> published` 生命周期，默认 `teacher-only`，需要许可证、范围、答案风险和教师审批字段齐全后才进入索引。
-
-## 5. 多格式规范化（Step 3）
-
-规范化入口是 `learning/knowledge/normalize.py`，输出契约由 [document-schema.json](../learning/knowledge/document-schema.json) 固定。不同输入先解析成统一 `Document`，再由后续章节感知分块器消费：
-
-```json
-{
-  "schemaVersion": 1,
-  "documentId": "source-id:sha256-prefix",
-  "sourceId": "platform-lab-manuals",
-  "format": "markdown",
-  "language": "mixed",
-  "contentHash": "<sha256>",
-  "blocks": [{
-    "id": "block-000001",
-    "ordinal": 1,
-    "type": "paragraph",
-    "text": "...",
-    "sectionPath": ["实验 2", "入口"],
-    "locator": {"path": "...", "lineStart": 7, "lineEnd": 9}
-  }]
-}
-```
-
-Markdown/HTML 保留标题层级、章节路径、代码语言、HTML anchor；JSON/YAML 保留为 `structured` block，避免把字段关系破坏成无序文本；TXT 和 PDF 按空行/标题聚合段落。RST 识别 underline heading、admonition 和 code-block，directive 本身不进入正文。PDF 使用 `pdfplumber` 抽取、`pypdf` 读取元数据，并记录 page/line locator；重复页眉页脚会被过滤，文本密度低于阈值时设置 `requiresOcr` 和 warning，而不是静默生成空文本。Step 6 又补充了 EPUB 与 DOCX：EPUB 通过 container/package/spine 顺序解析 XHTML，DOCX 直接读取 `word/document.xml` 并保留 Heading 层级；旧二进制 `.doc` 明确拒绝，要求先转换为 DOCX，避免产生不可审计的低质量文本。
-
-### Step 3 验证结果
-
-- `python -m unittest -v learning/knowledge/test_normalize.py`：8/8 通过，覆盖 Markdown/CRLF front matter、HTML、JSON/YAML stream、RST、TXT 编号代码、EPUB 和 DOCX。
-- Lab2 Markdown：145 blocks，章节路径和 Rust 代码块 locator 正常。
-- OSTEP PDF 预览：492 页总量、处理 3 页、19 blocks、`partial=true`、`requiresOcr=false`。
-- RISC-V Reader PDF 预览：164 页总量、处理 2 页、6 blocks、`partial=true`、`requiresOcr=false`。
-- 三份输出均通过 `document-schema.json` 的 Draft 2020-12 校验，所有 block 非空且 ordinal 连续。
-- 已安装 Poppler 25.07.0-0，并用 `pdftoppm` 抽样渲染 OSTEP 正文页和 RISC-V Reader 封面；页面清晰，无裁切、重叠或乱码。
-
-这里的 PDF 预览只验证解析器和质量信号，尚未代表全量入库；全量处理应在数据库表结构、增量更新和失败恢复策略确定后执行。
-
-## 6. 章节感知分块（Step 4）
-
-分块入口是 `learning/knowledge/chunk.py`，输出契约由 [chunk-schema.json](../learning/knowledge/chunk-schema.json) 固定。算法以规范化 block 为最小可追溯单元，相邻 block 只有在 `sectionPath` 完全相同时才允许合并；遇到新标题立即结束当前 chunk，因此不会把“Trap 入口”和“任务切换”混成同一检索证据。
+### 2.1 组件关系
 
 ```mermaid
 flowchart LR
-  D[Normalized Document] --> H[按 sectionPath 分组]
-  H --> B[按 target/max chars 聚合]
-  B --> L[保留 block ordinals\n起止 locator\n父标题链]
-  L --> P[应用 access policy\ncontentClass / indexable]
-  P --> R[Lab scope / concept IDs\nanswer risk]
-  R --> C[Chunk Set JSON]
+  UI[学生/教师前端] --> S[Tutor Server]
+  S --> TP[Tutor turn policy]
+  S --> R[Hybrid Retriever]
+  R --> K[(knowledge.db)]
+  S --> L1[Tutor upstream LLM]
+  S --> E[(os-lab.db + student data)]
+  S --> A[Assessment Agent]
+  A --> L2[Assessment upstream LLM]
+  A --> RB[Rule rubric v3]
+  A --> E
+  S --> RV[Socratic review]
+  RV --> E
+  S --> T[Teacher acceptance]
+  T --> E
 ```
 
-每个 chunk 保存以下关键字段：
+### 2.2 不是两个独立的 Node 服务
 
-- `sectionPath`：完整父标题链，作为检索过滤与提示上下文，不把标题字符串重复写入正文。
-- `blockOrdinals`、`locatorStart`、`locatorEnd`：支持从 `kb:` 引用回到 Markdown 行号、HTML anchor 或 PDF 页码。
-- `contentClass`、`indexable`：由来源绑定、路径覆盖和硬拒绝规则推导；`system-metadata` 和硬拒绝路径不会进入全文索引。
-- `labScope`：同时识别 `lab2/` 目录和 `lab2-trap-and-task.md` 文件名，公共教材标为 `global`。
-- `conceptIds`：从结构化 block 的 `id/conceptId/concept_id` 字段抽取，供后续概念过滤和学习评价关联。
-- `answerRisk`：`low/medium/high/blocked` 四级；代码、guided hint、答案关键词和硬拒绝路径逐级提高风险。
+当前的“Agent”是两个逻辑角色：
 
-默认目标长度为 1000 字符、硬上限 1400 字符。算法不做隐式 overlap：跨 chunk 复制文本会让引用范围和泄漏审计变得含糊，而完整标题链已经提供稳定上下文。超长单 block 会按句子或固定窗口切分，并标记 `splitFromLongBlock=true`。
+- Tutor Agent：由 `handbook/tutor-server.mjs` 的 `/chat` 编排，加上 `tutor/turn-policy.mjs`、Prompt 文件、RAG 和上游 Chat Completions 模型组成。
+- Assessment Agent：由 `learning/assessment-agent.mjs` 编排，通过独立的 JSON Prompt 评价行为、生成复盘计划和评价复盘答案。
 
-### Step 4 验证结果
+两者可以使用同一个 OpenAI-compatible 上游地址，也可以通过 `OS_LAB_ASSESSMENT_BASE_URL`、`OS_LAB_ASSESSMENT_MODEL`、`OS_LAB_ASSESSMENT_API_KEY` 覆盖 Assessment 配置。使用同一模型地址不等于共用同一对话上下文：Tutor 使用多轮聊天消息，Assessment 使用结构化证据包和 JSON 合约。
 
-- 新增 `build_lab_chunks.py`，从 `sources.json` 自动发现且强制要求 Lab1-Lab8 齐全；每个 Lab 依次执行 normalize、Document Schema、chunk、Chunk Schema 校验。
-- 规范化、分块与八 Lab 集成测试合计 10/10 通过，覆盖章节边界、locator、Lab 文件名识别、概念 ID、权限覆盖、硬拒绝路径、超长代码 fence 和全 Lab 产物完整性。
-- Lab1-Lab8 共 840 blocks 生成 145 chunks；每个 chunk 都只属于对应 Lab，locator 使用工作区相对路径，不写入本机盘符。
-- OSTEP 三页预览：19 blocks 生成 3 chunks，全部为 `global` scope。
-- 所有 Chunk Set 均通过 Draft 2020-12 Schema 校验，chunk ordinal 连续且保留有效 block 引用。
+### 2.3 证据权威等级
 
-| Lab | Blocks | Chunks | Chunk characters |
-| --- | ---: | ---: | ---: |
-| Lab1 | 133 | 16 | 9,692 |
-| Lab2 | 145 | 22 | 10,356 |
-| Lab3 | 100 | 19 | 6,378 |
-| Lab4 | 91 | 19 | 5,883 |
-| Lab5 | 102 | 17 | 8,137 |
-| Lab6 | 89 | 17 | 7,475 |
-| Lab7 | 87 | 17 | 7,253 |
-| Lab8 | 93 | 18 | 7,327 |
+代码把“学生说过什么”“客户端上报了什么”和“服务端验证过什么”分开处理：
 
-可检查产物位于 `learning/knowledge/build/lab-manuals/`：`manifest.json` 是总览，`documents/` 保存规范化中间层，`chunks/` 保存每个 Lab 的实际分块。该目录是确定性构建输出并被 Git 忽略，源手册或算法变化后重新运行 `python learning/knowledge/build_lab_chunks.py` 即可刷新。
+| 证据 | 典型来源 | 权威性 |
+| --- | --- | --- |
+| 学生消息、客户端阅读位置、客户端选区 | `/chat` 请求、学习事件 | 可记录，但不能证明运行通过或代码正确。 |
+| 服务端保存事件 | `events` 表、`storeServerEvents()` | 可追踪的学习过程证据。 |
+| 可信运行、断言、诊断、Trace | `runs`、`run_assertions`、诊断和 Trace 存储 | 运行结论的主要权威来源。 |
+| Tutor 权威回复 | 服务端写入 `ai_response` 的事件 | Assessment 只使用服务端权威消息，不把浏览器任意伪造的 Assistant 文本当成证据。 |
+| 报告草稿 | Tutor Server 文件和报告接口 | 是学生表达的证据，不能替代可信运行。 |
+| Assessment 结果 | `assessments`、mastery evidence | 是对行为和复盘的评价结果，不是新的运行事实。 |
+| 教师验收 | `report_acceptances` 和 `teacher_reviewed` 事件 | 是教师最终意见，覆盖验收决定但不覆盖原始自动评分。 |
 
-## 7. SQLite 知识库与 FTS5（Step 5）
+`run:<id>`、`event:<id>`、`report:draft:<labId>` 和 `kb:<id>` 是不同命名空间。每个 Agent 都会校验自己可引用的证据白名单，不能因为模型“看起来知道”就凭空生成引用。
 
-知识数据使用独立的 `learning/knowledge/knowledge.db`，不与账号、学习事件和评分库混放。知识库可以从受版本控制的 Source/Document/Chunk 重新构建，而学习事件库是不可替代的业务记录；隔离后可以独立重建 FTS、回滚资料版本或迁移 embedding，而不锁住学生运行数据。
+## 3. Tutor Agent：实时教学链路
 
-```mermaid
-erDiagram
-  KNOWLEDGE_SOURCES ||--o{ SOURCE_VERSIONS : has
-  SOURCE_VERSIONS ||--o{ DOCUMENTS : contains
-  DOCUMENTS ||--o{ CHUNKS : splits_into
-  CHUNKS ||--o{ CHUNK_LABS : scoped_to
-  KNOWLEDGE_SOURCES ||--o{ INGESTION_RUNS : ingested_by
-  KNOWLEDGE_SOURCES ||--o{ AUDIT_LOG : audited_by
-  CHUNKS ||--o| FTS5 : indexes_current_safe
-```
+### 3.1 请求入口和完整顺序
 
-核心表及职责：
-
-- `knowledge_sources`：逻辑资料身份、来源类型、默认权限和当前激活版本。
-- `knowledge_source_versions`：不可变内容版本、hash、解析器/分块器版本、审核和发布时间。
-- `knowledge_documents`：规范化文档及其来源路径、格式、语言和 block 数。
-- `knowledge_chunks`：正文、章节链、locator、权限、风险、概念和 active/indexable 状态。
-- `knowledge_chunk_labs`：`global` 或 Lab1-Lab8 的多值绑定，并预留教师绑定、置信度和理由。
-- `knowledge_ingestion_runs`：导入触发者、输入 hash、状态、文档/chunk/索引计数和错误。
-- `knowledge_audit_log`：发布、复用、回滚等动作的前后版本记录。
-- `knowledge_chunks_fts`：只保存当前发布且允许索引的 chunk；旧版本仍在关系表中但不会被召回。
-
-### 导入与版本切换
-
-`knowledge-store.mjs` 读取 Lab build manifest，在一个 `BEGIN IMMEDIATE` 事务中写入 Version、Document、Chunk 和 Lab binding，再原子激活版本并重建该 Source 的 FTS 行。相同 manifest hash 再次导入会复用原版本，不复制 document/chunk；内容变化则产生新版本，旧版本改为 `superseded`。回滚会重新激活指定版本并重建 FTS，同时写 ingestion run 和 audit log。
-
-### 中文检索与权限过滤
-
-SQLite 的 `unicode61` 会把连续中文视为一个长 token，因此本项目使用 FTS5 `trigram`，支持三个及以上 Unicode 字符的子串查询；一到两个字符使用带同等权限条件的 `LIKE` 回退。自然语言问句先抽取代码标识符和中文概念片段，再用 OR 组合召回，避免把整句误当作必须原样出现的短语。查询必须同时满足：Source 当前版本、Version 已发布、Chunk active/indexable、调用方允许的 `contentClass`，以及目标 Lab 或 `global` binding。FTS 排名只是 Step 6 的词面候选分，Step 7 再与向量相似度和权威等级融合。
-
-### Step 5 验证结果
-
-- 实际导入 Lab1-Lab8：1 Source、1 Version、8 Documents、145 active/indexed Chunks、8 个 Lab scope。
-- Lab2 查询“任务切换”返回带章节链和行号的合法 chunk；Lab3 两字查询“页表”通过回退检索命中；跨 Lab 查询不返回其他 Lab 的专属内容。
-- KnowledgeStore 集成测试覆盖幂等导入、不可索引答案、中文 FTS/短词回退、新版本替换和旧版本回滚。
-- `npm test` 全量 47/47 通过；Python 规范化/分块/八 Lab 构建测试 10/10 通过。
-
-Store 已提供 `knowledgeTree()`、`listSources()`、`listChunks()`、`getChunk()` 和 `listVersions()`，供 Step 6 教师知识库页面使用；写操作仍必须经 Tutor Server 的教师身份校验。
-
-## 8. Tutor RAG 与教师知识工作台（Step 6）
-
-### 对话接入顺序
-
-Tutor Server 在一轮对话中执行如下顺序，RAG 不拥有意图选择、阶段遥测或拒答权限：
+Tutor 的主要入口是 `handbook/tutor-server.mjs` 的 `handleChat()`，对应 `POST /chat`。一次非流式请求大致经过以下顺序：
 
 ```mermaid
 sequenceDiagram
-  participant U as Student
+  participant U as LabWorkspace
   participant S as Tutor Server
-  participant K as KnowledgeStore
-  participant M as LLM
-  U->>S: message + labId + evidenceRefs
-  S->>S: 身份/Lab/证据校验 + planTutorTurn + topic hint state
-  alt 直接答案护栏命中
-    S-->>U: 规则式引导（不访问知识库）
+  participant P as Turn Policy
+  participant K as Hybrid Retriever
+  participant M as Tutor LLM
+  participant D as os-lab.db
+  U->>S: labId/sessionId/message/history/evidenceRefs
+  S->>S: 校验 Lab、会话、消息和证据引用
+  S->>D: 读取 Tutor state、学习事件、运行摘要
+  S->>P: identify topic + planTutorTurn
+  alt 直接索要完整实现
+    S->>S: 先执行 guardrail，不检索 RAG
+    S-->>U: guardrail JSON
   else 普通教学问题
-    S->>K: FTS(query, current Lab + global)
-    K-->>S: ≤5 chunks；global ≤2
-    S->>M: policy + 不可信 knowledge chunks
-    M-->>S: candidate reply
-    S->>S: 答案泄漏 + run/trace/kb 引用白名单
-    S-->>U: 最终引导回复
+    S->>K: Lab 范围 + student-safe/guided-hint
+    K-->>S: 最多 5 个 chunk + retrieval diagnostics
+    S->>M: system Prompt + 最近历史 + 当前问题
+    M-->>S: 候选回复
+    S->>S: 引用白名单和答案泄漏检查
+    S->>D: 写入权威 Tutor 对话事件
+    S-->>U: JSON 或 SSE meta/done
   end
 ```
 
-只允许 `student-safe` 与 `guided-hint` 进入 Tutor 召回。前者可以用稳定的 `kb:<chunk-id>` 有限引用；后者只能转换为一个反问或观察目标。服务端把每轮实际召回的 citation 传给 `enforceTutorOutput()`，模型虚构或沿用上一轮 `kb:` 都会触发 `invalid-evidence-reference`。知识片段在 Prompt 中被显式标记为不可信数据，不能覆盖服务端阶段、证据门控或运行结论；直接索要完整答案时在检索前返回，避免答案型材料进入上下文。
+具体步骤如下：
 
-### 教师上传与发布事务
+1. 检查 `labId` 是否为 `lab1`--`lab8`，检查 `sessionId`，并限制当前消息为 1--4000 字符。
+2. 对学生提交的 `evidenceRefs` 调用 `validateChatEvidenceRefs()`，服务端不会接受任意 `run:` 或 `event:` 引用。
+3. 从服务端读取该学生、该学习会话和该 Lab 的 Tutor 状态，以及学习证据摘要。
+4. 将浏览器传来的历史规范化为最近 10 条消息，每条内容最多 2000 字符；它是模型上下文，不是持久化事实的唯一来源。
+5. 在默认 `intent` 模式下识别主题和意图，生成 `planTutorTurn()`；在兼容 `stage` 模式下调用 `decideTutorTurn()`。
+6. 按主题读取提示级别和理解检查状态，保存新的 Tutor session state，并记录阶段进入或提示升级事件。
+7. 先执行完整答案 Guardrail。命中时直接返回，不检索知识库、不调用上游模型。
+8. 未命中 Guardrail 时才检索 Tutor 可用知识，生成受限的知识 Prompt。
+9. 解析模型配置，调用 OpenAI Chat Completions；空回复时尝试 `/responses` 或非流式 Chat Completions；失败时生成离线 Tutor 回复。
+10. 对模型文本进行证据引用和答案泄漏检查，保存最终实际回复为权威 `ai_response` 事件，再返回给前端。
 
-`knowledge-v2` 为 Source Version 增加自动范围建议、教师确认范围和审核说明。教师上传经过以下状态链：
+### 3.2 路由模式：默认是 intent
 
-```mermaid
-stateDiagram-v2
-  [*] --> pending_review: 保存原文件 + normalize + quality gate + chunk
-  pending_review --> pending_review: 确认 Lab / class / license / risk
-  pending_review --> published: 原子激活 + 重建 Source FTS
-  published --> disabled: 停用并移除 FTS
-  published --> superseded: 发布新版本
-  superseded --> published: 教师回滚 + 重建 FTS
+代码在 `handbook/tutor-server.mjs` 中等价于：
+
+```js
+const tutorRoutingMode =
+  process.env.OS_LAB_TUTOR_ROUTING_MODE === 'stage'
+    ? 'stage'
+    : 'intent'
 ```
 
-上传初始 Chunk 一律写成 `teacher-only`、`active=0`、`indexable=0`。规则式 Lab 建议会给出置信度与命中术语，但只写 `derived` binding；教师必须确认一个或多个 `global/lab1..lab8`、许可证状态和答案风险，发布条件才成立。发布、审核、Chunk 修改、停用与回滚均写 `knowledge_audit_log`。Markdown/TXT 正文修改和 PDF 替换都创建不可变的新 Source Version，不允许直接覆盖旧正文；单 Chunk 只开放范围、权限、风险、索引和启用状态调整。
+因此：
 
-教师 API 均位于 `/teacher/` 的现有角色门控后：
+- 不设置变量时是 `intent`。
+- 设置 `OS_LAB_TUTOR_ROUTING_MODE=stage` 才使用 `tutor/state-machine.mjs` 中的旧阶段决策。
+- 前端仍然可以携带 `stage`，但在默认模式下它更多是工作区状态和上下文，不是“所有问题都必须先完成某阶段才能回答”的硬门控。
+- `stage` 仍然会被保存和记录，原因是兼容旧数据、工作区进度和阶段指标，而不是让 Tutor 忽略当前问题。
 
-| API | 用途 |
-| --- | --- |
-| `GET /teacher/knowledge/{tree,sources,source,chunks,chunk,search,audit}` | 浏览知识树、版本、正文、检索结果与审计 |
-| `POST /teacher/knowledge/sources` | 二进制上传或指定 Source 的新版本；支持 PDF/EPUB/MD/TXT/DOCX |
-| `POST /teacher/knowledge/{review,publish,disable,rollback}` | 审核、发布、停用和版本恢复 |
-| `PATCH /teacher/knowledge/chunk` | 调整单块范围、权限、风险及索引状态 |
-| `DELETE /teacher/knowledge/chunk?id=...` | 教师人工移除 Chunk；软删除、清理向量并写入审计 |
+### 3.3 Intent、Topic、Response Mode 三层判断
 
-### 前端工作台
+`turn-policy.mjs` 将三个概念分开：
 
-`/teacher/knowledge` 使用三栏结构：左栏显示 Global/Lab1-8 和来源状态；中栏显示版本、章节路径及 Chunk 摘要；右栏显示正文、自动归属依据、审核表单和版本/Chunk 操作。移动端把三栏降级为“知识树 / 内容 / 详情”三个稳定面板。现有 `/materials` 仍是学生主动阅读的材料架，与 Tutor RAG 发布索引保持独立，上传材料不会静默变成导师知识。
+#### 意图 Intent
 
-## 9. 向量检索与混合排序（Step 7）
+当前意图集合为：
 
-向量是可重建的派生索引，不改变 Source/Version/Document/Chunk 的权威关系。`knowledge_chunk_embeddings` 以 `(chunk_id, model)` 为主键保存 Float32 BLOB、维度、Chunk 内容 hash 和生成时间；内容 hash 变化或模型变化时只重建受影响的行。`knowledge_retrieval_log` 不保存问题原文，只保存 query hash、Lab、Provider、候选数量、最终 Chunk ID 和降级原因。
-
-```mermaid
-flowchart LR
-  Q[问题] --> F[FTS5 候选\ntrigram / LIKE]
-  Q --> E[Embedding Provider]
-  E --> V[Cosine 候选\nSQLite BLOB cache]
-  F --> R[RRF + 权威度 + 精确 Lab 加权]
-  V --> R
-  R --> P[权限 / current version / active\n最终过滤]
-  P --> T[Tutor 或教师搜索]
-```
-
-`hybrid-retriever.mjs` 先取 FTS 词面候选，再对当前权限范围内的全部可检索 Chunk 计算向量相似度，使用 `1/(60+rank)` 的 Reciprocal Rank Fusion 合并；同一 Lab 精确绑定和来源 `authority_rank` 只作小幅 tie-break，不能越过权限或 Global 上限。Tutor 最终仍执行“最多 5 块、Global 最多 2 块”的硬截断。
-
-Embedding Provider 采用可替换接口：配置 `OS_LAB_EMBEDDING_BASE_URL` + `OS_LAB_EMBEDDING_MODEL` 时调用 OpenAI-compatible `/embeddings`；无配置时使用 `local-feature-hash-v1-384`，通过中文三元组、代码标识符和 OS 概念别名生成确定性向量，保证离线开发可复现。远程 Provider 超时或维度不一致时，当前请求降级为 FTS-only 并记录原因，不阻断 Tutor 回复或教师发布。
-
-向量可通过 `npm run knowledge:embed` 主动预热；Tutor Server 启动时也会后台预热当前发布 Chunk，教师发布和版本回滚会尝试只索引对应 Source。`knowledge:search` 已返回混合排序诊断，包括词面排名、向量排名、相似度、Provider、模型和降级原因，便于 Harness 对召回质量做回归。
-
-## 10. 多来源快照与全量知识入库
-
-此前 `sources.json` 的 8 条记录只是 canonical inventory，实际 SQLite 只有 `platform-lab-manuals`。现在构建链路分为三层：
-
-```mermaid
-flowchart LR
-  I[sources.json\nURL / path / pinned commit] --> S[fetch_source_snapshots.py\n仅抽取教学正文]
-  I --> B[build_knowledge_sources.py]
-  S --> B
-  B --> M[Source manifest\nDocument JSON + Chunk JSON]
-  M --> K[ingestKnowledgeBuild\n来源级事务与不可变版本]
-  K --> F[FTS5 current-safe index]
-  K --> V[Embedding cache]
-  F --> U[Teacher UI / Tutor RAG]
-  V --> U
-```
-
-远程来源不直接抓取易变网页：LearningOS 讲义、rCore Guide 和 CSAPP 均在 `sources.json` 固定 commit；下载器只抽取 `.md/.rst/.html`，排除图片、构建脚本、示例二进制和仓库配置。OSTEP 使用官方中文站 31 个与进程、内存、并发、I/O、文件系统相关的章节 PDF，每个快照记录 URL、字节数和 SHA-256，不再使用字符映射损坏的本地合并 PDF。快照与中间 JSON 位于 `learning/knowledge/build/`，由 Git 忽略；数据库版本指纹同时包含原文 hash、Chunk 内容 hash 和质量算法版本，因此正文或过滤规则变化都会创建新版本。
-
-多格式最终都规约为同一模型：PDF 保留 page/line locator，Markdown/HTML 保留 section/anchor，RST 保留标题、admonition 和代码语义，JSON/YAML 保留结构化字段。平台 concept YAML 在质量层投影为“一 concept 一 Block”，只将 `title`、`summary/course_concept`、`arch_mechanism`、`invariants` 和 `transfer` 写入检索正文；concept ID 和原路径保留在 locator。数据库内部 `document_key` 和 `external_chunk_id` 同时包含路径 hash，避免不同 Lab 中内容相同的文件因纯内容寻址发生唯一键碰撞；内容 hash 仍单独保留用于版本审计。
-
-通用导入按 Source 开事务，一个来源失败不会产生半个版本，也不会破坏其他已完成来源。只有 `published` 版本会激活 Chunk 并重建该来源 FTS；`system-metadata` 可在教师端查看，但 `indexable=0`。当前实际规模如下：
-
-| Source | Documents | Active Chunks | 用途 |
-| --- | ---: | ---: | --- |
-| 本地 Lab 手册 | 8 | 145 | Lab1-Lab8 任务与平台行为；121 块可检索 |
-| 结构化概念 | 9 | 19 | Lab2-Lab8 的 19 个语义 concept |
-| 发布目录 | 1 | 0 | 系统版本元数据，不参与自由文本 RAG |
-| OSTEP 中文核心章节 | 31 | 414 | 进程、内存、并发、I/O 与文件系统 |
-| RISC-V Reader 中文版 | 1 | 95 | ISA 与特权架构背景 |
-| LearningOS 课程讲义 | 49 | 673 | 课程公共知识正文 |
-| rCore Tutorial Guide | 37 | 234 | 跨 Lab 实验参考 |
-| CSAPP 中文电子书 | 84 | 384 | 内存、进程、链接与并发补充 |
-
-总计 8 Sources、1,964 active Chunks；其中 1,940 条同时进入 FTS 和本地向量缓存，剩余 24 条由答案风险或内容权限策略排除。教师端左栏的来源数量和每来源 Chunk 数均来自 SQLite，不再把 inventory 元数据误当作已入库内容。
-
-可重建命令顺序为：`npm run knowledge:fetch`、`npm run knowledge:build:all`、`npm run knowledge:ingest:all`、`npm run knowledge:embed`。老师更新远程材料时应先修改 `sources.json` 中的 `pinnedCommit`，再执行上述流程；旧 Source Version 保留用于回滚和审计。
-
-## 11. 语料质量门与可审计过滤
-
-分块不再直接消费解析器的全部输出。内置来源和教师上传都执行同一条确定性流水线：
-
-```mermaid
-flowchart LR
-  S[Source allowlist] --> N[Format-aware normalize]
-  N --> B[Block quality gate]
-  B --> Y[Concept semantic projection]
-  Y --> C[Section-aware chunk]
-  C --> Q[Chunk quality + dedupe]
-  Q --> R[Answer-risk / class gate]
-  R --> I[FTS + embedding]
-  B --> A[Reason counters]
-  Q --> A
-  R --> A
-  A --> U[Teacher audit UI]
-```
-
-`quality_filter.py` 的规则是可复现的拒绝规则，不调用在线模型：模板与绘图源码、raw URL、纯数字/符号、乱码特征、课程管理页、错位 PDF 代码和低语义短块在 Block 阶段退出；短 Chunk 必须同时含 OS 核心术语和定义、因果、机制或约束型陈述；来源内按规范化文本 hash 去重；`high/blocked` 在安全门退出。每个文档 manifest 记录 `input/kept/dropped` 以及 `reason -> count`，教师可追溯清洗结果，原文件和不可变旧版本仍保留。
-
-PDF 不能只靠统一正则修复。OSTEP 合并本地 PDF 的文本层出现代码行号误判标题和字符映射损坏，因此来源层直接替换为官方章节 PDF；RISC-V Reader 则保留原 PDF，但过滤独立页码、位域刻度和低语义块。Markdown 先去 CRLF front matter、HTML comment 与 GitBook tag；RST 由专用 parser 消费 directive；长代码按完整行分割，保留换行和相对缩进。
-
-三个只读子智能体用于 PDF、远程仓库、结构化 YAML 的抽样审计和规则发现，不参与生产构建决策。生产质量门保持确定性，避免相同材料因模型采样产生不同索引；后续可以把子智能体用于待审核灰区的离线抽样，但其意见必须落为教师审核或可版本化规则后才能影响发布索引。
-
-本轮外部语料共解析 19,467 个 Block，丢弃 9,194 个，并输出 10,276 个保留/投影 Block；其中 concept 投影会把 16 个结构块展开为 19 个语义块，所以输出数比简单减法多 3。最终发布版本按当前质量规则重建，RISC-V Reader 从 101 个有效 Chunk 收紧为 95 个。最终 Chunk 对 `versionNonce/strokeSharpness`、Excalidraw、GitBook/RST directive、raw URL、纯数字、目录点线、扁平上标和 Unicode replacement character 的回归命中均为 0。五组概念查询的 Top-5 无模板、乱码或网址块；这组查询将作为 Step 8 RAG Harness 的首批 retrieval fixture。
-
-### RISC-V PDF 二次治理
-
-RISC-V Reader 的 PDF 文本层同时包含双栏正文、图注和目录，不能仅用“数字占比”判断噪声。质量门采用来源专属且可解释的组合规则：`locator.page < 15` 的块标记为 `front-matter`；目录点线从正文和标题路径两处移除；单整数不再升级为标题，只有 `2.1` 形式的小节号可作编号标题；含 `imm[]/rs1/rd/opcode` 的位域表、浮点寄存器对照表和汇编密集块退出索引；识别 PDF 扁平上标造成的 `29/210/225/226` 模式。最终产物的最小页码是 15，95 个 Chunk 均通过上述回归统计。
-
-### Chunk 人工移除
-
-教师移除不是物理删除：`knowledge_chunks.active` 与 `indexable` 同时置 0，删除该 Chunk 的 embedding，并在当前版本上重建 FTS；`knowledge_audit_log` 保存 `remove` 动作及移除前后快照。这样导师检索立即失效，但教师开启元数据视图仍能查看灰色历史记录，源版本和 locator 不被破坏。删除操作只接受已登录教师会话，前端需要二次确认，接口返回被移除 Chunk 供 UI 更新状态。
-
-## 12. 当前状态与后续步骤
-
-| 步骤 | 状态 | 交付物 |
+| Intent | 处理目标 | 典型动作 |
 | --- | --- | --- |
-| 1. 知识源盘点 | 已完成 | `sources.json`、校验脚本、去重规则 |
-| 2. 权限矩阵 | 已完成 | `access-policy.json`、校验脚本、教师上传生命周期 |
-| 3. 多格式规范化 | 已完成 | `normalize.py`、Schema、单测和 PDF 预览 |
-| 4. 章节感知分块 | 已完成 | `chunk.py`、Chunk Schema、权限/范围/风险元数据和单测 |
-| 5. SQLite + FTS | 已完成 | 独立知识库、版本化导入、中文 FTS、Lab 过滤、审计与回滚 |
-| 6. Tutor 服务与教师前端 | 已完成 | 受限 RAG、教师 API、多格式上传、审核发布、版本/Chunk 管理、三栏工作台 |
-| 7. 向量检索与混合排序 | 已完成 | 可替换 Embedding Provider、SQLite 向量缓存、RRF/权威度重排、FTS 降级 |
-| 8. RAG Tutor Harness | 已完成 | RAG 泄漏、引用归属、权限越权、来源元数据和降级回归 |
+| `concept` | 直接解释学生问到的概念、边界和机制 | 回答概念，要求学生形成自己的判断。 |
+| `code-reading` | 沿源码位置、调用关系和状态变化解释 | 要求具体源码证据。 |
+| `debug` | 围绕报错、异常现象和差异定位原因 | 要求可证伪假设和最小实验。 |
+| `verification` | 说明如何区分不同解释 | 定义可观察输出、断言、Trace 或诊断。 |
+| `reflection` | 把结论与过程证据对应起来 | 要求说明因果链和证据。 |
+| `transfer` | 迁移到改变后的条件 | 区分不变量、变化条件和新预测。 |
+| `direct-answer` | 处理“直接给完整代码/答案”的请求 | 先说明不能交付完整实现，再帮助定位机制或局部问题。 |
 
-Step 8 已在混合召回诊断之上冻结 RAG Tutor Harness 的向量召回、权限、引用、来源元数据和降级行为回归阈值；学生端接线详见第 14 节。
+#### Topic
 
-## 13. 质量门、派生归属与教师可审计视图
+`identifyTutorTopic()` 使用当前消息、上一主题、上一意图、主题锚点、源码位置、手册位置、诊断 key、术语和文件名生成：
 
-### 13.1 短节不是按长度简单截断
+- `topicKey`：当前问题线索的稳定键。
+- `topicIntent`：该主题对应的意图。
+- `topicAnchor`：用于连续对话的核心术语或位置。
+- `topicChanged`、`topicChangeReason`：说明是否切换了问题。
 
-Chunk 质量门分为两个阶段：Block 阶段负责格式、编码和模板清理，Chunk 阶段负责语义信号、答案风险、去重和章节边界。外部发布资料的短 Chunk 只有在包含 OS 核心术语、完整陈述关系和句末标点时才保留；连续的编号标题串（例如 `2.1 ... 2.2 ...`）单独以 `outline-label-sequence` 拒绝，避免把目录误当作知识。
+提示等级按 topic 独立保存，最高为 L4；只有学生明确索要提示时才升级，不因阶段自动升级。这能避免学生从“问 sepc 的定义”跳到“问 sepc 为什么保存返回地址”时，仍被旧问题的阶段条件拖住。
 
-短节合并只在同一 `documentId`、同一章节父路径、且两侧均为非代码块时触发。合并上限沿用 `targetChars/maxChars`，跨子章节时把两个子标题写入正文并把 `sectionPath` 收敛到共同父路径，同时重新计算 locator、字符/token 统计、Lab 归属和 `indexable`。`metadata.mergedShortChunks` 记录合并来源数量，manifest 的质量报告记录 `mergedChunks`，因此可以从产物反查规则影响。
+#### Response Mode
 
-教师上传走同一格式清洗，但默认 `teacher-*` source 在 `pending-review` 阶段不执行发布资料的短块门槛。原因是材料必须先在教师工作台可见，才能由教师判断其是否是定义、提示或应删除的噪声；上传仍固定为 `teacher-only`、`active=0`、`indexable=0`，发布前不会进入 Tutor。
+回答模式与意图不是一回事：
 
-### 13.2 公共知识的 Lab 派生绑定
+- `answer-first`：先回答当前问题，再给至多一个最有价值的行动建议。
+- `definition-first`：术语定义问题先给定义和边界，不以阶段门控开场。
+- `evidence-first`：报错或验证问题先回应现象、验证目标和最小证据。
+- `guardrail`：直接索要完整实现时，先执行答案边界，再提供局部学习路径。
 
-公共来源不复制正文，也不强行改变原始 `global` 范围。`lab-scope-rules.json` 是规则唯一来源，`lab_scope.py` 根据来源路径、章节编号、章节标题和正文术语产生零个或多个派生绑定：
+这三个层次共同解决“学生问的是概念，Tutor 却只回复阶段要求”的问题：阶段是上下文，意图和回答模式才决定本轮先回答什么。
 
-```mermaid
-flowchart LR
-  C[Public Chunk\nlabScope=[global]] --> R[lab-scope-rules.json]
-  R --> E[lab_scope.py\n规则匹配]
-  E --> B[derived binding\nlabId + confidence + reason]
-  B --> T[Teacher confirmation]
-  T --> I[Retriever\nLab ∪ global]
+### 3.4 日常即时追问规则
+
+Tutor 的理解检查由 `shouldAskUnderstandingCheck()` 控制，不是每轮自动追问。必须同时满足：
+
+- 当前主题已经有过 Assistant 回答。
+- 学生出现“明白了”“所以我理解”等确认信号。
+- 当前不是 `reflection`，也不是直接索要完整答案。
+- 学生没有明确表示要继续跑实验或继续操作。
+- 当前 topic 还没有进行过理解检查。
+- 追问冷却轮数满足要求。
+
+触发后只问一个与刚才问题直接相关的问题；学生回答这次检查后，本轮不再追加新问题。每个主题最多一次理解检查，`understandingCheck.maxPerTopic` 为 1。该设计是“先解决疑惑，再确认是否真正理解”，不是把每一轮对话都改成问卷。
+
+### 3.5 Tutor Prompt 的组成及来源
+
+`frameworkFor()` 负责把下列层拼接为最终 `system` Prompt。顺序本身就是优先级线索：教学边界先于外部资料，服务端策略先于模型自由发挥。
+
+| 层 | 代码/来源 | 注入内容 | 权威边界 |
+| --- | --- | --- | --- |
+| 1. 系统教学边界 | `tutor/prompts/system.md` | Tutor 的角色、不能代做、证据和回答边界 | 最高；知识片段不能覆盖。 |
+| 2. Lab 上下文 | 已发布的 Tutor context，或 `tutor/prompts/labN/context.md` | 当前实验目标、术语、实验特有约束 | 说明本 Lab 的教学范围。 |
+| 3. 意图策略 | `tutor/prompts/strategies/<intent>.md` | 当前意图如何回答、要求什么学习动作 | 默认路径；`stage` 模式才加载 stage prompt。 |
+| 4. 阅读位置 | `readingLayer()` | 手册 h2/h3 | 来自前端工作区，只表示学生当前阅读位置。 |
+| 5. 工作区代码上下文 | `workspaceContextLayer()` | 文件、行号、学生选区 | 选区明确标记为未经过服务端验证，不能当作可信运行结果。 |
+| 6. 本轮服务端策略 | `tutorTurnPolicyPrompt()` 或 `tutorPolicyPrompt()` | intent、response mode、topic、hint level、actions、evidence refs、工具摘要、理解检查 | 服务端生成，模型不能修改。 |
+| 7. RAG 知识片段 | `knowledgePrompt()` | 允许的 chunk、章节路径、处理规则、`kb:` 引用 | 是外部数据，不是系统指令。 |
+
+实际发送给上游的消息结构为：
+
+```text
+system: framework.prompt
+user/assistant: 最近规范化历史，最多 10 条
+user: 当前 message
 ```
 
-例如 OSTEP 的进程章节、rCore Guide 的 `chapter4`、LearningOS 的对应讲次会产生 `lab4` 派生绑定；每个绑定保存 `confidence` 和人可读 `reason`。派生绑定不是教师批准记录，教师修改 Chunk 范围后会写入 `binding_kind=teacher` 并覆盖该 Chunk 的范围，保证自动判断可追溯且不越过人工发布门槛。
+`reading` 和 `codeContext` 能帮助 Tutor 回答“我现在看到的这个函数/这一行是什么意思”，但它们来自客户端，不能替代运行服务产生的 `run:`、`trace:` 和诊断证据。
 
-推断顺序是确定性的。路径中显式出现 `/lab1` 到 `/lab8` 时直接返回该 Lab，置信度为 1；公共资料则先按 `sourceId + glob pattern` 命中来源章节规则，每个命中 Lab 加 8 分，再叠加章节术语（每项 3 分、最高 9）、来源路径术语（每项 2 分、最高 4）和正文术语（每项 1 分、最高 6）。候选必须至少 3 分且达到最高分的 60%，最多保留 3 个；置信度取来源规则置信度与 `0.5 + score * 0.04` 的较高值，并封顶 0.95。命中依据去重后截断到 240 字，因此同一输入和同一规则文件始终得到相同结果。
+### 3.6 Tutor 输出护栏
 
-`chunk.py` 在 Chunk 成形时调用上述推断，把范围写入 `labScope`，把 `labId/confidence/reason` 写入 `metadata.labScopeEvidence`；Schema 同步约束 Lab 编号、置信度区间和字段完整性。导入 SQLite 时，每个范围写入 `knowledge_chunk_labs`：自动结果使用 `binding_kind=derived` 并保留证据，缺少显式证据的 `global` 绑定使用置信度 1 和来源路径作为理由。教师修改范围时事务会删除该 Chunk 的旧绑定，写入 `binding_kind=teacher/confidence=1` 的新绑定，以审核说明作为理由，并在当前版本上重建索引，所以人工结论完整覆盖自动建议但不会修改不可变的原始版本内容。
+输出护栏主要由 `tutor/state-machine.mjs` 的 `enforceTutorOutput()` 和服务器端的 Guardrail 组成：
 
-### 13.3 可见总数与自然排序
+1. 扫描 `run:`、`trace:`、`diag:`、`event:`、`kb:` 引用。
+2. 引用必须属于当前服务端证据白名单或本轮实际召回的知识 chunk 白名单。
+3. 发现非法引用时，返回不能引用未经验证证据的安全回复。
+4. 检查“完整代码”“完整文件”“可直接提交 patch”“diff --git”等泄漏信号。
+5. 代码 fence 超过 12 行也会触发护栏。
+6. 正常模型回复最长 4000 字符。
+7. Tutor 不能声称自己执行了工具摘要中不存在的运行、诊断或 Trace。
 
-`GET /teacher/knowledge/chunks` 先按 `sourceTitle -> sourcePath -> sectionPath -> locator` 使用 `Intl.Collator('zh-CN', { numeric: true })` 排序，再执行 `offset/limit`。响应显式返回：
+注意：护栏不是“所有问题都拒答”。它只阻止完整代做、未经验证的事实宣称和伪造引用；概念问题、局部代码阅读、报错解释仍然应该先回答学生实际问到的内容。
 
-```json
-{ "ok": true, "chunks": [], "total": 1239, "limit": 100, "offset": 0 }
+### 3.7 模型调用、流式协议和降级
+
+`resolveLlm()` 的配置优先级为：学生请求携带的配置（前提是教师允许自配） -> 教师统一配置 -> 环境默认值。默认服务端监听 `8787`，默认上游为 `http://127.0.0.1:11434/v1`，默认模型为 `qwen2.5:7b`。
+
+服务器支持：
+
+- OpenAI-compatible `/chat/completions`。
+- `/responses` 兼容回退。
+- JSON 非流式响应。
+- SSE 流式响应，客户端通过 `meta` 和 `done` 合并知识元数据、Tutor state 和最终回复。
+- 流式空响应时重试 Responses API；老网关不支持时再尝试非流式 Chat Completions。
+- 连接建立前的连接超时；连接建立后不会把本地慢模型的正常生成误判为连接失败。
+- 连接失败、超时、错误响应或空响应时的离线 Tutor 回复。
+
+离线回复也按当前 intent 生成，不是随机错误文本；不过它只使用服务端内置的简短策略，不能替代上游模型的完整 RAG 回答。
+
+## 4. Tutor RAG：从知识工程到学生端引用
+
+### 4.1 RAG 在 Tutor 中的实际位置
+
+Tutor 的 RAG 不是在前端做，也不是把整个知识库直接放进 Prompt。`retrieveTutorKnowledge()` 在服务器端执行：
+
+1. 先接收当前学生问题和目标 Lab。
+2. 允许内容类只有 `student-safe`、`guided-hint`。
+3. 先召回候选，再按目标 Lab/global 范围和数量上限选择。
+4. 最多向 Prompt 注入 5 个 chunk；不属于当前 Lab 的 global-only chunk 最多 2 个。
+5. 直接答案 Guardrail 在此之前执行，因此直接索要完整实现时 RAG 为空。
+6. 学生端只得到安全元数据，不得到内部 chunk 全文、数据库路径、异常堆栈或教师元数据。
+
+### 4.2 知识库生命周期
+
+知识库位于独立 SQLite `learning/knowledge/knowledge.db`，`knowledge-store.mjs` 维护：
+
+- Source、Source Version、Document、Chunk。
+- `knowledge_chunk_labs` 的 Lab 绑定。
+- FTS 索引和 embedding 表。
+- ingestion、retrieval、audit 日志。
+
+知识源通常经过“导入 -> 解析/规范化 -> 分块 -> 质量和答案风险检查 -> 待审核 -> 发布”的生命周期。发布不是简单把文件复制到目录：
+
+- 当前 source 旧版本的 chunk 会失活。
+- 新版本 chunk 被激活并建立 FTS/embedding 索引。
+- 教师上传默认是 `pending-review`，发布前需要许可证、范围、内容类别和答案风险复核。
+- 禁用或人工移除会将 `active/indexable` 置为 0，删除其 embedding，并写入审计日志。
+- 发布、禁用、回滚均保留 source version 和审计信息。
+
+`access-policy.json` 是 Tutor 的权限边界：
+
+| content class | Tutor 可取 | 学生可见/可逐字引用 |
+| --- | --- | --- |
+| `student-safe` | 是 | 可见，可有限引用，单段逐字引用上限由策略控制。 |
+| `guided-hint` | 是 | 不直接展示，必须转化为一个反问或观察目标。 |
+| `teacher-only` | 否 | 不可见，不可作为 Tutor 引用。 |
+| `system-metadata` | 否 | 仅系统使用，不进入学生检索。 |
+
+平台实验手册是当前实现细节的高权威来源；OSTEP、RISC-V Reader、LearningOS、rCore、CSAPP 等是概念补充，不能覆盖当前平台运行结果。策略还明确要求：可信运行、Trace、诊断证据优先于教材片段。
+
+### 4.3 混合检索算法
+
+`learning/knowledge/hybrid-retriever.mjs` 同时执行词法和向量检索：
+
+- 词法路径使用 `KnowledgeStore.search()`，中文支持 FTS5、trigram/子串回退以及 Lab/class 过滤。
+- 向量路径先检查 SQLite embedding 缓存；缺失或内容 hash 变化时批量生成 embedding。
+- 默认 embedding provider 是 `local-feature-hash-v1-384`，使用术语、英文 token、中文三元组和 OS 概念别名生成 384 维归一化向量。
+- 配置 `OS_LAB_EMBEDDING_BASE_URL` 与 `OS_LAB_EMBEDDING_MODEL` 后可使用 OpenAI-compatible `/embeddings` provider。
+- 向量服务失败不会丢弃词法结果，会记录 `fallbackReason` 并保留词法检索。
+
+候选上限默认是 40，最终 `limit` 通常由 Tutor 传 12，再由 Tutor 层收缩到 5。融合使用 Reciprocal Rank Fusion：
+
+```text
+rrf += 1 / (60 + rank)
+finalScore = rrf + min(sourceAuthority, 100) / 25000 + exactLabBoost
+exactLabBoost = 0.003  // chunk 明确绑定当前 Lab 时
 ```
 
-`total` 由同一筛选条件重新计数，不是分页数组长度；知识树的 `totalChunks` 只统计当前可检索 Chunk，并避免一个公共 Chunk 同时绑定多个 Lab 时重复累计。前端使用该总数计算 `1-100 / N` 的页码范围，详情页同时显示来源、章节、定位和 Lab 归属依据。
+最终结果还会附带 lexical rank、vector rank、vector similarity、authority boost 和 provider/model，供 Harness 和教师诊断检索质量。
 
-服务端把筛选统一收敛到 `chunkFilter()`，`listChunks()` 与 `countChunks()` 共用 `labId/sourceId/versionId/q/includeInactive/retrievableOnly` 条件。默认只显示 active 且属于 Source 当前版本的 Chunk；`includeInactive=true` 用于指定版本和审计视图；`retrievableOnly=true` 继续要求 `indexable=1`、风险为 `low/medium` 且内容类型不是 `system-metadata`。列表查询同时联接 Document，返回 `sourcePath`，并把 `knowledge_chunk_labs` 聚合为 `labScopes` 和包含 `bindingKind/confidence/reason` 的 `labBindings`。
+### 4.4 知识 Prompt 的安全处理
 
-Tutor Server 将 `limit` 规范到 1-200，默认 100，将 `offset` 规范为非负数；计数不带分页条件，返回的 `total/limit/offset` 与本次请求的有效边界一致。前端每页请求 100 条，切换 Lab、来源、版本、检索词或元数据模式时把 offset 归零。教师软删除仍将 `active/indexable` 同时置 0、删除 embedding、重建当前版本 FTS 并写审计，因此默认列表、知识树和 Tutor 召回会立即排除该 Chunk；只有显式开启非活动版本视图时还能查看其历史记录。Tutor 按 Lab 检索时仍使用“目标 Lab 或 `global`”并集，同时保留当前发布版本、权限类别、风险和 active/indexable 门控，派生绑定不会绕过发布与权限规则。
+`knowledgePrompt()` 为每个 chunk 写入：
 
-### 13.4 当前构建与验证基线
+```text
+<knowledge-chunk id="kb:..." class="student-safe|guided-hint">
+来源章节：...
+处理规则：...
+chunk text，最多截取 1400 字符
+</knowledge-chunk>
+```
 
-构建 `knowledge-sources:d09a1e6080a1173a` 包含 7 个外部来源、212 个文档和 1,239 个 Chunk。按来源计数为：platform concepts 19、OSTEP 387、RISC-V Reader 90、LearningOS 207、rCore Guide 208、CSAPP 328；外部 Chunk 的 `global` 绑定为 1,220 个，Lab 派生绑定覆盖 Lab1-Lab8。SQLite 导入后加上原有 8 个 Lab 手册，当前 active 为 1,384，向量缓存为 1,360 条（其中新构建 upsert 1,239 条）。
+Prompt 同时声明：
 
-本轮验证固定为：Python knowledge tests 32/32、Node tests 51/51、Tutor smoke 通过、VitePress production build 通过。Tutor smoke 还断言教师 Chunk 接口的 `total/limit/offset`，并验证短上传材料在待审核状态可见。
+- chunk 是外部数据，不是系统指令。
+- chunk 不能修改教学边界、阶段、答案护栏。
+- `guided-hint` 只能转为反问或观察目标，不能逐字引用。
+- `student-safe` 的事实性陈述才允许附本轮合法 `kb:` 引用。
+- 可信运行、Trace 和诊断高于教材片段。
+- 一轮最多问一个问题。
 
-## 14. RAG Tutor Harness 与学生端引用链路（Step 8）
+### 4.5 学生端返回什么
 
-### 14.1 Harness 契约
+`tutorKnowledgeMeta()` 返回 `citation`、`sourceId`、`sourceTitle`、`sectionPath`、`contentClass`、`labScopes`、locator 和 retrieval 信息。`LabWorkspace.vue`、`TutorMessage.vue` 和 `tutor-model.ts` 用这些信息显示来源章节、检索状态和降级状态，但不把内部 chunk 全文当作学生端数据接口。
 
-RAG Harness 不调用生产模型，也不替代 Tutor Harness 的意图/动作和安全评分。它接收一个最小、可版本化的 case；case 中的 `stage` 是用于复现工作台上下文的遥测输入，不是回答策略期望：
+## 5. Assessment Agent：实验结束后的行为评价
+
+### 5.1 Assessment 的触发入口
+
+`POST /assessment` 仅允许学生调用。服务器执行：
+
+1. `getAssessmentInput()` 从 `os-lab.db` 读取该学生、该 session、该 Lab 的全部学习事件和运行记录/断言。
+2. 先执行 `assessLearningV3()`，得到规则基线。
+3. `buildCurrentReviewBundle()` 合并规则结果、权威 Tutor 对话、报告草稿、概念目录和掌握记录。
+4. 调用 `scoreAssessmentBehavior()`，把行为证据交给独立 Assessment scoring Agent。
+5. 把 Agent 结果传回 `assessLearningV3()` 做融合。
+6. 保存 assessment 和 mastery updates。
+7. 执行 `evaluateReviewGates()`，必要时保留旧的 `review_queue` 兼容记录。
+8. 返回 `assessmentId`、自动评价、Agent 状态、复核门控和兼容 review。
+
+Assessment Agent 不是只看最终运行是否通过。它明确被要求同时看：学生消息、AI 回复、工作区事件、可信运行、诊断/Trace、报告和复盘表现；可信运行只能说明验证行为，不单独代表学生已经掌握知识。
+
+### 5.2 Evidence Bundle 的结构
+
+`buildReviewEvidenceBundle()` 生成版本为 `review-evidence-bundle-v1` 的结构化对象：
+
+```text
+bundle
+├─ labId / sessionId
+├─ catalog
+│  ├─ concepts
+│  ├─ checkpoints
+│  └─ transferPrompts
+├─ events                 最后最多 160 条，清理为公开字段
+├─ runs                   运行状态、trusted/verified、assertions
+├─ conversation           最后最多 120 条权威 Tutor/学生消息
+├─ report                 草稿内容，reflection 字段不作为普通报告正文重复拼接
+├─ rubricAssessment       当前规则评分（若已有）
+├─ mastery                掌握度和历史观察
+└─ validEvidenceRefs      event:/run:/report: 白名单
+```
+
+其中：
+
+- 事件会保留类型、阶段、时间、分类、内容、路径、文件、代码、提示级别和 runId。
+- 运行会保留可信/通过状态、断言 id/label、期望值和观察值。
+- Tutor 对话优先使用服务端 `student_message` 和 `ai_response` 权威事件；无权威快照时才回退到会话快照。
+- 报告草稿用于判断学生表达和结论，不把报告里的文字转成可信运行。
+- 评分 Agent 的输入进一步压缩为最多 80 个事件、20 个运行和 48 条消息，以控制模型输入规模。
+
+### 5.3 规则评分 rubric-v3.3.0
+
+规则实现位于 `learning/rubric-v3.mjs`。当前过程观察项为：
+
+| 项 | 观察点 |
+| --- | --- |
+| `P2` | 是否用问题或分析推进，而不是只索要答案。 |
+| `J1` | 是否提出自己的判断。 |
+| `E1` | 是否引用可检查证据。 |
+| `H1` | 是否形成可证伪假设和预测。 |
+| `V1` | 是否完成可信验证。 |
+| `I1` | 失败后是否保存修改并再次可信验证。 |
+
+复盘维度包括 `F1`、`F2`、`T1`、`T2`；当前结构化 Socratic review 会按具体 `RQ1...RQn` 记录，而不是强行要求学生复述固定的“原始判断 -> 修正后结论”叙事。
+
+规则层的细节包括：
+
+- 只有观察到对应行为才计分，没有证据的项为 `unobserved`，不会凭空给满分。
+- 可信运行、失败后的保存、再次可信通过会组成迭代证据链。
+- 多次 Guardrail 会记录为过程风险，不能仅靠最终通过抵消。
+- 规则分为 `process * 0.75 + reflection * 0.25`。
+- `validEvidenceRefs` 约束规则项的 evidence refs，避免把客户端声称当成服务端事实。
+
+### 5.4 独立 Assessment scoring Agent
+
+`learning/assessment-agent.mjs` 中的 `scoreAssessmentBehavior()` 使用独立 Prompt 版本 `assessment-behavior-score-v1`，默认超时 120 秒，最多 300 秒。它要求输出 JSON：
 
 ```json
 {
-  "version": 1,
-  "id": "rag-lab3-sv39",
-  "labId": "lab3",
-  "stage": "run",
-  "message": "sv39 的页表和地址转换，应该先看哪一层？",
-  "evidenceRefs": ["trace:lab3-run-01"],
-  "expected": {
-    "allowedStages": ["run", "reflect"],
-    "knowledge": {
-      "minCount": 2,
-      "maxCount": 5,
-      "maxGlobalCount": 2,
-      "requiredContentClasses": ["student-safe", "guided-hint"],
-      "requiredLabScopes": ["lab3", "global"]
-    },
-    "retrieval": {
-      "lexicalCandidatesMin": 1,
-      "eligibleChunksMin": 1
-    }
-  }
+  "score": 0,
+  "rationale": "...",
+  "strengths": [],
+  "improvements": [],
+  "evidenceRefs": ["event:...", "run:..."],
+  "criteria": [
+    { "id": "B1", "status": "met|partial|not-met|unobserved", "rationale": "...", "evidenceRefs": [] }
+  ]
 }
 ```
 
-adapter 必须返回 `stage`、`reply`、`knowledge[]`、`prompt` 和 `retrieval`。Harness 对每个知识块执行以下硬检查：
+行为标准 B1--B6 为：
 
-- `citation/sourceId/sourceTitle/sectionPath/contentClass/labScopes` 元数据完整；
-- 只允许 `student-safe` 与 `guided-hint`，总数不超过 5，当前 Lab 之外的 global-only chunk 不超过 2；
-- 必须/禁止的来源、来源标题、Lab 绑定和内容级别满足期望；
-- 只要有知识块，Prompt 必须显式包含 `<knowledge-chunk>`；直接答案护栏场景必须保持空知识上下文；
-- `lexicalCandidates/vectorCandidates/eligibleChunks/fallbackReason` 与检索诊断阈值一致。
+| 标准 | 含义 |
+| --- | --- |
+| B1 | 用自己的话提出判断、假设或机制解释。 |
+| B2 | 通过概念、现象或调试问题推进，而不是索要完整答案。 |
+| B3 | AI 给出提示后继续追问、检查代码或修改实现。 |
+| B4 | 推进到可信运行、诊断或失败后的再次验证。 |
+| B5 | 减少没有证据时重复索要完整答案。 |
+| B6 | 区分自己的判断、AI 的帮助和实际验证证据。 |
 
-实现文件为 [rag-harness.mjs](../tutor/rag-harness.mjs)、[rag-harness-cli.mjs](../tutor/rag-harness-cli.mjs)、[rag-harness-cases-v1.json](../tutor/fixtures/rag-harness-cases-v1.json) 和 [rag-harness.test.mjs](../tutor/rag-harness.test.mjs)。运行：
+服务端规范化输出时会：
+
+- 把 score 限制在 0--100。
+- 检查所有 evidence refs 是否存在于 bundle 白名单。
+- 要求有证据时至少提供有效总体引用。
+- 将 criteria 固定补齐 B1--B6，缺项置为 `unobserved`。
+- 限制 rationale、strengths、improvements 和 criteria 的长度/数量。
+- Agent 异常、超时、非法 JSON 或非法引用时返回 `unavailable`/`timeout`，并使用规则基线。
+
+### 5.5 分数融合
+
+`learning/rubric-v3.mjs` 的融合权重是：
+
+```text
+ruleWeight  = 0.6
+agentWeight = 0.4
+
+Agent 有效时：
+  total = round(ruleScore * 0.6 + agentScore * 0.4)
+
+Agent 不可用时：
+  total = ruleScore
+```
+
+Assessment Agent 不能改变实验验证事实，也不能单独把“口头说通过”变成可信运行。`evaluateReviewGates()` 会在规则分与 Agent 分差异大、反思满分却没有运行引用、多次答案护栏等情况下产生硬门控，供教师关注。
+
+### 5.6 Mastery 如何更新
+
+`learning/mastery.mjs` 将 rubric 项映射到概念：
+
+- `os.trap.syscall-abi` 主要观察 `V1`。
+- `os.sched.context-switch` 观察 `V1`、`I1`。
+- `os.debug.evidence-chain` 观察 `E1`、`H1`、`V1`、`I1`。
+- `os.learning.transfer` 使用 reflection 维度。
+
+根据观察项平均分和独立成功情况生成 `proficient`、`developing` 或 `needs-support`，同时保存 evidence refs、提示级别、误解项和 confidence。当前 mastery 主要服务于后续复盘和学习访问控制；它还没有自动成为每轮 Tutor Prompt 的专门“薄弱点系统层”。
+
+## 6. 苏格拉底复盘：Assessment 结果如何转成问题
+
+### 6.1 复盘开始
+
+`POST /learning/review/start` 的前置条件是当前 Lab 存在可信且通过的运行。服务端会重新构建证据包并重新评价行为，然后读取最近 5 次复盘中的问题，最多提取 25 个历史问题给计划生成器。
+
+计划可由两种模式生成：
+
+- 有可用 Assessment Agent 时，调用 `createAssessmentReviewPlan()` 的远程 JSON Agent。
+- 没有模型、模型超时或远程输出不合约时，使用 `generateDeterministicReviewPlan()`。
+
+无论是哪种模式，`normalizeReviewPlan()` 都会验证：
+
+- 题数为 3--5。
+- 每题 conceptId 属于当前 Lab 概念目录。
+- 每题至少有一个有效 evidence ref。
+- questionId 唯一。
+- 远程问题不能逐字重复近期问题。
+
+默认计划通常是 3 个问题，常见组成是：
+
+1. `evidence-reflection`：让学生把机制和本次代码/运行证据对应起来。
+2. `concept-explanation` 或 `counterexample`：针对薄弱概念、误解或边界解释。
+3. `transfer`：改变输入、权限、调度或前置条件，要求预测哪些不变量保留、哪些实现必须变化。
+
+这不是让学生填写“收获与反思”文本框，而是用实际行为证据生成少量、具体、可判断的问题。
+
+### 6.2 逐题回答与评价
+
+`POST /learning/review/answer` 要求学生回答当前显示的第一个未回答问题；已提交的答案不能被覆盖。服务端会重新构建当前证据包，调用 `evaluateAssessmentReviewAnswer()`：
+
+- 远程 Agent 有效时使用 JSON 评价。
+- 没有 Agent 时使用确定性评价：匹配 passCriteria、检查证据要求、生成缺失点和参考因果链。
+- verdict 只能是 `passed`、`partial`、`needs-evidence`、`misconception`、`defer`。
+- 返回 `verdictLabel`、`rationale`、`missingPoints`、`missingEvidence`、`correctReasoning`、`correctiveExplanation` 和有效 evidence refs。
+
+特别是，未通过不能只返回“缺少关键因果”。评价必须指出缺失的知识点，并给出完整参考因果链；即使学生的回答顺序、措辞或叙事方式与模板不同，只要机制和证据对应正确，也可以判为 `passed`。
+
+### 6.3 追问和 5 题上限
+
+若 verdict 为 `partial`、`misconception` 或 `needs-evidence`：
+
+- 当前主问题最多生成一次澄清/补证据追问。
+- 追问计入同一个复盘的总题数。
+- `updated.turns.length < updated.maxQuestions` 且 `< 5` 时才允许插入追问。
+- 追问仍然必须复用有效概念和 evidence refs。
+- 一次追问失败后，系统会继续处理下一个主问题或在达到上限后结束，不会无限循环。
+
+当所有问题都回答且至少完成 3 次作答时，服务器生成 `review_completed` 和 `review_reflection_assessed` 事件。复盘表现会按首答通过、追问后通过、已回答但仍可完善等状态形成结构化链条，供 rubric 和教师端查看。
+
+若答案需要可信运行但当前只有口头解释，状态会进入 `awaiting_evidence`，可通过 `/learning/review/resume` 在补充可信运行后继续；没有办法补证据时可以 `deferred`。`deferred` 保留完整 transcript，可以提交报告，但不会凭空生成掌握证据，也不会自动解锁下一实验。
+
+### 6.4 复盘是否会重复
+
+复盘问题不是固定三题模板：
+
+- 计划生成会根据当前事件、失败断言、Tutor 对话和概念目录排序薄弱点。
+- 历史中已经问过的 concept/kind 会影响排序和题型变体。
+- 同一概念可在 evidence reflection、counterexample、transfer 等题型之间轮换。
+- 远程 Agent 生成的原题若命中历史原文，会被拒绝并退回确定性计划。
+
+因此，两次复盘可能命中同一薄弱概念，但题型、情境或具体证据应发生变化；如果实际界面仍显示逐字相同问题，应检查服务端读取的 `reviewHistory`、sessionId 是否复用，以及前端是否错误复用了旧 review，而不是把固定问题当成设计目标。
+
+## 7. Tutor 与 Assessment 的联合闭环
+
+### 7.1 当前已实现的联通方式
+
+联通通过服务端证据和数据库完成：
+
+```mermaid
+flowchart TD
+  C[学生 Tutor 对话] --> CE[student_message / ai_response]
+  W[工作区保存、运行、诊断、Trace] --> EV[服务端学习事件 + runs]
+  CE --> B[Review Evidence Bundle]
+  EV --> B
+  R[报告草稿] --> B
+  M[mastery 历史] --> B
+  B --> RA[规则评分]
+  B --> AA[Assessment scoring Agent]
+  RA --> F[0.6/0.4 融合]
+  AA --> F
+  F --> RP[复盘计划]
+  RP --> QA[逐题回答评价]
+  QA --> RE[review_completed / reflection_assessed]
+  RE --> SUB[报告提交]
+  SUB --> TE[教师实验验收]
+```
+
+具体来说：
+
+1. Tutor 每轮实际回复和学生问题会由服务端保存为权威对话事件。
+2. 工作区运行器产生可信 run、断言和诊断；这些记录和 Tutor 事件通过同一学生/session/Lab 关联。
+3. Assessment 读取这些证据，既看学生如何问、如何跟进，也看是否实际保存、运行、失败后复验。
+4. Assessment 的 mastery、复盘问题和评价事件成为后续学习证据。
+5. 报告提交把报告内容、reviewId、review 状态和 evidence refs 写进正式提交边界。
+6. 教师验收接口按学生+Lab 读取最新自动 Assessment、复盘、报告和验收历史。
+
+### 7.2 当前没有直接实现的联通
+
+下列行为不能写成已经完成：
+
+- Assessment Agent 不会在 `/assessment` 完成后直接调用 Tutor 的 `/chat`。
+- Assessment 的 B1--B6 结果不会自动作为一段新的系统 Prompt 注入每一轮日常 Tutor。
+- `mastery` 目前用于概念状态、复盘排序和访问链路，不是 Tutor 每轮必读的弱点摘要。
+- Tutor 的 RAG 检索使用知识库，不会把 Assessment 的评分 JSON 当作知识 chunk 检索。
+
+现在的闭环重点是“实验结束后，Tutor 以 Socratic review 的形式消费行为证据”，而不是“每一次行为评分立即改变当前对话”。如果后续要实现实时反哺，合理的工程增量应是保存按 Lab/session/topic 的 `learning weakness profile`，在 `handleChat()` 读取并作为一个受限的 runtime policy layer 注入，而不是把历史评分原文直接拼到 RAG 文本中。该能力当前属于后续建设，不属于本版本事实。
+
+## 8. 报告、学生提交和教师实验验收
+
+### 8.1 学生端提交边界
+
+`POST /reports` 会检查：
+
+- 报告正文非空且不超过 512 KiB。
+- Lab 已开放。
+- 当前 session 的复盘状态为 `review_completed` 或 `deferred`；历史兼容数据可走 grandfathered 分支。
+
+学生端的报告正文、附件和复盘回答在交互上属于同一份实验完成流程，但代码层面保留不同数据实体：报告正文在 report draft/submission 文件和报告表中，复盘 transcript/evaluation 在 Socratic review 表和事件中。正式提交通过 `reviewId`、review 状态、hash 和 evidence refs 把二者关联，而不是把复盘回答再次拼接到报告 Markdown 正文里。
+
+这样教师端可以同时看到：
+
+- 学生正式报告正文和附件。
+- 每个复盘问题、学生原答、Assessment verdict、缺失点和参考因果链。
+- Tutor 的日常权威对话。
+- 可信运行、断言、诊断和 evidence refs。
+
+### 8.2 教师端统一验收接口
+
+当前主要接口是：
+
+- `GET /teacher/report-assessment?user=<username>&labId=<labId>`：按学生+Lab 返回最新自动 Assessment、关联复盘、当前验收和验收历史，不依赖是否进入旧 `review_queue`。
+- `POST /teacher/report-acceptance`：教师提交最终分、报告反馈和验收建议；写入追加式 `report_acceptances` 和 `teacher_reviewed` 审计事件。
+- `GET /teacher/socratic-review`：读取学生已提交的复盘和 Tutor 对话证据。
+
+自动评分在右栏作为参考结果和理由展示，不被教师最终分覆盖；教师决定单独留痕。旧 `GET /teacher/reviews`、`POST /teacher/review` 继续保留用于历史兼容和审计，但“评分复核”不再是学生实验验收所必需的独立工作流。
+
+## 9. Harness 工程体系
+
+Harness 的作用是验证契约和安全边界，不是替代真实大模型，也不把一条测试回复当成教学质量的全部证明。当前 `handbook/package.json` 将主要 Harness 纳入 `npm test`，并提供独立 CLI。
+
+### 9.1 Tutor Harness
+
+实现：`tutor/harness.mjs`、`tutor/harness-cli.mjs`、`tutor/harness.test.mjs`、`tutor/fixtures/harness-cases-v1.json`。
+
+当前 fixture 为 34 个跨类别用例，覆盖答案安全、证据门控、错误假设、冲突、失败模式、阶段边界、学习轨迹、长上下文和阶段不变性。
+
+Harness 对每个适配器结果检查：
+
+- 返回意图是否与预期相关。
+- 必需教学动作是否存在。
+- 是否出现完整答案或 patch 泄漏。
+- 引用是否属于测试用例证据白名单。
+- `mastered`、`passed`、`correct`、`incorrect` 等判断是否有证据。
+- 一轮是否最多一个问题。
+- 同一个 `invarianceGroup` 在不同存储阶段下是否保持同一响应类别。
+
+默认阈值为：答案泄漏率不超过 0.05，问题相关性至少 0.85，指导动作准确率至少 0.85，证据引用准确率至少 0.90，阶段不变性至少 0.95，无证据判断率为 0，单问题率至少 0.90。
+
+这里的 `stageInvarianceRate` 不是旧意义上的“阶段回答准确率”。它专门用来防止同一个学生问题因为客户端携带了不同 stage 就产生完全不同的教学意图。
+
+### 9.2 RAG Harness
+
+实现：`tutor/rag-harness.mjs`、`tutor/rag-harness-cli.mjs`、`tutor/rag-harness.test.mjs`、`tutor/fixtures/rag-harness-cases-v1.json`。
+
+当前 fixture 为 6 个用例，覆盖 Lab2 Trap、Lab3 SV39、直接答案 Guardrail、embedding 失败降级、Lab1 启动和 Lab4 fork/wait 等检索情境。
+
+它不要求模型写出某个固定答案，而检查：
+
+- stage 是否在允许集合内。
+- chunk 数量满足 min/max，最多 5 个。
+- 当前 Lab 之外的 global-only chunk 最多 2 个。
+- 只出现允许的 content class。
+- citation、sourceId、sourceTitle、sectionPath、contentClass、labScopes 元数据完整。
+- 必需/禁止来源、Lab scope 和内容类是否满足。
+- 有 chunk 时 Prompt 是否包含 `<knowledge-chunk>`。
+- 直接答案场景是否保持空知识上下文。
+- lexicalCandidates、vectorCandidates、eligibleChunks 和 fallbackReason 是否与检索诊断一致。
+
+默认 RAG 上限是 `maxKnowledgeCount=5`、`maxGlobalCount=2`。Embedding 服务不可用时，Harness 要求有明确 `fallbackReason`，并验证词法结果仍然可用。
+
+### 9.3 Assessment Harness
+
+实现：`learning/assessment-harness.mjs`、`learning/assessment-harness-cli.mjs`、`learning/assessment-harness.test.mjs`、`learning/fixtures/assessment-harness-cases-v1.json`。
+
+当前 fixture 包含两个证据 bundle：`lab2-full` 和 `lab2-no-verified`，共 5 个用例：3 个 plan/answer 方向的计划与评价契约，另有不同答案情形用于验证。Harness 将用例分为两类：
+
+**计划用例检查：**
+
+- 题数为 3--5。
+- 包含要求的题型。
+- conceptId 属于当前目录。
+- 每题有合法 evidence refs。
+- 不强迫固定回顾叙事。
+- 不复用历史逐字问题。
+
+**答案用例检查：**
+
+- verdict 是否落在预期集合。
+- evidence refs 是否真实存在。
+- 没有可信运行时不能判 `passed`。
+- 未通过时必须给出 missing point/evidence 和 corrective explanation。
+
+阈值全部是硬契约：计划有效率、计划新颖率、叙事中立率、verdict 准确率和可操作反馈率为 1；非法引用率和无依据通过率为 0。
+
+### 9.4 Prompt Eval V2/V3
+
+实现：`tutor/prompt-eval/scoring-v2.mjs`、`scoring-v3.mjs`、`run-eval.mjs`。它会临时创建数据库和学生工作区，启动 Tutor Server，按 Lab/stage 或 V3 intent corpus 回放，然后保存 JSON/Markdown scorecard。
+
+- V2 更偏向流水线、答案安全、回复质量和 RAG 质量，权重为 pipeline 0.20、safety 0.20、replyQuality 0.35、ragQuality 0.25。
+- V3 默认使用 `cases-v3.json` 的 19 个用例，覆盖 8 个 Lab 的 intent/stage 组合和证据冲突场景。
+- V3 维度为 `questionRelevance`、`guidanceCorrectness`、`necessaryExplanation`、`actionability`、`noLeak`、`evidenceFidelity`，综合分取维度平均值。
+- V3 的问题数、文本长度、代码行数只作为诊断项；V3 不再把“必须说出某个阶段关键词”当作主要质量指标。
+- `--ablate` 可生成完整 Prompt 与基线 Prompt 的差值；`--replay` 可对已有原始记录重新评分。
+
+默认运行目标是不可达上游，以检验离线 Tutor fallback；要评估真实模型链路必须显式传入可访问的 OpenAI-compatible upstream。
+
+### 9.5 HTTP Smoke、Node test 和构建
+
+`handbook/tutor-server.smoke.mjs` 覆盖真实 HTTP/SQLite 链路，包括：登录、工作区运行、Trace、Tutor 对话、知识上传/发布、复盘、报告提交、教师验收、备份以及跨用户访问控制。它还验证：
+
+- 报告未完成复盘时被拒绝。
+- 复盘完成或 deferred 后可以提交。
+- 复盘总题数不超过 5。
+- 教师能看到学生提交后的报告和复盘。
+- 自动分和教师最终验收分同时保留。
+- 可信运行和 evidence refs 不能由客户端伪造。
+
+常用命令：
 
 ```powershell
 cd os-lab/handbook
+npm test
+npm run test:harness
+npm run test:assessment-harness
 npm run test:rag-harness
 npm run test:rag-harness:cli
+npm run test:smoke
+npm run build
 ```
 
-CLI 保留 `--adapter=<path>` 接口，后续可以把 adapter 换成真实 Tutor Server 的 HTTP 回放或离线 KnowledgeStore 检索，而不改变 Harness 的期望和指标。
+`npm run build` 同时验证 VitePress 前端和服务端代码所需的文档/静态资源构建；`git diff --check` 用于检查文档和代码的空白错误。
 
-### 14.2 服务端到学生端的实际链路
+## 10. 接口和存储契约索引
 
-```mermaid
-sequenceDiagram
-  participant U as 学生端 LabWorkspace
-  participant S as Tutor Server
-  participant K as Hybrid Retriever
-  participant M as LLM
-  participant V as TutorMessage
-  U->>S: POST /chat（Lab、阶段、问题、证据）
-  S->>S: planTutorTurn + topic hint state + direct-answer guardrail
-  alt 直接索要完整答案
-    S-->>U: guardrail + 空 knowledge + guardrail-before-retrieval
-  else 普通教学问题
-    S->>K: 当前 Lab + global，student-safe/guided-hint
-    K-->>S: 最多 5 个 chunk + lexical/vector/fallback diagnostics
-    S->>M: system/Lab/intent/current context/evidence + 不可信 knowledge-chunk
-    M-->>S: candidate reply
-    S->>S: enforceTutorOutput + 当前轮 kb citation allowlist
-    S-->>U: JSON 或 SSE meta/done（reply、knowledge、retrieval）
-    U->>V: 保存消息元数据并显示来源标题/章节
-  end
+| 接口/模块 | 作用 |
+| --- | --- |
+| `POST /chat` | Tutor 实时问答，支持 JSON/SSE。 |
+| `POST /assessment` | 生成规则+Agent 行为 Assessment，并更新 mastery/review gate。 |
+| `POST /learning/review/start` | 基于完整行为证据生成复盘计划。 |
+| `POST /learning/review/answer` | 保存学生回答，进行逐题 Agent/确定性评价，必要时生成一次追问。 |
+| `POST /learning/review/resume` | 补充可信证据后恢复 `awaiting_evidence` 复盘。 |
+| `POST /learning/review/summary` | 兼容性完成或延后旧复盘。 |
+| `GET /learning/review` | 学生读取当前复盘。 |
+| `POST /reports` | 在复盘完成/deferred 后提交报告和附件，并记录 report_submitted。 |
+| `GET /teacher/report-assessment` | 教师读取自动分、复盘、报告验收和历史。 |
+| `POST /teacher/report-acceptance` | 教师提交最终分、反馈和验收建议。 |
+| `learning/db.mjs` | 学习事件、runs、assessment、mastery、review 和 report 的持久化边界。 |
+| `learning/knowledge/knowledge-store.mjs` | 版本化知识源、chunk、权限、索引和审计。 |
+
+## 11. 配置和排障要点
+
+### Tutor/RAG
+
+- `OS_LAB_TUTOR_ROUTING_MODE=stage`：切换到兼容阶段状态机；不设置时为 `intent`。
+- `OS_LAB_LLM_BASE_URL`、`OS_LAB_LLM_MODEL`、`OS_LAB_LLM_API_KEY`：Tutor 上游。
+- `OS_LAB_TUTOR_DISABLE_VECTOR=1`：关闭 Tutor 向量检索，保留词法路径。
+- `OS_LAB_EMBEDDING_BASE_URL`、`OS_LAB_EMBEDDING_MODEL`：配置 OpenAI-compatible embedding；不配置时使用本地 feature hash。
+
+### Assessment
+
+- `OS_LAB_ASSESSMENT_BASE_URL`、`OS_LAB_ASSESSMENT_MODEL`、`OS_LAB_ASSESSMENT_API_KEY`：Assessment 上游覆盖项。
+- `OS_LAB_ASSESSMENT_TIMEOUT_MS`：Assessment 请求超时，服务端限制在 1000--300000 ms，默认 120000 ms。
+- 评分 Agent 超时不会让整个 Assessment 失败，返回 `timeout/unavailable` 并采用规则分。
+
+### 出现“答非所问”时的检查顺序
+
+1. 查看 `/chat` 返回的 `tutorState.intent`、`responseMode`、`topicKey`，确认是否误判意图或主题没有切换。
+2. 查看 `framework.layers`，确认默认使用的是 `tutor/prompts/strategies/<intent>.md`，而不是兼容 stage prompt。
+3. 查看 `guardrail`，确认是否因为消息命中了完整答案模式而在 RAG/模型之前被拦截。
+4. 查看 `knowledge` 和 `retrieval`，确认是否误召回、embedding 降级或 global chunk 过多。
+5. 查看服务端权威 `ai_response`，不要只根据浏览器局部历史判断 Tutor 是否实际回复。
+6. 检查前端是否把过时的 `stage`、旧 review 或错误 sessionId 继续发送。
+
+## 12. 当前限制与下一步边界
+
+当前实现已经能支持：
+
+- Tutor 先回答学生实际问题，再按条件做一次理解检查。
+- Tutor 以受限 RAG 获取概念和实验手册内容，并对引用、完整答案和伪造运行做护栏。
+- Assessment 以完整行为证据评价学生如何学习，而不是只看最终通过。
+- 实验结束后由 Assessment 生成不超过 5 题的证据驱动 Socratic review，并给出明确的正确性、缺失点和参考因果链。
+- 学生报告、复盘 transcript 和教师验收在同一学生+Lab 验收视图中关联展示。
+
+尚未完全实现：
+
+- Assessment 评分后自动生成并持久化一个面向 Tutor 的薄弱点 profile，并在后续每轮 `/chat` 中按 topic 注入。
+- Assessment Agent 与 Tutor Agent 的独立服务进程化和异步队列化；当前是同一 Tutor Server 内的逻辑 Agent 编排。
+- 用真实远程 LLM 做每次生产对话的自动在线质量判分；现有 Harness 主要验证结构、边界、引用和可回归逻辑。
+- 把 mastery 变成 Tutor 每轮必读、且可解释的个性化策略层；当前 mastery 仍主要影响复盘和学习访问。
+
+因此，当前版本的工程闭环应准确表述为：
+
+```text
+Tutor 实时教学
+  -> 服务端权威对话/运行/事件
+  -> Assessment 规则 + 独立 Agent
+  -> 证据驱动 Socratic review
+  -> review transcript + report 联合提交
+  -> 教师实验验收
 ```
 
-`Tutor Server` 通过 `tutorKnowledgeMeta()` 将内部 Chunk 映射为学生可见的安全元数据：包含 `citation`、`sourceId`、`sourceTitle`、`sectionPath`、`contentClass`、`labScopes`、`locatorStart/End` 和本轮排序字段，但不返回 Chunk 正文。服务端在 JSON 响应、SSE `meta` 帧和 `done` 帧使用同一结构，避免流式与非流式客户端出现契约分叉。
-
-`LabWorkspace.vue` 将这两个字段带入 `ReplyOutcome`，流式响应从 `meta/done` 帧合并；发送完成后写入 `TutorMessage`，所以刷新页面恢复历史对话时仍能看到本轮引用。`TutorMessage.vue` 只渲染来源/章节标签和安全的检索状态：embedding/向量失败时显示“已降级为关键词检索”，不会把内部 endpoint、异常堆栈或教师元数据暴露给学生。
-
-### 14.3 回归基线
-
-当前 Step 8 的回归门槛已经落在代码中：
-
-| 检查面 | 实现 | 当前结果 |
-| --- | --- | --- |
-| RAG case schema、权限、Lab/global 上限 | `rag-harness.mjs` | 4 个 fixture CLI 全通过 |
-| 学生来源元数据完整性 | Harness metadata gate + Tutor smoke | 通过 |
-| Tutor JSON/SSE 回包一致性 | `tutor-server.mjs` | 通过 |
-| 学生端类型与展示 | `tutor-model.ts`、`LabWorkspace.vue`、`TutorMessage.vue` | VitePress build 通过 |
-| 全量单测 | `npm test` | 54/54 |
-| 真实服务链路 | `npm run test:smoke` | 通过 |
+而不是把尚未落地的“评分结果实时改写 Tutor prompt”描述成已经完成。

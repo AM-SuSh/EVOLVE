@@ -261,6 +261,11 @@ test('migration binds events and immutable runs to the authenticated user', () =
     acceptanceAdvice: '将因果链迁移到下一实验。',
   })
   assert.equal(secondAcceptance.revision, 2)
+  assert.equal(secondAcceptance.acceptance.finalScore.total, 93)
+  assert.equal(
+    learningDb.listAllReports().find((report) => report.user === 'member-c-test' && report.labId === 'lab2').hasAcceptance,
+    true,
+  )
   const acceptanceBundle = learningDb.getReportAssessment('member-c-test', 'lab2')
   assert.equal(acceptanceBundle.assessment.assessmentId, latestSaved.assessmentId)
   assert.equal(acceptanceBundle.assessment.automaticResult.total, latestAssessment.total)
@@ -268,6 +273,35 @@ test('migration binds events and immutable runs to the authenticated user', () =
   assert.equal(acceptanceBundle.acceptanceHistory.length, 2)
   assert.deepEqual(acceptanceBundle.acceptanceHistory.map((item) => item.revision), [2, 1])
   assert.equal(acceptanceBundle.reportFeedback, '补充说明后通过最终验收。')
+  const postAcceptanceAssessment = learningDb.saveAssessment(session.id, {
+    ...latestAssessment,
+    sessionId: 'learning-after-acceptance',
+    total: Math.max(0, latestAssessment.total - 2),
+  })
+  const teacherCurrentBundle = learningDb.getReportAssessment('member-c-test', 'lab2')
+  assert.equal(teacherCurrentBundle.assessment.assessmentId, postAcceptanceAssessment.assessmentId)
+  assert.equal(teacherCurrentBundle.acceptance, null)
+  const teacherAcceptedBundle = learningDb.getReportAssessment('member-c-test', 'lab2', {
+    preferLatestAcceptance: true,
+  })
+  assert.equal(teacherAcceptedBundle.assessment.assessmentId, latestSaved.assessmentId)
+  assert.equal(teacherAcceptedBundle.acceptance.finalScore.total, 93)
+  const revisedAcceptance = learningDb.submitReportAcceptance(teacher.id, {
+    user: 'member-c-test',
+    labId: 'lab2',
+    assessmentId: teacherAcceptedBundle.assessment.assessmentId,
+    finalScore: { total: 87, dimensions: { process: 86, reflection: 78 } },
+    feedback: '复核后调整教师最终分。',
+    acceptanceAdvice: '继续保持证据与结论的一致性。',
+  })
+  assert.equal(revisedAcceptance.revision, 3)
+  assert.equal(revisedAcceptance.acceptance.finalScore.total, 87)
+  const studentFinalBundle = learningDb.getReportAssessment('member-c-test', 'lab2', {
+    includeUnsubmittedAssessment: true,
+    preferLatestAcceptance: true,
+  })
+  assert.equal(studentFinalBundle.assessment.assessmentId, latestSaved.assessmentId)
+  assert.equal(studentFinalBundle.acceptance.finalScore.total, 87)
   assert.equal(learningDb.listAssessmentReviews().length, 1)
   assert.equal(learningDb.listAssessmentReviews()[0].automaticResult.total, assessment.total)
   const acceptanceEvent = learningDb.getAssessmentInput(session.id, 'learning-acceptance', 'lab2').events
