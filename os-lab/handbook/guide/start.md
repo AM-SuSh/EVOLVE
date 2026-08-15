@@ -59,7 +59,10 @@ EVOLVE 的核心设计是：**始终只有一个内核代码库**。通过 Cargo
 4. 如果页面提示「教师尚未发布可学习的实验」，或工作台提示「当前实验尚未解锁」，先到顶栏「系统构建路径」查看该层写明的锁定原因（未分发、未到解锁时间、已截止或前置条件未完成），再请老师按范围分发。
 
 <!-- GIF 占位：录制学生注册（选择班级）并登录、引导式学习自动进入当前 Lab 的过程，替换 /gifs/guide-entry.gif -->
-![注册登录并自动进入当前 Lab](/gifs/guide-entry.gif)
+<video class="guide-video" controls muted loop playsinline preload="metadata" poster="/gifs/guide-entry.gif">
+  <source src="/videos/guide-entry.mp4" type="video/mp4" />
+  浏览器不支持视频播放，可查看动图版 [guide-entry.gif](/gifs/guide-entry.gif)。
+</video>
 
 ### 3.2 工作台布局
 
@@ -80,7 +83,10 @@ EVOLVE 的核心设计是：**始终只有一个内核代码库**。通过 Cargo
 顶栏的「手册 / 工作区 / 学习支持」可以随时收放各区；手册与工作区、工作区与学习支持、编辑器与终端之间的分隔条都可拖动，浏览器会记住常用布局。窄屏下工作台会自动切换为「手册 / 实践」视图（教师端为「手册 / 教学」）。
 
 <!-- GIF 占位：录制工作台三区布局、底部面板页签与分隔条拖动，替换 /gifs/workbench-layout.gif -->
-![工作台整体布局](/gifs/workbench-layout.gif)
+<video class="guide-video" controls muted loop playsinline preload="metadata" poster="/gifs/workbench-layout.gif">
+  <source src="/videos/workbench-layout.mp4" type="video/mp4" />
+  浏览器不支持视频播放，可查看动图版 [workbench-layout.gif](/gifs/workbench-layout.gif)。
+</video>
 
 ### 3.3 系统构建路径与「领取并开始」
 
@@ -95,7 +101,10 @@ EVOLVE 的核心设计是：**始终只有一个内核代码库**。通过 Cargo
 老师按范围分发后，学生需要在「系统构建路径」点击该层的 **「领取并开始」**，代码才会合并进自己的「我的系统」。升级只补必需的新文件，不会覆盖你已经写好的代码或自建用户程序。顶栏「我的系统 · labN」会与已发放的层同步；路径底部还可以「导出成长档案」。
 
 <!-- GIF 占位：录制打开系统构建路径、阅读锁定原因、点击「领取并开始」并查看证据状态的过程，替换 /gifs/journey-claim.gif -->
-![系统构建路径与领取下一层](/gifs/journey-claim.gif)
+<video class="guide-video" controls muted loop playsinline preload="metadata" poster="/gifs/journey-claim.gif">
+  <source src="/videos/journey-claim.mp4" type="video/mp4" />
+  浏览器不支持视频播放，可查看动图版 [journey-claim.gif](/gifs/journey-claim.gif)。
+</video>
 
 ### 3.4 一次 Lab 的标准操作
 
@@ -111,10 +120,16 @@ EVOLVE 的核心设计是：**始终只有一个内核代码库**。通过 Cargo
 10. **领取下一层**：当前 Lab 完成可信验证，并把报告与复盘一起提交给老师后，等老师开放下一层，再到「系统构建路径」领取并开始；完成 Lab8 并提交报告与复盘，且老师已发布期末探索任务时，期末节点才会解锁。
 
 <!-- GIF 占位：录制编辑代码、保存、运行可信验证、查看 Problems 与测试结果的过程，替换 /gifs/run-and-test-results.gif -->
-![编辑代码与可信验证](/gifs/run-and-test-results.gif)
+<video class="guide-video" controls muted loop playsinline preload="metadata" poster="/gifs/run-and-test-results.gif">
+  <source src="/videos/run-and-test-results.mp4" type="video/mp4" />
+  浏览器不支持视频播放，可查看动图版 [run-and-test-results.gif](/gifs/run-and-test-results.gif)。
+</video>
 
 <!-- GIF 占位：录制填写实验报告、完成苏格拉底复盘并提交给老师的过程，替换 /gifs/report-socratic-review.gif -->
-![实验报告与苏格拉底复盘](/gifs/report-socratic-review.gif)
+<video class="guide-video" controls muted loop playsinline preload="metadata" poster="/gifs/report-socratic-review.gif">
+  <source src="/videos/report-socratic-review.mp4" type="video/mp4" />
+  浏览器不支持视频播放，可查看动图版 [report-socratic-review.gif](/gifs/report-socratic-review.gif)。
+</video>
 
 ### 3.5 如何使用 AI 导师
 
@@ -135,7 +150,10 @@ AI 导师是工作台右下角的悬浮窗口，它的证据条会显示三列�
 导师不会因为一句「退出码 0」就判定实验完成。没有真实可信 run、断言或 Trace 时，它不会声称你已经通过。
 
 <!-- GIF 占位：录制打开 AI 导师、附上代码/终端/断言证据并提问的过程，替换 /gifs/ai-tutor-evidence.gif -->
-![AI 导师与证据附件](/gifs/ai-tutor-evidence.gif)
+<video class="guide-video" controls muted loop playsinline preload="metadata" poster="/gifs/ai-tutor-evidence.gif">
+  <source src="/videos/ai-tutor-evidence.mp4" type="video/mp4" />
+  浏览器不支持视频播放，可查看动图版 [ai-tutor-evidence.gif](/gifs/ai-tutor-evidence.gif)。
+</video>
 
 ### 3.6 教师端快速上手
 
@@ -149,7 +167,10 @@ AI 导师是工作台右下角的悬浮窗口，它的证据条会显示三列�
 - **知识库**：在 [知识库工作台](/teacher/knowledge) 中维护教学知识。
 
 <!-- GIF 占位：录制教师创建班级、按范围分发 Lab、选择变体并到实验验收页查看提交的过程，替换 /gifs/teacher-publish-review.gif -->
-![教师分发与实验验收](/gifs/teacher-publish-review.gif)
+<video class="guide-video" controls muted loop playsinline preload="metadata" poster="/gifs/teacher-publish-review.gif">
+  <source src="/videos/teacher-publish-review.mp4" type="video/mp4" />
+  浏览器不支持视频播放，可查看动图版 [teacher-publish-review.gif](/gifs/teacher-publish-review.gif)。
+</video>
 
 ### 3.7 常见入口速查
 
@@ -295,17 +316,5 @@ make test-lab8" label="复制全部" />
 | [实验验收](/teacher-review) | 教师验收报告、复盘与评分 |
 | [期末探索任务](/teacher/final-project) | 教师发布期末任务书与查看性能打榜 |
 | [知识库工作台](/teacher/knowledge) | 教师维护教学知识 |
-
-### 录屏演示占位图
-
-| 占位图 | 建议录制内容 |
-| --- | --- |
-| [guide-entry](/gifs/guide-entry.gif) | 注册登录并自动进入当前 Lab |
-| [workbench-layout](/gifs/workbench-layout.gif) | 工作台三区布局与底部面板 |
-| [journey-claim](/gifs/journey-claim.gif) | 系统构建路径、锁定原因与领取下一层 |
-| [run-and-test-results](/gifs/run-and-test-results.gif) | 编辑代码、可信验证与测试结果 |
-| [report-socratic-review](/gifs/report-socratic-review.gif) | 实验报告、苏格拉底复盘与提交 |
-| [ai-tutor-evidence](/gifs/ai-tutor-evidence.gif) | AI 导师证据附件与提问 |
-| [teacher-publish-review](/gifs/teacher-publish-review.gif) | 教师分发与实验验收 |
 
 准备好了的话，下一步进入 [引导式学习](/guide/ai-tutor)，或直接打开 [Lab1 工作台](/learn/lab1)。
