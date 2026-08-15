@@ -241,7 +241,7 @@ function scheduleDraftPersist() {
   draftPersistTimer = setTimeout(persistDraftsNow, 250)
 }
 
-function applyReview(next: SocraticReview | null) {
+function applyReview(next: SocraticReview | null, options: { notifyCompletion?: boolean } = {}) {
   persistDraftsNow()
   const previousReviewId = review.value?.reviewId || ''
   review.value = next
@@ -266,8 +266,9 @@ function applyReview(next: SocraticReview | null) {
   }
   if (next.status === 'review_completed') {
     clearDraftStore(next)
-    if (next.reviewId !== completedEmittedId) {
-      completedEmittedId = next.reviewId
+    const shouldNotify = options.notifyCompletion === true && next.reviewId !== completedEmittedId
+    completedEmittedId = next.reviewId
+    if (shouldNotify) {
       emit('completed', next)
     }
   }
@@ -316,6 +317,7 @@ async function runAction(
   successNotice: string,
 ): Promise<boolean> {
   if (action.value || !readyToLoad.value) return false
+  const wasCompleted = review.value?.status === 'review_completed'
   ++loadSequence
   action.value = nextAction
   error.value = ''
@@ -324,7 +326,7 @@ async function runAction(
       method: 'POST',
       body: JSON.stringify(body),
     })
-    applyReview(payload.review || null)
+    applyReview(payload.review || null, { notifyCompletion: !wasCompleted })
     if (successNotice) emit('notice', successNotice)
     return true
   } catch (caught) {

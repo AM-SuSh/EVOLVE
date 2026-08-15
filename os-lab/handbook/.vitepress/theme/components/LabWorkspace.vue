@@ -1595,23 +1595,10 @@ async function scaffoldAddBin() {
   }
 }
 
-/** 老师对本 Lab 报告的批语（学生在报告面板看到）。 */
-const teacherFeedback = ref('')
+/** 教师验收后该 Lab 进入终态，报告侧不再开放复盘和重复提交。 */
+const labAccepted = ref(false)
 /** 教师布置的报告版式与填写提示。 */
 const reportTemplate = ref<ReportTemplate>(cloneTemplate(DEFAULT_REPORT_TEMPLATE))
-
-async function loadMyFeedback() {
-  if (!auth.value || isTeacherRole.value) return
-  try {
-    const response = await fetch(apiUrl('/reports/mine'), { headers: authHeaders() })
-    if (!response.ok) return
-    const payload = await response.json()
-    const mine = (payload.mine || []).find((r: { labId: string }) => r.labId === props.labId)
-    teacherFeedback.value = mine?.feedback || ''
-  } catch {
-    /* 静默 */
-  }
-}
 
 async function loadReportTemplate() {
   try {
@@ -2719,10 +2706,20 @@ function reviewReport(content: string) {
 }
 
 async function onSocraticReviewCompleted() {
+  await assessmentPaneRef.value?.loadLatestAssessment()
+  if (labAccepted.value) {
+    return
+  }
   activeStage.value = 'reflect'
   await refreshLearningAccess()
   await assessmentPaneRef.value?.refreshAssessment()
   toast('复盘回答已完成。提交报告时会连同复盘记录一起交给老师。')
+}
+
+async function openAssessmentTab() {
+  rightTab.value = 'assessment'
+  await nextTick()
+  await assessmentPaneRef.value?.loadLatestAssessment()
 }
 
 /* -- 导航与导出 ------------------------------------------------------------- */
@@ -2830,7 +2827,6 @@ onMounted(async () => {
   await refreshLearningAccess()
   if (!(await loadServerTutorConversation()) && !loadTutorConversation()) startSession()
   void refreshScaffold()
-  void loadMyFeedback()
   void loadReportTemplate()
 })
 
@@ -2838,7 +2834,7 @@ watch(
   () => props.labId,
   () => {
     manualTocOpen.value = false
-    void loadMyFeedback()
+    labAccepted.value = false
     void loadReportTemplate()
     void loadServerTutorConversation().then((restored) => {
       if (!restored && !loadTutorConversation()) startSession()
@@ -3419,7 +3415,7 @@ onBeforeUnmount(() => {
                 :aria-selected="rightTab === 'assessment'"
                 :class="{ active: rightTab === 'assessment' }"
                 title="量规 v2 学习评价与证据链"
-                @click="rightTab = 'assessment'"
+                @click="openAssessmentTab"
               >学习评价</button>
             </div>
             <button
@@ -3448,7 +3444,7 @@ onBeforeUnmount(() => {
               v-show="rightTab === 'report'"
               :key="`report-${studentId || 'anonymous'}-${lab.id}`"
               :lab="lab"
-              :teacher-feedback="teacherFeedback"
+              :accepted="labAccepted"
               :report-template="reportTemplate"
               :endpoint="endpoint"
               :authenticated="Boolean(auth && !isTeacherRole)"
@@ -3468,6 +3464,7 @@ onBeforeUnmount(() => {
               :session-id="sessionId"
               :can-assess="Boolean(auth && !isTeacherRole)"
               :llm-config="llmConfig"
+              @acceptance-change="labAccepted = $event"
               @notice="toast"
               @open-evidence="navigateEvidenceRef"
             />

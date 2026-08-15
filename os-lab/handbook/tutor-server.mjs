@@ -1155,6 +1155,14 @@ function reviewTranscript(review, performanceSummary) {
     .filter(Boolean).join('\n\n')
 }
 
+function studentLabAcceptance(session, labId) {
+  if (session?.role !== 'student' || !labIds.has(String(labId || ''))) return null
+  return getReportAssessment(session.username, labId, {
+    includeUnsubmittedAssessment: true,
+    preferLatestAcceptance: true,
+  })?.acceptance || null
+}
+
 function reviewRootTurns(review) {
   return review.turns.filter((turn) => turn.askedAt && !turn.parentTurnId)
 }
@@ -2520,6 +2528,34 @@ const server = http.createServer(async (request, response) => {
       return
     }
 
+    if (request.method === 'GET' && pathname === '/assessment') {
+      if (!session || session.role !== 'student') {
+        json(response, 401, { error: '请以学生账号登录后查看评价' }, origin)
+        return
+      }
+      const labId = String(requestUrl.searchParams.get('labId') || '')
+      if (!labIds.has(labId)) {
+        json(response, 400, { error: 'labId 无效' }, origin)
+        return
+      }
+      const result = getReportAssessment(session.username, labId, {
+        includeUnsubmittedAssessment: true,
+        preferLatestAcceptance: true,
+      })
+      if (!result) {
+        json(response, 404, { error: '学生不存在' }, origin)
+        return
+      }
+      json(response, 200, {
+        ok: true,
+        labId,
+        hasReport: result.hasReport,
+        assessment: result.assessment,
+        acceptance: result.acceptance,
+      }, origin)
+      return
+    }
+
     if (request.method === 'POST' && pathname === '/assessment') {
       if (!session || session.role !== 'student') {
         json(response, 401, { error: '请以学生账号登录后生成评价' }, origin)
@@ -2592,6 +2628,10 @@ const server = http.createServer(async (request, response) => {
       const learningSessionId = String(body.sessionId || '').trim().slice(0, 160)
       if (!labIds.has(labId) || !learningSessionId) {
         json(response, 400, { error: 'labId 或 sessionId 无效' }, origin)
+        return
+      }
+      if (studentLabAcceptance(session, labId)) {
+        json(response, 409, { error: '教师已完成本实验验收，无需再次复盘', lifecycle: 'accepted' }, origin)
         return
       }
       const existing = getLatestSocraticReview(session.id, learningSessionId, labId)
@@ -2669,6 +2709,10 @@ const server = http.createServer(async (request, response) => {
       const answer = String(body.answer || '').trim().slice(0, 8_000)
       if (!review || !questionId || !answer) {
         json(response, 400, { error: '复盘、问题或回答无效' }, origin)
+        return
+      }
+      if (studentLabAcceptance(session, review.labId)) {
+        json(response, 409, { error: '教师已完成本实验验收，无需继续复盘', lifecycle: 'accepted' }, origin)
         return
       }
       const turn = review.turns.find((item) => item.questionId === questionId)
@@ -2765,7 +2809,15 @@ const server = http.createServer(async (request, response) => {
       }
       const body = await readBody(request)
       const review = getSocraticReview(session.id, String(body.reviewId || ''))
-      if (!review || review.status !== 'awaiting_evidence') {
+      if (!review) {
+        json(response, 400, { error: '复盘会话无效' }, origin)
+        return
+      }
+      if (studentLabAcceptance(session, review.labId)) {
+        json(response, 409, { error: '教师已完成本实验验收，无需继续复盘', lifecycle: 'accepted' }, origin)
+        return
+      }
+      if (review.status !== 'awaiting_evidence') {
         json(response, 409, { error: '当前复盘不在等待证据状态' }, origin)
         return
       }
@@ -2824,6 +2876,10 @@ const server = http.createServer(async (request, response) => {
       const review = getSocraticReview(session.id, String(body.reviewId || ''))
       if (!review) {
         json(response, 400, { error: '复盘会话无效' }, origin)
+        return
+      }
+      if (studentLabAcceptance(session, review.labId)) {
+        json(response, 409, { error: '教师已完成本实验验收，无需继续复盘', lifecycle: 'accepted' }, origin)
         return
       }
       if (review.status === 'review_completed') {
@@ -2904,6 +2960,10 @@ const server = http.createServer(async (request, response) => {
       const content = typeof body.content === 'string' ? body.content : ''
       if (!labIds.has(labId) || !content.trim() || content.length > 524_288) {
         json(response, 400, { error: '报告内容为空或过大（正文上限 512 KiB）' }, origin)
+        return
+      }
+      if (studentLabAcceptance(session, labId)) {
+        json(response, 409, { error: '教师已完成本实验验收，无需重复提交报告', lifecycle: 'accepted' }, origin)
         return
       }
       const labAccess = await reportAccessFor(session, labId)
@@ -3843,7 +3903,7 @@ const server = http.createServer(async (request, response) => {
           json(response, 400, { error: 'user 和 labId 必须有效' }, origin)
           return
         }
-        const assessment = getReportAssessment(username, labId)
+        const assessment = getReportAssessment(username, labId, { preferLatestAcceptance: true })
         if (!assessment) {
           json(response, 404, { error: '学生不存在' }, origin)
           return

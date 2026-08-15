@@ -580,6 +580,10 @@ export function listAllReports() {
               r.updated_at AS updatedAt, r.content, COALESCE(r.feedback, '') AS feedback,
               COALESCE(r.attachments, '[]') AS attachments, COALESCE(r.content_path, '') AS contentPath,
               r.review_grandfathered AS reviewGrandfathered, 1 AS hasReport,
+              EXISTS(
+                SELECT 1 FROM report_acceptances ra
+                WHERE ra.user_id = r.user_id AND ra.lab_id = r.lab_id
+              ) AS hasAcceptance,
               r.review_id AS reviewId, r.review_status AS reviewStatus,
               COALESCE(sr.updated_at, '') AS reviewUpdatedAt
        FROM reports r
@@ -593,6 +597,7 @@ export function listAllReports() {
       attachments: parseAttachments(row.attachments),
       reviewGrandfathered: Boolean(row.reviewGrandfathered),
       hasReport: Boolean(row.hasReport),
+      hasAcceptance: Boolean(row.hasAcceptance),
     }))
 }
 
@@ -695,8 +700,8 @@ const reportAcceptanceSelect = `
          ra.feedback, ra.acceptance_advice AS acceptanceAdvice, ra.created_at AS createdAt
   FROM report_acceptances ra JOIN users u ON u.id = ra.teacher_user_id`
 
-/** Teacher acceptance bundle: latest automatic assessment, optional legacy review and immutable acceptance history. */
-export function getReportAssessment(username, labId) {
+/** Acceptance bundle; student reads may prefer the assessment bound to the latest final acceptance. */
+export function getReportAssessment(username, labId, options = {}) {
   const student = db.prepare(
     "SELECT id, username, class_name AS className FROM users WHERE username = ? AND role = 'student'",
   ).get(String(username || ''))
@@ -705,11 +710,24 @@ export function getReportAssessment(username, labId) {
   const report = db.prepare(
     'SELECT id, feedback, updated_at AS updatedAt FROM reports WHERE user_id = ? AND lab_id = ?',
   ).get(student.id, normalizedLabId)
-  const assessment = report
+  const acceptanceRows = report
+    ? db.prepare(
+        `${reportAcceptanceSelect}
+         WHERE ra.user_id = ? AND ra.lab_id = ? ORDER BY ra.revision DESC`,
+      ).all(student.id, normalizedLabId)
+    : []
+  const preferredAssessmentId = options.preferLatestAcceptance === true
+    ? String(acceptanceRows[0]?.assessmentId || '')
+    : ''
+  const assessment = report || options.includeUnsubmittedAssessment === true
     ? parseAssessmentRow(db.prepare(
-        `${reportAssessmentSelect}
-         WHERE user_id = ? AND lab_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
-      ).get(student.id, normalizedLabId))
+        preferredAssessmentId
+          ? `${reportAssessmentSelect} WHERE id = ? AND user_id = ? AND lab_id = ? LIMIT 1`
+          : `${reportAssessmentSelect}
+             WHERE user_id = ? AND lab_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      ).get(...(preferredAssessmentId
+        ? [preferredAssessmentId, student.id, normalizedLabId]
+        : [student.id, normalizedLabId])))
     : null
   const assessmentReview = assessment
     ? (() => {
@@ -717,12 +735,6 @@ export function getReportAssessment(username, labId) {
         return review ? { ...review, decisions: listReviewDecisions(review.reviewId) } : null
       })()
     : null
-  const acceptanceRows = report
-    ? db.prepare(
-        `${reportAcceptanceSelect}
-         WHERE ra.user_id = ? AND ra.lab_id = ? ORDER BY ra.revision DESC`,
-      ).all(student.id, normalizedLabId)
-    : []
   const acceptanceHistory = acceptanceRows.map((row) =>
     parseReportAcceptanceRow(row, assessment?.assessmentId || ''),
   )
@@ -789,9 +801,25 @@ export function submitReportAcceptance(teacherUserId, input) {
       db.exec('ROLLBACK')
       return { ok: false, error: '该学生当前实验尚无自动评价' }
     }
-    if (assessmentId !== latestAssessment.assessmentId) {
+    const latestAcceptance = db.prepare(
+      `SELECT assessment_id AS assessmentId
+       FROM report_acceptances
+       WHERE user_id = ? AND lab_id = ?
+       ORDER BY revision DESC LIMIT 1`,
+    ).get(student.id, labId)
+    const expectedAssessmentId = String(latestAcceptance?.assessmentId || latestAssessment.assessmentId)
+    if (assessmentId !== expectedAssessmentId) {
       db.exec('ROLLBACK')
       return { ok: false, error: '自动评价已更新，请刷新后重新验收' }
+    }
+    const acceptedAssessment = assessmentId === latestAssessment.assessmentId
+      ? latestAssessment
+      : db.prepare(
+          `${reportAssessmentSelect} WHERE id = ? AND user_id = ? AND lab_id = ? LIMIT 1`,
+        ).get(assessmentId, student.id, labId)
+    if (!acceptedAssessment) {
+      db.exec('ROLLBACK')
+      return { ok: false, error: '验收关联的自动评价不存在' }
     }
     const revision = Number(db.prepare(
       'SELECT coalesce(max(revision), 0) + 1 AS value FROM report_acceptances WHERE user_id = ? AND lab_id = ?',
@@ -809,12 +837,12 @@ export function submitReportAcceptance(teacherUserId, input) {
     const event = {
       version: 2,
       id: eventId,
-      sessionId: latestAssessment.sessionId,
+      sessionId: acceptedAssessment.sessionId,
       labId,
       type: 'teacher_reviewed',
       stage: 'reflect',
       timestamp,
-      rubricVersion: latestAssessment.rubricVersion,
+      rubricVersion: acceptedAssessment.rubricVersion,
       decision: 'accepted',
       comment: feedback,
       metadata: { assessmentId, acceptanceId, revision, finalScore, acceptanceAdvice },
@@ -823,9 +851,19 @@ export function submitReportAcceptance(teacherUserId, input) {
       `INSERT INTO events
         (id, user_id, schema_version, session_id, lab_id, run_id, type, stage, occurred_at, payload_json, created_at)
        VALUES (?, ?, 2, ?, ?, NULL, 'teacher_reviewed', 'reflect', ?, ?, ?)`,
-    ).run(eventId, student.id, latestAssessment.sessionId, labId, timestamp, JSON.stringify(event), timestamp)
+    ).run(eventId, student.id, acceptedAssessment.sessionId, labId, timestamp, JSON.stringify(event), timestamp)
     db.exec('COMMIT')
-    return { ok: true, acceptanceId, assessmentId, revision, eventId, acceptedAt: timestamp }
+    return {
+      ok: true,
+      acceptanceId,
+      assessmentId,
+      revision,
+      eventId,
+      acceptedAt: timestamp,
+      acceptance: parseReportAcceptanceRow(db.prepare(
+        `${reportAcceptanceSelect} WHERE ra.id = ?`,
+      ).get(acceptanceId), assessmentId),
+    }
   } catch (error) {
     db.exec('ROLLBACK')
     throw error
