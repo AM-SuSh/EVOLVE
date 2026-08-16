@@ -69,6 +69,36 @@ const mockUpstream = http.createServer(async (request, response) => {
         }))
         return
       }
+      if (input.task === 'tutor-review-questions') {
+        response.end(JSON.stringify({
+          choices: [{
+            message: {
+              role: 'assistant',
+              content: JSON.stringify({
+                questions: (input.briefs || []).map((brief, index) => ({
+                  questionId: brief.questionId,
+                  prompt: `Tutor Agent 复盘题 ${index + 1}：请结合本实验过程解释“${brief.objective}”中的因果关系？`,
+                })),
+              }),
+            },
+          }],
+        }))
+        return
+      }
+      if (input.task === 'tutor-review-question') {
+        response.end(JSON.stringify({
+          choices: [{
+            message: {
+              role: 'assistant',
+              content: JSON.stringify({
+                questionId: input.brief?.questionId,
+                prompt: `Tutor Agent 追问：结合你刚才的回答，怎样补全“${input.brief?.objective}”对应的机制与证据？`,
+              }),
+            },
+          }],
+        }))
+        return
+      }
       if (input.question && typeof input.answer === 'string') {
         const needsEvidence = input.answer.includes('[needs-evidence]')
         const partial = input.answer.includes('[partial]')
@@ -1043,7 +1073,12 @@ try {
     labId: 'lab2', sessionId: 'smoke-learning-session',
   })
   assert.equal(reviewStart.status, 201)
-  let lab2Review = (await reviewStart.json()).review
+  const reviewStartPayload = await reviewStart.json()
+  assert.equal(reviewStartPayload.agents.assessment.role, 'assessment')
+  assert.equal(reviewStartPayload.agents.tutor.role, 'tutor')
+  assert.equal(reviewStartPayload.agents.tutor.mode, 'remote')
+  let lab2Review = reviewStartPayload.review
+  assert.match(lab2Review.turns[0].prompt, /Tutor Agent 复盘题/)
   lab2Review = await answerCurrentReview(
     studentHeaders,
     lab2Review,
@@ -1069,6 +1104,14 @@ try {
   assert.equal(finishedReview.turns.length <= 5, true)
   const reviewEvents = await fetch(`${endpoint}/events/mine?labId=lab2`, { headers: studentHeaders })
     .then((response) => response.json())
+  const askedByTutor = reviewEvents.events.filter((event) =>
+    event.type === 'review_question_asked' && event.reviewId === finishedReview.reviewId)
+  const evaluatedByAssessment = reviewEvents.events.filter((event) =>
+    event.type === 'review_answer_evaluated' && event.reviewId === finishedReview.reviewId)
+  assert.ok(askedByTutor.length >= 3)
+  assert.equal(askedByTutor.every((event) => event.metadata?.agent === 'tutor'), true)
+  assert.ok(evaluatedByAssessment.length >= 3)
+  assert.equal(evaluatedByAssessment.every((event) => event.metadata?.agent === 'assessment'), true)
   const submittedReflection = reviewEvents.events.find((event) =>
     event.type === 'review_reflection_assessed'
       && event.reviewId === finishedReview.reviewId

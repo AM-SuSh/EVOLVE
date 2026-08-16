@@ -69,6 +69,11 @@ import {
   tutorTurnPolicyPrompt,
 } from '../tutor/turn-policy.mjs'
 import { validateChatEvidenceRefs } from '../tutor/evidence-refs.mjs'
+import {
+  DEFAULT_TUTOR_REVIEW_TIMEOUT_MS,
+  materializeTutorReviewPlan,
+  materializeTutorReviewQuestion,
+} from '../tutor/review-tutor.mjs'
 import { openKnowledgeStore } from '../learning/knowledge/knowledge-store.mjs'
 import { createHybridRetriever } from '../learning/knowledge/hybrid-retriever.mjs'
 import {
@@ -1108,10 +1113,10 @@ function reviewTranscript(review, performanceSummary) {
     const evaluation = turn.evaluation
     return [
       `### 问题 ${index + 1}`,
-      `**AI 导师：** ${turn.prompt}`,
+      `**Tutor Agent：** ${turn.prompt}`,
       `**学生：** ${turn.studentAnswer || '未回答'}`,
-      evaluation?.verdictLabel ? `**判断：** ${evaluation.verdictLabel}` : '',
-      evaluation?.rationale ? `**评价：** ${evaluation.rationale}` : '',
+      evaluation?.verdictLabel ? `**Assessment Agent 独立判断：** ${evaluation.verdictLabel}` : '',
+      evaluation?.rationale ? `**Assessment Agent 评价：** ${evaluation.rationale}` : '',
       evaluation?.missingPoints?.length ? `**缺失要点：** ${evaluation.missingPoints.join('；')}` : '',
       evaluation?.correctiveExplanation ? `**参考解释：** ${evaluation.correctiveExplanation}` : '',
     ].filter(Boolean).join('\n\n')
@@ -1324,6 +1329,66 @@ async function assessmentLlm(studentLlm) {
     timeoutMs: Number.isFinite(configuredTimeout)
       ? Math.max(1_000, Math.min(configuredTimeout, 300_000))
       : DEFAULT_ASSESSMENT_AGENT_TIMEOUT_MS,
+  }
+}
+
+async function reviewTutorLlm(studentLlm) {
+  const llm = await resolveLlm(studentLlm)
+  const configuredTimeout = Number(
+    process.env.OS_LAB_TUTOR_REVIEW_TIMEOUT_MS || DEFAULT_TUTOR_REVIEW_TIMEOUT_MS,
+  )
+  return {
+    ...llm,
+    timeoutMs: Number.isFinite(configuredTimeout)
+      ? Math.max(1_000, Math.min(configuredTimeout, 300_000))
+      : DEFAULT_TUTOR_REVIEW_TIMEOUT_MS,
+  }
+}
+
+function reviewQuestioner(review) {
+  return review?.plan?.questioner || {
+    role: 'tutor',
+    mode: 'legacy',
+    model: '',
+    promptVersion: '',
+    error: '',
+  }
+}
+
+async function buildReviewTutorContext(labId, briefs, bundle, options = {}) {
+  const questions = Array.isArray(briefs) ? briefs : [briefs]
+  const assessmentFeedback = options.assessmentFeedback || null
+  const retrievalQuery = [
+    labLabels[labId] || labId,
+    ...questions.flatMap((brief) => [brief?.conceptId, brief?.objective, brief?.prompt]),
+    options.studentAnswer,
+    ...(assessmentFeedback?.missingPoints || []),
+    ...(assessmentFeedback?.missingEvidence || []),
+  ].filter(Boolean).join('\n').slice(0, 4_000)
+  const retrieval = await retrieveTutorKnowledge(retrievalQuery, labId)
+  const evidenceRefs = [...new Set(questions.flatMap((brief) => brief?.evidenceRefs || []))].slice(0, 30)
+  const policyPrompt = [
+    '当前任务是终期苏格拉底复盘。Assessment Agent 已根据学生行为证据形成内部问题简报。',
+    '你仍是过程答疑阶段的 Tutor Agent，沿用当前 Lab、反思策略、近期对话和受限知识上下文。',
+    '只负责把内部简报转成一个面向学生的问题；不要评价或打分，不要泄露通过标准，也不要替学生作答。',
+    evidenceRefs.length ? `可使用的可信证据标识仅限：${evidenceRefs.join('、')}` : '',
+  ].filter(Boolean).join('\n')
+  const framework = frameworkFor(
+    labId,
+    { stage: 'reflect', intent: 'reflection', responseMode: 'answer-first' },
+    null,
+    null,
+    policyPrompt,
+    knowledgePrompt(retrieval.chunks),
+  )
+  return {
+    labId,
+    frameworkPrompt: framework.prompt,
+    recentConversation: bundle?.conversation?.messages || [],
+    previousQuestions: options.previousQuestions || [],
+    studentAnswer: options.studentAnswer || '',
+    assessmentFeedback,
+    allowedKnowledgeRefs: retrieval.chunks.map((chunk) => chunk.citation),
   }
 }
 
@@ -2622,10 +2687,13 @@ const server = http.createServer(async (request, response) => {
         }, origin)
         return
       }
-      const llm = await assessmentLlm(body.llm)
+      const [assessmentRuntime, tutorRuntime] = await Promise.all([
+        assessmentLlm(body.llm),
+        reviewTutorLlm(body.llm),
+      ])
       const ruleAssessment = assessLearningV3({ labId, sessionId: learningSessionId, ...assessmentInput })
       const bundle = await buildCurrentReviewBundle(session.id, learningSessionId, labId, ruleAssessment)
-      const agentResult = await scoreAssessmentBehavior(bundle, { llm })
+      const agentResult = await scoreAssessmentBehavior(bundle, { llm: assessmentRuntime })
       const assessment = assessLearningV3({
         labId,
         sessionId: learningSessionId,
@@ -2644,11 +2712,19 @@ const server = http.createServer(async (request, response) => {
       }))).slice(0, 25)
       const generated = await createAssessmentReviewPlan(bundle, {
         sourceAssessmentId: saved.assessmentId,
-        llm,
+        llm: assessmentRuntime,
         previousQuestions,
       })
-      let review = createSocraticReview(session.id, generated.plan)
+      const tutorContext = await buildReviewTutorContext(
+        labId,
+        generated.plan.questions,
+        bundle,
+        { previousQuestions },
+      )
+      const tutored = await materializeTutorReviewPlan(generated.plan, tutorContext, { llm: tutorRuntime })
+      let review = createSocraticReview(session.id, tutored.plan)
       review = markSocraticReviewTurnAsked(session.id, review.reviewId, review.turns[0].questionId)
+      const assessmentAgent = { role: 'assessment', ...generated.agent }
       const events = [
         serverEvent({
           sessionId: learningSessionId, labId, type: 'review_started', reviewId: review.reviewId,
@@ -2656,6 +2732,8 @@ const server = http.createServer(async (request, response) => {
           metadata: {
             assessmentId: saved.assessmentId,
             agent: generated.agent,
+            agents: { assessment: assessmentAgent, tutor: tutored.agent },
+            workflow: 'assessment-brief-tutor-question-assessment-evaluation-v1',
             planVersion: generated.plan.version,
           },
         }),
@@ -2663,11 +2741,16 @@ const server = http.createServer(async (request, response) => {
           sessionId: learningSessionId, labId, type: 'review_question_asked',
           reviewId: review.reviewId, questionId: review.turns[0].questionId,
           conceptIds: [review.turns[0].conceptId], content: review.turns[0].prompt,
+          metadata: { agent: 'tutor', runtime: tutored.agent },
         }),
       ]
       await storeServerEvents(session.id, events)
       json(response, 201, {
-        ok: true, lifecycle: 'review_active', review: publicSocraticReview(review), agent: generated.agent,
+        ok: true,
+        lifecycle: 'review_active',
+        review: publicSocraticReview(review),
+        agent: generated.agent,
+        agents: { assessment: assessmentAgent, tutor: tutored.agent },
       }, origin)
       return
     }
@@ -2707,6 +2790,8 @@ const server = http.createServer(async (request, response) => {
       const judged = await evaluateAssessmentReviewAnswer(turn, answer, bundle, {
         llm: await assessmentLlm(body.llm),
       })
+      const assessmentAgent = { role: 'assessment', ...judged.agent }
+      let tutorAgent = reviewQuestioner(review)
       const answerEvent = serverEvent({
         sessionId: review.sessionId, labId: review.labId, type: 'review_answer_submitted',
         reviewId: review.reviewId, questionId, conceptIds: [turn.conceptId], content: answer,
@@ -2720,13 +2805,32 @@ const server = http.createServer(async (request, response) => {
           sessionId: review.sessionId, labId: review.labId, type: 'review_answer_evaluated',
           reviewId: review.reviewId, questionId, conceptIds: [turn.conceptId],
           verdict: judged.evaluation.verdict, evidenceRefs: judged.evaluation.evidenceRefs,
-          metadata: { agent: judged.agent, rationale: judged.evaluation.rationale },
+          metadata: {
+            agent: 'assessment',
+            runtime: assessmentAgent,
+            rationale: judged.evaluation.rationale,
+          },
         }),
       ]
       if (['partial', 'misconception', 'needs-evidence'].includes(judged.evaluation.verdict)) {
         if (!turn.parentTurnId && updated.turns.length < updated.maxQuestions && updated.turns.length < 5) {
+          const followupBrief = reviewFollowupQuestion(turn, judged.evaluation)
+          const tutorContext = await buildReviewTutorContext(
+            review.labId,
+            followupBrief,
+            bundle,
+            {
+              previousQuestions: review.turns,
+              studentAnswer: answer,
+              assessmentFeedback: judged.evaluation,
+            },
+          )
+          const tutored = await materializeTutorReviewQuestion(followupBrief, tutorContext, {
+            llm: await reviewTutorLlm(body.llm),
+          })
+          tutorAgent = tutored.agent
           updated = insertSocraticReviewFollowup(
-            session.id, review.reviewId, questionId, reviewFollowupQuestion(turn, judged.evaluation),
+            session.id, review.reviewId, questionId, tutored.question,
           )
           const followupTurn = updated.turns.find((item) => item.parentTurnId === turn.id)
           updated = markSocraticReviewTurnAsked(session.id, review.reviewId, followupTurn.questionId)
@@ -2734,6 +2838,7 @@ const server = http.createServer(async (request, response) => {
             sessionId: review.sessionId, labId: review.labId, type: 'review_question_asked',
             reviewId: review.reviewId, questionId: followupTurn.questionId,
             conceptIds: [followupTurn.conceptId], content: followupTurn.prompt,
+            metadata: { agent: 'tutor', runtime: tutorAgent },
           }))
         } else {
           const next = updated.turns.find((item) => !item.answeredAt)
@@ -2743,6 +2848,7 @@ const server = http.createServer(async (request, response) => {
               sessionId: review.sessionId, labId: review.labId, type: 'review_question_asked',
               reviewId: review.reviewId, questionId: next.questionId,
               conceptIds: [next.conceptId], content: next.prompt,
+              metadata: { agent: 'tutor', runtime: reviewQuestioner(updated) },
             }))
           }
         }
@@ -2754,6 +2860,7 @@ const server = http.createServer(async (request, response) => {
             sessionId: review.sessionId, labId: review.labId, type: 'review_question_asked',
             reviewId: review.reviewId, questionId: next.questionId,
             conceptIds: [next.conceptId], content: next.prompt,
+            metadata: { agent: 'tutor', runtime: reviewQuestioner(updated) },
           }))
         }
       }
@@ -2772,6 +2879,7 @@ const server = http.createServer(async (request, response) => {
         lifecycle: updated.status,
         review: publicSocraticReview(updated),
         agent: judged.agent,
+        agents: { assessment: assessmentAgent, tutor: tutorAgent },
       }, origin)
       return
     }
@@ -2809,11 +2917,33 @@ const server = http.createServer(async (request, response) => {
       const evidenceRefs = trustedRuns.map((run) => `run:${run.runId}`)
       let updated = review
       let next = null
+      let tutorAgent = reviewQuestioner(review)
       if (!source.parentTurnId && review.turns.length < review.maxQuestions && review.turns.length < 5) {
-        updated = insertSocraticReviewFollowup(session.id, review.reviewId, source.questionId, {
+        const followupBrief = {
           ...reviewFollowupQuestion(source, source.evaluation, 'evidence'),
           evidenceRefs: [...new Set([...source.evidenceRefs, ...evidenceRefs])],
+        }
+        const bundle = await buildCurrentReviewBundle(session.id, review.sessionId, review.labId)
+        const tutorContext = await buildReviewTutorContext(
+          review.labId,
+          followupBrief,
+          bundle,
+          {
+            previousQuestions: review.turns,
+            studentAnswer: source.studentAnswer,
+            assessmentFeedback: source.evaluation,
+          },
+        )
+        const tutored = await materializeTutorReviewQuestion(followupBrief, tutorContext, {
+          llm: await reviewTutorLlm(body.llm),
         })
+        tutorAgent = tutored.agent
+        updated = insertSocraticReviewFollowup(
+          session.id,
+          review.reviewId,
+          source.questionId,
+          tutored.question,
+        )
         next = updated.turns.find((turn) => turn.parentTurnId === source.id && !turn.answeredAt)
       } else {
         next = updated.turns.find((turn) => !turn.answeredAt)
@@ -2825,6 +2955,7 @@ const server = http.createServer(async (request, response) => {
           sessionId: review.sessionId, labId: review.labId, type: 'review_question_asked',
           reviewId: review.reviewId, questionId: next.questionId,
           conceptIds: [next.conceptId], content: next.prompt, evidenceRefs,
+          metadata: { agent: 'tutor', runtime: tutorAgent },
         }))
       } else if (updated.turns.filter((turn) => turn.answeredAt).length >= 3) {
         const finalized = finalizeSocraticReview(session.id, updated)
@@ -2837,7 +2968,11 @@ const server = http.createServer(async (request, response) => {
         )
       }
       await storeServerEvents(session.id, events)
-      json(response, 200, { ok: true, review: publicSocraticReview(updated) }, origin)
+      json(response, 200, {
+        ok: true,
+        review: publicSocraticReview(updated),
+        agents: { tutor: tutorAgent },
+      }, origin)
       return
     }
 

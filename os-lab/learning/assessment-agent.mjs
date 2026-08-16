@@ -628,7 +628,7 @@ export async function createAssessmentReviewPlan(bundle, options = {}) {
       fetchImpl: options.fetchImpl,
       system: [
         '你是独立的 EVOLVE Assessment Agent，不直接面向学生。',
-        '根据完整行为证据生成 3-5 个苏格拉底复盘问题，默认 3 个。',
+        '根据完整行为证据生成 3-5 个苏格拉底复盘问题简报，默认 3 个；Tutor Agent 将负责最终面向学生的提问措辞。',
         '必须综合 Tutor 对话、工作区事件、可信运行、诊断/Trace 和报告；不能只看最终运行。',
         '只输出 JSON。conceptId 必须来自输入目录，evidenceRefs 必须逐字来自 validEvidenceRefs。',
         '不要因为未观察到就断言学生不掌握；低置信度应使用诊断性问题。',
@@ -636,6 +636,7 @@ export async function createAssessmentReviewPlan(bundle, options = {}) {
         '问题只检验机制理解与证据对应，不得要求学生按固定叙事格式回答（例如先复述自己最初的错误判断再给出修正）。',
         'passCriteria 必须是可从回答内容判断的知识要点，不得是表达格式或叙事结构要求。',
         'reviewHistory 是近期已经问过的问题；本次不得原样复用问题，优先覆盖未问概念，必须复查薄弱点时要更换题型或情境。',
+        'prompt 是供 Tutor Agent 改写的内部种子问题，不是最终面向学生的措辞。',
         '输出字段：maxQuestions,rationale,questions[]；每题含 questionId,conceptId,kind,objective,prompt,reason,passCriteria,evidenceRefs,requiresRunEvidence。',
       ].join('\n'),
       input: {

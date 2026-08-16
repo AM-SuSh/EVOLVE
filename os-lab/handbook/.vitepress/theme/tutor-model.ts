@@ -425,12 +425,25 @@ export interface SocraticReview {
   turns: SocraticReviewTurn[]
 }
 
+export interface SocraticReviewAgentRuntime {
+  role: 'assessment' | 'tutor' | string
+  mode: string
+  model?: string
+  promptVersion?: string
+  error?: string
+}
+
 export interface SocraticReviewResponse {
   ok: boolean
   lifecycle?: string
   review: SocraticReview | null
   resumed?: boolean
   replayed?: boolean
+  agent?: Omit<SocraticReviewAgentRuntime, 'role'>
+  agents?: {
+    assessment?: SocraticReviewAgentRuntime
+    tutor?: SocraticReviewAgentRuntime
+  }
   error?: string
 }
 

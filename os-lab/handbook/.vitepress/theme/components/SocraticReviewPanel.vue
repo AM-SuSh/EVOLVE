@@ -370,7 +370,7 @@ async function resumeReview() {
   await runAction(
     'resume',
     '/learning/review/resume',
-    { reviewId: review.value.reviewId },
+    { reviewId: review.value.reviewId, ...llmPayload() },
     '已读取本实验已有的可信验证，继续复盘。',
   )
 }
@@ -511,7 +511,7 @@ defineExpose({ refreshReview, startReview })
           </div>
           <ol v-if="askedTurns.length" class="turn-history">
             <li v-for="(turn, index) in askedTurns" :key="turn.questionId">
-              <strong>问题 {{ index + 1 }}</strong>
+              <strong>Tutor Agent · 问题 {{ index + 1 }}</strong>
               <p>{{ turn.prompt }}</p>
               <blockquote v-if="turn.studentAnswer">{{ turn.studentAnswer }}</blockquote>
               <div
@@ -519,6 +519,9 @@ defineExpose({ refreshReview, startReview })
                 class="evaluation-detail"
                 :class="evaluationTone(turn.evaluation)"
               >
+                <div class="evaluation-source">
+                  <ClipboardCheck :size="15" aria-hidden="true" />Assessment Agent · 独立评价
+                </div>
                 <div class="evaluation-heading">
                   <span class="verdict-label">{{ evaluationLabel(turn.evaluation) }}</span>
                   <span v-if="evaluationSummary(turn.evaluation)">{{ evaluationSummary(turn.evaluation) }}</span>
@@ -544,7 +547,7 @@ defineExpose({ refreshReview, startReview })
                   </ul>
                 </div>
               </div>
-              <div v-else class="evaluation-detail is-pending">本题尚无评价记录。</div>
+              <div v-else class="evaluation-detail is-pending">等待 Assessment Agent 独立评价。</div>
             </li>
           </ol>
         </div>
@@ -595,7 +598,7 @@ defineExpose({ refreshReview, startReview })
 
           <template v-if="activePage && activePage.kind === 'turn'">
             <article class="question-block">
-              <div class="question-source"><Bot :size="17" aria-hidden="true" />AI 导师 · 第 {{ viewIndex + 1 }} 题</div>
+              <div class="question-source"><Bot :size="17" aria-hidden="true" />Tutor Agent · 第 {{ viewIndex + 1 }} 题</div>
               <p>{{ activePage.turn.prompt }}</p>
             </article>
 
@@ -609,6 +612,9 @@ defineExpose({ refreshReview, startReview })
                 class="evaluation-detail page-evaluation"
                 :class="evaluationTone(activePage.turn.evaluation)"
               >
+                <div class="evaluation-source">
+                  <ClipboardCheck :size="15" aria-hidden="true" />Assessment Agent · 独立评价
+                </div>
                 <div class="evaluation-heading">
                   <span class="verdict-label">{{ evaluationLabel(activePage.turn.evaluation) }}</span>
                   <span v-if="evaluationSummary(activePage.turn.evaluation)">{{ evaluationSummary(activePage.turn.evaluation) }}</span>
@@ -634,7 +640,7 @@ defineExpose({ refreshReview, startReview })
                   </ul>
                 </div>
               </div>
-              <div v-else class="evaluation-detail page-evaluation is-pending">本题尚无评价记录。</div>
+              <div v-else class="evaluation-detail page-evaluation is-pending">等待 Assessment Agent 独立评价。</div>
               <div v-if="forwardLabel" class="page-forward">
                 <button type="button" @click="goToPage(viewIndex + 1)">
                   {{ forwardLabel }}
@@ -1218,6 +1224,16 @@ button:disabled {
 
 .page-evaluation {
   margin-top: 12px;
+}
+
+.evaluation-source {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 7px;
+  color: var(--ws-ink-muted, var(--vp-c-text-2));
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .evaluation-detail.is-passed {
