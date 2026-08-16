@@ -2,6 +2,7 @@
 sidebar: false
 prev: false
 next: false
+lastUpdated: false
 ---
 
 # 入门指南
@@ -32,6 +33,8 @@ EVOLVE 的核心设计是：**始终只有一个内核代码库**。通过 Cargo
 
 因此，EVOLVE 不只是静态实验文档，而是一个可以长期记录「判断、验证、排错、复盘」的学习平台。
 
+
+
 ## 二、你将完成什么
 
 整条学习路径共 **8 个 Lab**，按系统构建逐层推进：
@@ -47,9 +50,9 @@ EVOLVE 的核心设计是：**始终只有一个内核代码库**。通过 Cargo
 | Lab7 | IPC 与信号 | **虚拟化（CPU）** 进阶：进程间通信与异步事件 | 统一 fd 抽象、`dup` 重定向、信号的注册/投递/屏蔽 |
 | Lab8 | 线程与同步 | **并发**：线程、锁、条件变量与死锁 | 进程内多线程、阻塞式互斥锁/信号量/条件变量、银行家式死锁检测 |
 
-## 三、引导式学习平台操作指南
 
-> 本文中的动图均为预留位，每个位置都注明了建议录制的操作。仓库已附带同名静态占位图；录制完成后，用录屏文件替换占位图并保持文件名一致即可，未替换前页面会显示占位图。
+
+## 三、平台操作指南
 
 ### 3.1 登录、注册与进入工作台
 
@@ -157,7 +160,7 @@ AI 导师是工作台右下角的悬浮窗口，它的证据条会显示三列�
 
 ### 3.6 教师端快速上手
 
-教师登录后进入 [引导式学习](/guide/ai-tutor)，会看到「选择本次要处理的实验」列表，点击某个 Lab 的「预览、编辑与发布」进入教师工作台：
+教师登录后进入 [教师工作台](/guide/ai-tutor)，会看到「选择本次要处理的实验」列表，点击某个 Lab 的「预览、编辑与发布」进入教师工作台：
 
 - **左侧手册**：可预览、编辑当前 Lab 的实验手册并保存。
 - **右侧教学安排**：创建班级、管理账号与班级、按全局/班级/单个学生范围分发 Lab、选择任务变体（补代码、排错等）或随机分配、设置开放/截止时间、进行个别调整、导出班级名单、布置报告格式，以及配置统一 AI 模型。
@@ -172,24 +175,6 @@ AI 导师是工作台右下角的悬浮窗口，它的证据条会显示三列�
   浏览器不支持视频播放，可查看动图版 [teacher-publish-review.gif](/gifs/teacher-publish-review.gif)。
 </video>
 
-### 3.7 常见入口速查
-
-| 想做什么 | 入口 |
-| --- | --- |
-| 登录/注册并进入当前 Lab | [引导式学习](/guide/ai-tutor) |
-| 查看 8 层进度、锁定原因与成长证据 | 工作台顶栏「系统构建路径」 |
-| 导出成长档案 | 「系统构建路径」底部「导出成长档案」 |
-| 阅读 Lab 手册 | 工作台左侧「实验手册」 |
-| 编辑代码、运行验证 | 工作台右侧「工作区」 |
-| 查看诊断和断言 | 工作区底部「Problems」「测试结果」 |
-| 写报告、复盘、看评价 | 工作台右下「学习支持」 |
-| 问 AI 导师 | 工作台右下角悬浮按钮 |
-| 浏览 OSTEP 与教师上传材料 | [学习材料](/materials) |
-| 教师分发、班级管理与批量开放 | 教师端 [引导式学习](/guide/ai-tutor) |
-| 教师验收报告 | [实验验收](/teacher-review) |
-| 发布期末探索任务 | 教师端顶栏「期末任务」([期末探索任务](/teacher/final-project)) |
-
-更细的面板交互见 [新手操作指南](/guide/beginner) 和 [工作台 UI 说明](/docs/workbench-ui)。
 
 ## 四、建议的学习方式
 
@@ -216,105 +201,3 @@ AI 导师是工作台右下角的悬浮窗口，它的证据条会显示三列�
    每个 Lab 文档末尾有「AI 提问模板」。提问时可以带上教材术语（如地址空间、系统调用、锁、死锁），效果通常更好。
 
 遇到卡住时，优先检查：是否在正确的 Lab、feature 是否选对、验证命令是否与手册一致；Lab6 起还要确认是否用了带 VirtIO 的 `make test-labN`。
-
-## 五、第一次动手（最短路径）
-
-EVOLVE 当前以 **Web 工作台**形态交付：学生不用在自己电脑上单独配置内核工程，登录后就会在浏览器里使用独立的「我的系统」。部署平台的一方需要先启动导师服务和前端；远程课堂部署时，请按 [部署、安全与备份恢复](/project/deployment-and-recovery) 放在带 TLS 的反向代理后。
-
-### 5.1 平台已经在运行
-
-1. 打开平台地址（本地默认 `http://localhost:5173`）。
-2. 学生注册时选择老师已创建的班级，或直接登录已有账号。
-3. 进入 [引导式学习](/guide/ai-tutor)，系统会自动定位到当前 Lab。
-4. 如果还没有可进入的 Lab，请老师创建班级并分发 Lab1。
-5. 按「3.4 一次 Lab 的标准操作」完成阅读、修改、验证、报告和复盘。
-
-### 5.2 本地启动平台
-
-前置：Node.js 18+（含 `npm`）。开两个终端：
-
-```powershell
-# 终端 1：导师服务
-cd os-lab/handbook
-npm install
-npm run tutor
-```
-
-```powershell
-# 终端 2：前端站点
-cd os-lab/handbook
-npm run dev
-```
-
-浏览器打开 `http://localhost:5173`。学生注册时选择班级，教师使用教师账号进入；开发环境默认教师账号见部署文档，首次使用后应立即修改密码。
-
-工作台内的可信运行由导师服务执行，因此**部署机器**上仍需要 Rust、RISC-V 目标、QEMU 和 `make`（Lab6–8 还需要 VirtIO 磁盘镜像）；学生浏览器端不需要安装这些工具。
-
-### 5.3 脱离工作台直接复现内核
-
-如果你需要直接运行内核而不是通过工作台，先看 [环境安装](/setup/environment)，然后在仓库根目录激活环境并进入 `os-lab`：
-
-```powershell
-. .\scripts\activate-os-env.ps1
-cd os-lab
-```
-
-自检：
-
-<CopyCommand command="rustc --version
-qemu-system-riscv64 --version" />
-
-跑通 Lab1：
-
-<CopyCommand command="cargo run -p kernel --features lab1 --release" />
-
-成功时应在 OpenSBI 日志之后看到类似：
-
-```text
-Hello, OS!
-EVOLVE kernel lab1 is running on QEMU virt.
-```
-
-然后按顺序体验后续 Lab（Lab1–5 可用 cargo；Lab6–8 须用 make，需 VirtIO）：
-
-<CopyCommand command="cargo run -p kernel --features lab2 --release
-cargo run -p kernel --features lab3 --release
-cargo run -p kernel --features lab4 --release
-cargo run -p kernel --features lab5 --release
-make test-lab6
-make test-lab7
-make test-lab8" label="复制全部" />
-
-> Lab6–8 须挂载 VirtIO 磁盘镜像；请先保证用户程序与 `fs.img` 已构建，详细步骤见各实验文档「环境准备」和 [完整验证](/setup/verify-full)。
-
-## 六、推荐阅读顺序
-
-| 顺序 | 做什么 | 链接 |
-|------|--------|------|
-| 1 | 读完本文，建立「实验 ↔《操作系统导论》」图景 | 本页 |
-| 2 | 了解工作台每一步怎么操作 | [新手操作指南](/guide/beginner) |
-| 3 | 查看教师已分发的实验与当前进度 | [引导式学习](/guide/ai-tutor) |
-| 4 | 进入工作台，从 Lab1 正式开始（建议同步翻教材导论部分） | [Lab1 工作台](/learn/lab1) |
-| 5 | 本机部署或复现内核时配置环境 | [环境安装](/setup/environment) |
-| 6 | 查看工作台 UI 的完整交互契约 | [工作台 UI 说明](/docs/workbench-ui) |
-
-## 七、本页链接汇总
-
-### 页面链接
-
-| 链接 | 用途 |
-| --- | --- |
-| [《操作系统导论》](/downloads/ostep-zh.pdf) | 本课程配套教材（OSTEP 中译 PDF） |
-| [引导式学习](/guide/ai-tutor) | 学生进入当前 Lab 工作台，教师进入备课入口 |
-| [新手操作指南](/guide/beginner) | 第一次做 Lab 的分步操作说明 |
-| [工作台 UI 说明](/docs/workbench-ui) | 工作台各面板的交互契约与行为说明 |
-| [Lab1 工作台](/learn/lab1) | 直接打开 Lab1 工作台 |
-| [学习材料](/materials) | 浏览 OSTEP 与教师上传的学习材料 |
-| [部署、安全与备份恢复](/project/deployment-and-recovery) | 平台部署、TLS 反向代理与备份恢复 |
-| [环境安装](/setup/environment) | 本机安装 Rust、RISC-V 目标与 QEMU |
-| [完整验证](/setup/verify-full) | Lab6–8 的 VirtIO 完整验证流程 |
-| [实验验收](/teacher-review) | 教师验收报告、复盘与评分 |
-| [期末探索任务](/teacher/final-project) | 教师发布期末任务书与查看性能打榜 |
-| [知识库工作台](/teacher/knowledge) | 教师维护教学知识 |
-
-准备好了的话，下一步进入 [引导式学习](/guide/ai-tutor)，或直接打开 [Lab1 工作台](/learn/lab1)。

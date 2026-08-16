@@ -54,9 +54,9 @@
 ### 累计文件索引
 
 - 领域与数据：`lab-packages/lab1/lab.yaml`、`lab-packages/lab1/concepts/boot.yaml`、`lab-packages/lab1/checkpoints.yaml`、`learning/concept-catalog.mjs`、`learning/review-contracts.mjs`、`learning/assessment-agent.mjs`、`learning/db.mjs`、`learning/access.mjs`、`learning/report-template.mjs`、`learning/trial-operations.mjs`。
-- Tutor 与契约：`handbook/tutor-server.mjs`、`tutor/baseline.mjs`、`tutor/contracts.mjs`、`tutor/turn-policy.mjs`、`tutor/state-machine.mjs`、`tutor/schema/assessment-review-plan-v1.schema.json`、`tutor/schema/event-v2.schema.json`。
+- Tutor 与契约：`handbook/tutor-server.mjs`、`tutor/contracts.mjs`、`tutor/turn-policy.mjs`（含 `enforceTutorOutput` 输出护栏）、`tutor/schema/assessment-review-plan-v1.schema.json`、`tutor/schema/event-v2.schema.json`。旧 `tutor/baseline.mjs` 与 `tutor/state-machine.mjs`（C3 阶段状态机）已随 stage 兼容路由移除。
 - 学生与教师前端：`handbook/.vitepress/theme/components/LabWorkspace.vue`、`ReportPanel.vue`、`SocraticReviewPanel.vue`、`TeacherPublishPanel.vue`、`TeacherReview.vue`、`handbook/.vitepress/theme/report-template.ts`、`handbook/.vitepress/theme/tutor-model.ts`。
-- 测试与工程：`learning/concept-catalog.test.mjs`、`assessment-agent.test.mjs`、`socratic-review-db.test.mjs`、`access.test.mjs`、`report-template.test.mjs`、`tutor/baseline.test.mjs`、`contracts.test.mjs`、`turn-policy.test.mjs`、`state-machine.test.mjs`、`handbook/tutor-server.smoke.mjs`、`handbook/package.json`、`docs/process/socratic-review-implementation.md`。
+- 测试与工程：`learning/concept-catalog.test.mjs`、`assessment-agent.test.mjs`、`socratic-review-db.test.mjs`、`access.test.mjs`、`report-template.test.mjs`、`tutor/contracts.test.mjs`、`turn-policy.test.mjs`、`tutor/output-guard.test.mjs`（承接原 `enforceTutorOutput` 用例）、`handbook/tutor-server.smoke.mjs`、`handbook/package.json`、`docs/socratic-review-implementation.md`。
 
 ## 实施记录
 
@@ -245,4 +245,4 @@
 - **核验范围**：重点核对 `handbook/tutor-server.mjs`、`tutor/turn-policy.mjs`、`tutor/state-machine.mjs`、`tutor/baseline.mjs`、`learning/knowledge/*`、`learning/assessment-agent.mjs`、`learning/rubric-v3.mjs`、`learning/review-contracts.mjs`、`learning/review-gates.mjs` 与 `learning/mastery.mjs`，并将配置、接口、数据权威性和 Harness 用例入口写入技术文档。
 - **实现边界**：文档明确记录 `OS_LAB_TUTOR_ROUTING_MODE` 默认值为 `intent`，`stage` 只是兼容路由；Tutor 会先处理学生当前问题，再按节流策略进行一次理解检查；Assessment Agent 已独立参与评分和复盘计划，规则分与 Agent 分按 `0.6/0.4` 融合，模型不可用时降级为规则分。
 - **尚未落地的能力**：当前评分结果会进入 Assessment 复盘计划、逐题评价、掌握度与教师验收视图，但尚未形成独立持久化的弱点摘要，并在后续每轮 `/chat` 中自动注入 Tutor prompt；技术文档将该项保留为明确的后续工程边界。
-- **验证记录**：本轮先纠正验证目录为 `os-lab/handbook`；此前从 `os-lab` 根目录执行 npm 脚本只会因找不到 `package.json` 失败，不能视为代码测试失败。正式验证中 Tutor Harness 34 个场景、Assessment Harness 5 个场景、RAG Harness 3 个单测与 6 个 CLI 用例通过，`npm test` 通过 144/144，`npm run test:smoke` 通过。`npm run build` 被工作区已有的 `docs/ai-collaboration.md` 删除与 `docs/design-report.md` 中 3 处旧链接之间的 VitePress dead-link 检查拦截；这不是本轮两个文档文件引入的构建错误，且本轮未恢复该已有删除。
+- **验证记录**：验证目录为 `os-lab/handbook`；从 `os-lab` 根目录执行 npm 脚本会因找不到 `package.json` 失败，不能视为代码测试失败。当前 `npm test` 通过 135/135，`npm run test:smoke` 通过，`npm run build` 通过。

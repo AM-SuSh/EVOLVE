@@ -2,7 +2,7 @@
 
 > 本报告总结自研操作系统教学实验环境 EVOLVE 的设计思路、与 AI 合作的实现过程，以及学习效果评估。
 >
-> 配套文档：架构说明见 [architecture.md](architecture.md)、EVOLVE 与 xv6 对比见 [xv6-comparison.md](../../xv6-comparison.md)、AI 协作记录见 [ai-collaboration.md](ai-collaboration.md)。
+> 配套文档：架构说明见 [architecture.md](architecture.md)，EVOLVE 与 xv6 对比见 [xv6-comparison.md](../../xv6-comparison.md)。
 
 ## 一、设计思路与目标
 
@@ -240,4 +240,4 @@ EVOLVE 是一套面向 OS 初学者的自研教学实验环境，通过渐进式
 
 ---
 
-> 本报告基于项目实际交付物撰写。EVOLVE 与 xv6 对比见 [xv6-comparison.md](../../xv6-comparison.md)，AI 协作全过程见 [ai-collaboration.md](ai-collaboration.md)。
+> 本报告基于项目实际交付物撰写。EVOLVE 与 xv6 对比见 [xv6-comparison.md](../../xv6-comparison.md)。
