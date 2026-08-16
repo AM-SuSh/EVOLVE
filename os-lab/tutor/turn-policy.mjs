@@ -291,3 +291,36 @@ export function tutorTurnPolicyPrompt(decision) {
           : '先回应学生当前问题，再执行至多一个最有价值的引导动作。不得声称执行了工具摘要中不存在的运行、诊断或 Trace。',
   ].join('\n')
 }
+
+const OUTPUT_EVIDENCE_REF_RE = /(?:run|trace|diag|diagnostic|event|kb):[A-Za-z0-9._:-]{1,220}/g
+
+/**
+ * Server-authoritative output guard applied to every upstream reply, regardless
+ * of routing mode: rejects evidence references outside the allowlist and blocks
+ * complete/submit-ready code dumps.
+ */
+export function enforceTutorOutput(reply, decision, options = {}) {
+  const text = String(reply || '').trim()
+  const allowedRefs = new Set([...(decision.evidenceRefs || []), ...(options.allowedKnowledgeRefs || [])])
+  const invalidRefs = [...new Set(text.match(OUTPUT_EVIDENCE_REF_RE) || [])]
+    .filter((ref) => !allowedRefs.has(ref))
+  if (invalidRefs.length) {
+    return {
+      reply: '我不能引用未经当前账号验证的运行证据。请从当前工作台重新附上对应的运行、诊断或 Trace？',
+      guarded: true,
+      reason: 'invalid-evidence-reference',
+    }
+  }
+  const codeFence = text.match(/```[\s\S]*?```/g)?.join('\n') || ''
+  const codeLines = codeFence ? codeFence.split(/\r?\n/).length : 0
+  const leaked = /diff --git|完整代码如下|可直接提交/i.test(text) || codeLines > 12
+  if (!leaked) return { reply: text.slice(0, 4000), guarded: false }
+  const action = decision.actions.includes('request-source-evidence')
+    ? '先指出你已经定位到的源码位置和一个不变量'
+    : '先写出当前现象、一个可证伪假设和准备观察的结果'
+  return {
+    reply: `我不能提供完整文件或可直接提交的 patch。${action}？`,
+    guarded: true,
+    reason: 'answer-leakage',
+  }
+}

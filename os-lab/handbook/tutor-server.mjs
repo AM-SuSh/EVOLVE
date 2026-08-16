@@ -59,8 +59,8 @@ import { collectTraceEvents, validateInteractionEvent, validateRunResult } from 
 import { createCargoJsonCollector } from '../tutor/cargo-diagnostics.mjs'
 import { evaluateRunAssertions, getRunRecipe } from '../tutor/run-recipes.mjs'
 import { parseTraceQuery, readTracePage, TraceIntegrityError } from '../tutor/trace-store.mjs'
-import { decideTutorTurn, enforceTutorOutput, tutorPolicyPrompt } from '../tutor/state-machine.mjs'
 import {
+  enforceTutorOutput,
   inferQuestionCategory,
   identifyTutorTopic,
   planTutorTurn,
@@ -284,7 +284,6 @@ const port = Number(process.env.OS_LAB_TUTOR_PORT || 8787)
 const defaultUpstream = (process.env.OS_LAB_LLM_BASE_URL || 'http://127.0.0.1:11434/v1').replace(/\/$/, '')
 const defaultModel = process.env.OS_LAB_LLM_MODEL || 'qwen2.5:7b'
 const defaultApiKey = process.env.OS_LAB_LLM_API_KEY || ''
-const tutorRoutingMode = process.env.OS_LAB_TUTOR_ROUTING_MODE === 'stage' ? 'stage' : 'intent'
 const configuredConnectTimeout = Number(process.env.OS_LAB_LLM_CONNECT_TIMEOUT_MS || 30_000)
 const llmConnectTimeoutMs = Number.isFinite(configuredConnectTimeout)
   ? Math.max(100, Math.min(configuredConnectTimeout, 120_000))
@@ -383,31 +382,11 @@ const fallbackLabPrompts = Object.fromEntries(
     ]),
   ),
 )
-const sharedStagePrompts = Object.fromEntries(
-  await Promise.all(
-    [...stageIds].map(async (stage) => [stage, await readPrompt(path.join(promptRoot, 'stages', `stage-${stage}.md`))]),
-  ),
-)
 const intentStrategyPrompts = Object.fromEntries(
   await Promise.all(
     tutorTurnIntents.map(async (intent) => [
       intent,
       await readPrompt(path.join(promptRoot, 'strategies', `${intent}.md`)),
-    ]),
-  ),
-)
-const labStagePrompts = Object.fromEntries(
-  await Promise.all(
-    [...labIds].map(async (labId) => [
-      labId,
-      Object.fromEntries(
-        await Promise.all(
-          [...stageIds].map(async (stage) => [
-            stage,
-            await readPrompt(path.join(promptRoot, labId, `stage-${stage}.md`)),
-          ]),
-        ),
-      ),
     ]),
   ),
 )
@@ -922,8 +901,9 @@ function workspaceContextLayer(codeContext) {
 
 function frameworkFor(labId, tutorState, reading, codeContext, policyPrompt = '', retrievedKnowledge = '') {
   const safeLabId = labIds.has(labId) ? labId : 'lab2'
+  // `stage` is kept as client-reported telemetry (the workbench stage chips);
+  // routing itself is intent-based and never reads the stage.
   const safeStage = stageIds.has(tutorState?.stage) ? tutorState.stage : 'orient'
-  const routingMode = tutorState?.routingMode === 'stage' ? 'stage' : 'intent'
   const safeIntent = tutorTurnIntents.includes(tutorState?.intent) ? tutorState.intent : 'concept'
   const responseMode = tutorResponseModes.includes(tutorState?.responseMode)
     ? tutorState.responseMode
@@ -935,37 +915,23 @@ function frameworkFor(labId, tutorState, reading, codeContext, policyPrompt = ''
   const layers = [
     { id: 'system', label: '教学边界', source: 'tutor/prompts/system.md' },
     { id: 'lab', label: `${labLabels[safeLabId]} 上下文`, source: `tutor/prompts/${safeLabId}/context.md` },
-  ]
-  let strategyPrompt = ''
-  if (routingMode === 'stage') {
-    const labStage = labStagePrompts[safeLabId] || {}
-    const hasLabOverride = Boolean(labStage[safeStage])
-    strategyPrompt = hasLabOverride ? labStage[safeStage] : sharedStagePrompts[safeStage]
-    layers.push({
-      id: 'stage',
-      label: `阶段策略 · ${safeStage}`,
-      source: hasLabOverride
-        ? `tutor/prompts/${safeLabId}/stage-${safeStage}.md`
-        : `tutor/prompts/stages/stage-${safeStage}.md`,
-    })
-  } else {
-    strategyPrompt = intentStrategyPrompts[safeIntent]
-    layers.push({
+    {
       id: 'intent',
       label: `本轮意图策略 · ${safeIntent}`,
       source: `tutor/prompts/strategies/${safeIntent}.md`,
-    })
-  }
+    },
+  ]
+  const strategyPrompt = intentStrategyPrompts[safeIntent]
   if (reading_) layers.push({ id: 'reading', label: '当前阅读位置', source: 'runtime' })
   if (workspaceContext) layers.push({ id: 'workspace', label: '当前代码位置', source: 'runtime' })
   if (policyPrompt) layers.push({ id: 'policy', label: '本轮策略与可信上下文', source: 'runtime' })
   if (retrievedKnowledge) layers.push({ id: 'knowledge', label: '受限知识检索', source: 'knowledge.db' })
   return {
-    version: routingMode === 'stage' ? 'multi-lab-v2.1' : 'intent-routing-v1',
-    routingMode,
+    version: 'intent-routing-v1',
+    routingMode: 'intent',
     labId: safeLabId,
     stage: safeStage,
-    intent: routingMode === 'intent' ? safeIntent : undefined,
+    intent: safeIntent,
     responseMode,
     layers,
     prompt: [systemPrompt, labPrompt, strategyPrompt, reading_, workspaceContext, policyPrompt, retrievedKnowledge]
@@ -1486,20 +1452,7 @@ function serverOfflineTutorReply(message, labId, tutorState, guardrailTriggered 
     transfer: `先分开不变量与改变的条件：条件变化后，原机制未必整体失效。请先预测一个会变化的可观察结果，再说明如何验证。`,
     'direct-answer': `我不能交付可直接提交的完整实现。请给出你已有的局部代码、判断或失败现象之一，我会先解释关键机制，再引导下一步。`,
   }
-  if (tutorState.routingMode === 'intent') {
-    return intentReplies[tutorState.intent] || intentReplies.concept
-  }
-
-  const stageReplies = {
-    orient: `先不急着写实现。围绕 ${label}，写下你认为最关键的一个系统边界，以及这个判断的依据；我再帮你把它拆成可验证的小问题。`,
-    read: '从当前阅读位置选一个入口，沿调用链或数据流追到核心实现。每经过一层，分别写下输入、状态变化和输出，我们再检查哪一环最薄弱。',
-    run: `先写下你预期会看到的三个关键输出，再运行 ${command}。完成后只贴和预期不同的部分，我们用差异定位下一步。`,
-    debug: '把排错拆成证据链：精确现象、当前假设、能证伪它的最小实验。先补齐这三项，我再给下一层提示。',
-    reflect: `用三句话收束 ${label}：你能独立解释什么？AI 提醒了哪一个关键点？你用哪条运行结果或代码路径验证了它？`,
-    transfer: `改变一个关键条件后，${label} 的原结论还成立吗？先写预测，再说明你会用什么代码路径或运行证据验证。`,
-  }
-
-  return stageReplies[tutorState.stage] || stageReplies.orient
+  return intentReplies[tutorState.intent] || intentReplies.concept
 }
 
 function sendOfflineTutorResponse({
@@ -1582,7 +1535,7 @@ async function handleChat(body, request, response, origin, session) {
   const storedState = getTutorSessionState(session.id, learningSessionId, labId)
   const evidence = getTutorEvidenceSummary(session.id, learningSessionId, labId)
   const history = normalizeHistory(body.history)
-  const previousFollowup = tutorRoutingMode === 'intent' && storedState.topicKey
+  const previousFollowup = storedState.topicKey
     ? getTutorFollowupState(session.id, learningSessionId, labId, storedState.topicKey)
     : null
   const turnInput = {
@@ -1593,16 +1546,14 @@ async function handleChat(body, request, response, origin, session) {
     hintLevel: storedState.hintLevel,
     history,
   }
-  let topic = tutorRoutingMode === 'intent'
-    ? identifyTutorTopic({
-        ...turnInput,
-        codeContext: body.codeContext,
-        reading: body.reading,
-        previousTopicKey: storedState.topicKey,
-        previousIntent: storedState.topicIntent,
-        previousTopicAnchor: storedState.topicAnchor,
-      })
-    : null
+  let topic = identifyTutorTopic({
+    ...turnInput,
+    codeContext: body.codeContext,
+    reading: body.reading,
+    previousTopicKey: storedState.topicKey,
+    previousIntent: storedState.topicIntent,
+    previousTopicAnchor: storedState.topicAnchor,
+  })
   if (previousFollowup?.pending) {
     topic = {
       topicKey: storedState.topicKey,
@@ -1619,9 +1570,7 @@ async function handleChat(body, request, response, origin, session) {
   const followup = topic
     ? getTutorFollowupState(session.id, learningSessionId, labId, topic.topicKey)
     : null
-  const tutorState = tutorRoutingMode === 'stage'
-    ? { ...decideTutorTurn(turnInput), routingMode: 'stage' }
-    : planTutorTurn({ ...turnInput, topic, topicHintLevel: topicHintState.hintLevel, followup })
+  const tutorState = planTutorTurn({ ...turnInput, topic, topicHintLevel: topicHintState.hintLevel, followup })
   tutorState.evidenceRefs = [...new Set([
     ...tutorState.evidenceRefs,
     ...requestedEvidence.evidenceRefs,
@@ -1639,7 +1588,7 @@ async function handleChat(body, request, response, origin, session) {
       type: 'stage_enter',
       stage: tutorState.stage,
       metadata: {
-        source: tutorState.routingMode === 'intent' ? 'client-stage-telemetry' : 'server-state-machine',
+        source: 'client-stage-telemetry',
         gate: tutorState.gate,
       },
     })
@@ -1661,9 +1610,7 @@ async function handleChat(body, request, response, origin, session) {
     insertLearningEvents(session.id, decisionEvents)
     await persistEvents(session.id, decisionEvents)
   }
-  const policyPrompt = tutorState.routingMode === 'intent'
-    ? tutorTurnPolicyPrompt(tutorState)
-    : tutorPolicyPrompt(tutorState)
+  const policyPrompt = tutorTurnPolicyPrompt(tutorState)
   let framework = frameworkFor(labId, tutorState, body.reading, body.codeContext, policyPrompt)
 
   // 护栏命中是规则判定，没有上游调用，直接整段返回。
@@ -3249,7 +3196,7 @@ const server = http.createServer(async (request, response) => {
         mode: connected ? 'remote' : 'offline',
         model: llm.model,
         studentLlmAllowed: llm.studentLlmAllowed,
-        frameworkVersion: 'multi-lab-v2.1',
+        frameworkVersion: 'intent-routing-v1',
       }, origin)
       return
     }
@@ -4565,7 +4512,7 @@ await seedLegacyClasses()
 
 server.listen(port, '127.0.0.1', () => {
   console.log(`EVOLVE tutor proxy: http://127.0.0.1:${port}`)
-  console.log(`framework: ${tutorRoutingMode === 'intent' ? 'intent-routing-v1' : 'multi-lab-v2.1'} · routing: ${tutorRoutingMode} · 默认上游: ${defaultUpstream} · 默认模型: ${defaultModel}`)
+  console.log(`framework: intent-routing-v1 · 默认上游: ${defaultUpstream} · 默认模型: ${defaultModel}`)
   console.log('账号体系: 注册（学生+班级）/登录 · 预置管理员 admin/admin123（请尽快改密码）· 教师入口 /guide/ai-tutor')
   console.log(`events: ${dataDir}`)
 })

@@ -400,7 +400,6 @@ function spawnServer(portNumber) {
         OS_LAB_LLM_BASE_URL: upstream,
         OS_LAB_LLM_MODEL: model,
         OS_LAB_LLM_CONNECT_TIMEOUT_MS: String(connectTimeoutMs),
-        OS_LAB_TUTOR_ROUTING_MODE: 'intent',
         OS_LAB_TUTOR_SKIP_KNOWLEDGE_WARMUP: '1',
         OS_LAB_TUTOR_DISABLE_VECTOR: '1',
         ...(apiKey ? { OS_LAB_LLM_API_KEY: apiKey } : {}),
