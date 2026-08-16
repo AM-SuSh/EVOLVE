@@ -82,6 +82,7 @@ pub fn syscall(id: usize, name: &str) {
     );
 }
 
+#[allow(dead_code)]
 pub fn address_space(space_id: usize, action: &str) {
     println!(
         "{} {{\"v\":{},\"seq\":{},\"ts\":{},\"cpu\":0,\"pid\":{},\"tid\":{},\"type\":\"address_space\",\"space\":{},\"action\":\"{}\"}}",

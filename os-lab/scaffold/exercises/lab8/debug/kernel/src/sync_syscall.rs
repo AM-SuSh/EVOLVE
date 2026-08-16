@@ -17,9 +17,11 @@ use alloc::sync::Arc;
 use os_sync::{Condvar, MutexBlocking, MutexTrait, Semaphore};
 
 use crate::deadlock::DEADLOCK_DETECTED;
-use crate::processor::{self, current_process_slot, current_tid, make_current_blocked, re_enque};
+use crate::processor::{self, current_process_slot, current_tid, re_enque};
 use crate::process;
 
+/// 教学边界：每个进程只支持一个可选阻塞 mutex（id 0）和一个可选 condvar，
+/// 信号量则为列表；`mutex_create(blocking=false)` 的非阻塞模式未实现。
 fn check_mutex_id(mutex_id: usize) -> bool {
     mutex_id == 0
 }
@@ -255,37 +257,26 @@ pub fn sys_condvar_wait(condvar_id: usize, mutex_id: usize) -> isize {
     let result = process::with_pcb_slot(process_slot, |pcb| {
         let cv = pcb.condvar.as_ref()?;
         let mutex = pcb.mutex.as_ref()?;
-        let (got_lock, waking_tid) = cv.wait_with_mutex(tid, mutex);
+        let waking_tid = cv.wait_with_mutex(tid, mutex);
         pcb.deadlock.mutex_release(tid, mutex_id, waking_tid);
-        if got_lock {
-            pcb.deadlock.mutex_acquired(tid, mutex_id);
-        } else {
-            pcb.deadlock.mutex_wait(tid, mutex_id);
-        }
-        Some((got_lock, waking_tid))
+        pcb.deadlock.mutex_wait(tid, mutex_id);
+        Some(waking_tid)
     });
-    let Some((got_lock, waking_tid)) = result else {
+    let Some(waking_tid) = result else {
         return -1;
     };
     if let Some(w_tid) = waking_tid {
         re_enque(w_tid);
     }
-    if got_lock {
-        0
-    } else {
-        -1
-    }
+    // The thread is now queued on the condvar without the mutex: report
+    // "blocked, retry" so the trap path rewinds sepc and blocks this thread.
+    -1
 }
 
-/// If `ret == -1`, block the calling thread (by slot) and reschedule.
+/// If `ret == -1` (blocked, retry), rewind `sepc` and block the calling thread.
 pub fn finish_blocking_syscall(ret: isize, cx: &mut os_context::TrapContext, thread_slot: usize) {
     if ret == -1 {
         cx.sepc = cx.sepc.wrapping_sub(4);
         processor::block_thread_slot_and_run_next(thread_slot, cx);
     }
-}
-
-#[allow(dead_code)]
-pub fn note_blocked() {
-    make_current_blocked();
 }

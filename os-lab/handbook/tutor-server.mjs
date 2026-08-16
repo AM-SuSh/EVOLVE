@@ -2032,7 +2032,7 @@ function parseCommandInput(command) {
 /** 每个登录用户最多一个活动运行；QEMU 卡死由整体超时兜底。 */
 const activeRuns = new Map()
 const RUN_TIMEOUT_MS = 300_000
-const RUN_OUTPUT_CAP = 262_144
+const RUN_OUTPUT_CAP = 1_048_576
 
 function killActiveRun(userId, reason) {
   const run = activeRuns.get(userId)
