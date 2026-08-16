@@ -32,20 +32,14 @@ impl Condvar {
         self.inner.lock().wait_queue.push_back(tid);
     }
 
-    /// Unlock `mutex`, enqueue `tid` on this condvar, release the mutex again if re-acquired.
-    pub fn wait_with_mutex(
-        &self,
-        tid: ThreadId,
-        mutex: &MutexBlocking,
-    ) -> (bool, Option<ThreadId>) {
+    /// Unlock `mutex`, enqueue `tid` on this condvar, then return the tid (if
+    /// any) that the unlock handed the mutex to and that the caller must
+    /// re-enqueue for scheduling. The waiting thread blocks without the mutex;
+    /// re-acquisition happens through the kernel's handoff path after wake-up.
+    pub fn wait_with_mutex(&self, tid: ThreadId, mutex: &MutexBlocking) -> Option<ThreadId> {
         let waking_tid = mutex.unlock();
-        if mutex.lock(tid) {
-            self.wait_enqueue(tid);
-            let extra_wake = mutex.unlock();
-            return (false, extra_wake.or(waking_tid));
-        }
         self.wait_enqueue(tid);
-        (false, waking_tid)
+        waking_tid
     }
 }
 

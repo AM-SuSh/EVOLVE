@@ -22,9 +22,7 @@ fn condvar_signal_before_wait() {
     let m = MutexBlocking::new();
     assert!(m.lock(1));
     assert_eq!(cv.signal(), None);
-    let (got, wake) = cv.wait_with_mutex(1, &m);
-    assert_eq!(wake, None);
-    assert!(!got);
+    assert_eq!(cv.wait_with_mutex(1, &m), None);
 }
 
 #[test]
@@ -32,9 +30,7 @@ fn condvar_enqueue_on_wait() {
     let cv = Condvar::new();
     let m = MutexBlocking::new();
     assert!(m.lock(1));
-    let (got, wake) = cv.wait_with_mutex(1, &m);
-    assert!(!got);
-    assert_eq!(wake, None);
+    assert_eq!(cv.wait_with_mutex(1, &m), None);
     assert_eq!(cv.signal(), Some(1));
 }
 
@@ -44,9 +40,7 @@ fn condvar_unlock_handoff_before_relock() {
     let m = MutexBlocking::new();
     assert!(m.lock(1));
     assert!(!m.lock(2));
-    let (got, wake) = cv.wait_with_mutex(1, &m);
-    assert!(!got);
-    assert_eq!(wake, Some(2));
+    assert_eq!(cv.wait_with_mutex(1, &m), Some(2));
     assert_eq!(cv.signal(), Some(1));
 }
 

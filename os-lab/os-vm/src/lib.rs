@@ -388,10 +388,15 @@ impl MapArea {
     pub fn unmap(&self, page_table: &mut PageTable) {
         for vpn in self.vpn_start.0..self.vpn_end.0 {
             let vpn = VirtPageNum(vpn);
+            // Adjacent ELF PT_LOAD segments can share a boundary page (the
+            // second segment remaps it with merged permissions). When two
+            // areas overlap like that, the first unmap clears the PTE and
+            // returns the frame; later areas must skip the already-invalid
+            // page instead of asserting — the shared frame is returned once.
             if let Some(pte) = page_table.translate(vpn) {
                 frame_dealloc(pte.ppn());
+                page_table.unmap(vpn);
             }
-            page_table.unmap(vpn);
         }
     }
 }
@@ -601,7 +606,10 @@ impl MemorySet {
 
 impl Drop for MemorySet {
     fn drop(&mut self) {
-        for area in self.areas.iter().rev().take(self.area_count).flatten() {
+        // Areas occupy slots 0..area_count (push_area fills from index 0 and
+        // remove_area_range compacts toward the front), so the populated slots
+        // are exactly the first `area_count`, not the last.
+        for area in self.areas[..self.area_count].iter().rev().flatten() {
             area.unmap(&mut self.page_table);
         }
     }

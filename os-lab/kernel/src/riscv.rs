@@ -84,15 +84,21 @@ pub const SCAUSE_USER_ECALL: usize = 8;
 pub const SCAUSE_SUPERVISOR_ECALL: usize = 9;
 pub const SCAUSE_SUPERVISOR_TIMER: usize = 0x8000_0000_0000_0005;
 
+/// SBI legacy extension id for the timer extension ("TIME").
+const SBI_LEGACY_TIMER_EID: usize = 0x54494D45;
+
+/// Program the next timer event via the SBI legacy timer extension.
+///
+/// SBI writes its return value into `a0`/`a1`, so those registers must be
+/// declared `inout` (input value discarded) instead of plain `in`.
 pub fn set_next_timer(deadline: usize) {
     unsafe {
         asm!(
             "ecall",
-            in("a7") 0x54494D45usize,
-            in("a0") 0usize,
-            in("a1") 0usize,
+            in("a7") SBI_LEGACY_TIMER_EID,
             in("a6") 0usize,
-            in("a2") deadline,
+            inout("a0") deadline => _,
+            inout("a1") 0usize => _,
         );
     }
 }
