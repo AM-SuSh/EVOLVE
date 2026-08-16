@@ -1199,6 +1199,12 @@ try {
   const blockedLab3Upgrade = await postJson('/scaffold/upgrade', studentHeaders, { variant: 'debug' })
   assert.equal(blockedLab3Upgrade.status, 403)
 
+  const unissuedLab3Run = await postJson('/run', studentHeaders, { labId: 'lab3' })
+  assert.equal(unissuedLab3Run.status, 409)
+  const unissuedLab3RunPayload = await unissuedLab3Run.json()
+  assert.equal(unissuedLab3RunPayload.code, 'LAB_NOT_ISSUED')
+  assert.equal(unissuedLab3RunPayload.status.current, 'lab2')
+
   const distributeLab3 = await postJson('/teacher/config', teacherHeaders, {
     scope: { type: 'global', id: '' },
     openLab: 'lab3',

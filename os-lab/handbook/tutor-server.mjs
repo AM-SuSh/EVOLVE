@@ -2136,6 +2136,17 @@ async function handleRun(body, request, response, origin, session) {
     json(response, 400, { error: 'labId 必须是 lab1 到 lab8 之一' }, origin)
     return
   }
+  if (session.role === 'student') {
+    const status = await scaffoldStatus(session.username, await effectiveFor(session))
+    if (!status.applied.includes(labId)) {
+      json(response, 409, {
+        code: 'LAB_NOT_ISSUED',
+        error: `${labId.toUpperCase()} 代码尚未发放到你的工作区，请重新进入该实验完成自动同步后再运行。`,
+        status,
+      }, origin)
+      return
+    }
+  }
   const customCommand = typeof body.command === 'string' && body.command.trim()
   const recipe = getRunRecipe(labId)
   let steps = recipe.steps
