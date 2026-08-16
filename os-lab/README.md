@@ -48,7 +48,7 @@ cargo run -p kernel --features lab5 --release   # 文件系统与管道
 ```bash
 make test-lab1    # 等价于 make run FEATURE=lab1
 make test-lab5
-make check        # 验证 lab1–lab5 均可编译
+make check        # 验证 lab1–lab8 均可编译
 ```
 
 ## Feature 层级

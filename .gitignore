@@ -26,6 +26,7 @@ os-lab/_tmp-*
 os-lab/*.log
 artifacts/
 os-lab/handbook/.vitepress/.temp/
+output/
 
 # Python 工具缓存
 __pycache__/

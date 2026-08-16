@@ -39,7 +39,7 @@ const SINGLE_FILES = [
     hideSidebar: true,
   },
   {
-    from: path.join(REPO_ROOT, '赛题.md'),
+    from: path.join(REPO_ROOT, 'docs', '赛题.md'),
     to: path.join(HANDBOOK_ROOT, 'project', 'competition.md'),
     hideSidebar: true,
   },

@@ -2,7 +2,7 @@
 
 > 本报告总结自研操作系统教学实验环境 EVOLVE 的设计思路、与 AI 合作的实现过程，以及学习效果评估。
 >
-> 配套文档：架构说明见 [architecture.md](architecture.md)、三方对比见 [comparison.md](comparison.md)、AI 系统技术说明见 [agent-system-technical.md](agent-system-technical.md)、原始对比数据见 [comparison-data.md](comparison-data.md)。
+> 配套文档：架构与 AI 系统技术说明见 [agent-system-technical.md](agent-system-technical.md)、三方对比见 [comparison.md](comparison.md)、原始对比数据见 [comparison-data.md](comparison-data.md)。
 
 ## 一、设计思路与目标
 
@@ -37,7 +37,7 @@ graph TD
 
 ### 1.3 核心架构决策
 
-为达成目标，EVOLVE 做了三个关键的架构决策（详见 [architecture.md](architecture.md)）：
+为达成目标，EVOLVE 做了三个关键的架构决策（技术细节见 [agent-system-technical.md](agent-system-technical.md)）：
 
 **决策一：单内核 + feature gate 渐进式**
 
