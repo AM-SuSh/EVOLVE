@@ -7,7 +7,6 @@ import './styles/workspace.css'
 import Layout from './Layout.vue'
 import CopyCommand from './components/CopyCommand.vue'
 import MaterialsShelf from './components/MaterialsShelf.vue'
-import TeacherReport from './components/TeacherReport.vue'
 import TeacherReview from './components/TeacherReview.vue'
 import TutorEntry from './components/TutorEntry.vue'
 import HomeLanding from './components/HomeLanding.vue'
@@ -21,7 +20,6 @@ export default {
   enhanceApp({ app }) {
     app.component('CopyCommand', CopyCommand)
     app.component('MaterialsShelf', MaterialsShelf)
-    app.component('TeacherReport', TeacherReport)
     app.component('TeacherReview', TeacherReview)
     app.component('TutorEntry', TutorEntry)
     app.component('HomeLanding', HomeLanding)

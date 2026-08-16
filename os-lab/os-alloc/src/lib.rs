@@ -122,56 +122,6 @@ pub fn frame_alloc_watermark() -> usize {
     FRAME_ALLOCATOR.with(|alloc| alloc.current)
 }
 
-/// Kernel heap allocator trait (byte-granularity).
-pub trait HeapAllocator {
-    fn alloc(&mut self, layout: core::alloc::Layout) -> Option<*mut u8>;
-    fn dealloc(&mut self, _ptr: *mut u8, _layout: core::alloc::Layout) {
-        // Bump allocator does not support individual deallocation.
-    }
-}
-
-/// Bump allocator over a fixed byte buffer. Teaching simplification for lab3+.
-pub struct BumpAllocator {
-    heap_start: usize,
-    heap_end: usize,
-    current: usize,
-}
-
-impl BumpAllocator {
-    pub const fn empty() -> Self {
-        Self {
-            heap_start: 0,
-            heap_end: 0,
-            current: 0,
-        }
-    }
-
-    pub fn init(&mut self, start: usize, size: usize) {
-        self.heap_start = start;
-        self.heap_end = start + size;
-        self.current = start;
-    }
-
-    pub fn used_bytes(&self) -> usize {
-        self.current.saturating_sub(self.heap_start)
-    }
-}
-
-impl HeapAllocator for BumpAllocator {
-    fn alloc(&mut self, layout: core::alloc::Layout) -> Option<*mut u8> {
-        let align = layout.align();
-        let size = layout.size();
-        let aligned = (self.current + align - 1) & !(align - 1);
-        let next = aligned.checked_add(size)?;
-        if next > self.heap_end {
-            None
-        } else {
-            self.current = next;
-            Some(aligned as *mut u8)
-        }
-    }
-}
-
 static HEAP: SyncUnsafeCell<[u8; HEAP_SIZE]> = SyncUnsafeCell::new([0; HEAP_SIZE]);
 static HEAP_ALLOCATOR: SyncUnsafeCell<Heap> = SyncUnsafeCell::new(Heap::empty());
 
@@ -236,28 +186,6 @@ mod tests {
         // Deallocating top frame allows reuse.
         alloc.dealloc_frame(c);
         assert_eq!(alloc.alloc_frame().unwrap().0, c.0);
-    }
-
-    #[test]
-    fn bump_alloc_aligned() {
-        let mut heap = BumpAllocator::empty();
-        let mut buf = [0u8; 256];
-        let start = buf.as_mut_ptr() as usize;
-        heap.init(start, buf.len());
-        let p = heap.alloc(Layout::from_size_align(8, 8).unwrap()).unwrap();
-        assert_eq!(p as usize % 8, 0);
-        let p2 = heap.alloc(Layout::from_size_align(16, 16).unwrap()).unwrap();
-        assert_eq!(p2 as usize % 16, 0);
-    }
-
-    #[test]
-    fn bump_alloc_exhausted() {
-        let mut heap = BumpAllocator::empty();
-        let mut buf = [0u8; 32];
-        let start = buf.as_mut_ptr() as usize;
-        heap.init(start, buf.len());
-        let _ = heap.alloc(Layout::from_size_align(24, 8).unwrap()).unwrap();
-        assert!(heap.alloc(Layout::from_size_align(16, 8).unwrap()).is_none());
     }
 
     #[test]

@@ -46,6 +46,8 @@ pub fn sys_sigaction(
                 Some(a) => a,
                 None => return -1,
             };
+            // 教学边界：`sigaction` 的 `act.mask`（handler 执行期间的临时掩码）
+            // 未实现，此处只应用 handler；进程级掩码统一由 sigprocmask 管理。
             pcb.signal.set_handler(signum, act.handler);
         }
         0

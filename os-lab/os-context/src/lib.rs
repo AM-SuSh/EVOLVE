@@ -30,16 +30,17 @@ pub struct TrapContext {
 }
 
 impl TrapContext {
-    /// Prepare `sstatus` for first entry to user mode.
-    pub fn user_sstatus(_sstatus: usize) -> usize {
+    /// `sstatus` value for first entry to user mode: interrupts enabled in
+    /// user mode (SPIE→SIE on `sret`) plus user memory access (SUM).
+    pub fn user_sstatus() -> usize {
         SSTATUS_SPIE | SSTATUS_SUM
     }
 
     /// Build an initial trap context for a user task.
-    pub fn init_user(entry: usize, user_sp: usize, kernel_sp: usize, sstatus: usize) -> Self {
+    pub fn init_user(entry: usize, user_sp: usize, kernel_sp: usize) -> Self {
         let mut cx = Self {
             x: [0; 32],
-            sstatus: Self::user_sstatus(sstatus),
+            sstatus: Self::user_sstatus(),
             sepc: entry,
             kernel_sp,
         };
@@ -95,12 +96,13 @@ mod riscv {
     }
 
     /// Restore user registers and `sret` into user mode (lab2, no satp switch).
+    /// The user `sp` is loaded from the trap context (`x[2]`), not from an argument.
     ///
     /// # Safety
     ///
     /// `cx` must point to a valid `TrapContext` that outlives this call; `kernel_sp`
     /// must be a valid kernel stack top for the current hart.
-    pub unsafe fn restore_to_user(cx: *mut TrapContext, kernel_sp: usize, _user_sp: usize) -> ! {
+    pub unsafe fn restore_to_user(cx: *mut TrapContext, kernel_sp: usize) -> ! {
         restore_to_user_impl(cx, kernel_sp, 0);
     }
 
@@ -243,7 +245,7 @@ mod tests {
 
     #[test]
     fn init_user_sets_fields() {
-        let cx = TrapContext::init_user(0x8040_0000, 0x803F_F000, 0x8020_1000, 0);
+        let cx = TrapContext::init_user(0x8040_0000, 0x803F_F000, 0x8020_1000);
         assert_eq!(cx.sepc, 0x8040_0000);
         assert_eq!(cx.user_sp(), 0x803F_F000);
         assert_eq!(cx.kernel_sp, 0x8020_1000);
@@ -253,7 +255,7 @@ mod tests {
 
     #[test]
     fn advance_sepc_and_return_value() {
-        let mut cx = TrapContext::init_user(0, 0, 0, 0);
+        let mut cx = TrapContext::init_user(0, 0, 0);
         cx.sepc = 0x1000;
         cx.advance_sepc();
         assert_eq!(cx.sepc, 0x1004);

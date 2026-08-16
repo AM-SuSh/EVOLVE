@@ -47,15 +47,10 @@ impl SignalSet {
     }
 }
 
-/// `sigaction` layout (teaching subset).
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-pub struct SignalAction {
-    pub handler: usize,
-    pub mask: u32,
-}
-
 /// Per-process signal state (no trap context — kernel stores that separately).
+///
+/// The `sigaction` ABI struct shared between kernel and userland lives in
+/// `os-syscall` (`os_syscall::SignalAction`); do not duplicate it here.
 #[derive(Clone, Debug)]
 pub struct SignalState {
     handlers: [usize; MAX_SIG + 1],

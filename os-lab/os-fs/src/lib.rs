@@ -1,15 +1,11 @@
-//! Embedded and disk-oriented file system helpers for the OS teaching lab.
+//! Embedded file system helpers for the OS teaching lab.
 //!
 //! - [`EmbeddedFs`] (lab5): compile-time static file table, host-testable.
-//! - [`disk`] (lab6+): directory entry / inode metadata types and [`MockBlockDevice`].
+//!
+//! Host-side teaching mocks (block device, directory entries, fd dispatch)
+//! live in `tests/host_mock.rs`, outside the published library surface.
 
 #![no_std]
-
-mod disk;
-mod fd_kind;
-
-pub use disk::{DirEntry, InodeMeta, MockBlockDevice, BLOCK_SZ, DIR_NAME_LEN};
-pub use fd_kind::{FdKind, FdOp};
 
 /// Index into the static file table.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]

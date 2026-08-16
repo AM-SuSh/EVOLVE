@@ -122,11 +122,6 @@ impl ReadyQueue {
         }
         self.len = write;
     }
-
-    #[allow(dead_code)]
-    fn len(&self) -> usize {
-        self.len
-    }
 }
 
 struct Processor {
@@ -316,26 +311,6 @@ pub fn sync_current_trap_cx(cx: &TrapContext) {
     });
 }
 
-#[allow(dead_code)]
-pub fn with_current_trap_cx<R>(f: impl FnOnce(&mut TrapContext) -> R) -> R {
-    PROCESSOR.with(|proc| {
-        let slot = proc.current.expect("no current thread");
-        f(&mut proc.slots[slot].as_mut().unwrap().trap_cx)
-    })
-}
-
-#[allow(dead_code)]
-pub fn sync_trap_cx_for_slot(slot: usize, cx: &TrapContext) {
-    PROCESSOR.with(|proc| {
-        proc.slots[slot].as_mut().unwrap().trap_cx = *cx;
-    });
-}
-
-#[allow(dead_code)]
-pub fn mark_thread_ready(slot: usize) {
-    PROCESSOR.with(|proc| proc.enqueue_ready(slot));
-}
-
 pub fn mark_current_ready() {
     PROCESSOR.with(|proc| {
         let slot = proc.current.expect("no current thread");
@@ -417,13 +392,6 @@ pub fn run_next_thread() -> ! {
     })
 }
 
-#[allow(dead_code)]
-pub fn yield_current_and_run_next(cx: &TrapContext) -> ! {
-    sync_current_trap_cx(cx);
-    mark_current_ready();
-    run_next_thread()
-}
-
 pub fn block_thread_slot_and_run_next(slot: usize, cx: &TrapContext) -> ! {
     PROCESSOR.with(|proc| {
         let tcb = proc.slots[slot].as_mut().unwrap();
@@ -440,29 +408,6 @@ pub fn block_thread_slot_and_run_next(slot: usize, cx: &TrapContext) -> ! {
         }
     });
     run_next_thread()
-}
-
-#[allow(dead_code)]
-pub fn block_thread_by_tid(tid: usize, cx: &TrapContext) -> ! {
-    PROCESSOR.with(|proc| {
-        for slot in 0..MAX_THREADS {
-            if proc.slots[slot]
-                .as_ref()
-                .is_some_and(|t| t.tid == tid)
-            {
-                proc.slots[slot].as_mut().unwrap().trap_cx = *cx;
-                proc.slots[slot].as_mut().unwrap().status = ThreadStatus::Blocked;
-                return;
-            }
-        }
-    });
-    run_next_thread()
-}
-
-#[allow(dead_code)]
-pub fn block_current_and_run_next(cx: &TrapContext) -> ! {
-    let slot = PROCESSOR.with_ref(|proc| proc.current.expect("no current thread"));
-    block_thread_slot_and_run_next(slot, cx)
 }
 
 pub fn thread_exit(exit_code: i32) -> ! {
@@ -587,24 +532,24 @@ pub fn sys_waittid(cx: &mut TrapContext, tid: usize) -> isize {
     if tid == current_tid() {
         return -1;
     }
-    loop {
-        if let Some(code) = try_reap_thread(tid) {
-            PROCESSOR.with(|proc| {
-                if let Some(slot) = proc.current {
-                    proc.wait_targets[slot] = None;
-                }
-            });
-            return code;
-        }
+    // Straight-line block-and-retry: `run_next_thread` diverges, so the
+    // re-executed ecall (sepc rewound below) is where the retry happens.
+    if let Some(code) = try_reap_thread(tid) {
         PROCESSOR.with(|proc| {
-            let slot = proc.current.expect("no current thread");
-            proc.wait_targets[slot] = Some(tid);
+            if let Some(slot) = proc.current {
+                proc.wait_targets[slot] = None;
+            }
         });
-        cx.sepc = cx.sepc.wrapping_sub(4);
-        sync_current_trap_cx(cx);
-        make_current_blocked();
-        run_next_thread();
+        return code;
     }
+    PROCESSOR.with(|proc| {
+        let slot = proc.current.expect("no current thread");
+        proc.wait_targets[slot] = Some(tid);
+    });
+    cx.sepc = cx.sepc.wrapping_sub(4);
+    sync_current_trap_cx(cx);
+    make_current_blocked();
+    run_next_thread();
 }
 
 fn try_reap_thread(tid: usize) -> Option<isize> {

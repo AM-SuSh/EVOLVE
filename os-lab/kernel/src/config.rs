@@ -1,4 +1,8 @@
 //! Kernel configuration constants (lab2+).
+//!
+//! Constants for later labs (processes, fds, threads...) are intentionally
+//! not feature-gated: in lab1/lab2 builds they are unused by design, so
+//! dead_code is allowed at file level instead of sprinkling cfg everywhere.
 
 #![allow(dead_code)]
 
@@ -15,16 +19,11 @@ pub const MAX_FD: usize = 16;
 pub const PIPE_BUFFER_SIZE: usize = 256;
 /// Max concurrent pipe instances (lab5+).
 pub const MAX_PIPES: usize = 8;
-/// Linux RISC-V pipe syscall number (lab5+).
-pub const SYS_PIPE: usize = 59;
 /// Max child slots recorded per process.
 pub const MAX_CHILDREN: usize = 8;
 /// Max kernel threads (lab8+).
 #[cfg(feature = "lab8")]
 pub const MAX_THREADS: usize = 32;
-/// Max mutex / semaphore / condvar slots per process (lab8+).
-#[cfg(feature = "lab8")]
-pub const MAX_SYNC_SLOTS: usize = 8;
 pub const APP_BASE_ADDRESS: usize = 0x8040_0000;
 pub const APP_REGION_SIZE: usize = 0x20_000;
 pub const CLOCK_FREQ: usize = 12_500_000;
@@ -41,7 +40,3 @@ pub const PAGE_SIZE: usize = 4096;
 pub const FRAME_ALLOC_START: usize = APP_BASE_ADDRESS + APP_REGION_SIZE;
 /// Actual frame allocator start (above the user app slot).
 pub const FRAME_POOL_START: usize = FRAME_ALLOC_START + 0x20_0000;
-#[allow(dead_code)]
-pub const TRAMPOLINE: usize = usize::MAX - PAGE_SIZE + 1;
-#[allow(dead_code)]
-pub const TRAP_CONTEXT: usize = TRAMPOLINE - PAGE_SIZE;

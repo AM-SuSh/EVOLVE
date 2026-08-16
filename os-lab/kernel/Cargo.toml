@@ -17,6 +17,8 @@ lab5 = ["lab4", "dep:os-fs"]
 lab6 = ["lab5", "dep:easy-fs", "dep:virtio-drivers", "dep:spin"]
 lab7 = ["lab6", "dep:os-signal"]
 lab8 = ["lab7", "dep:os-sync"]
+# 教学边界：trace-edu 仅在 lab2 构建下生效（配合协作式调度的 TRACE_V1 教学
+# 帧）；lab3+ 的 trace 采集由平台侧 trace-store 承担，内核不再输出教学帧。
 trace-edu = []
 
 [dependencies]
