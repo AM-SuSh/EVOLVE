@@ -12,6 +12,7 @@ const MonacoEditor = defineAsyncComponent(() => import('./MonacoEditor.vue'))
 const props = defineProps<{
   lab: TutorLab
   endpoint: string
+  sessionId: string
   student?: string
   dark?: boolean
   terminalOpen?: boolean
@@ -245,7 +246,12 @@ async function saveEdit() {
     const response = await fetch(apiUrl('/fs/save'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ path: tab.path, content: tab.draft }),
+      body: JSON.stringify({
+        labId: props.lab.id,
+        sessionId: props.sessionId,
+        path: tab.path,
+        content: tab.draft,
+      }),
     })
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(payload?.error || `导师服务返回 ${response.status}`)

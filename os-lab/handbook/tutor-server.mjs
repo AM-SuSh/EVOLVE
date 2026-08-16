@@ -2103,6 +2103,32 @@ function sha256(content) {
   return createHash('sha256').update(content).digest('hex')
 }
 
+function changedLineCounts(before, after) {
+  const beforeLines = before ? String(before).split(/\r?\n/) : []
+  const afterLines = after ? String(after).split(/\r?\n/) : []
+  let prefix = 0
+  while (
+    prefix < beforeLines.length &&
+    prefix < afterLines.length &&
+    beforeLines[prefix] === afterLines[prefix]
+  ) prefix += 1
+
+  let beforeEnd = beforeLines.length - 1
+  let afterEnd = afterLines.length - 1
+  while (
+    beforeEnd >= prefix &&
+    afterEnd >= prefix &&
+    beforeLines[beforeEnd] === afterLines[afterEnd]
+  ) {
+    beforeEnd -= 1
+    afterEnd -= 1
+  }
+  return {
+    added: Math.max(0, afterEnd - prefix + 1),
+    deleted: Math.max(0, beforeEnd - prefix + 1),
+  }
+}
+
 const WORKSPACE_FINGERPRINT_EXCLUDED = new Set([
   '.git',
   'target',
@@ -3563,20 +3589,56 @@ const server = http.createServer(async (request, response) => {
 
     // 只允许写学生自己的工作区；参考实现 os-lab 永远只读。
     if (request.method === 'POST' && pathname === '/fs/save') {
+      if (!session || session.role !== 'student') {
+        json(response, 401, { error: '请以学生账号登录后保存代码' }, origin)
+        return
+      }
       const workRoot = await resolveWorkRoot(reqUser)
       if (!workRoot.user) {
         json(response, 403, { error: '参考实现是只读的；填写学号并初始化「我的系统」后可编辑自己的代码' }, origin)
         return
       }
       const body = await readBody(request)
+      const labId = String(body.labId || '')
+      const learningSessionId = String(body.sessionId || '').trim().slice(0, 160)
+      if (!labIds.has(labId) || !learningSessionId) {
+        json(response, 400, { error: 'labId 或 sessionId 无效' }, origin)
+        return
+      }
       const full = resolveFsPath(workRoot.root, body.path)
       const content = typeof body.content === 'string' ? body.content : null
       if (!full || !isViewableFile(path.basename(full)) || content === null || content.length > 524_288) {
         json(response, 400, { error: '路径或内容不可用（单文件上限 512 KiB）' }, origin)
         return
       }
+      const relativePath = String(body.path).replace(/\\/g, '/')
+      let previousContent = ''
+      try {
+        previousContent = await readFile(full, 'utf8')
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error
+      }
+      if (previousContent === content) {
+        json(response, 200, { saved: true, changed: false, path: relativePath, event: null }, origin)
+        return
+      }
+      const changes = changedLineCounts(previousContent, content)
       await writeFile(full, content, 'utf8')
-      json(response, 200, { saved: true, path: String(body.path).replace(/\\/g, '/') }, origin)
+      const saveEvent = serverEvent({
+        sessionId: learningSessionId,
+        labId,
+        stage: 'debug',
+        type: 'code_save',
+        path: relativePath,
+        baseHash: sha256(previousContent),
+        newHash: sha256(content),
+        added: changes.added,
+        deleted: changes.deleted,
+        taskId: `${labId}:${relativePath}`.slice(0, 160),
+        metadata: { authority: 'server', source: 'workspace-save' },
+      })
+      await storeServerEvents(session.id, [saveEvent])
+      json(response, 200, { saved: true, changed: true, path: relativePath, event: saveEvent }, origin)
       return
     }
 
@@ -4617,13 +4679,14 @@ const server = http.createServer(async (request, response) => {
         events.some(
           (event) =>
             !validateInteractionEvent(event) ||
+            event.type === 'code_save' ||
             event.type === 'run_started' ||
             event.type === 'run_finished' ||
             event.type === 'report_submitted' ||
             event.type.startsWith('review_'),
         )
       ) {
-        json(response, 400, { error: '事件不符合 event v1/v2 契约，或属于只能由服务端生成的运行/复盘/报告事件' }, origin)
+        json(response, 400, { error: '事件不符合 event v1/v2 契约，或属于只能由服务端生成的代码保存/运行/复盘/报告事件' }, origin)
         return
       }
       const invalidTraceEvidence = events.find((event) => {

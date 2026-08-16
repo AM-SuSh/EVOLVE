@@ -767,12 +767,14 @@ try {
   )
   const compileMarker = 'm1 smoke diagnostic'
   const brokenSave = await postJson('/fs/save', studentHeaders, {
+    labId: 'lab2',
+    sessionId: 'smoke-learning-session',
     path: 'kernel/src/task.rs',
     content: `${correctTask}\ncompile_error!("${compileMarker}");\n`,
   })
   assert.equal(brokenSave.status, 200)
 
-  const brokenFrames = await runLab(studentHeaders, 'smoke-broken-session')
+  const brokenFrames = await runLab(studentHeaders, 'smoke-learning-session')
   const brokenRun = brokenFrames.find((frame) => frame.type === 'run')
   const brokenExit = brokenFrames.find((frame) => frame.type === 'exit')
   const brokenOutput = brokenFrames.filter((frame) => frame.type === 'output').map((frame) => frame.text).join('')
@@ -800,7 +802,7 @@ try {
     event: {
       version: 2,
       id: 'smoke-diagnostic-opened',
-      sessionId: 'smoke-broken-session',
+      sessionId: 'smoke-learning-session',
       labId: 'lab2',
       timestamp: '2026-07-29T00:00:03.000Z',
       type: 'diagnostic_opened',
@@ -822,11 +824,36 @@ try {
     .then((response) => response.json())
   assert.doesNotMatch(otherTask.content, new RegExp(compileMarker))
 
-  assert.equal((await postJson('/fs/save', studentHeaders, {
+  const restoredSave = await postJson('/fs/save', studentHeaders, {
+    labId: 'lab2',
+    sessionId: 'smoke-learning-session',
     path: 'kernel/src/task.rs',
     content: correctTask,
-  })).status, 200)
+  })
+  assert.equal(restoredSave.status, 200)
+  const restoredSavePayload = await restoredSave.json()
+  assert.equal(restoredSavePayload.changed, true)
+  assert.equal(restoredSavePayload.event.type, 'code_save')
+  assert.equal(restoredSavePayload.event.metadata.authority, 'server')
+  assert.match(restoredSavePayload.event.baseHash, /^[a-f0-9]{64}$/)
+  assert.match(restoredSavePayload.event.newHash, /^[a-f0-9]{64}$/)
+  assert.notEqual(restoredSavePayload.event.baseHash, restoredSavePayload.event.newHash)
+  assert.equal(restoredSavePayload.event.added + restoredSavePayload.event.deleted > 0, true)
+
+  const unchangedSave = await postJson('/fs/save', studentHeaders, {
+    labId: 'lab2',
+    sessionId: 'smoke-learning-session',
+    path: 'kernel/src/task.rs',
+    content: correctTask,
+  })
+  assert.equal(unchangedSave.status, 200)
+  const unchangedSavePayload = await unchangedSave.json()
+  assert.equal(unchangedSavePayload.changed, false)
+  assert.equal(unchangedSavePayload.event, null)
+
   assert.equal((await postJson('/fs/save', otherStudentHeaders, {
+    labId: 'lab2',
+    sessionId: 'smoke-learning-session-2',
     path: 'kernel/src/task.rs',
     content: correctTask,
   })).status, 200)
@@ -986,18 +1013,6 @@ try {
     },
     {
       ...eventCommon,
-      id: 'smoke-lab2-code-save',
-      type: 'code_save',
-      stage: 'debug',
-      path: 'kernel/src/task.rs',
-      baseHash: 'c'.repeat(64),
-      newHash: 'd'.repeat(64),
-      added: 1,
-      deleted: 1,
-      taskId: 'debug-task-switch',
-    },
-    {
-      ...eventCommon,
       id: 'smoke-lab2-student-message',
       type: 'student_message',
       stage: 'reflect',
@@ -1040,9 +1055,27 @@ try {
     },
   ]
   const crossUserTraceEvent = await postJson('/events', otherStudentHeaders, {
-    event: { ...learningEvents[5], id: 'smoke-cross-user-trace' },
+    event: {
+      ...learningEvents.find((event) => event.type === 'trace_inspected'),
+      id: 'smoke-cross-user-trace',
+    },
   })
   assert.equal(crossUserTraceEvent.status, 400)
+  const forgedCodeSaveEvent = await postJson('/events', studentHeaders, {
+    event: {
+      ...eventCommon,
+      id: 'smoke-forged-code-save',
+      type: 'code_save',
+      stage: 'debug',
+      path: 'kernel/src/task.rs',
+      baseHash: 'c'.repeat(64),
+      newHash: 'd'.repeat(64),
+      added: 1,
+      deleted: 1,
+      taskId: 'forged-save',
+    },
+  })
+  assert.equal(forgedCodeSaveEvent.status, 400)
   const eventSync = await fetch(`${endpoint}/events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...studentHeaders },
@@ -1265,6 +1298,8 @@ try {
   assert.match(issuedLab3.content, /PLANTED BUG: preserve R\/W\/X but strip U/)
 
   const lab3BrokenSave = await postJson('/fs/save', studentHeaders, {
+    labId: 'lab3',
+    sessionId: 'smoke-lab3-session',
     path: 'kernel/src/mm.rs',
     content: `${issuedLab3.content}\n// smoke reset marker\n`,
   })
@@ -1287,6 +1322,7 @@ try {
   const assessmentPayload = await assessmentResponse.json()
   assert.equal(assessmentPayload.assessment.version, 'rubric-v3.3.0')
   assert.equal(assessmentPayload.assessment.learningDimensions.verification, 100)
+  assert.equal(assessmentPayload.assessment.items.find((item) => item.id === 'I1').score, 2)
   const scoredReviewQuestions = assessmentPayload.assessment.items.filter((item) => item.dimension === 'reflection')
   assert.equal(
     assessmentPayload.assessment.items.length,
@@ -1380,7 +1416,8 @@ try {
   assert.equal(backupPayload.manifest.counts.socratic_reviews >= 3, true)
   assert.equal(backupPayload.manifest.counts.socratic_review_turns >= 6, true)
 
-  const reportContent = `# Lab2 报告\n\n可信运行：run:${runId}\n\nTrace：trace:${runId}\n\n${learningEvents[6].content}`
+  const reflectionEvent = learningEvents.find((event) => event.type === 'reflection_submitted')
+  const reportContent = `# Lab2 报告\n\n可信运行：run:${runId}\n\nTrace：trace:${runId}\n\n${reflectionEvent.content}`
   const reportSubmit = await fetch(`${endpoint}/reports`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...studentHeaders },

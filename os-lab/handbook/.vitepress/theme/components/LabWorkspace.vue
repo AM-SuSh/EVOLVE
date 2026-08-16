@@ -3112,6 +3112,7 @@ onBeforeUnmount(() => {
               :key="`code-${studentId}`"
               :lab="lab"
               :endpoint="endpoint"
+              :session-id="sessionId"
               :student="studentId"
               :dark="isDark"
               :terminal-open="terminalDockOpen"
