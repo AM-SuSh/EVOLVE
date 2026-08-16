@@ -2,7 +2,7 @@
 
 > 本报告总结自研操作系统教学实验环境 EVOLVE 的设计思路、与 AI 合作的实现过程，以及学习效果评估。
 >
-> 配套文档：架构与 AI 系统技术说明见 [agent-system-technical.md](agent-system-technical.md)、三方对比见 [comparison.md](comparison.md)、原始对比数据见 [comparison-data.md](comparison-data.md)。
+> 配套文档：架构说明见 [architecture.md](architecture.md)、EVOLVE 与 xv6 对比见 [xv6-comparison.md](../../xv6-comparison.md)、AI 协作记录见 [ai-collaboration.md](ai-collaboration.md)。
 
 ## 一、设计思路与目标
 
@@ -25,7 +25,7 @@ graph TD
     G --> G2["目标2：清晰脉络<br/>让学生看到内核演进的每一步"]
     G --> G3["目标3：主动思考<br/>引导学生先想再对照，而非被动接受"]
 
-    G1 --> D1["Rust 内存安全<br/>+ 精简规模（1882行/6 crate）"]
+    G1 --> D1["Rust 内存安全<br/>+ 精简规模（9978行/8 组件 crate）"]
     G2 --> D2["单内核 feature gate<br/>渐进式'长出'功能"]
     G3 --> D3["问题驱动文档<br/>+ AI 协作模板"]
 
@@ -47,16 +47,19 @@ graph LR
     L2 -->|"+feature"| L3["lab3 +虚存"]
     L3 -->|"+feature"| L4["lab4 +进程"]
     L4 -->|"+feature"| L5["lab5 +文件/并发"]
+    L5 -->|"+feature"| L6["lab6 +磁盘FS"]
+    L6 -->|"+feature"| L7["lab7 +IPC/信号"]
+    L7 -->|"+feature"| L8["lab8 +线程/同步"]
 
     classDef stage fill:#e3f2fd,stroke:#1565c0;
-    class L1,L2,L3,L4,L5 stage;
+    class L1,L2,L3,L4,L5,L6,L7,L8 stage;
 ```
 
 不是 8 个独立内核（如 rCore），而是**一个内核通过 Cargo feature 逐步启用功能**。学生始终在同一个代码库工作，切换 feature 就能看到内核"长出"新能力。这让 OS 演进脉络清晰可见。
 
 **决策二：精简组件化**
 
-将 rCore 的 23 crate/4 层依赖精简为 **6 crate/2 层依赖**（kernel + os-context/os-syscall/os-alloc/os-vm/os-fs）。每个 crate 职责聚焦、边界清晰，认知负担降低一个数量级。
+将 rCore 的 23 crate/4 层依赖精简为 **8 组件 crate/2 层依赖**（os-sbi/os-context/os-syscall/os-alloc/os-vm/os-fs/os-signal/os-sync），加上 kernel 与 user 共 10 个 workspace 包。每个 crate 职责聚焦、边界清晰，认知负担降低一个数量级。
 
 **决策三：Rust + 问题驱动文档**
 
@@ -89,7 +92,7 @@ graph TD
 
 - **成员 A**（内核主体）：与 AI 合作实现 kernel 主体、feature gate、trap/mm/process/fs/sync 集成。
 - **成员 B**（组件 crate）：与 AI 合作实现 os-context/os-syscall/os-alloc/os-vm/os-fs 及单元测试、用户程序。
-- **成员 C**（文档与评估，即本报告作者）：与 AI 合作编写 5 个 lab 的实验指导、任务二参考答案、三方对比报告、设计总结。
+- **成员 C**（文档与评估，即本报告作者）：与 AI 合作编写 8 个 lab 的实验指导、任务二参考答案、三方对比报告、设计总结。
 
 ### 2.2 AI 在各环节的作用
 
@@ -117,25 +120,29 @@ EVOLVE 的 8 个 Lab 覆盖了操作系统三大核心主题：
 
 ```mermaid
 graph LR
+    subgraph 基础机制
+        B1["lab1 裸机启动"]
+        B2["lab2 trap/系统调用"]
+    end
     subgraph 虚拟化
         V1["lab3 虚存<br/>地址空间隔离"]
         V2["lab4 进程<br/>fork/exec/wait"]
     end
     subgraph 并发
         C1["lab5 自旋锁<br/>数据竞争"]
-        C2["lab5 管道<br/>进程间通信"]
+        C2["lab7 IPC/信号<br/>管道/dup/信号"]
+        C3["lab8 线程<br/>阻塞同步/死锁检测"]
     end
     subgraph 持久化
-        P1["lab5 文件系统<br/>fd/内嵌文件"]
-    end
-    subgraph 基础机制
-        B1["lab1 裸机启动"]
-        B2["lab2 trap/系统调用"]
+        P1["lab5/6 文件系统<br/>fd/内嵌文件/VirtIO"]
     end
 
-    B1 --> B2 --> V1 --> V2 --> C1
-    B2 --> C2
+    B1 --> B2 --> V1 --> V2
+    B2 --> C1
     V2 --> P1
+    V2 --> C2
+    C1 --> C3
+    C2 --> C3
 
     classDef base fill:#e8f5e9,stroke:#2e7d32;
     classDef virt fill:#e3f2fd,stroke:#1565c0;
@@ -143,31 +150,31 @@ graph LR
     classDef persist fill:#f3e5f5,stroke:#7b1fa2;
     class B1,B2 base;
     class V1,V2 virt;
-    class C1,C2 conc;
+    class C1,C2,C3 conc;
     class P1 persist;
 ```
 
 | OS 主题 | 对应 lab | 核心知识点 |
 |--------|---------|-----------|
 | 虚拟化 | lab3、lab4 | Sv39 页表、地址空间、fork/exec/wait、进程树 |
-| 并发 | lab5 | 自旋锁、数据竞争、管道 IPC、环形缓冲 |
-| 持久化 | lab5 | 文件描述符、内嵌只读文件系统 |
+| 并发 | lab5、lab7、lab8 | 自旋锁、管道、信号、阻塞 mutex/semaphore/condvar、死锁检测 |
+| 持久化 | lab5、lab6 | fd 表、内嵌只读文件系统、VirtIO/easy-fs 磁盘 FS |
 | 基础机制 | lab1、lab2 | 裸机启动、SBI、trap、系统调用、上下文切换 |
 
-### 3.2 学习效率分析（详见 [comparison.md](comparison.md) 第五节）
+### 3.2 学习效率分析（详见 [xv6-comparison.md](../../xv6-comparison.md) 第十三节）
 
 基于教学设计原理的推断（【待真实学习数据验证】）：
 
 | 效率维度 | EVOLVE 表现 | 优势来源 |
 |---------|------------|---------|
-| 认知负担 | 低 | 1882 行/6 crate/单代码库，比 rCore 低一个数量级 |
-| 反馈速度 | 快 | Rust 编译器即时纠错 + 内嵌单元测试（9 个） |
+| 认知负担 | 低 | 9978 行/8 组件 crate/单代码库，比 rCore 低一个数量级 |
+| 反馈速度 | 快 | Rust 编译器即时纠错 + 内嵌单元测试（42 个） |
 | 动机维持 | 强 | feature 渐进式"长出功能"的成就感 + 问题驱动引导 |
 | 知识留存 | 高 | "先想再对照"主动思考 + 任务二巩固 |
 
 ### 3.3 预期学习成果
 
-完成全部 5 个 lab 后，学生应能：
+完成全部 8 个 lab 后，学生应能：
 
 - **概念层面**：理解 OS 虚拟化、并发、持久化三大主题及其内在联系。
 - **实践层面**：掌握 RISC-V 裸机编程、trap 机制、Sv39 页表、fork/exec/wait、文件系统与并发同步的实现。
@@ -179,13 +186,13 @@ graph LR
 
 ## 四、创新点与差异化价值
 
-EVOLVE 相对参考环境（tg-rcore-tutorial）和本校环境（xv6-riscv）的核心创新（详见 [comparison.md](comparison.md) 第四节）：
+EVOLVE 相对参考环境（tg-rcore-tutorial）和本校环境（xv6-riscv）的核心创新（详见 [xv6-comparison.md](../../xv6-comparison.md) 第二节）：
 
 ```mermaid
 graph TD
     O["EVOLVE 创新"]
     O --> I1["1. 渐进式单内核<br/>feature gate 让内核'长出来'"]
-    O --> I2["2. 精简组件化<br/>6 crate/2 层依赖"]
+    O --> I2["2. 精简组件化<br/>8 组件 crate/2 层依赖"]
     O --> I3["3. 内嵌测试体系<br/>#[cfg(test)] 直接验证"]
     O --> I4["4. 问题驱动文档<br/>'先想再对照'+AI模板"]
     O --> I5["5. Rust 内存安全<br/>聚焦机制理解"]
@@ -202,7 +209,7 @@ graph TD
 
 诚实说明局限（不回避短板）：
 
-1. **覆盖广度有限**：5 个 lab 不含网络、mmap、真实磁盘文件系统等 xv6 覆盖的主题。
+1. **覆盖广度有限**：8 个 lab 不含网络、COW、文件映射与多核调度等 xv6 覆盖的主题。
 2. **系统语义仍是教学子集**：Lab6 已接入 VirtIO/easy-fs 磁盘文件系统和匿名 `mmap/munmap`，但硬链接别名未实现完整跨重启持久化，`mmap` 也不含文件回写与共享映射。
 3. **调度与隔离仍为教学实现**：具备时间片、轮转、stride 与阻塞同步，但尚未覆盖多核调度、COW 和严格的内核/用户高地址跳板隔离。
 4. **学习效率评估仍需扩样**：当前自动回归与人工流程试用可以证明工程闭环，不能替代规模化真人对照实验。
@@ -220,8 +227,8 @@ graph TD
 |------|------|------------|------|
 | 创新性 | 30% | 强 | 渐进式单内核+feature gate、问题驱动文档、AI 协作模板，与 rCore/xv6 明显差异化 |
 | 完整性 | 20% | 中上 | 8 个 Lab 覆盖 OS 三大主题；局限是无网络、COW、文件映射与多核调度 |
-| 代码质量 | 25% | 中上 | Rust 内存安全、6 crate 组件化、9 个单元测试；局限是部分 unsafe 用法、警告未全清 |
-| 文档完整性 | 25% | 强 | 5 lab 指导 + 5 答案（对应任务二）+ 架构/对比/设计/协作四份报告 + overview 总览，文档体系完整 |
+| 代码质量 | 25% | 中上 | Rust 内存安全、8 组件 crate 组件化、42 个 host 单元测试；局限是部分 unsafe 用法、警告未全清 |
+| 文档完整性 | 25% | 强 | 8 lab 指导 + 8 答案（对应任务二）+ 架构/对比/设计/协作四份报告 + overview 总览，文档体系完整 |
 
 ## 七、总结
 
@@ -233,4 +240,4 @@ EVOLVE 是一套面向 OS 初学者的自研教学实验环境，通过渐进式
 
 ---
 
-> 本报告基于项目实际交付物撰写。原始对比数据见 [comparison-data.md](comparison-data.md)，AI 系统技术实现见 [agent-system-technical.md](agent-system-technical.md)。
+> 本报告基于项目实际交付物撰写。EVOLVE 与 xv6 对比见 [xv6-comparison.md](../../xv6-comparison.md)，AI 协作全过程见 [ai-collaboration.md](ai-collaboration.md)。

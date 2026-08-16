@@ -349,3 +349,15 @@ option {
     margin: 0 var(--ws-space-2) var(--ws-space-2) auto;
   }
 }
+
+/* -- 操作指南录屏视频：MP4 优先，GIF 作为封面占位 ------------------------- */
+.guide-video {
+  display: block;
+  width: 100%;
+  max-width: 760px;
+  margin: var(--ws-space-4) auto;
+  border: 1px solid var(--ws-line-strong);
+  border-radius: var(--ws-radius-md);
+  background: #000;
+  box-shadow: var(--ws-shadow-1);
+}

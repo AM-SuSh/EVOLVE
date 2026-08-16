@@ -1873,17 +1873,33 @@ const TOOL_BIN_DIRS = [
   'D:\\QEMU',
 ].filter(Boolean)
 
+/** 本机已知的可用 Rust 工具链；进程继承到失效的 CARGO_HOME/RUSTUP_HOME 时按序回退。 */
+const KNOWN_TOOLCHAINS = [
+  { cargoHome: 'D:\\AppGallery\\Rust\\cargo', rustupHome: 'D:\\AppGallery\\Rust\\rustup' },
+  { cargoHome: 'D:\\Rust\\cargo', rustupHome: 'D:\\Rust\\rustup' },
+  { cargoHome: path.join(process.env.USERPROFILE || '', '.cargo'), rustupHome: path.join(process.env.USERPROFILE || '', '.rustup') },
+]
+
+function usableCargoHome(cargoHome) {
+  return Boolean(cargoHome) && existsSyncSync(path.join(cargoHome, 'bin', 'cargo.exe'))
+}
+
 const resolvedBinCache = new Map()
 
 function enrichRunEnv(cwd) {
   const env = { ...process.env }
-  if (!env.CARGO_HOME) {
-    if (existsSyncSync('D:\\AppGallery\\Rust\\cargo\\bin\\cargo.exe')) {
-      env.CARGO_HOME = 'D:\\AppGallery\\Rust\\cargo'
-      env.RUSTUP_HOME = env.RUSTUP_HOME || 'D:\\AppGallery\\Rust\\rustup'
-    } else if (existsSyncSync('D:\\Rust\\cargo\\bin\\cargo.exe')) {
-      env.CARGO_HOME = 'D:\\Rust\\cargo'
-      env.RUSTUP_HOME = env.RUSTUP_HOME || 'D:\\Rust\\rustup'
+  const inheritedCargo = env.CARGO_HOME
+  const known = KNOWN_TOOLCHAINS.find(
+    (item) => item.cargoHome === inheritedCargo && usableCargoHome(item.cargoHome),
+  )
+  if (known) {
+    env.CARGO_HOME = known.cargoHome
+    env.RUSTUP_HOME = known.rustupHome
+  } else if (!usableCargoHome(inheritedCargo)) {
+    const fallback = KNOWN_TOOLCHAINS.find((item) => usableCargoHome(item.cargoHome))
+    if (fallback) {
+      env.CARGO_HOME = fallback.cargoHome
+      env.RUSTUP_HOME = fallback.rustupHome
     }
   }
   // 强制产物落在工作区 target/，与 recipe/Makefile 的相对路径一致。

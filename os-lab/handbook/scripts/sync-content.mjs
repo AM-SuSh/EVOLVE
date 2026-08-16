@@ -74,6 +74,8 @@ function rewriteLinks(text) {
       .replace(/\]\(\.\.\/reference-patches\/(?:README\.md)?\)/g, '](/project/reference-report)')
       .replace(/\]\(\.\.\/项目总报告\.md(?:#[^)]*)?\)/g, '](/project/design-report)')
       .replace(/\]\(\.\.\/README\.md(?:#[^)]*)?\)/g, '](/)')
+      .replace(/\]\(\.\.\/\.\.\/xv6-comparison\.md(?:#[^)]*)?\)/g, '](/project/xv6-comparison)')
+      .replace(/\]\(\.\.\/xv6-comparison\.md(?:#[^)]*)?\)/g, '](/project/xv6-comparison)')
       // os-lab 内部
       .replace(/\]\(\.\.\/docs\/([^)]+)\)/g, '](/project/$1)')
       .replace(/\]\(\.\.\/os-lab\/docs\/([^)]+)\)/g, '](/project/$1)')

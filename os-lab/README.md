@@ -1,6 +1,6 @@
 # EVOLVE：自研操作系统教学实验环境
 
-基于 Rust + RISC-V 64 的单内核渐进式教学实验环境。学生通过切换 `lab1` 到 `lab5` 的 feature，在同一套代码库中观察内核从裸机到完整系统的演进。
+基于 Rust + RISC-V 64 的单内核渐进式教学实验环境。学生通过切换 `lab1` 到 `lab8` 的 feature，在同一套代码库中观察内核从裸机到线程同步的演进。
 
 **赛题交付**：[仓库总览](../README.md) · [自研环境说明](../docs/os-lab.md) · [设计总结报告](docs/design-report.md) · **[学习手册 Web 版](handbook/README.md)**
 
@@ -41,6 +41,9 @@ cargo run -p kernel --features lab2 --release   # 中断与多任务
 cargo run -p kernel --features lab3 --release   # 虚存
 cargo run -p kernel --features lab4 --release   # fork/exec/wait
 cargo run -p kernel --features lab5 --release   # 文件系统与管道
+make test-lab6                                  # VirtIO 磁盘 FS
+make test-lab7                                  # IPC 与信号
+make test-lab8                                  # 线程与同步
 ```
 
 或使用 Makefile（需 GNU Make，Git Bash 可用）：
@@ -60,6 +63,9 @@ make check        # 验证 lab1–lab8 均可编译
 | `lab3` | 物理页分配、页表、地址空间 |
 | `lab4` | fork / exec / wait |
 | `lab5` | 文件系统、并发原语（自旋锁 + 管道） |
+| `lab6` | VirtIO 磁盘文件系统、mmap、stride |
+| `lab7` | IPC、统一 fd、信号 |
+| `lab8` | 线程、阻塞同步（mutex/semaphore/condvar）、死锁检测 |
 
 ```powershell
 cargo run -p kernel --features lab3 --release
@@ -103,7 +109,7 @@ cargo test -p os-context -p os-syscall -p os-sbi -p os-fs --target x86_64-pc-win
 cargo test -p os-alloc -p os-vm --target x86_64-pc-windows-msvc -- --test-threads=1
 ```
 
-预期合计 **24 项**全部 `ok`。详细成功标准见 [tests/README.md](tests/README.md) 与 [docs/os-lab.md](../docs/os-lab.md)。
+预期合计 **42 项**全部 `ok`。详细成功标准见 [tests/README.md](tests/README.md) 与 [docs/os-lab.md](../docs/os-lab.md)。
 
 ### 编译检查
 
@@ -124,6 +130,8 @@ os-lab/
 ├── os-alloc/        # 内存分配（lab3+）
 ├── os-vm/           # 虚存管理（lab3+）
 ├── os-fs/           # 文件系统（lab5）
+├── os-signal/       # 信号（lab7+）
+├── os-sync/         # 线程与同步（lab8+）
 ├── user/            # 用户态测试程序（lab2+）
 ├── labs/            # 实验指导与参考答案（任务二）
 ├── docs/            # 架构说明、三方对比、AI 协作记录
@@ -135,16 +143,15 @@ os-lab/
 | 文档 | 说明 |
 |------|------|
 | [docs/design-report.md](docs/design-report.md) | **设计总结报告**（赛题 70% 核心交付） |
-| [docs/architecture.md](docs/architecture.md) | 架构说明、feature 依赖图、Lab1–Lab5 数据流 |
-| [docs/comparison.md](docs/comparison.md) | 三方对比分析与学习效率评估 |
+| [docs/architecture.md](docs/architecture.md) | 架构说明、feature 依赖图（Lab1–Lab8）、数据流 |
+| [xv6-comparison.md](../xv6-comparison.md) | EVOLVE 与 xv6 详细对比 |
 | [docs/ai-collaboration.md](docs/ai-collaboration.md) | AI 协作过程记录与示例 |
-| [docs/comparison-data.md](docs/comparison-data.md) | 对比原始采集数据 |
 | [labs/overview.md](labs/overview.md) | 实验总览与知识点地图 |
 
 ## 与参考环境的差异
 
 - **单内核渐进式**：一个 `kernel` 二进制，通过 feature 逐级启用，而非 8 个独立内核。
-- **精简组件化**：7 个库 crate、两层依赖（参考环境约 23 个 crate）。
+- **精简组件化**：8 个组件库 crate（与 `kernel`/`user` 组成 10 个 workspace 包）、两层依赖（参考环境约 23 个 crate）。
 - **内嵌验证**：组件 crate 提供 host 单元测试；内核通过 QEMU 用户态程序自证。
 
-详细对比见 [docs/comparison.md](docs/comparison.md)。
+详细对比见 [xv6-comparison.md](../xv6-comparison.md)。
