@@ -27,11 +27,11 @@ test('normalizeFinalProject keeps required fields and defaults kind', () => {
   assert.equal(project.leaderboard.metrics[0].direction, 'higher')
 })
 
-test('normalizeFinalProject rejects empty task and falls back to open kind', () => {
+test('normalizeFinalProject rejects empty task and falls back to performance kind', () => {
   assert.equal(normalizeFinalProject(null), null)
   assert.equal(normalizeFinalProject({ title: '', description: '' }), null)
   const fallback = normalizeFinalProject({ title: '开放题', description: '自己提出一个问题。', kind: 'unknown' })
-  assert.equal(fallback.kind, 'open')
+  assert.equal(fallback.kind, 'performance')
 })
 
 test('effectiveConfigFor resolves final project from student > class > global', () => {

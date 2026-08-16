@@ -747,9 +747,6 @@ function loadPreset(kind: string) {
       <select v-model="draft.kind" aria-label="期末探索任务方向">
         <option value="performance">性能画像与调优</option>
         <option value="app">终端小应用</option>
-        <option value="debug">故障注入与排障</option>
-        <option value="open">开放课题</option>
-        <option value="custom">自定义探索</option>
       </select>
     </label>
 

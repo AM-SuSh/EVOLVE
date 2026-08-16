@@ -39,15 +39,12 @@ const STATE_FILE = '.scaffold-state.json'
 
 export const LAB_ORDER = ['lab1', 'lab2', 'lab3', 'lab4', 'lab5', 'lab6', 'lab7', 'lab8']
 
-/** 期末探索任务允许的方向；教师端发布时二选一或自定义。 */
-export const FINAL_PROJECT_KINDS = ['performance', 'app', 'debug', 'open', 'custom']
+/** 期末探索任务允许的方向；教师端发布时二选一。 */
+export const FINAL_PROJECT_KINDS = ['performance', 'app']
 
 export const FINAL_PROJECT_KIND_LABELS = {
   performance: '性能画像与调优',
   app: '终端小应用',
-  debug: '故障注入与排障',
-  open: '开放课题',
-  custom: '自定义探索',
 }
 
 /** 统一期末探索任务的结构；教师可多级发布，学生按作用域就近生效。 */
@@ -56,7 +53,7 @@ export function normalizeFinalProject(value) {
   const title = String(value.title || '').trim().slice(0, 80)
   const description = String(value.description || '').trim().slice(0, 20000)
   if (!title || !description) return null
-  const kind = FINAL_PROJECT_KINDS.includes(value.kind) ? value.kind : 'open'
+  const kind = FINAL_PROJECT_KINDS.includes(value.kind) ? value.kind : 'performance'
   const mechanisms = Array.isArray(value.mechanisms)
     ? value.mechanisms
         .map((item) => String(item || '').trim().slice(0, 80))
@@ -89,7 +86,7 @@ export function normalizeFinalProject(value) {
     id: 'final',
     title,
     kind,
-    kindLabel: FINAL_PROJECT_KIND_LABELS[kind] || '开放课题',
+    kindLabel: FINAL_PROJECT_KIND_LABELS[kind] || '期末探索任务',
     description,
     mechanisms,
     verificationCommand,

@@ -1084,7 +1084,7 @@ export interface LabJourneyItem {
   lockAt?: string | null
 }
 
-export type FinalProjectKind = 'performance' | 'app' | 'debug' | 'open' | 'custom'
+export type FinalProjectKind = 'performance' | 'app'
 
 export interface FinalProjectLeaderboardMetric {
   id: string
@@ -1119,13 +1119,10 @@ export interface FinalProjectAccess extends Partial<FinalProjectInfo> {
 export const FINAL_PROJECT_KIND_LABELS: Record<string, string> = {
   performance: '性能画像与调优',
   app: '终端小应用',
-  debug: '故障注入与排障',
-  open: '开放课题',
-  custom: '自定义探索',
 }
 
 export function finalProjectKindLabel(kind: string | undefined): string {
-  return FINAL_PROJECT_KIND_LABELS[String(kind || '')] || '开放课题'
+  return FINAL_PROJECT_KIND_LABELS[String(kind || '')] || '期末探索任务'
 }
 
 export interface LearningAccessItem {

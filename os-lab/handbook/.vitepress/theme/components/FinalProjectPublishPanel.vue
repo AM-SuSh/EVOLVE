@@ -166,7 +166,7 @@ const finalProjectSeed = computed<FinalProjectDraft>(() => {
   const current = finalProjectFor(finalProjectScope.value)
   return {
     title: current?.title || '期末探索实验',
-    kind: current?.kind || 'open',
+    kind: current?.kind || 'performance',
     description: current?.description || '',
     mechanisms: Array.isArray(current?.mechanisms) ? [...current.mechanisms] : [],
     verificationCommand: current?.verificationCommand || '',
