@@ -156,8 +156,13 @@ export async function inspectLabPackage(labId, options = {}) {
   let spec
   let schema
   try {
-    [raw, schema] = await Promise.all([readFile(specPath, 'utf8'), readFile(config.schemaPath, 'utf8').then(JSON.parse)])
+    raw = await readFile(specPath, 'utf8')
     spec = parseYaml(raw)
+    const schemaVersion = Number(spec?.schema_version)
+    const schemaPath = schemaVersion === 1
+      ? config.schemaPath
+      : path.join(path.dirname(config.schemaPath), `lab-spec-v${schemaVersion}.schema.json`)
+    schema = JSON.parse(await readFile(schemaPath, 'utf8'))
   } catch (error) {
     return { ok: false, labId: safeLabId, errors: [`读取 Lab 包失败: ${error.message}`] }
   }

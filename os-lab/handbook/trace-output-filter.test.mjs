@@ -4,6 +4,7 @@ import { createTraceOutputFilter } from './.vitepress/theme/trace-output-filter.
 
 const trap = 'TRACE_V1 {"v":1,"seq":1,"type":"trap_enter"}\n'
 const task = 'TRACE_V1 {"v":1,"seq":2,"type":"task_switch"}\r\n'
+const syscall = 'TRACE_V2 {"v":2,"seq":3,"type":"syscall","id":220,"name":"clone"}\n'
 
 test('passes ordinary terminal output through unchanged', () => {
   const filter = createTraceOutputFilter()
@@ -25,5 +26,12 @@ test('hides trace frames split across streamed chunks', () => {
 
 test('hides consecutive trace frames and preserves the next line', () => {
   const filter = createTraceOutputFilter()
-  assert.equal(filter.push(`${trap}${task}App 2 exited with code 0\n`), 'App 2 exited with code 0\n')
+  assert.equal(filter.push(`${trap}${task}${syscall}App 2 exited with code 0\n`), 'App 2 exited with code 0\n')
+})
+
+test('hides a v2 trace frame split across streamed chunks', () => {
+  const filter = createTraceOutputFilter()
+  assert.equal(filter.push('fs_test passTRACE_'), 'fs_test pass')
+  assert.equal(filter.push('V2 {"v":2,"seq":4'), '')
+  assert.equal(filter.push(',"type":"address_space"}\nnext\n'), 'next\n')
 })

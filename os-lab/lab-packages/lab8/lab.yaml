@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: lab8
 title: 线程与同步
 version: 1.0.0
@@ -42,6 +42,7 @@ variants:
 verification:
   recipe: lab8.verify.v1
   command: make test-lab8
+  command_with_trace: node scripts/verify.mjs qemu --lab lab8
   assertions:
     - { id: threads-pass, kind: output-contains, text: "threads_test pass", assesses: [os.thread.blocking] }
     - { id: threads-arg-pass, kind: output-contains, text: "threads_arg_test pass", assesses: [os.thread.blocking] }
@@ -51,7 +52,7 @@ verification:
     - { id: deadlock-mutex-pass, kind: output-contains, text: "deadlock test mutex 1 OK!" }
     - { id: deadlock-semaphore-pass, kind: output-contains, text: "deadlock test semaphore 1 OK!" }
     - { id: pipe-pass, kind: output-contains, text: "pipe_test pass" }
-  observable_trace: []
+  observable_trace: [syscall]
 misconceptions:
   - { id: minus-one-is-deadlock, statement: 同步 syscall 返回 -1 就是死锁, counter: -1 表示可重试的阻塞；-0xDEAD 才是死锁短路 }
   - { id: handoff-equals-ready, statement: mark_mutex_handoff 后等待者会自动运行, counter: 还必须 re_enque 才能回到就绪队列 }

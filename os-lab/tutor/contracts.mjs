@@ -33,7 +33,12 @@ const EVENT_V2_TYPES = new Set([
   'review_completed',
 ])
 
-const TRACE_TYPES = new Set(['trap_enter', 'task_switch'])
+const TRACE_V1_TYPES = new Set(['trap_enter', 'task_switch'])
+const TRACE_TYPES = new Set([...TRACE_V1_TYPES, 'syscall', 'address_space'])
+const TRACE_MARKERS = [
+  { marker: 'TRACE_V1 ', version: 1 },
+  { marker: 'TRACE_V2 ', version: 2 },
+]
 const HASH_RE = /^[a-f0-9]{64}$/
 
 function isRecord(value) {
@@ -182,7 +187,7 @@ export function validateInteractionEvent(event) {
 export function validateTraceEvent(event) {
   if (
     !isRecord(event) ||
-    event.v !== 1 ||
+    ![1, 2].includes(event.v) ||
     !Number.isInteger(event.seq) ||
     event.seq < 0 ||
     !Number.isInteger(event.ts) ||
@@ -193,22 +198,31 @@ export function validateTraceEvent(event) {
     event.pid < 0 ||
     !Number.isInteger(event.tid) ||
     event.tid < 0 ||
-    !TRACE_TYPES.has(event.type)
+    !(event.v === 1 ? TRACE_V1_TYPES : TRACE_TYPES).has(event.type)
   ) {
     return false
   }
   if (event.type === 'trap_enter') return isText(event.cause, 80)
-  return isText(event.from, 80) && isText(event.to, 80) && isText(event.reason, 120)
+  if (event.type === 'task_switch') {
+    return isText(event.from, 80) && isText(event.to, 80) && isText(event.reason, 120)
+  }
+  if (event.type === 'syscall') {
+    return Number.isInteger(event.id) && event.id >= 0 && isText(event.name, 80)
+  }
+  return Number.isInteger(event.space) && event.space >= 0 && ['create', 'activate'].includes(event.action)
 }
 
 export function collectTraceEvents(output) {
   const events = []
   for (const line of String(output || '').split(/\r?\n/)) {
-    const marker = line.indexOf('TRACE_V1 ')
-    if (marker < 0) continue
+    const frame = TRACE_MARKERS
+      .map((entry) => ({ ...entry, index: line.indexOf(entry.marker) }))
+      .filter((entry) => entry.index >= 0)
+      .sort((left, right) => left.index - right.index)[0]
+    if (!frame) continue
     try {
-      const event = JSON.parse(line.slice(marker + 'TRACE_V1 '.length))
-      if (validateTraceEvent(event)) events.push(event)
+      const event = JSON.parse(line.slice(frame.index + frame.marker.length))
+      if (event.v === frame.version && validateTraceEvent(event)) events.push(event)
     } catch {
       // A malformed teaching trace must not break the underlying lab run.
     }

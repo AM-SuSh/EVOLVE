@@ -1,6 +1,6 @@
 # Lab3 稳定教学规格
 
-schema_version: 1
+schema_version: 2
 id: lab3
 title: 内存管理与虚存
 version: 1.0.0
@@ -72,6 +72,7 @@ variants:
 verification:
   recipe: lab3.verify.v1
   command: cargo run -p kernel --features lab3 --release
+  command_with_trace: node scripts/verify.mjs qemu --lab lab3
   assertions:
     - id: hello-output
       kind: output-contains
@@ -86,7 +87,7 @@ verification:
     - id: all-exited
       kind: output-contains
       text: "All user apps exited."
-  observable_trace: []
+  observable_trace: [address_space]
 
 misconceptions:
   - id: va-equals-pa

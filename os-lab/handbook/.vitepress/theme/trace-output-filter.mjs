@@ -1,11 +1,16 @@
-const TRACE_MARKER = 'TRACE_V1 '
+const TRACE_MARKERS = ['TRACE_V1 ', 'TRACE_V2 ']
 
 function trailingMarkerPrefixLength(text) {
-  const max = Math.min(text.length, TRACE_MARKER.length - 1)
+  const max = Math.min(text.length, Math.max(...TRACE_MARKERS.map((marker) => marker.length)) - 1)
   for (let length = max; length > 0; length -= 1) {
-    if (TRACE_MARKER.startsWith(text.slice(-length))) return length
+    if (TRACE_MARKERS.some((marker) => marker.startsWith(text.slice(-length)))) return length
   }
   return 0
+}
+
+function nextMarkerIndex(text) {
+  const indexes = TRACE_MARKERS.map((marker) => text.indexOf(marker)).filter((index) => index >= 0)
+  return indexes.length ? Math.min(...indexes) : -1
 }
 
 /**
@@ -19,7 +24,7 @@ export function createTraceOutputFilter() {
     let visible = ''
 
     while (pending) {
-      const markerIndex = pending.indexOf(TRACE_MARKER)
+      const markerIndex = nextMarkerIndex(pending)
       if (markerIndex < 0) {
         if (flush) {
           visible += pending

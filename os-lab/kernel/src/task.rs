@@ -127,6 +127,8 @@ pub fn run_first_task() -> ! {
     TASK_MANAGER.with(|tm| {
         tm.tasks[0].as_mut().unwrap().task_status = TaskStatus::Running;
         tm.current = 0;
+        #[cfg(feature = "trace-edu")]
+        crate::trace::task_switch(0, "initial");
         let trap_cx = &mut tm.tasks[0].as_mut().unwrap().trap_cx;
         run_user_task(trap_cx)
     })

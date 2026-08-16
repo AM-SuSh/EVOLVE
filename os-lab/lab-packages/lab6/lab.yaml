@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: lab6
 title: 磁盘文件系统
 version: 1.0.0
@@ -41,6 +41,7 @@ variants:
 verification:
   recipe: lab6.verify.v1
   command: make test-lab6
+  command_with_trace: node scripts/verify.mjs qemu --lab lab6
   assertions:
     - { id: file-pass, kind: output-contains, text: "file_test pass", assesses: [os.fs.virtio] }
     - { id: link-pass, kind: output-contains, text: "Test link OK!", assesses: [os.fs.hard-link] }
@@ -50,7 +51,7 @@ verification:
     - { id: fs-pass, kind: output-contains, text: "fs_test pass" }
     - { id: pipe-pass, kind: output-contains, text: "pipe_test pass" }
     - { id: all-processes-exited, kind: output-contains, text: "All processes exited." }
-  observable_trace: []
+  observable_trace: [syscall]
 misconceptions:
   - { id: link-copies-file, statement: 硬链接会复制一份文件数据, counter: 两个目录项指向同一 inode，nlink 增加 }
   - { id: share-alias-equals-nlink, statement: aliases.insert 后 nlink 会自动正确, counter: 必须显式 nlink += 1，否则 fstat 仍看到旧计数 }

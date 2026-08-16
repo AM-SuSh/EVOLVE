@@ -88,12 +88,24 @@ test('event-v2 validates server-authoritative Socratic review events', () => {
   }), true)
 })
 
-test('trace-v1 parser ignores malformed frames and accepts Lab2 events', () => {
+test('trace parser keeps v1 compatibility and accepts version-matched v2 events', () => {
   const trap = { v: 1, seq: 1, ts: 10, cpu: 0, pid: 0, tid: 0, type: 'trap_enter', cause: 'user_ecall' }
   const task = { v: 1, seq: 2, ts: 20, cpu: 0, pid: 1, tid: 1, type: 'task_switch', from: 'Ready', to: 'Running', reason: 'scheduler' }
+  const syscall = { v: 2, seq: 3, ts: 30, cpu: 0, pid: 1, tid: 1, type: 'syscall', id: 220, name: 'clone' }
+  const addressSpace = { v: 2, seq: 4, ts: 40, cpu: 0, pid: 2, tid: 2, type: 'address_space', space: 2, action: 'create' }
   assert.equal(validateTraceEvent(trap), true)
   assert.equal(validateTraceEvent(task), true)
-  assert.deepEqual(collectTraceEvents(`noise\nTRACE_V1 ${JSON.stringify(trap)}\nTRACE_V1 nope\nTRACE_V1 ${JSON.stringify(task)}\n`), [trap, task])
+  assert.equal(validateTraceEvent(syscall), true)
+  assert.equal(validateTraceEvent(addressSpace), true)
+  assert.equal(validateTraceEvent({ ...syscall, v: 1 }), false)
+  assert.equal(validateTraceEvent({ ...syscall, name: '' }), false)
+  assert.equal(validateTraceEvent({ ...addressSpace, action: 'invented' }), false)
+  assert.deepEqual(
+    collectTraceEvents(
+      `noise\nTRACE_V1 ${JSON.stringify(trap)}\nTRACE_V1 nope\nTRACE_V1 ${JSON.stringify(task)}\nTRACE_V2 ${JSON.stringify(syscall)}\nTRACE_V2 ${JSON.stringify(addressSpace)}\nTRACE_V1 ${JSON.stringify(syscall)}\n`,
+    ),
+    [trap, task, syscall, addressSpace],
+  )
 })
 
 test('run-result-v1 only verifies trusted zero-exit runs with passing assertions', () => {
@@ -148,4 +160,29 @@ test('Lab2 trusted recipe checks behavior and both teaching trace types', () => 
   assert.equal(evaluateRunAssertions(recipe.id, output.replace('Hello from user app!\n', ''), traces).every((item) => item.passed), false)
   assert.equal(evaluateRunAssertions(recipe.id, output.replace('409684505\n', ''), traces).every((item) => item.passed), false)
   assert.equal(evaluateRunAssertions(recipe.id, output.replace('Yield round\n', ''), traces).every((item) => item.passed), false)
+})
+
+test('Lab3-Lab8 trusted recipes enable trace and require lab-specific events', () => {
+  const cases = [
+    ['lab3', [{ type: 'address_space', action: 'create' }], ['trace-address-space-create']],
+    ['lab4', ['clone', 'wait4'].map((name) => ({ type: 'syscall', name })), ['trace-process-clone', 'trace-process-wait']],
+    ['lab5', ['openat', 'pipe'].map((name) => ({ type: 'syscall', name })), ['trace-fs-openat', 'trace-ipc-pipe']],
+    ['lab6', ['linkat', 'mmap', 'spawn'].map((name) => ({ type: 'syscall', name })), ['trace-disk-linkat', 'trace-vm-mmap', 'trace-process-spawn']],
+    ['lab7', ['dup', 'kill', 'sigreturn'].map((name) => ({ type: 'syscall', name })), ['trace-fd-dup', 'trace-signal-kill', 'trace-signal-return']],
+    ['lab8', ['thread_create', 'mutex_lock', 'condvar_wait', 'enable_deadlock_detect'].map((name) => ({ type: 'syscall', name })), ['trace-thread-create', 'trace-mutex-lock', 'trace-condvar-wait', 'trace-deadlock-detect']],
+  ]
+
+  for (const [labId, traces, traceAssertionIds] of cases) {
+    const recipe = getRunRecipe(labId)
+    assert.ok(recipe.steps.some((step) => step.args.some((arg) => String(arg).includes('trace-edu'))), labId)
+    const assertions = evaluateRunAssertions(recipe.id, '', traces)
+    const traceAssertions = assertions.filter((item) => traceAssertionIds.includes(item.id))
+    assert.equal(traceAssertions.length, traceAssertionIds.length, labId)
+    assert.equal(traceAssertions.every((item) => item.passed), true, labId)
+    assert.equal(
+      evaluateRunAssertions(recipe.id, '', []).filter((item) => traceAssertionIds.includes(item.id)).every((item) => !item.passed),
+      true,
+      labId,
+    )
+  }
 })
