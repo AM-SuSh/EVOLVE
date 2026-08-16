@@ -145,7 +145,6 @@ os-lab/
 | [docs/design-report.md](docs/design-report.md) | **设计总结报告**（赛题 70% 核心交付） |
 | [docs/architecture.md](docs/architecture.md) | 架构说明、feature 依赖图（Lab1–Lab8）、数据流 |
 | [xv6-comparison.md](../xv6-comparison.md) | EVOLVE 与 xv6 详细对比 |
-| [docs/ai-collaboration.md](docs/ai-collaboration.md) | AI 协作过程记录与示例 |
 | [labs/overview.md](labs/overview.md) | 实验总览与知识点地图 |
 
 ## 与参考环境的差异

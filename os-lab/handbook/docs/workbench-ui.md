@@ -1,7 +1,4 @@
-# 学生工作台 UI 交互说明
-
-本文档描述教学 IDE 各面板的交互契约及当前实现，供成员 A/C 联调与回归验收。
-布局与空态核对见 [`day1-workbench-audit.md`](./day1-workbench-audit.md)（成员 B · Day1）。
+# 工作台 UI 交互说明
 
 ## 学习材料
 

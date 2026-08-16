@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: lab4
 title: 进程管理
 version: 1.0.0
@@ -61,6 +61,7 @@ variants:
 verification:
   recipe: lab4.verify.v1
   command: cargo run -p kernel --features lab4 --release
+  command_with_trace: node scripts/verify.mjs qemu --lab lab4
   assertions:
     - id: parent-output
       kind: output-contains
@@ -78,7 +79,7 @@ verification:
       kind: output-contains
       text: "All processes exited."
       assesses: [os.process.zombie-wait]
-  observable_trace: []
+  observable_trace: [syscall]
 
 misconceptions:
   - id: fork-single-return

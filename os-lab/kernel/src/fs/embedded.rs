@@ -110,14 +110,14 @@ pub fn alloc_pipe_fds(pipe_id: usize) -> Option<(usize, usize)> {
 pub fn close_fd_pair(read_fd: usize, write_fd: usize) {
     let slot = current_slot();
     unsafe {
-        if let Some(ty) = FD_TABLES[slot].slots[read_fd] {
-            close_fd_type(ty);
+        for fd in [read_fd, write_fd] {
+            if let Some(ty) = FD_TABLES[slot].slots.get(fd).and_then(|s| *s) {
+                close_fd_type(ty);
+            }
+            if let Some(entry) = FD_TABLES[slot].slots.get_mut(fd) {
+                *entry = None;
+            }
         }
-        if let Some(ty) = FD_TABLES[slot].slots[write_fd] {
-            close_fd_type(ty);
-        }
-        FD_TABLES[slot].slots[read_fd] = None;
-        FD_TABLES[slot].slots[write_fd] = None;
     }
 }
 
@@ -208,7 +208,7 @@ pub fn sys_read(fd: usize, buf: *mut u8, len: usize) -> isize {
 pub fn sys_close(fd: usize) -> isize {
     let slot = current_slot();
     unsafe {
-        let ty = match FD_TABLES[slot].slots[fd] {
+        let ty = match FD_TABLES[slot].slots.get(fd).and_then(|s| *s) {
             Some(t) => t,
             None => return -1,
         };

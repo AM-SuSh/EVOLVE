@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: lab7
 title: IPC 与信号
 version: 1.0.0
@@ -41,12 +41,13 @@ variants:
 verification:
   recipe: lab7.verify.v1
   command: make test-lab7
+  command_with_trace: node scripts/verify.mjs qemu --lab lab7
   assertions:
     - { id: dup-pass, kind: output-contains, text: "dup_test pass", assesses: [os.fd.dup] }
     - { id: signal-pass, kind: output-contains, text: "signal_test pass", assesses: [os.signal.mask] }
     - { id: signal-mask-pass, kind: output-contains, text: "signal_mask_test pass", assesses: [os.signal.mask] }
     - { id: pipe-pass, kind: output-contains, text: "pipe_test pass" }
-  observable_trace: []
+  observable_trace: [syscall]
 misconceptions:
   - { id: mask-discards-signal, statement: 被 mask 的信号会直接丢失, counter: 信号保持 pending，清除 mask 后才允许投递 }
   - { id: kill-runs-handler-inline, statement: kill 会在发送方系统调用中直接执行目标 handler, counter: 内核只登记 pending，在目标返回用户态前构造信号帧 }

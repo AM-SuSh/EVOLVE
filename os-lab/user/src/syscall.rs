@@ -85,7 +85,6 @@ pub const O_TRUNC: usize = 1 << 10;
 /// `mmap` protection bits (Linux subset).
 pub const PROT_READ: isize = 0x1;
 pub const PROT_WRITE: isize = 0x2;
-pub const PROT_EXEC: isize = 0x4;
 
 /// Deadlock rejection return from `mutex_lock` / `semaphore_down` (lab8).
 pub use os_syscall::DEADLOCK_DETECTED;
@@ -505,6 +504,10 @@ fn mutex_lock_raw(mutex_id: usize) -> isize {
     ret
 }
 
+/// Retry protocol: the kernel returns -1 while the caller is blocked (the
+/// trap path rewinds sepc so this ecall runs again after wake-up). Any other
+/// value — 0 on success, -2 on genuine errors, -0xDEAD on rejected deadlock —
+/// is returned to the caller without retrying.
 pub fn mutex_lock(mutex_id: usize) -> isize {
     loop {
         let ret = mutex_lock_raw(mutex_id);
@@ -566,6 +569,7 @@ fn semaphore_down_raw(sem_id: usize) -> isize {
     ret
 }
 
+/// Same -1 retry protocol as `mutex_lock`; see its comment.
 pub fn semaphore_down(sem_id: usize) -> isize {
     loop {
         let ret = semaphore_down_raw(sem_id);
@@ -614,6 +618,7 @@ fn condvar_wait_raw(condvar_id: usize, mutex_id: usize) -> isize {
     ret
 }
 
+/// Same -1 retry protocol as `mutex_lock`; see its comment.
 pub fn condvar_wait(condvar_id: usize, mutex_id: usize) -> isize {
     loop {
         let ret = condvar_wait_raw(condvar_id, mutex_id);

@@ -37,7 +37,7 @@ cargo check -p os-sbi
 cargo run -p kernel --features lab1
 ```
 
-本机 Git 不在 `D:\AppGallery\Git` 时，将第一行改为 `activate-os-env.local.ps1`。
+本机 Rust/QEMU/Git 安装位置不同时，在 `scripts/` 下创建 `activate-os-env.local.ps1`（已被 gitignore），在其中设置 `$CargoHome`、`$RustupHome`、`$QemuDir`、`$GitUsrBin`；脚本会自动加载该覆盖文件，也可以直接以参数传入。
 
 成功标准：QEMU 输出 `Hello, OS!` 与 `EVOLVE kernel lab1 is running on QEMU virt.`，进程 exit code 0。
 

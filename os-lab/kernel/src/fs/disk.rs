@@ -165,6 +165,8 @@ impl DiskFs {
         0
     }
 
+    /// 教学边界：unlink 只更新内存元数据（hidden/aliases/nlink），不回收
+    /// easy-fs 磁盘 inode——跨重启后元数据层不保持，磁盘空间不归还。
     fn unlink(&self, path: &str) -> isize {
         let mut index = FILE_INDEX.lock();
         let Some(meta) = (if let Some(meta) = index.aliases.remove(path) {
@@ -497,7 +499,7 @@ pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
 pub fn sys_close(fd: usize) -> isize {
     let slot = current_slot();
     unsafe {
-        let ty = match FD_TABLES[slot].slots[fd] {
+        let ty = match FD_TABLES[slot].slots.get(fd).and_then(|s| *s) {
             Some(t) => t,
             None => return -1,
         };
@@ -508,6 +510,8 @@ pub fn sys_close(fd: usize) -> isize {
     0
 }
 
+/// 教学边界：`dup` 复制 `OpenedFile` 值，新 fd 拥有独立读偏移；POSIX 语义
+/// 中 dup/fork 应共享文件偏移（共享 open file description），此处有意简化。
 #[cfg(feature = "lab7")]
 pub fn sys_dup(old_fd: usize) -> isize {
     let slot = current_slot();

@@ -18,10 +18,10 @@ function cargoRunStep(labId, features = labId) {
   }
 }
 
-function diskSteps(labId) {
+function diskSteps(labId, features = labId) {
   return [
     {
-      title: `cargo build -p kernel --no-default-features --features ${labId} --release`,
+      title: `cargo build -p kernel --no-default-features --features ${features} --release`,
       cmd: 'cargo',
       args: [
         'build',
@@ -29,7 +29,7 @@ function diskSteps(labId) {
         'kernel',
         '--no-default-features',
         '--features',
-        labId,
+        features,
         '--release',
         '--message-format=json',
       ],
@@ -113,7 +113,7 @@ const definitions = {
   },
   lab3: {
     id: 'lab3.verify.v1',
-    steps: [cargoRunStep('lab3')],
+    steps: [cargoRunStep('lab3', 'lab3,trace-edu')],
     contains: [
       {
         text: 'Power check ok',
@@ -131,10 +131,19 @@ const definitions = {
         hint: 'Yield round 次数不对：检查 yield 切换与 trap 上下文保存/恢复，确认每次 yield 都真正切走并切回。',
       },
     ],
+    traceMatches: [
+      {
+        id: 'trace-address-space-create',
+        type: 'address_space',
+        match: { action: 'create' },
+        label: 'trace 包含独立地址空间创建',
+        hint: '没有地址空间创建 trace：检查 create_user_space 是否在装载每个 ELF 时建立独立页表，并确认受信 recipe 启用了 trace-edu。',
+      },
+    ],
   },
   lab4: {
     id: 'lab4.verify.v1',
-    steps: [cargoRunStep('lab4')],
+    steps: [cargoRunStep('lab4', 'lab4,trace-edu')],
     contains: [
       {
         text: 'I am parent',
@@ -153,10 +162,26 @@ const definitions = {
         hint: '有进程未正常退出：检查进程表清理、wait 回收与调度器跳过僵尸进程的逻辑。',
       },
     ],
+    traceMatches: [
+      {
+        id: 'trace-process-clone',
+        type: 'syscall',
+        match: { name: 'clone' },
+        label: 'trace 包含 clone 进程创建',
+        hint: '没有 clone syscall trace：检查 fork 测试是否真正进入 SYS_CLONE，以及父子进程是否从同一 TrapContext 分叉。',
+      },
+      {
+        id: 'trace-process-wait',
+        type: 'syscall',
+        match: { name: 'wait4' },
+        label: 'trace 包含 wait4 子进程回收',
+        hint: '没有 wait4 syscall trace：检查父进程是否等待并回收僵尸子进程，以及阻塞重试路径是否生效。',
+      },
+    ],
   },
   lab5: {
     id: 'lab5.verify.v1',
-    steps: [cargoRunStep('lab5')],
+    steps: [cargoRunStep('lab5', 'lab5,trace-edu')],
     contains: [
       {
         text: 'Hello from testfile!',
@@ -175,10 +200,26 @@ const definitions = {
         hint: '有进程未正常退出：检查 wait 回收与进程退出路径。',
       },
     ],
+    traceMatches: [
+      {
+        id: 'trace-fs-openat',
+        type: 'syscall',
+        match: { name: 'openat' },
+        label: 'trace 包含 openat 文件访问',
+        hint: '没有 openat syscall trace：检查 fs_test 是否走到文件打开路径，以及 SYS_OPENAT 是否正确分派。',
+      },
+      {
+        id: 'trace-ipc-pipe',
+        type: 'syscall',
+        match: { name: 'pipe' },
+        label: 'trace 包含 pipe 创建',
+        hint: '没有 pipe syscall trace：检查 pipe_test 是否真正创建管道，以及 SYS_PIPE 是否正确分派。',
+      },
+    ],
   },
   lab6: {
     id: 'lab6.verify.v1',
-    steps: diskSteps('lab6'),
+    steps: diskSteps('lab6', 'lab6,trace-edu'),
     contains: [
       { text: 'file_test pass', hint: '文件系统块读写失败：检查 VirtIO 磁盘初始化、块设备读写和文件系统挂载。' },
       { text: 'Test link OK!', hint: '链接测试未通过：检查目录项/硬链接相关实现与测试调用路径。' },
@@ -189,20 +230,66 @@ const definitions = {
       { text: 'pipe_test pass', hint: '管道测试未通过：检查 pipe 创建、读写与阻塞唤醒。' },
       { text: 'All processes exited.', hint: '有进程未正常退出：检查 wait 回收与退出路径。' },
     ],
+    traceMatches: [
+      {
+        id: 'trace-disk-linkat',
+        type: 'syscall',
+        match: { name: 'linkat' },
+        label: 'trace 包含 linkat 硬链接操作',
+        hint: '没有 linkat syscall trace：检查链接测试是否进入磁盘文件系统的硬链接路径。',
+      },
+      {
+        id: 'trace-vm-mmap',
+        type: 'syscall',
+        match: { name: 'mmap' },
+        label: 'trace 包含 mmap 映射',
+        hint: '没有 mmap syscall trace：检查 mmap_test 是否发起映射，以及 SYS_MMAP 是否正确分派。',
+      },
+      {
+        id: 'trace-process-spawn',
+        type: 'syscall',
+        match: { name: 'spawn' },
+        label: 'trace 包含 spawn 程序加载',
+        hint: '没有 spawn syscall trace：检查 spawn_test 是否从磁盘读取 ELF 并创建进程。',
+      },
+    ],
   },
   lab7: {
     id: 'lab7.verify.v1',
-    steps: diskSteps('lab7'),
+    steps: diskSteps('lab7', 'lab7,trace-edu'),
     contains: [
       { text: 'dup_test pass', hint: 'dup 测试未通过：检查 dup/dup2 的文件描述符复制与文件表引用计数。' },
       { text: 'signal_test pass', hint: '信号测试未通过：检查信号注册、发送与处理路径，以及 trap 上下文保存恢复。' },
       { text: 'signal_mask_test pass', hint: '信号掩码测试未通过：检查 mask 设置/恢复与阻塞期信号排队。' },
       { text: 'pipe_test pass', hint: '管道测试未通过：检查 pipe 创建、读写与阻塞唤醒。' },
     ],
+    traceMatches: [
+      {
+        id: 'trace-fd-dup',
+        type: 'syscall',
+        match: { name: 'dup' },
+        label: 'trace 包含 dup 描述符复制',
+        hint: '没有 dup syscall trace：检查 dup_test 是否进入 SYS_DUP，并确认文件表引用被复制。',
+      },
+      {
+        id: 'trace-signal-kill',
+        type: 'syscall',
+        match: { name: 'kill' },
+        label: 'trace 包含 kill 信号发送',
+        hint: '没有 kill syscall trace：检查 signal_test 是否向目标进程登记 pending 信号。',
+      },
+      {
+        id: 'trace-signal-return',
+        type: 'syscall',
+        match: { name: 'sigreturn' },
+        label: 'trace 包含 sigreturn 上下文恢复',
+        hint: '没有 sigreturn syscall trace：检查信号处理器返回跳板和保存的 TrapContext 恢复路径。',
+      },
+    ],
   },
   lab8: {
     id: 'lab8.verify.v1',
-    steps: diskSteps('lab8'),
+    steps: diskSteps('lab8', 'lab8,trace-edu'),
     contains: [
       { text: 'threads_test pass', hint: '线程测试未通过：检查线程创建、内核/用户栈分配与调度切换。' },
       { text: 'threads_arg_test pass', hint: '线程参数测试未通过：检查创建线程时参数如何传给入口，地址是否可读。' },
@@ -212,6 +299,36 @@ const definitions = {
       { text: 'deadlock test mutex 1 OK!', hint: '死锁测试未通过：检查互斥锁获取顺序/超时/检测逻辑。' },
       { text: 'deadlock test semaphore 1 OK!', hint: '信号量死锁测试未通过：检查信号量获取顺序与超时/检测。' },
       { text: 'pipe_test pass', hint: '管道测试未通过：检查 pipe 读写与阻塞同步。' },
+    ],
+    traceMatches: [
+      {
+        id: 'trace-thread-create',
+        type: 'syscall',
+        match: { name: 'thread_create' },
+        label: 'trace 包含线程创建',
+        hint: '没有 thread_create syscall trace：检查线程入口、参数与用户栈分配路径。',
+      },
+      {
+        id: 'trace-mutex-lock',
+        type: 'syscall',
+        match: { name: 'mutex_lock' },
+        label: 'trace 包含 mutex_lock',
+        hint: '没有 mutex_lock syscall trace：检查互斥测试是否进入阻塞锁获取路径。',
+      },
+      {
+        id: 'trace-condvar-wait',
+        type: 'syscall',
+        match: { name: 'condvar_wait' },
+        label: 'trace 包含 condvar_wait',
+        hint: '没有 condvar_wait syscall trace：检查条件变量测试是否释放锁并进入等待队列。',
+      },
+      {
+        id: 'trace-deadlock-detect',
+        type: 'syscall',
+        match: { name: 'enable_deadlock_detect' },
+        label: 'trace 包含死锁检测启用',
+        hint: '没有 enable_deadlock_detect syscall trace：检查死锁测试是否开启检测并走短路判定。',
+      },
     ],
   },
 }
@@ -225,6 +342,12 @@ function occurrenceCount(output, needle) {
     index += needle.length
   }
   return count
+}
+
+function traceMatches(event, assertion) {
+  return event.type === assertion.type && Object.entries(assertion.match || {}).every(
+    ([key, value]) => event[key] === value,
+  )
 }
 
 export function getRunRecipe(labId) {
@@ -331,6 +454,17 @@ export function evaluateRunAssertions(recipeId, output, traceEvents = []) {
       ...(hint ? { hint } : {}),
     })
   }
+  for (const match of definition.traceMatches || []) {
+    const observed = traceEvents.filter((event) => traceMatches(event, match)).length
+    assertions.push({
+      id: match.id,
+      label: match.label || `trace 包含 ${match.type}`,
+      passed: observed > 0,
+      expected: '至少 1 条',
+      observed: `${observed} 条`,
+      ...(match.hint ? { hint: match.hint } : {}),
+    })
+  }
   return assertions
 }
 
@@ -338,14 +472,19 @@ export function getRunRecipeContract(labId) {
   const definition = definitions[String(labId || '')]
   if (!definition) return null
   const assertions = definition.assertions || []
+  const traceTypes = [
+    ...assertions
+      .filter((assertion) => assertion.kind === 'trace-type')
+      .map((assertion) => assertion.type),
+    ...(definition.traceTypes || []).map((entry) => typeof entry === 'string' ? entry : entry.type),
+    ...(definition.traceMatches || []).map((entry) => entry.type),
+  ]
   return {
     recipeId: definition.id,
     outputAssertionIds: assertions
       .filter((assertion) => assertion.kind.startsWith('output-'))
       .map((assertion) => assertion.id),
-    traceTypes: assertions
-      .filter((assertion) => assertion.kind === 'trace-type')
-      .map((assertion) => assertion.type),
+    traceTypes: [...new Set(traceTypes)],
   }
 }
 

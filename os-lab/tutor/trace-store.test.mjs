@@ -16,7 +16,12 @@ test('C1 trace store verifies artifacts and supports range pagination', async ()
   const root = await mkdtemp(path.join(tmpdir(), 'os-lab-trace-'))
   try {
     await mkdir(path.join(root, 'runs'))
-    const events = [traceEvent(0), traceEvent(1, 'task_switch'), traceEvent(2), traceEvent(3)]
+    const events = [
+      traceEvent(0),
+      traceEvent(1, 'task_switch'),
+      { v: 2, seq: 2, ts: 20, cpu: 0, pid: 1, tid: 1, type: 'syscall', id: 220, name: 'clone' },
+      { v: 2, seq: 3, ts: 30, cpu: 0, pid: 2, tid: 2, type: 'address_space', space: 2, action: 'create' },
+    ]
     const text = `${events.map((event) => JSON.stringify(event)).join('\n')}\n`
     await writeFile(path.join(root, 'runs', 'run.trace.jsonl'), text)
     const run = {

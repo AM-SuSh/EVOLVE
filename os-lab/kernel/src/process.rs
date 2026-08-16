@@ -28,8 +28,6 @@ use crate::println;
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum ProcessStatus {
-    #[allow(dead_code)]
-    UnInit,
     Ready,
     #[allow(dead_code)] // lab8 用线程 Running，进程层不再置此状态
     Running,
@@ -291,7 +289,7 @@ pub fn with_pcb_slot<R>(slot: usize, f: impl FnOnce(&mut ProcessControlBlock) ->
 }
 
 #[cfg(any(feature = "lab7", feature = "lab8"))]
-#[allow(dead_code)]
+#[allow(dead_code)] // lab7-only 构建无调用者，lab8 的 sync_syscall 使用
 pub fn with_pcb_ref<R>(slot: usize, f: impl FnOnce(&ProcessControlBlock) -> R) -> R {
     PROCESS_MANAGER.with_ref(|pm| f(pm.slots[slot].as_ref().expect("invalid pcb slot")))
 }
@@ -541,6 +539,10 @@ pub fn sys_execve(cx: &mut TrapContext, path: *const u8, path_len: usize, _envp:
 
     #[cfg(feature = "lab6")]
     {
+        // 教学边界：lab8 的 exec 只认内核内嵌 ELF（loader.rs include_bytes!），
+        // 刻意绕过 fs.img 磁盘路径——在线程模型下重建用户地址空间时，其他
+        // 线程共享的页表若同时被磁盘读路径换出会引入未定义行为。磁盘 exec
+        // 的完整恢复列为后续工程边界（见总体技术文档 3.8 节）。
         let entry = if let Some(elf) = get_app_elf_by_name(name) {
             let entry = mm::elf_entry_point(elf);
             mm::replace_user_space_from_static(space_id, elf);
@@ -664,33 +666,32 @@ fn reap_zombie_child(parent_slot: usize, want_pid: isize) -> Option<(usize, i32)
     })
 }
 
-#[allow(clippy::never_loop)]
 pub fn sys_wait4(cx: &mut TrapContext, want_pid: isize, status_ptr: *mut i32) -> isize {
-    loop {
-        if let Some((pid, code)) = reap_zombie_child(current_slot(), want_pid) {
-            if !write_user_i32(status_ptr, code) {
-                return -1;
-            }
-            return pid as isize;
+    // Straight-line block-and-retry: `run_next_process` diverges, so the
+    // re-executed ecall (sepc rewound below) is where the retry happens.
+    if let Some((pid, code)) = reap_zombie_child(current_slot(), want_pid) {
+        if !write_user_i32(status_ptr, code) {
+            return -1;
         }
-        if want_pid >= 0 {
-            let has_child = PROCESS_MANAGER.with_ref(|pm| {
-                pm.slots.iter().any(|slot| {
-                    slot.as_ref().is_some_and(|pcb| {
-                        pcb.parent_slot == Some(current_slot())
-                            && pcb.status != ProcessStatus::Zombie
-                    })
-                })
-            });
-            if !has_child {
-                return -1;
-            }
-        }
-        cx.sepc = cx.sepc.wrapping_sub(4);
-        sync_current_trap_cx(cx);
-        mark_current_ready();
-        run_next_process();
+        return pid as isize;
     }
+    if want_pid >= 0 {
+        let has_child = PROCESS_MANAGER.with_ref(|pm| {
+            pm.slots.iter().any(|slot| {
+                slot.as_ref().is_some_and(|pcb| {
+                    pcb.parent_slot == Some(current_slot())
+                        && pcb.status != ProcessStatus::Zombie
+                })
+            })
+        });
+        if !has_child {
+            return -1;
+        }
+    }
+    cx.sepc = cx.sepc.wrapping_sub(4);
+    sync_current_trap_cx(cx);
+    mark_current_ready();
+    run_next_process();
 }
 
 pub fn sys_exit(exit_code: i32) -> ! {

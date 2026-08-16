@@ -1440,6 +1440,8 @@ interface ScaffoldStatus {
 const scaffold = ref<ScaffoldStatus | null>(null)
 const showScaffold = ref(false)
 const scaffoldBusy = ref(false)
+const scaffoldSyncingCurrentLab = ref(false)
+const scaffoldSyncError = ref('')
 const scaffoldLog = ref<string[]>([])
 const newBinName = ref('')
 const learningAccess = ref<LearningAccessItem[]>([])
@@ -1548,6 +1550,24 @@ async function ensureScaffoldIssued(labId: TutorLabId): Promise<boolean> {
   }
   toast('同步我的系统超时，请稍后重试。')
   return false
+}
+
+async function syncCurrentLabScaffold(labId: TutorLabId) {
+  if (!studentId.value || isTeacherRole.value) return
+  const access = learningAccess.value.find((item) => item.labId === labId)
+  if (!access?.unlocked) {
+    await refreshScaffold()
+    return
+  }
+
+  scaffoldSyncingCurrentLab.value = true
+  scaffoldSyncError.value = ''
+  try {
+    const issued = await ensureScaffoldIssued(labId)
+    if (!issued) scaffoldSyncError.value = `${labId.toUpperCase()} 代码尚未同步到工作区。`
+  } finally {
+    scaffoldSyncingCurrentLab.value = false
+  }
 }
 
 async function requestScaffoldUpgrade(): Promise<boolean> {
@@ -1807,9 +1827,17 @@ watch(activeStage, (stage) => {
 watch(currentSection, (section) => {
   if (workspaceContext) workspaceContext.currentSection = { ...section }
 })
-// 后台刷新解锁状态时保留当前已解锁工作区，避免卸载终端并丢失本次运行结果。
+const currentLabIssued = computed(
+  () => isTeacherRole.value || Boolean(scaffold.value?.applied.includes(props.labId)),
+)
+const workspaceWaitingForScaffold = computed(
+  () => Boolean(auth.value && currentAccess.value?.unlocked && !currentLabIssued.value),
+)
+// 未发放代码时不挂载编辑器和终端，避免在上一层工作区运行当前 Lab。
 const workspaceRestricted = computed(
-  () => !isTeacherRole.value && (!auth.value || !currentAccess.value?.unlocked),
+  () => !isTeacherRole.value && (
+    !auth.value || !currentAccess.value?.unlocked || !currentLabIssued.value
+  ),
 )
 const sessionEvents = computed(() =>
   events.value.filter((event) => event.sessionId === sessionId.value),
@@ -2792,6 +2820,7 @@ watch(studentId, (next, previous) => {
   if (next) {
     events.value = loadEvents(owner.value)
     void flushPendingEvents().then(() => refreshEventState())
+    void refreshLearningAccess().then(() => syncCurrentLabScaffold(props.labId))
     void loadServerTutorConversation().then((restored) => {
       if (!restored && !loadTutorConversation()) startSession()
     })
@@ -2825,16 +2854,17 @@ onMounted(async () => {
   void loadClassNames()
   await checkConnection()
   await refreshLearningAccess()
+  await syncCurrentLabScaffold(props.labId)
   if (!(await loadServerTutorConversation()) && !loadTutorConversation()) startSession()
-  void refreshScaffold()
   void loadReportTemplate()
 })
 
 watch(
   () => props.labId,
-  () => {
+  (labId) => {
     manualTocOpen.value = false
     labAccepted.value = false
+    void refreshLearningAccess().then(() => syncCurrentLabScaffold(labId))
     void loadReportTemplate()
     void loadServerTutorConversation().then((restored) => {
       if (!restored && !loadTutorConversation()) startSession()
@@ -3016,9 +3046,19 @@ onBeforeUnmount(() => {
         :class="{ 'ws-mobile-hidden': isMobileLayout && mobileView !== 'practice' }"
       >
         <LockKeyhole :size="28" aria-hidden="true" />
-        <strong>{{ accessLoading ? '正在确认学习进度' : '当前实验尚未解锁' }}</strong>
-        <p>{{ currentAccess?.reason || (auth ? '请从学习路径确认教师分发范围和前置任务。' : '登录后才能进入实验工作台。') }}</p>
-        <a :href="withBase('/guide/ai-tutor')">返回学习路径</a>
+        <strong>{{
+          accessLoading
+            ? '正在确认学习进度'
+            : workspaceWaitingForScaffold
+              ? scaffoldSyncingCurrentLab ? '正在同步实验代码' : '实验代码尚未就位'
+              : '当前实验尚未解锁'
+        }}</strong>
+        <p>{{
+          workspaceWaitingForScaffold
+            ? scaffoldSyncError || '正在把当前 Lab 的新增模块和 Cargo feature 发放到你的工作区。'
+            : currentAccess?.reason || (auth ? '请从学习路径确认教师分发范围和前置任务。' : '登录后才能进入实验工作台。')
+        }}</p>
+        <a v-if="!workspaceWaitingForScaffold" :href="withBase('/guide/ai-tutor')">返回学习路径</a>
       </div>
 
       <!-- 右栏（学生）：右上完整工作区，右下学习支持与诊断。 -->

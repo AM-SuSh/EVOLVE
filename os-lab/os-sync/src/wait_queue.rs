@@ -36,25 +36,4 @@ impl WaitQueue {
         self.len -= 1;
         Some(tid)
     }
-
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    #[allow(dead_code)]
-    pub fn remove(&mut self, tid: ThreadId) {
-        if self.len == 0 {
-            return;
-        }
-        let mut write = 0;
-        for read in 0..self.len {
-            let idx = (self.head + read) % MAX_WAITERS;
-            if self.items[idx] != tid {
-                let out = (self.head + write) % MAX_WAITERS;
-                self.items[out] = self.items[idx];
-                write += 1;
-            }
-        }
-        self.len = write;
-    }
 }

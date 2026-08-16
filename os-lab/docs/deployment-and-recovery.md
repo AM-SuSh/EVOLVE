@@ -14,8 +14,6 @@
 - `OS_LAB_TUTOR_ROUTING_MODE=intent` 可显式声明默认模式；`OS_LAB_TUTOR_ROUTING_MODE=stage` 只用于旧会话回放、兼容排障和对照实验，不应作为新部署的教学默认值。
 - intent 模式仍保存 `activeStage`、`current_stage` 和 `stage_enter` 事件，供导航、遥测、历史数据和兼容旧客户端使用；这些字段不选择 `/chat` 的回答策略，也不应进入学习评分奖励。
 - 学习评价接口使用 `rubric-v3.3.0`：过程细项（`P2`/`J1`/`E1`/`H1`/`V1`/`I1`）与反思细项（`F1`/`F2`/`T1`/`T2`，含逐题 `RQ*` 动态项），Lab 通过由 `V1` 可信验证与 `I1` 失败后复验覆盖，不再保存 Lab2 专属“结果”维度。总分默认按 60% 规则基线与 40% Assessment Agent 评价融合；Agent 不可用时明确回退到规则基线。可信 run、答案护栏、RAG 权限和引用白名单不因路由迁移而放宽。
-- 旧 `stage` 路由的保留与移除条件见 [ai-tutor-stage-guide.md](ai-tutor-stage-guide.md) 第 8 节，部署端不再重复维护同一退出条件。
-
 ## 数据最小化
 
 匿名分析默认只输出聚合数据。参与者级数据仅在人数达到 `minCohortSize` 后输出一次性伪名，并排除用户名、班级、消息/报告正文、命令、文件路径和原始时间戳。伪名不代表绝对匿名，小样本不得公开。

@@ -1,13 +1,23 @@
 //! Lab8 blocking sync and deadlock-detection syscalls.
+//!
+//! Return-value protocol shared with the user-side wrappers:
+//! - `0`  — operation completed (lock acquired / semaphore consumed / ...).
+//! - `-1` — the caller is now blocked in the kernel; the trap path rewinds
+//!   `sepc` and the user wrapper must retry the same syscall after wake-up.
+//! - `-2` — genuine error (invalid id, object missing, unsupported mode).
+//!   User wrappers must NOT retry these.
+//! - `DEADLOCK_DETECTED` — the request was rejected by deadlock detection.
 
 use alloc::sync::Arc;
 
 use os_sync::{Condvar, MutexBlocking, MutexTrait, Semaphore};
 
 use crate::deadlock::DEADLOCK_DETECTED;
-use crate::processor::{self, current_process_slot, current_tid, make_current_blocked, re_enque};
+use crate::processor::{self, current_process_slot, current_tid, re_enque};
 use crate::process;
 
+/// 教学边界：每个进程只支持一个可选阻塞 mutex（id 0）和一个可选 condvar，
+/// 信号量则为列表；`mutex_create(blocking=false)` 的非阻塞模式未实现。
 fn check_mutex_id(mutex_id: usize) -> bool {
     mutex_id == 0
 }
@@ -22,13 +32,13 @@ pub fn sys_enable_deadlock_detect(is_enable: i32) -> isize {
             process::with_pcb_slot(current_process_slot(), |pcb| pcb.deadlock.enabled = true);
             0
         }
-        _ => -1,
+        _ => -2,
     }
 }
 
 pub fn sys_mutex_create(blocking: bool) -> isize {
     if !blocking {
-        return -1;
+        return -2;
     }
     process::with_pcb_slot(current_process_slot(), |pcb| {
         let first = pcb.mutex.is_none();
@@ -42,7 +52,7 @@ pub fn sys_mutex_create(blocking: bool) -> isize {
 
 pub fn sys_mutex_lock(mutex_id: usize) -> isize {
     if !check_mutex_id(mutex_id) {
-        return -1;
+        return -2;
     }
     let tid = current_tid();
     let process_slot = current_process_slot();
@@ -56,7 +66,7 @@ pub fn sys_mutex_lock(mutex_id: usize) -> isize {
                 false
             }
         });
-        return if acquired { 0 } else { -1 };
+        return if acquired { 0 } else { -2 };
     }
     let would_deadlock = process::with_pcb_ref(process_slot, |pcb| {
         pcb.deadlock.enabled && pcb.deadlock.mutex_would_deadlock(tid, mutex_id)
@@ -68,7 +78,7 @@ pub fn sys_mutex_lock(mutex_id: usize) -> isize {
         Some(pcb.mutex.as_ref()?.lock(tid))
     });
     let Some(locked) = locked else {
-        return -1;
+        return -2;
     };
     if locked {
         process::with_pcb_slot(process_slot, |pcb| pcb.deadlock.mutex_acquired(tid, mutex_id));
@@ -88,7 +98,7 @@ pub fn sys_mutex_lock(mutex_id: usize) -> isize {
 
 pub fn sys_mutex_unlock(mutex_id: usize) -> isize {
     if !check_mutex_id(mutex_id) {
-        return -1;
+        return -2;
     }
     let tid = current_tid();
     let process_slot = current_process_slot();
@@ -101,7 +111,7 @@ pub fn sys_mutex_unlock(mutex_id: usize) -> isize {
         waking
     });
     if waking_tid.is_none() && process::with_pcb_ref(process_slot, |pcb| pcb.mutex.is_none()) {
-        return -1;
+        return -2;
     }
     if let Some(tid) = waking_tid {
         processor::mark_mutex_handoff(tid);
@@ -151,7 +161,7 @@ pub fn sys_semaphore_up(sem_id: usize) -> isize {
         Some(waking)
     });
     let Some(waking_tid) = waking_tid else {
-        return -1;
+        return -2;
     };
     if let Some(tid) = waking_tid {
         re_enque(tid);
@@ -181,7 +191,7 @@ pub fn sys_semaphore_down(sem_id: usize) -> isize {
         Some(sem.down(tid))
     });
     let Some(acquired) = acquired else {
-        return -1;
+        return -2;
     };
     if acquired {
         process::with_pcb_slot(process_slot, |pcb| pcb.deadlock.semaphore_acquired(tid, sem_id));
@@ -203,7 +213,7 @@ pub fn sys_condvar_create() -> isize {
 
 pub fn sys_condvar_signal(condvar_id: usize) -> isize {
     if condvar_id != 0 {
-        return -1;
+        return -2;
     }
     let process_slot = current_process_slot();
     process::with_pcb_slot(process_slot, |pcb| {
@@ -218,7 +228,7 @@ pub fn sys_condvar_signal(condvar_id: usize) -> isize {
 
 pub fn sys_condvar_wait(condvar_id: usize, mutex_id: usize) -> isize {
     if condvar_id != 0 || !check_mutex_id(mutex_id) {
-        return -1;
+        return -2;
     }
     let tid = current_tid();
     let process_slot = current_process_slot();
@@ -241,37 +251,26 @@ pub fn sys_condvar_wait(condvar_id: usize, mutex_id: usize) -> isize {
     let result = process::with_pcb_slot(process_slot, |pcb| {
         let cv = pcb.condvar.as_ref()?;
         let mutex = pcb.mutex.as_ref()?;
-        let (got_lock, waking_tid) = cv.wait_with_mutex(tid, mutex);
+        let waking_tid = cv.wait_with_mutex(tid, mutex);
         pcb.deadlock.mutex_release(tid, mutex_id, waking_tid);
-        if got_lock {
-            pcb.deadlock.mutex_acquired(tid, mutex_id);
-        } else {
-            pcb.deadlock.mutex_wait(tid, mutex_id);
-        }
-        Some((got_lock, waking_tid))
+        pcb.deadlock.mutex_wait(tid, mutex_id);
+        Some(waking_tid)
     });
-    let Some((got_lock, waking_tid)) = result else {
-        return -1;
+    let Some(waking_tid) = result else {
+        return -2;
     };
     if let Some(w_tid) = waking_tid {
         re_enque(w_tid);
     }
-    if got_lock {
-        0
-    } else {
-        -1
-    }
+    // The thread is now queued on the condvar without the mutex: report
+    // "blocked, retry" so the trap path rewinds sepc and blocks this thread.
+    -1
 }
 
-/// If `ret == -1`, block the calling thread (by slot) and reschedule.
+/// If `ret == -1` (blocked, retry), rewind `sepc` and block the calling thread.
 pub fn finish_blocking_syscall(ret: isize, cx: &mut os_context::TrapContext, thread_slot: usize) {
     if ret == -1 {
         cx.sepc = cx.sepc.wrapping_sub(4);
         processor::block_thread_slot_and_run_next(thread_slot, cx);
     }
-}
-
-#[allow(dead_code)]
-pub fn note_blocked() {
-    make_current_blocked();
 }

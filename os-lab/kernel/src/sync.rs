@@ -105,7 +105,10 @@ fn alloc_pipe_id() -> Option<usize> {
 
 pub fn pipe_add_refs(pipe_id: usize, read: bool, write: bool) {
     PIPES.with_ref(|pipes| {
-        let pipe = pipes[pipe_id].as_ref().expect("pipe_add_refs");
+        let pipe = match pipes.get(pipe_id).and_then(|p| p.as_ref()) {
+            Some(p) => p,
+            None => return,
+        };
         let mut inner = pipe.inner.lock();
         if read {
             inner.read_refs += 1;
@@ -121,7 +124,10 @@ pub fn pipe_read(pipe_id: usize, buf: *mut u8, len: usize) -> isize {
         return 0;
     }
     PIPES.with_ref(|pipes| {
-        let pipe = pipes[pipe_id].as_ref().expect("pipe_read");
+        let pipe = match pipes.get(pipe_id).and_then(|p| p.as_ref()) {
+            Some(p) => p,
+            None => return -1,
+        };
         let mut inner = pipe.inner.lock();
         if inner.count == 0 {
             if inner.write_closed {
@@ -150,7 +156,10 @@ pub fn pipe_write(pipe_id: usize, buf: *const u8, len: usize) -> isize {
         return 0;
     }
     PIPES.with_ref(|pipes| {
-        let pipe = pipes[pipe_id].as_ref().expect("pipe_write");
+        let pipe = match pipes.get(pipe_id).and_then(|p| p.as_ref()) {
+            Some(p) => p,
+            None => return -1,
+        };
         let mut inner = pipe.inner.lock();
         if inner.write_closed {
             return -1;
@@ -175,7 +184,7 @@ pub fn pipe_write(pipe_id: usize, buf: *const u8, len: usize) -> isize {
 
 pub fn pipe_close_read(pipe_id: usize) {
     PIPES.with_ref(|pipes| {
-        let Some(pipe) = pipes[pipe_id].as_ref() else {
+        let Some(pipe) = pipes.get(pipe_id).and_then(|p| p.as_ref()) else {
             return;
         };
         let mut inner = pipe.inner.lock();
@@ -193,7 +202,7 @@ pub fn pipe_close_read(pipe_id: usize) {
 
 pub fn pipe_close_write(pipe_id: usize) {
     PIPES.with_ref(|pipes| {
-        let Some(pipe) = pipes[pipe_id].as_ref() else {
+        let Some(pipe) = pipes.get(pipe_id).and_then(|p| p.as_ref()) else {
             return;
         };
         let mut inner = pipe.inner.lock();

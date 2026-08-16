@@ -35,13 +35,7 @@
 
 `questionCount`、`textLength` 和代码行数仍记录在 diagnostics 中，但不参与主分。V3 不检查阶段关键词，也不因为出现“判断、运行、复盘”等词自动加分。
 
-通用 `tutor/harness.mjs` 的主指标同步改为：
-
-- `questionRelevance`
-- `guidanceActionAccuracy`
-- `answerLeakageRate`
-- `evidenceCitationAccuracy`
-- `stageInvarianceRate`
+历史备注：早期 C3 阶段状态机配套的通用 `tutor/harness.mjs`（主指标 `questionRelevance` / `guidanceActionAccuracy` / `answerLeakageRate` / `evidenceCitationAccuracy` / `stageInvarianceRate`）已随 stage 兼容路由一并移除；输出护栏的回归用例现位于 `tutor/output-guard.test.mjs`。
 
 ## 运行
 

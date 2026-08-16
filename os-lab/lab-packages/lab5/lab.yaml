@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 id: lab5
 title: 文件系统与并发
 version: 1.0.0
@@ -41,12 +41,13 @@ variants:
 verification:
   recipe: lab5.verify.v1
   command: cargo run -p kernel --features lab5 --release
+  command_with_trace: node scripts/verify.mjs qemu --lab lab5
   assertions:
     - { id: file-content, kind: output-contains, text: "Hello from testfile!", assesses: [os.fs.fd] }
     - { id: fs-pass, kind: output-contains, text: "fs_test pass", assesses: [os.fs.fd] }
     - { id: pipe-pass, kind: output-contains, text: "pipe_test pass", assesses: [os.ipc.pipe] }
     - { id: all-processes-exited, kind: output-contains, text: "All processes exited." }
-  observable_trace: []
+  observable_trace: [syscall]
 misconceptions:
   - { id: fd-is-file, statement: fd 本身就是文件内容, counter: fd 只是进程表中的索引，背后对象决定读写语义 }
   - { id: copy-table-equals-refs, statement: fork 复制 fd 表后管道引用计数会自动正确, counter: 必须显式 pipe_add_refs，否则子进程 close 会误伤仍被父进程持有的那一端 }

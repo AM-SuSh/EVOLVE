@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import test from 'node:test'
 import { parse } from 'yaml'
 
-import { getRunRecipeContract } from '../tutor/run-recipes.mjs'
+import { getRunRecipe, getRunRecipeContract } from '../tutor/run-recipes.mjs'
 
 const handbookRoot = new URL('.', import.meta.url)
 const schemaRoot = new URL('../tutor/schema/', handbookRoot)
@@ -29,6 +29,33 @@ test('Lab2 spec and trusted runtime recipe stay aligned', () => {
     runtime.outputAssertionIds,
   )
   assert.deepEqual(spec.verification.observable_trace, runtime.traceTypes)
+})
+
+test('Lab3-Lab8 specs and trusted runtime recipes require trace evidence', () => {
+  for (let index = 3; index <= 8; index += 1) {
+    const labId = `lab${index}`
+    const specPath = new URL(`../lab-packages/${labId}/lab.yaml`, import.meta.url)
+    const spec = parse(fs.readFileSync(specPath, 'utf8'))
+    const runtime = getRunRecipeContract(labId)
+    const recipe = getRunRecipe(labId)
+
+    assert.ok(runtime, labId)
+    assert.equal(spec.schema_version, 2, labId)
+    assert.equal(spec.verification.recipe, runtime.recipeId, labId)
+    assert.ok(spec.verification.command_with_trace, labId)
+    assert.deepEqual(spec.verification.observable_trace, runtime.traceTypes, labId)
+    assert.ok(runtime.traceTypes.length > 0, labId)
+    assert.ok(recipe.steps.some((step) => step.args.some((arg) => String(arg).includes('trace-edu'))), labId)
+  }
+})
+
+test('Trace v2 extends event types without mutating the frozen Trace v1 schema', () => {
+  const v1 = readJson(new URL('trace-v1.schema.json', schemaRoot))
+  const v2 = readJson(new URL('trace-v2.schema.json', schemaRoot))
+  assert.equal(v1.properties.v.const, 1)
+  assert.deepEqual(v1.properties.type.enum, ['trap_enter', 'task_switch'])
+  assert.equal(v2.properties.v.const, 2)
+  assert.deepEqual(v2.properties.type.enum, ['trap_enter', 'task_switch', 'syscall', 'address_space'])
 })
 
 test('M0 freezes the four public contracts and all Lab2 references resolve', () => {

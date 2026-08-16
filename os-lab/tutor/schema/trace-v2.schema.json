@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://os-lab.local/schema/trace-v2.schema.json",
+  "title": "EVOLVE educational kernel trace v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "seq", "ts", "cpu", "pid", "tid", "type"],
+  "properties": {
+    "v": { "const": 2 },
+    "seq": { "type": "integer", "minimum": 0 },
+    "ts": { "type": "integer", "minimum": 0 },
+    "cpu": { "type": "integer", "minimum": 0 },
+    "pid": { "type": "integer", "minimum": 0 },
+    "tid": { "type": "integer", "minimum": 0 },
+    "type": { "enum": ["trap_enter", "task_switch", "syscall", "address_space"] },
+    "cause": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "from": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "to": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "reason": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "id": { "type": "integer", "minimum": 0 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "space": { "type": "integer", "minimum": 0 },
+    "action": { "enum": ["create", "activate"] }
+  },
+  "oneOf": [
+    {
+      "properties": { "type": { "const": "trap_enter" } },
+      "required": ["cause"]
+    },
+    {
+      "properties": { "type": { "const": "task_switch" } },
+      "required": ["from", "to", "reason"]
+    },
+    {
+      "properties": { "type": { "const": "syscall" } },
+      "required": ["id", "name"]
+    },
+    {
+      "properties": { "type": { "const": "address_space" } },
+      "required": ["space", "action"]
+    }
+  ]
+}

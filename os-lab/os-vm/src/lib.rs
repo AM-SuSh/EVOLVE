@@ -9,7 +9,6 @@
 //! | `VirtAddr` / `VirtPageNum` | Address arithmetic and index extraction |
 //! | `PageTable` | Three-level Sv39 walk, map/translate/unmap |
 //! | `MemorySet` | Address space = page table + mapped `MapArea` list |
-//! | `elf_map_areas` | Build map areas from ELF64 PT_LOAD segments |
 
 #![no_std]
 
@@ -211,18 +210,6 @@ impl PageTable {
     pub fn token(&self) -> usize {
         8usize << 60 | self.root_ppn.0
     }
-
-    pub fn from_token(token: usize) -> Self {
-        Self {
-            root_ppn: PhysPageNum(token & ((1usize << 44) - 1)),
-        }
-    }
-
-    pub fn map_frame(&mut self, vpn: VirtPageNum, perm: MapPermission) -> PhysPageNum {
-        let ppn = frame_alloc().expect("out of frames");
-        self.map(vpn, ppn, perm);
-        ppn
-    }
 }
 
 impl Drop for PageTable {
@@ -308,12 +295,6 @@ impl MapArea {
         self.perm
     }
 
-    pub fn with_data(mut self, data: &'static [u8], offset: usize) -> Self {
-        self.data = data;
-        self.data_offset = offset;
-        self
-    }
-
     pub fn map(&self, page_table: &mut PageTable) {
         Self::map_data(
             page_table,
@@ -388,10 +369,15 @@ impl MapArea {
     pub fn unmap(&self, page_table: &mut PageTable) {
         for vpn in self.vpn_start.0..self.vpn_end.0 {
             let vpn = VirtPageNum(vpn);
+            // Adjacent ELF PT_LOAD segments can share a boundary page (the
+            // second segment remaps it with merged permissions). When two
+            // areas overlap like that, the first unmap clears the PTE and
+            // returns the frame; later areas must skip the already-invalid
+            // page instead of asserting — the shared frame is returned once.
             if let Some(pte) = page_table.translate(vpn) {
                 frame_dealloc(pte.ppn());
+                page_table.unmap(vpn);
             }
-            page_table.unmap(vpn);
         }
     }
 }
@@ -588,87 +574,16 @@ impl MemorySet {
         }
     }
 
-    /// Map trampoline code at a fixed high virtual address.
-    pub fn map_trampoline(&mut self, trampoline_vpn: VirtPageNum, trampoline_phys: usize) {
-        let ppn = PhysPageNum::from_addr(trampoline_phys);
-        self.page_table.map(
-            trampoline_vpn,
-            ppn,
-            MapPermission::R.union(MapPermission::X),
-        );
-    }
 }
 
 impl Drop for MemorySet {
     fn drop(&mut self) {
-        for area in self.areas.iter().rev().take(self.area_count).flatten() {
+        // Areas occupy slots 0..area_count (push_area fills from index 0 and
+        // remove_area_range compacts toward the front), so the populated slots
+        // are exactly the first `area_count`, not the last.
+        for area in self.areas[..self.area_count].iter().rev().flatten() {
             area.unmap(&mut self.page_table);
         }
-    }
-}
-
-/// Build map areas from ELF64 PT_LOAD segments (call once per ELF before mapping).
-pub fn elf_map_areas(elf: &'static [u8], user_base: usize) -> alloc_buf::ElfAreas {
-    alloc_buf::parse_elf(elf, user_base)
-}
-
-mod alloc_buf {
-    use super::*;
-
-    pub struct ElfAreas {
-        pub areas: [MapArea; 8],
-        pub count: usize,
-    }
-
-    pub fn parse_elf(elf: &'static [u8], user_base: usize) -> ElfAreas {
-        let mut out = ElfAreas {
-            areas: core::array::from_fn(|_| {
-                MapArea::new(VirtPageNum(0), VirtPageNum(0), MapPermission::R)
-            }),
-            count: 0,
-        };
-
-        assert!(elf.len() >= 64, "ELF too small");
-        let e_phoff = usize::from_le_bytes(elf[32..40].try_into().unwrap());
-        let e_phentsize = u16::from_le_bytes(elf[54..56].try_into().unwrap()) as usize;
-        let e_phnum = u16::from_le_bytes(elf[56..58].try_into().unwrap()) as usize;
-
-        for i in 0..e_phnum {
-            let off = e_phoff + i * e_phentsize;
-            assert!(off + 48 <= elf.len(), "program header out of range");
-            let ph = &elf[off..off + e_phentsize];
-            let p_type = u32::from_le_bytes(ph[0..4].try_into().unwrap());
-            if p_type != 1 {
-                continue;
-            }
-            let p_flags = u32::from_le_bytes(ph[4..8].try_into().unwrap());
-            let p_offset = usize::from_le_bytes(ph[8..16].try_into().unwrap());
-            let p_vaddr = usize::from_le_bytes(ph[16..24].try_into().unwrap());
-            let p_filesz = usize::from_le_bytes(ph[32..40].try_into().unwrap());
-            let p_memsz = usize::from_le_bytes(ph[40..48].try_into().unwrap());
-
-            let mut perm = MapPermission::U;
-            if p_flags & 4 != 0 {
-                perm = perm.union(MapPermission::R);
-            }
-            if p_flags & 2 != 0 {
-                perm = perm.union(MapPermission::W);
-            }
-            if p_flags & 1 != 0 {
-                perm = perm.union(MapPermission::X);
-            }
-
-            let start = user_base + p_vaddr;
-            let end = start + p_memsz;
-            let vpn_start = VirtAddr(start).floor();
-            let vpn_end = VirtAddr(end).ceil();
-            let data = &elf[p_offset..p_offset + p_filesz];
-            let area = MapArea::new(vpn_start, vpn_end, perm).with_data(data, start - vpn_start.addr());
-
-            out.areas[out.count] = area;
-            out.count += 1;
-        }
-        out
     }
 }
 
@@ -737,7 +652,8 @@ mod tests {
     }
 
     #[test]
-    fn elf_map_areas_minimal() {
+    fn map_elf_pt_load_minimal() {
+        setup_fake_frames();
         let mut elf_box = [0u8; 128];
         elf_box[0..4].copy_from_slice(b"\x7fELF");
         elf_box[4] = 2;
@@ -754,8 +670,9 @@ mod tests {
         elf_box[96..104].copy_from_slice(&(16usize).to_le_bytes());
         elf_box[104..112].copy_from_slice(&(16usize).to_le_bytes());
 
-        let elf: &'static [u8] = Box::leak(Box::new(elf_box));
-        let areas = elf_map_areas(elf, 0x8040_0000);
-        assert_eq!(areas.count, 1);
+        let mut ms = MemorySet::new_bare();
+        ms.map_elf_pt_load(&elf_box, 0x8040_0000);
+        assert!(ms.translate(VirtAddr(0x8040_0000)).is_some());
+        core::mem::forget(ms);
     }
 }

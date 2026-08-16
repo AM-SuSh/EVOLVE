@@ -32,10 +32,6 @@ impl MutexBlocking {
         }
     }
 
-    pub fn has_waiters(&self) -> bool {
-        !self.inner.lock().wait_queue.is_empty()
-    }
-
     pub fn admit_handoff(&self, tid: ThreadId) {
         let mut inner = self.inner.lock();
         inner.locked = true;
