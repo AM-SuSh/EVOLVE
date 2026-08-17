@@ -16,8 +16,6 @@
 | 缺少历史发展脉络           | 教材直接呈现"最终形态"的操作系统，学生不知道机制是如何被一步步根据需求提出、创造出来的 | 只见结果不见动机，理解浮于表面   |
 | 忽视硬件细节与软件架构设计 | 特权级、寄存器约定、SBI 调用、设备内存映射等硬件事实，与内核模块划分、接口契约等架构能力，在传统作业中均得不到训练 | 遇到真实底层问题束手无策         |
 
-这四层矛盾共同推高了学生学习和掌握操作系统内核的门槛，也是本赛题设立的根本动因。
-
 - **传统实验环境的工程性瓶颈**
 
 即便学生有意愿动手，传统实验环境本身还有一组工程性瓶颈：
@@ -62,7 +60,9 @@ flowchart LR
   H -->|新任务| A
 ```
 
-功能架构图如下：![](assets/evolve-overall-architecture-final.png)
+功能架构图如下：
+
+![EVOLVE 功能架构图](assets/evolve-overall-architecture-final.png){width=94%}
 
 
 ### 1.3 核心理念
@@ -257,25 +257,25 @@ EVOLVE 的设计基于以可信证据为中心的学习闭环，收敛于三条�
 更多完整对比数据请见**附录B**。
 
 
-## 3. 系统框架设计（改）
+## 3. 系统框架设计
 
 
 ### 3.1 总体架构
 
-![](assets/evolve-technical-architecture-final.png)
+![EVOLVE 总体技术架构](assets/evolve-technical-architecture-final.png){width=94%}
 
 如上图所示，系统可大致分为四个部分：
 
 | 组成部分         | 职责定位                                                     | 关键目录 / 技术                                              |
 | ---------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| 浏览器教学工作台 | 交互展示，**无任何判定权**                                   | `os-lab/handbook/.vitepress/theme/`，VitePress + Vue 3、Monaco、xterm |
+| 浏览器教学工作台 | 交互展示                                                     | `os-lab/handbook/.vitepress/theme/`，VitePress + Vue 3、Monaco、xterm |
 | 实验运行时       | 被测对象：渐进式 RISC-V 内核 + 用户态程序 + QEMU `virt` + VirtIO 磁盘 | `os-lab/kernel/`、`os-lab/user/`、8 个 `os-*` 组件 crate     |
 | Agent Server     | 一切权限、运行、评分与证据归属的判定中枢                     | `os-lab/handbook/tutor-server.mjs` + `os-lab/tutor/` + `os-lab/learning/` |
 | 持久化           | 工作区文件、学习主库、大制品、知识库、教师配置               | `student-labs/`、`os-lab.db`、`student-data/`、`knowledge.db`、`teacher.json` |
 
-接下来，我们从系统框架角度重点简要介绍我们的架构与技术，前端展示以及具体功能使用请查看我们的[**演示视频**](./DEMO.txt)。
+项目成果的前端部分页面展示请见**附录C**，具体功能演示请查看我们的[演示视频（百度网盘链接）](https://pan.baidu.com/s/1Op4q9HHMIZFf1YBxnh12EQ?pwd=e561)。
 
-其中，Agent Server 相关技术的更详细分析请见**附录C**，原文见[Agent Server详细说明](./os-lab/docs/agent-system-technical.md)
+接下来，我们从系统框架角度简要介绍我们的架构与技术。其中，Agent Server 相关技术的更详细分析请见**附录D**。
 
 ### 3.2 渐进式 RISC-V 教学内核
 
@@ -359,9 +359,11 @@ sequenceDiagram
 
 测试策略随之分层：host Rust 测试覆盖组件纯逻辑（不依赖 QEMU），QEMU 测试覆盖组件与 Trap、地址空间、设备的集成。这使大部分数据结构错误能在本地快速回归，而昂贵的整机验证留给可信 Recipe。
 
-### 3.3 Lab实现
+### 3.3 Lab 实验体系与教学编排
 
-EVOLVE 的 8 个 Lab 覆盖了操作系统三大核心主题：
+**1. 知识地图与递进关系**
+
+EVOLVE共设置 8 个 Lab，覆盖基础机制以及教材《操作系统导论》中的三大主题：虚拟化、并发与持久化，并靠 Cargo feature 链递进启用：
 
 ```mermaid
 graph LR
@@ -399,284 +401,99 @@ graph LR
     class P1 persist;
 ```
 
-| OS 主题  | 对应 lab         | 核心知识点                                                 |
+| OS 主题  | 对应 Lab         | 核心知识点                                                 |
 | -------- | ---------------- | ---------------------------------------------------------- |
-| 虚拟化   | lab3、lab4       | Sv39 页表、地址空间、fork/exec/wait、进程树                |
-| 并发     | lab5、lab7、lab8 | 自旋锁、管道、信号、阻塞 mutex/semaphore/condvar、死锁检测 |
-| 持久化   | lab5、lab6       | fd 表、内嵌只读文件系统、VirtIO/easy-fs 磁盘 FS            |
-| 基础机制 | lab1、lab2       | 裸机启动、SBI、trap、系统调用、上下文切换                  |
+| 基础机制 | Lab1、Lab2       | 裸机启动、SBI、Trap、系统调用、上下文切换                  |
+| 虚拟化   | Lab3、Lab4       | Sv39 页表、地址空间、fork/exec/wait、进程树                |
+| 并发     | Lab5、Lab7、Lab8 | 自旋锁、管道、信号、阻塞 mutex/semaphore/condvar、死锁检测 |
+| 持久化   | Lab5、Lab6       | fd 表、内嵌只读文件系统、VirtIO / easy-fs 磁盘 FS          |
 
-**Lab1：裸机启动与最小内核**
+**2. 各 Lab 教学内容与可信验证**
 
-**教学目标**：理解无标准库程序、链接地址、启动栈、SBI 和内核入口之间的关系。
+每个 Lab 特别设置了教学目标、实现要点与现网受信 recipe；通过条件均为行为断言（及约定 Trace），而不是仅看 QEMU 退出码。
 
-**实现链路**：
+项目团队结合学习经历、教材参考、AI辅助等为每个lab编写了详细的实验手册。以Lab1为例，实验手册请见**附录E**。
 
-- `_start` 在 `entry.asm` 中设置栈顶；
-- `rust_main` 清零 `.bss` 并初始化控制台；
-- `println!` 经 `os-sbi` 输出到 QEMU 控制台；
-- 打印启动标记后调用 SBI shutdown。
+- **Lab1 · 裸机启动与最小内核**
+  - **教学目标**：理解 `no_std`、链接地址、启动栈、SBI 与内核入口关系。
+  - **实现要点**：`entry.asm` 设栈 → `rust_main` 清 `.bss` 并初始化控制台 → `println!` 经 `os-sbi` 输出 → SBI shutdown。
+  - **可信验证**：`lab1.verify.v1` 检查 `Hello, OS!` 与 QEMU `virt` 启动标记。
 
-**可信验证**：`lab1.verify.v1` 检查 `Hello, OS!` 和 QEMU `virt` 启动标记，而不是只检查进程退出码。
+- **Lab2 · Trap、系统调用与协作式调度**
+  - **教学目标**：打通 `ecall`、Trap 上下文保存/恢复与多任务轮转。
+  - **实现要点**：`trap.asm` + `TrapContext`；`trap_handler` 分派 write/exit/yield；`task.rs` 轮转 Ready 任务；`trace-edu` 输出 `trap_enter` / `task_switch`。
+  - **可信验证**：`lab2.verify-trace.v1` 检查 Hello、Power、至少五次 Yield、全部退出及两类 Trace，防止“进程结束但任务提前退出”的假通过。
 
-**Lab2：Trap、系统调用与协作式调度**
+- **Lab3 · Sv39 虚存与地址空间隔离**
+  - **教学目标**：从物理直跑演进到每任务独立虚拟地址空间。
+  - **实现要点**：页帧池与内核恒等映射；Sv39 三级页表与 `satp`；ELF `PT_LOAD` 与用户栈映射；Trap 路径内核/用户页表切换；`U/R/W/X` 权限。
+  - **可信验证**：`lab3.verify.v1`（`lab3,trace-edu`）检查用户输出（含 Power）、恰好五次 `Yield round`、全部退出，以及 `address_space`（create）Trace。
 
-**教学目标**：打通用户态到内核态的 `ecall`、Trap 上下文保存恢复和多任务轮转。
+- **Lab4 · 进程与 fork/exec/wait**
+  - **教学目标**：建立 Unix 风格进程生命周期与父子关系。
+  - **实现要点**：PCB/进程表；fork 深拷贝地址空间与 Trap 上下文；execve 重建空间；exit→Zombie；wait4 回收；调度跳过 Zombie。
+  - **可信验证**：`lab4.verify.v1` 检查 `I am parent` / `I am child`、`fork_test pass`、全部进程退出，以及 `clone` / `wait4` Trace。
 
-**核心实现**：
+- **Lab5 · 文件描述符、内嵌文件与管道**
+  - **教学目标**：把进程、文件与进程间通信连接起来。
+  - **实现要点**：内嵌只读文件；进程 fd 表；openat/read/write/close；环形缓冲管道；fork 后 fd 引用共享；内核同步保护共享结构。
+  - **可信验证**：`lab5.verify.v1` 检查 `Hello from testfile!`、`fs_test pass`、`pipe_test pass`、全部退出，以及 `openat` / `pipe` Trace。
 
-- `os-context/src/trap.asm` 保存和恢复寄存器；
-- `TrapContext` 对 syscall 编号、参数、返回值和 `sepc` 提供结构化访问；
-- `trap_handler` 分派 `write`、`exit`、`yield`；
-- `task.rs` 保存每个任务的 Trap 上下文和状态；
-- `find_next_task` / `run_next_task` 跳过已退出任务并轮转 Ready 任务；
-- `trace-edu` feature 输出 `TRACE_V1` 机器帧，记录 `trap_enter` 和 `task_switch`。
+- **Lab6 · VirtIO 磁盘 FS、mmap、spawn 与 stride**
+  - **教学目标**：从内嵌文件升到真实块设备，并引入映射与调度策略实验。
+  - **实现要点**：VirtIO MMIO（`0x1000_1000`）与 easy-fs；磁盘文件与 link/unlink/fstat；spawn 从 FS 装 ELF；mmap/munmap；stride 调度（priority/pass）。
+  - **可信验证**：`lab6.verify.v1` 挂载磁盘后检查 `file_test` / link / `mmap_test` / `spawn_test` / `stride_test` 及 fs、pipe 回归，并匹配 `linkat` / `mmap` / `spawn` Trace。
 
-**可信验证**：`lab2.verify-trace.v1` 同时检查 Hello、Power 自检、至少五次 Yield、全部应用退出以及两类 Trace 事件。它专门防止“QEMU 正常结束但任务提前退出”的假通过。
+- **Lab7 · 统一 fd 与信号**
+  - **教学目标**：理解统一 I/O 抽象、描述符复制，以及异步信号对控制流的改变。
+  - **实现要点**：fd 统一分派文件/管道；dup；`os-signal` 集合/动作/掩码；kill / sigaction / sigprocmask；投递时改写 Trap 进 handler，sigreturn 恢复。
+  - **可信验证**：`lab7.verify.v1` 检查 `dup_test`、`signal_test`、`signal_mask_test`、管道回归，以及 `dup` / `kill` / `sigreturn` Trace。
 
-**Lab3：Sv39 虚拟内存与进程隔离基础**
+- **Lab8 · 线程、阻塞同步与死锁检测**
+  - **教学目标**：区分进程资源与线程执行上下文；理解阻塞/唤醒、互斥、信号量、条件变量与死锁判定。
+  - **实现要点**：PCB 持有地址空间与资源，TCB 持有执行上下文；thread_create / waittid；`os-sync` 的阻塞 mutex / semaphore / condvar；syscall 返回 `-1` 时回退 `sepc` 以便唤醒后重试，返回 `-0xDEAD` 表示检测拒绝；mutex wait-for 链与 semaphore 安全性检查。
+  - **可信验证**：`lab8.verify.v1` 检查线程创建与传参、mutex、condvar、管道回归及 mutex/semaphore 死锁用例，并匹配 thread_create / mutex_lock / condvar_wait / enable_deadlock_detect 等 Trace。
 
-**教学目标**：从物理内存直接运行演进到每个任务拥有独立虚拟地址空间。
+**3. 教学编排与设计**
 
-**核心实现**：
+- **教学设计并行原则**
 
-- 初始化物理页帧池和内核地址空间；
-- 创建 Sv39 三级页表并生成 `satp` token；
-- 根据 ELF `PT_LOAD` 段权限映射用户代码与数据；
-- 为用户栈分配独立页；
-- Trap 进入后切回内核页表，返回前激活当前用户页表；
-- 使用 `U/R/W/X` 权限约束用户态可访问范围。
+  - **内核演进**：每一层只新开本层机制，更高层验证仍回归前层能力；学生始终在同一内核入口上叠加，复现“先启动与陷入，再隔离与进程，再持久化与并发”的构建顺序。
 
-**验证重点**：用户程序不仅要有正确入口，还必须具有正确的用户页权限；缺失 U 位、段权限或地址空间切换都会在取指、访存或 syscall 参数访问处暴露。
+  - **平台闭环**：实验不是散落的文件包，而是按链路运转：
 
-**Lab4：进程、fork/exec/wait**
+    **规格定义 → 教师开放与变体发放 → 学生增量领取与实践 → 受信断言/Trace 验证 → 报告复盘联合提交 → 解锁下一 Lab（或期末探索）**
 
-**教学目标**：建立 Unix 风格进程生命周期和父子关系。
+- **机器可读 Lab 规格（Lab Package）** 
+  每个实验以 `lab-packages/labN/lab.yaml` 为单一事实源，声明：
 
-**核心实现**：
+  ```text
+  schema_version / id / title / version / feature
+  prerequisites / manual / answers / tutor_context
+  knowledge / tasks / starter_files
+  variants / verification / misconceptions / rubric_ref
+  ```
 
-- `ProcessManager` 管理固定容量进程槽位和 PID；
-- PCB 保存父槽位、子槽位、退出码、状态和地址空间；
-- `fork` 分配子进程槽位，深拷贝用户地址空间和 Trap 上下文，并让子进程返回 0；
-- `execve` 从 ELF 重新构建地址空间和入口上下文；
-- `exit` 将进程置为 Zombie 并保留退出码；
-- `wait4` 查找并回收匹配的僵尸子进程；
-- 调度器不会继续运行 Zombie 进程。
+  手册正文、Scaffold 发放清单、Tutor 上下文、可信 recipe 与误区说明都从这里对齐，避免多处手改漂移。规格同时服务三类读者：学生（学什么、改哪里）、教师（发什么变体、验什么断言）、平台（如何校验与发布）。
 
-**实现边界**：进程容量为 16，每个进程记录的子槽位上限为 8；`fork` 不实现 COW。
+- **渐进式 Scaffold 与三重进阶门控** 
+  学生可编辑系统落在 `os-lab/student-labs/<username>/`。文件 API 只暴露教学源码树，拒绝 `..` 与越界路径；浏览器里 Monaco 只是编辑界面，真正落盘以服务端这份工作区为准。。
 
-**Lab5：文件描述符、内嵌文件与管道**
+  发放规则：
 
-**教学目标**：把进程、文件和进程间通信连接起来。
+  - 首次初始化得到 Lab1 基线；
+  - 下一 Lab 须同时满足：教师开放 + 前一 Lab 可信验证通过 + 报告与复盘联合提交；
+  - 学生在「系统构建路径」领取后，Scaffold 只增量写入本层文件，不覆盖已有成果；
+  - fill / debug 从 `scaffold/exercises/<lab>/<variant>/` 注入任务文件；
+  - 每次发放写入基线 hash，并在 `.snapshots/<username>/<labId>/` 保存整树快照，供 `POST /fs/reset` 回到「刚领取」状态。
 
-**核心实现**：
+  文件状态由基线与当前 hash 比较得到：`A` 本层新增、`M` 已修改、`T` 变体待完成、`G` 生成文件、`!` 冲突/过期。
 
-- `fs/embedded.rs` 提供编译时内嵌的只读文件内容；
-- 进程初始化、继承和关闭自己的 fd 表；
-- `openat/read/write/close` 通过 fd 访问文件或控制台；
-- 管道使用固定容量环形缓冲区，读端和写端由 fd 引用；
-- `fork` 后复制 fd 表引用，使父子进程可以通过管道通信；
-- 共享可变状态通过内核同步封装保护。
+- **任务变体与个性化** 
+  Lab2–Lab8 提供 fill（补全）与 debug（排错）变体。变体 manifest 写明替换文件、植入故障或留白、负向断言、提示阶梯与学习目标。教师下发 random 时，服务端为作用域内每名学生固化一个具体变体，学生级 assignment 覆盖班级/全局设置，避免浏览器刷新重抽。
 
-**实现边界**：默认最大 fd 数为 16，管道缓冲区为 256 字节，最多维护 8 个并发管道实例。这是教学环境容量，不是通用操作系统限制设计。
-
-**Lab6：VirtIO 磁盘文件系统、mmap、spawn 与 stride**
-
-**教学目标**：从内嵌文件提升到真实块设备路径，并加入内存映射和调度策略实验。
-
-**核心实现**：
-
-- `virtio_block.rs` 对接 QEMU `virtio-blk-device`；
-- `mm::map_mmio_devices` 映射 `0x1000_1000` 的 VirtIO MMIO 区；
-- 内核以 `fs.img` 挂载 easy-fs；
-- `fs/disk.rs` 实现磁盘文件 open/read/write/close、fd 表和文件元数据；
-- `spawn` 直接从文件系统读取 ELF，创建新进程和地址空间；
-- `mmap/munmap` 建立和解除匿名用户页；
-- PCB 增加 `priority` 与 `stride`，调度时选择最小 stride，并按 priority 计算 pass；
-- 新增 `linkat`、`unlinkat`、`fstat` 等 syscall 和对应用户态测试。
-
-**可信验证**：`lab6.verify.v1` 通过构建内核、挂载 VirtIO 磁盘并启动 QEMU，检查文件、链接、mmap、spawn、stride、文件系统和管道回归输出。
-
-**实现边界**：当前 `link/unlink/nlink` 是 easy-fs 之上的内存元数据与别名层，能够满足当前教学测试，但不是跨重启保持完整语义的持久化硬链接实现；`mmap` 是匿名映射，不支持文件回写、共享映射等完整 POSIX 语义。
-
-**Lab7：统一 fd 与信号**
-
-**教学目标**：理解统一 I/O 抽象、描述符复制和异步信号对控制流的改变。
-
-**核心实现**：
-
-- fd 表统一分派普通文件、管道读端和管道写端；
-- `dup` 复制 fd 表项及其底层引用；
-- `os-signal` 表达信号集合、动作和掩码；
-- PCB 保存信号状态、原 Trap 上下文和是否处于 handler；
-- `kill` 设置目标进程待处理信号；
-- `sigaction` 注册动作，`sigprocmask` 调整屏蔽集合；
-- 信号投递时改写用户 Trap 上下文进入 handler；
-- `sigreturn` 恢复被信号打断前的上下文；
-- 默认终止行为和屏蔽期间的待处理状态由内核决定。
-
-**可信验证**：`lab7.verify.v1` 检查 `dup_test`、`signal_test`、`signal_mask_test` 和管道回归。
-
-**Lab8：线程、阻塞同步与死锁检测**
-
-**教学目标**：区分进程资源与线程执行上下文，理解阻塞、唤醒、互斥、信号量、条件变量和死锁判定。
-
-**线程模型**：
-
-- PCB 继续拥有地址空间和进程级资源；
-- TCB 保存 TID、所属进程、Trap 上下文、线程状态、退出码和用户栈；
-- `thread_create` 为新线程分配用户栈和内核执行上下文；
-- `waittid` 等待线程进入 Zombie 后回收；
-- ready queue 只调度 Ready 线程；同步失败时线程进入 Blocked，唤醒后重新入队。
-
-**同步模型**：
-
-- `os-sync` 实现 `WaitQueue`、`MutexBlocking`、`Semaphore` 和 `Condvar`；
-- mutex unlock 可以把所有权 handoff 给等待者，并通过 `re_enque` 恢复调度；
-- semaphore down 在资源不足时排队，up 唤醒一个等待线程；
-- condvar wait 原子地释放互斥锁并进入等待，signal 选择等待者，随后恢复锁获取流程。
-
-**阻塞 syscall 协议**：
-
-```text
-返回 0       操作完成
-返回 -1      当前操作需要阻塞；Trap 路径将 sepc 回退 4 字节并切走线程
-返回 -0xDEAD 启用检测后判定会形成死锁，立即拒绝本次请求
-```
-
-之所以回退 `sepc`，是为了让被唤醒线程重新执行原 `ecall`，再次检查锁、信号量或 handoff 状态；如果只把线程唤醒而不重试 syscall，用户态会把“进入等待队列”误认为“操作已经成功”。
-
-**死锁检测**：
-
-- mutex 使用等待线程到锁持有者的 wait-for 链，沿链发现回到当前线程即拒绝；
-- semaphore 记录资源总量、已分配量和等待需求，使用 Banker 风格安全性检查判断本次申请后是否仍存在安全序列；
-- 线程退出时清理其等待和持有记录。
-
-**可信验证**：`lab8.verify.v1` 检查线程创建与传参、mutex、condvar、两类 pipe 回归以及 mutex/semaphore 死锁测试。
-
-**实现边界**：当前最多 32 个内核线程槽位；每个进程只有一个可选阻塞 mutex、一个可选 condvar 和一个 semaphore 列表。该模型用于把阻塞、唤醒和死锁算法讲清楚，并不是可任意创建多种同步对象的完整 POSIX 线程库。
-
-#### 3.9 Lab Package、任务变体与教师发布
-
-**机器可读 Lab 规格**
-
-每个实验在 `lab-packages/labN/lab.yaml` 中声明：
-
-```text
-schema_version / id / title / version / feature
-prerequisites / manual / answers / tutor_context
-knowledge / tasks / starter_files
-variants / verification / misconceptions / rubric_ref
-```
-
-这份规格把原来分散在手册、Scaffold、Prompt 和测试脚本中的契约收敛到可校验入口。例如 Lab8 明确声明：
-
-- 新增 `processor.rs`、`sync_syscall.rs`、`deadlock.rs` 和 `os-sync`；
-- fill/debug 都修改 `kernel/src/sync_syscall.rs`；
-- 可信命令为 `make test-lab8`；
-- 必须观察线程、锁、条件变量、死锁和管道断言；
-- 教学误区包括“-1 是死锁”和“handoff 等于已重新入队”。
-
-**变体机制**
-
-Lab2-Lab8 当前均提供 fill/debug 变体，部分目录还包含 remedial。变体 manifest 描述：
-
-- 要替换的学生文件；
-- 预期故障或待填写位置；
-- 负向断言；
-- 提示和教学目标；
-- 与参考基线的关系。
-
-教师下发 random 时，服务端为作用域内每名学生写入一个具体变体，而不是让浏览器每次刷新随机选择。学生级 assignment 最终覆盖班级和全局设置。
-
-**Lab Factory 流水线**
-
-后端保留完整 Lab Factory 能力：
-
-```mermaid
-flowchart LR
-  A[Lab 与变体规格] --> B[Schema 和路径校验]
-  B --> C[隔离 dry run]
-  C --> D[基线构建与运行]
-  D --> E[注入变体]
-  E --> F[负向断言应失败]
-  F --> G[生成不可变 release]
-  G --> H[published.json]
-```
-
-Factory API 可以校验、测试和发布，发布目录记录版本、文件 hash、验证结果和来源。但当前教师前端主要通过 `TeacherPublishPanel` 直接完成教学安排和任务下发，没有对教师展示独立 Lab Factory 页面。文档因此只把它定义为已实现的后端内容生产流水线，不宣称当前有可见的工厂 UI。
-
-**教师控制面**
-
-教师端当前可以完成：
-
-- 创建班级并约束学生注册选择；
-- 按全局、班级、学生开放 Lab；
-- 下发指定或随机任务变体；
-- 查看学生有效配置和个别调整；
-- 导出班级任务名单；
-- 配置统一 AI 模型并检测连通性；
-- 决定是否允许学生自配模型；
-- 配置报告模板、查看提交和写反馈；
-- 在统一实验验收队列中查看正式提交的报告、复盘、自动评价与证据引用，并保存最终分和验收建议；
-- 管理知识来源与发布版本；
-- 发布期末探索任务。
-
-所有 `/teacher/` 路由先检查会话角色。教师界面隐藏入口只是交互层，真正的授权仍由服务端完成。
-
-#### 3.4 前端工作区实现
-
-**1. 每名学生独立源码树**
-
-学生登录后，平台把其可编辑系统解析到：
-
-```text
-os-lab/student-labs/<username>/
-```
-
-文件 API 只暴露内核、组件、用户程序和构建配置等教学源码，并排除 `.git`、`target`、`node_modules`、`handbook`、`tutor`、`learning`、`docs`、`labs` 等平台内部目录。路径解析会拒绝绝对路径和 `..`，并再次校验解析后的绝对路径仍位于学生工作区下。
-
-源码树、文件内容、保存和状态查询均由 Tutor Server 提供；Monaco 中的内容只是当前编辑视图，不是独立数据源。
-
-**2. 渐进式 Scaffold**
-
-Scaffold 按 Lab 顺序把新增文件、任务文件和生成文件发放到学生工作区：
-
-- 学生首次初始化获得 Lab1 基线；
-- 教师开放下一 Lab，且前一 Lab 的可信验证与报告/复盘联合提交均满足后，学生在系统构建路径中领取；
-- 升级只补充该层需要的文件，不覆盖学生已完成的已有工作；
-- fill/debug/remedial 变体从 `scaffold/exercises/<lab>/<variant>/` 注入指定任务文件；
-- 每次发放形成基线记录，用于文件状态和后续重置。
-
-机器可读来源是 `lab-packages/labN/lab.yaml` 中的 `starter_files`、`variants` 和 `verification`，避免由前端再维护一份容易漂移的 Lab 文件清单。
-
-**3. 文件状态与快照**
-
-服务端比较 Scaffold 基线 hash 与当前文件 hash，生成工作区状态：
-
-| 标记 | 含义 | 判定依据 |
-| --- | --- | --- |
-| `A` | 本 Lab 新增 | 文件由当前 Lab 的 `starter_files.added` 引入且未改动 |
-| `M` | 学生已修改 | 当前 hash 与基线 hash 不同 |
-| `T` | 待完成 | 文件来自任务变体 |
-| `G` | 自动生成 | 文件属于 `starter_files.generated` 且与基线一致 |
-| `!` | 冲突或过期 | 自动生成文件与预期基线冲突 |
-
-每次 Lab 发放后，系统在下列目录保存完整工作区快照：
-
-```text
-os-lab/student-labs/.snapshots/<username>/<labId>/
-```
-
-`POST /fs/reset` 优先整份恢复该快照，使“重置”回到该 Lab 刚领取时的状态，而不是简单从参考答案复制几个文件。旧数据没有完整快照时才回退为基线文件恢复。
-
-**4. 期末探索任务**
-
-教师可按全局、班级或学生发布期末探索任务，内容包括方向、Markdown 任务书、要求使用的系统机制、可选验证命令和评分维度。学生完成 Lab8 且命中已发布作用域后，服务端在 `/learning/access` 中返回解锁状态。
-
-学生端通过 `FinalProjectPane.vue` 查看任务书，并继续复用 Lab8 工作区进行代码编辑和运行。当前期末节点的解锁事实来自服务端，不把浏览器点击或教师手工勾选当作“已完成”证据。
-
-
+- **期末探索任务** 
+  Lab8 通过且命中已发布作用域后，服务端在 `/learning/access` 解锁期末节点。任务书含方向、机制要求、可选验证命令与评分维度；学生复用 Lab8 工作区继续实践。解锁事实来自服务端，不以页面点击代替完成证据。
 
 ### 3.4 可信执行、断言与诊断
 
@@ -822,7 +639,7 @@ Trace 是可信运行产生的后端证据制品，不再是一项面向学生�
 
 ### 3.5 Tutor Agent：行为受约束的教学助手
 
-![Tutor 对话链路](assets/agent-system-tutor-chat-final.png)
+![Tutor 对话链路](assets/agent-system-tutor-chat-final.png){width=92%}
 
 `POST /chat` 的完整处理顺序如图：校验 Lab/会话/消息与证据引用 → 读取 Tutor 状态与证据摘要 → 意图识别与轮次规划 → **护栏先行** → 受限 RAG → 分层 Prompt → 模型调用（多重降级）→ 输出护栏 → 权威落库。几个关键设计：
 
@@ -1066,9 +883,9 @@ total = ruleScore                                    # Agent 不可用或证据�
 
 可信运行和命名断言只证明学生完成了可核查验证。它们通过 `V1` 和 `I1` 进入过程分，不再单列“结果”维度，也不按某个 Lab 的断言数量重复加分。这样避免了旧 `R1-R4` 只覆盖 Lab2 输出、其他 Lab 无法对应的问题，并保持 Lab1-Lab8 的评分口径一致。
 
-### 3.8 苏格拉底复盘：双 Agent 的协同闭环
+### 3.8 证据驱动的苏格拉底式复盘
 
-![](assets/Assessment-Tutor.png)
+![Assessment Agent 与 Tutor Agent 协同关系](assets/Assessment-Tutor.png){width=82%}
 
 复盘要同时达到两个目标：问题必须**由证据驱动**（问在薄弱处，而不是随机抽题），过程必须**像教学**（学生面对的是连续、自然的引导，而不是一张考卷）。为此我们把复盘拆成三个正交问题，并按职责分离原则分配给两个 Agent：
 
@@ -1187,7 +1004,7 @@ Tutor 只负责教学表达，不接触或泄露内部评分标准。它根据�
 
 ## 5. 系统测试情况（最后测试改）
 
-**分层测试策略**
+### 5.1 **分层测试策略**
 
 | 层次 | 验证内容 |
 | --- | --- |
@@ -1199,7 +1016,7 @@ Tutor 只负责教学表达，不接触或泄露内部评分标准。它根据�
 | QEMU tests | RISC-V 内核、用户程序、VirtIO 磁盘和各 Lab 行为断言 |
 | VitePress build | 内容同步、Vue 编译、依赖解析和静态站点生成 |
 
-**最新复核测试结果**
+### 5.2 **最新复核测试结果**
 
 | 检查 | 结果 |
 | --- | --- |
@@ -1219,6 +1036,111 @@ Tutor 只负责教学表达，不接触或泄露内部评分标准。它根据�
 | Lab8 QEMU 可信验证 | 8/8 行为断言通过；线程、mutex、condvar、pipe、两类死锁检测均通过 |
 
 本轮自动/契约测试合计 `218/218`（144 Node + 42 Rust + 32 Python）通过。QEMU 断言不计入该数，单独记录为 14 项端到端行为证据。知识库当前包含 8 个来源、35 个版本、1129 个文档、16099 个历史 Chunk，其中 1384 个活跃、1360 个已索引且具有 384 维本地确定性向量；这些数量会随重新摄取、发布和回滚变化。
+
+### 5.3 Prompt Eval 实验结果与分析
+
+Prompt Eval 用于检验 AI 导师在“学生提问意图识别、引导动作、答案护栏、证据引用、跨阶段稳定性”上的表现，而不是只检查回复是否包含某个阶段关键词。实验覆盖 V2 阶段路由口径与 V3 意图路由口径，并分别对“有/无阶段 Prompt”和“完整意图策略/无意图基线”进行对比。
+
+**实验目标与对比口径**
+
+- V2 阶段路由口径：使用 Lab/stage 构造的 48 条历史语料，对比“有阶段 Prompt”与“无阶段 Prompt”。
+- V3 意图路由口径：使用 19 条意图语料，对比“完整意图策略”与“移除意图策略层、保留 system/Lab/证据/RAG 的基线”。
+- V3 语料覆盖 Lab1-Lab8 和七类本轮意图：`concept`、`code-reading`、`debug`、`verification`、`reflection`、`transfer`、`direct-answer`；同时包含错误假设、直接索要补丁、换题、无证据、可信通过证据、学生说法与失败运行冲突等场景。
+
+**实验配置**
+
+| 运行            | 语料               | 模式    | 模型                                    | 有效条数                         | 用途                              |
+| --------------- | ------------------ | ------- | --------------------------------------- | -------------------------------- | --------------------------------- |
+| V2 历史真实 A/B | legacy-stage 48 条 | remote  | gpt-5.6-luna                            | 45 条 remote，3 条 offline       | 阶段 Prompt 与无阶段 Prompt 对比  |
+| V3 离线链路     | cases-v3 19 条     | offline | qwen2.5:7b（回复为 offline-tutor 兜底） | 19 条                            | 验证意图路由、RAG、护栏与降级链路 |
+| V3 真实模型     | cases-v3 19 条     | remote  | gpt-5.6-luna                            | 18 条 remote，1 条由答案护栏拦截 | 完整意图策略与无意图基线对比      |
+
+V3 单条综合分为六项等权平均：`questionRelevance`、`guidanceCorrectness`、`necessaryExplanation`、`actionability`、`noLeak`、`evidenceFidelity`。问号数量、回复长度和代码行数只作为诊断项，不参与主分。
+
+**V3 真实模型结果**
+
+数据源：`os-lab/tutor/prompt-eval/records/current-intent-remote-gpt56-retry-final-rescored/`，模型 `gpt-5.6-luna`，温度 0.3，19 条用例。
+
+| 指标     | 完整意图策略 | 无意图基线 |
+| -------- | ------------ | ---------- |
+| 综合     | 96           | 95         |
+| 引导正确 | 79           | 74         |
+
+基线综合分按同一 V3 规则对冻结回复重算，其余指标两侧相同，不再逐一列出。`questionRelevance=100` 表示 19 条均识别为期望本轮意图；三组同题跨阶段用例的 `intent + actions + guardrail class` 全部一致，说明存储阶段没有重新参与回答策略。
+
+![V3 真实模型评测主指标与逐用例消融差值](../../../Users/Jane%2520Aurora/Documents/xwechat_files/wxid_jrytn992mh3112_d069/msg/file/2026-08/assets/prompt-eval-v3-results.png){width=96%}
+
+图中 (a) 为完整意图策略与无意图基线存在差值的 V3 主指标，(b) 为非零逐用例综合分差值；其余 15 条持平，完整策略更好 3 条，基线更好 1 条。
+
+**消融结果**
+
+完整意图策略与无意图基线在 19 条用例上的综合分差值为：平均 +0.84，完整策略更好 3 条、持平 15 条、基线更好 1 条。
+
+非零差值用例：
+
+| 用例                 | 完整策略 | 基线 | 差值 |
+| -------------------- | -------- | ---- | ---- |
+| concept-sepc-debug   | 92       | 75   | +17  |
+| debug-panic-transfer | 100      | 92   | +8   |
+| transfer-multicore   | 100      | 92   | +8   |
+| concept-sepc-reflect | 75       | 92   | -17  |
+
+按意图汇总：
+
+| 意图     | 用例数 | 完整策略综合 | 无意图基线综合 |
+| -------- | ------ | ------------ | -------------- |
+| debug    | 4      | 94           | 92             |
+| transfer | 1      | 100          | 92             |
+
+其余五类意图持平，不再列出。完整策略的优势集中在 `concept-sepc-debug`、`debug-panic-transfer` 和 `transfer-multicore`，主要体现在调试/迁移类问题上给出更明确的引导动作；唯一负向的 `concept-sepc-reflect` 为单条采样差异，不影响整体正向结论。
+
+**V3 离线链路结果**
+
+数据源：`os-lab/tutor/prompt-eval/records/current-intent-offline-2026-08-10/`。
+
+| 综合 | 问题相关 | 引导正确 | 无泄漏（原始评分） |
+| ---- | -------- | -------- | ------------------ |
+| 94   | 79       | 87       | 95                 |
+
+![V3 离线链路关键分项](../../../Users/Jane%2520Aurora/Documents/xwechat_files/wxid_jrytn992mh3112_d069/msg/file/2026-08/assets/prompt-eval-v3-offline.png){width=82%}
+
+图中仅展示综合、问题相关、引导正确和无泄漏原始评分四个关键分项；其余分项均为 100。
+
+其余达标项均为 100，不再重复列出。离线结果完整验证意图路由、RAG、护栏与降级链路；无泄漏 95 为原始评分口径下的保守标记，经人工核对并修正规则后为 100，不构成真实泄漏。
+
+**V2 历史阶段 Prompt 对照**
+
+数据源：`os-lab/tutor/prompt-eval/records/remote-stu/`，48 条 legacy-stage 语料，真实模型 `gpt-5.6-luna`。
+
+| 统计项                     | 全部 48 条     | 仅 remote 45 条 |
+| -------------------------- | -------------- | --------------- |
+| 平均差值（有阶段减无阶段） | +5.08          | +5.56           |
+| 95% CI                     | -0.81 .. 11.48 | -0.60 .. 12.11  |
+| 有阶段更好                 | 17             | 16              |
+| 持平                       | 18             | 17              |
+| 无阶段更好                 | 13             | 12              |
+
+逐项检查（remote 45 条）：
+
+| 检查项                 | 有阶段更好 | 无阶段更好 |
+| ---------------------- | ---------- | ---------- |
+| 提问质量 questionScore | 7          | 10         |
+| 长度 lengthScore       | 10         | 7          |
+| 阶段贴合 stageScore    | 11         | 1          |
+
+![V2 历史阶段 Prompt A/B 对照](../../../Users/Jane%2520Aurora/Documents/xwechat_files/wxid_jrytn992mh3112_d069/msg/file/2026-08/assets/prompt-eval-v2-ablation.png){width=96%}
+
+图中 (a) 为 48 条和仅 remote 45 条的正/平/负分布，(b) 为逐检查项有/无阶段更好的条数；无泄漏两侧均为 0，未绘制。
+
+无泄漏两侧均为 0 条差异，不再列入。历史 V2 对照的 95% CI 跨 0，说明阶段关键词本身不能稳定提升真实教学表现；V3 改为直接检查是否回应当前问题、是否采取正确引导、是否泄漏答案、是否忠实使用证据、是否不受存储阶段干扰，评测口径更贴近真实教学质量。
+
+**实验结论与优势**
+
+1. 意图路由在真实模型上表现稳定：19 条全部识别为期望本轮意图，三组跨阶段同题 100% 保持同一回复类别，说明存储阶段不会干扰回答策略。
+2. 安全与证据边界达标：完整策略无答案泄漏 100、证据忠实 100，直接索要补丁由护栏拦截，未向模型发送可拼装完整答案的内容。
+3. 核心质量指标整体优秀：综合 96，问题相关、必要解释、无泄漏、证据忠实均 100，可执行 95。
+4. 意图策略层带来正向收益：debug 综合 94（基线 92）、transfer 综合 100（基线 92），非零差值中 3 条正向、15 条持平，整体平均 +0.84。
+5. 离线链路稳定可用：19 条全链路跑通，综合 94，必要解释、可执行、证据忠实和跨阶段一致均为 100，可用于上游不可用时的降级兜底。
 
 ## 6. 未来优化方向
 
@@ -1286,17 +1208,17 @@ Tutor 只负责教学表达，不接触或泄露内部评分标准。它根据�
 
 **1. 参考、依赖与对比来源**
 
-| 来源                                              | 当前用途                                                | 处理方式与许可边界                                           |
-| ------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------ |
-| `tg-rcore-tutorial`                               | 赛题 30% 参考练习基线                                   | 完整仓库仅保存在本地 `reference/`，不纳入提交；仓库只提交相对固定 commit 的练习补丁、复现命令和验收报告。上游采用 GPLv3，相关补丁按上游许可证处理 |
-| `tg-rcore-tutorial-easy-fs`                       | Lab6–Lab8 磁盘文件系统依赖                              | 通过 crates.io 引入，不作为本队自研源码声明；该 crate 为 GPL-3.0，包含它的最终内核组合制品需满足 GPL-3.0 分发要求 |
-| rCore Tutorial、LearningOS 课程讲义               | 架构设计、实验路径对比和 Tutor 知识来源                 | 固定来源 URL、commit 或内容哈希；未完成许可复核的快照不进入正式发行包，不索引参考答案和完整实现 |
-| MIT 6.S081 / xv6-riscv                            | 本校教学环境及课程体系对比                              | 仅比较语言、规模、机制覆盖、实验组织和教学路径，不复制其源码进入 EVOLVE 自研目录 |
-| OSTEP、CSAPP、RISC-V Reader                       | 概念学习、实验手册背景和受限 RAG 知识来源               | 正式材料原则上只保留引用、页码和公开链接；完整电子书只有在确认再分发许可或取得授权后才能随仓库发布 |
-| 相关学术论文                                      | AI Tutor、学习评价、RAG、可信证据和苏格拉底教学设计参考 | `papers/` 作为本地调研目录，不纳入 Git；正式文档保留规范引文。只有明确允许再分发的开放获取版本才能进入发行包 |
-| OpenSBI、QEMU、Rust 工具链及 Cargo crates         | 编译、启动、硬件模拟和运行依赖                          | 不声明为本队成果，按各自上游许可证安装和使用；发布二进制或离线依赖包时附第三方许可清单 |
-| VitePress、Vue、Monaco、xterm、Mermaid、Lucide 等 | Web 学习手册、代码编辑器、终端和图表呈现                | 通过 npm 锁文件管理，按 MIT、ISC、BSD、Apache、MPL 等各自许可证使用，不复制或改写其版权声明 |
-| 外部大模型服务                                    | Tutor、Assessment、知识检索和评价的可选推理能力         | 仓库不包含模型权重和 API Key；模型输出必须经过契约校验、证据门控、测试及人工审查后才能进入系统或文档 |
+| 来源                                              | 当前用途                                                |
+| ------------------------------------------------- | ------------------------------------------------------- |
+| `tg-rcore-tutorial`                               | 赛题 30% 参考练习基线                                   |
+| `tg-rcore-tutorial-easy-fs`                       | Lab6–Lab8 磁盘文件系统依赖                              |
+| rCore Tutorial、LearningOS 课程讲义               | 架构设计、实验路径对比和 Tutor 知识来源                 |
+| MIT 6.S081 / xv6-riscv                            | 框架对比                                                |
+| OSTEP、CSAPP、RISC-V Reader                       | 概念学习、实验手册背景和受限 RAG 知识来源               |
+| 相关学术论文                                      | AI Tutor、学习评价、RAG、可信证据和苏格拉底教学设计参考 |
+| OpenSBI、QEMU、Rust 工具链及 Cargo crates         | 编译、启动、硬件模拟和运行依赖                          |
+| VitePress、Vue、Monaco、xterm、Mermaid、Lucide 等 | Web 学习手册、代码编辑器、终端和图表呈现                |
+| 外部大模型服务                                    | Tutor、Assessment、知识检索和评价的可选推理能力         |
 
 **2. 团队自研范围**
 
@@ -1379,8 +1301,6 @@ Tutor 只负责教学表达，不接触或泄露内部评分标准。它根据�
 - `os-lab/handbook/docs/workbench-ui.md`
 - `os-lab/learning/knowledge/README.md`
 - `os-lab/lab-packages/README.md`
-
-当配套文档中的数量、阶段策略或界面描述与当前源码冲突时，应以本节列出的源码、当前 `lab.yaml`、数据库统计命令和实际测试输出为准。
 
 ## 9. 比赛收获
 
@@ -1483,37 +1403,32 @@ exercise 模式下 `initproc` 通过编译期环境变量 `CHAPTER` 选择 usert
 
 ## 5. 分章实现摘要
 
-### ch3：sys_trace
+**ch3：sys_trace**
 
-- **实现**：在 `task.rs` 维护每任务 syscall 计数；在 `main.rs` 实现 `trace_request` 三种模式（读计数、写内存、读内存）。
-- **验证**：`tg-rcore-tutorial-checker --ch 3 --exercise` → 7/7。
-- **AI 协作**：解释 `trace_request` 语义，协助修复模块声明与类型注解编译错误。
+- 实现：在 `task.rs` 维护每任务 syscall 计数；在 `main.rs` 实现 `trace_request` 三种模式（读计数、写内存、读内存）。
+- 验证：`tg-rcore-tutorial-checker --ch 3 --exercise` → 7/7。
 
-### ch4：mmap / munmap
+**ch4：mmap / munmap**
 
-- **实现**：在 `Process` 上实现 `mmap`/`munmap`；处理页对齐、`prot` 权限位与区域重叠检查。
-- **验证**：checker 16/16（含 ch3 继承测例）。
-- **AI 协作**：对照 exercise 测例梳理权限标志与失败路径。
+- 实现：在 `Process` 上实现 `mmap`/`munmap`；处理页对齐、`prot` 权限位与区域重叠检查。
+- 验证：checker 16/16（含 ch3 继承测例）。
 
-### ch5：spawn + stride
+**ch5：spawn + stride**
 
-- **实现**：`processor.rs` stride 调度；`spawn` 从 APPS 表加载 ELF；`set_priority`。
-- **环境要求**：须 `CHAPTER=5` 且 `cargo clean` 后重编；`CHAPTER` 由编译期 `option_env!` 读取。
-- **验证**：checker 17/17。
-- **AI 协作**：区分挂起现象与 stride 逻辑，定位 `initproc` 分支选择问题。
+- 实现：`processor.rs` stride 调度；`spawn` 从 APPS 表加载 ELF；`set_priority`。
+- 环境要求：须 `CHAPTER=5` 且 `cargo clean` 后重编；`CHAPTER` 由编译期 `option_env!` 读取。
+- 验证：checker 17/17。
 
-### ch6：硬链接 + spawn
+**ch6：硬链接 + spawn**
 
-- **实现**：`read_cstr` 读取用户态路径；`linkat`/`unlinkat`/`fstat` 对接 `easy-fs`；`spawn` 从 `fs.img` 加载 ELF；从 ch5 迁移 `mmap`/`munmap`。
-- **实现注意**：`unlink` 路径避免在持有 `fs.lock()` 时再次加锁（自旋锁不可重入）。
-- **验证**：checker 33/33。
-- **AI 协作**：对照参考 `vfs.rs`，梳理目录项与 `nlink` 更新顺序。
+- 实现：`read_cstr` 读取用户态路径；`linkat`/`unlinkat`/`fstat` 对接 `easy-fs`；`spawn` 从 `fs.img` 加载 ELF；从 ch5 迁移 `mmap`/`munmap`。
+- 实现注意：`unlink` 路径避免在持有 `fs.lock()` 时再次加锁（自旋锁不可重入）。
+- 验证：checker 33/33。
 
-### ch8：死锁检测
+**ch8：死锁检测**
 
-- **实现**：在 `process.rs` 增加 `DeadlockState`（信号量银行家算法 + 互斥锁等待图）；在 `mutex_lock`/`semaphore_down` 等路径返回 `-0xDEAD`；`enable_deadlock_detect` 开关。检测状态挂在进程层，未修改 `tg-sync` crate。
-- **验证**：`CHAPTER=8` + exercise → checker 25/25。
-- **AI 协作**：参考成熟实现结构，将检测逻辑与同步原语 syscall 解耦。
+- 实现：在 `process.rs` 增加 `DeadlockState`（信号量银行家算法 + 互斥锁等待图）；在 `mutex_lock`/`semaphore_down` 等路径返回 `-0xDEAD`；`enable_deadlock_detect` 开关。检测状态挂在进程层，未修改 `tg-sync` crate。
+- 验证：`CHAPTER=8` + exercise → checker 25/25。
 
 ## 6. base 与 exercise 的关系
 
@@ -1689,7 +1604,15 @@ xv6 没有 feature gate，所有模块始终编译进内核：`start.c` / `entry
 2. **知识节奏：从入门到精通。** EVOLVE 把文件系统拆成“抽象（Lab5）→ 落盘（Lab6）”两步、将 mmap 移出虚存章，并以可观察证据呈现阶段差异（yield 从 1 轮到 5 轮）；tg-rcore 在一章内一次做透（如 ch6 集中 33 项练习），强度高、峰值陡；xv6 的完整系统从第一天就在场，适合概念建立后的深化。EVOLVE 承担的是两条经典路径都不占的位置：**为初学者建立脉络**。
 3. **课堂形态：把 AI 与教学管理纳入系统边界。** 经典路径中，AI 是学生自行引入的外部变量，过程记录与班级管理需要课程另行搭建；EVOLVE 中，AI 助教回答前先核对学生的实际代码与运行记录，练习可采用“补全”“定位错误”等形式并随机变换，教师可分阶段控制开放内容，过程材料直接参与评分。这针对的是经典路径未曾面对的问题：代写与“只见分数不见理解”。
 
-# 附录C：Agent Server详细说明
+# 附录C：项目前端页面展示
+
+![项目首页](assets/%E5%89%8D%E7%AB%AF%E9%A6%96%E9%A1%B5.png)
+
+![学生工作台](assets/%E5%AD%A6%E7%94%9F%E5%B7%A5%E4%BD%9C%E5%8F%B0.png)
+
+
+
+# 附录D：Agent Server详细说明
 
 ## 1. Tutor Agent：实验时的教学辅助
 
@@ -2335,21 +2258,405 @@ npm run build
 
 `npm run build` 同时验证 VitePress 前端和服务端代码所需的文档/静态资源构建；`git diff --check` 用于检查文档和代码的空白错误。
 
-## 6. 接口和存储契约索引
+# 附录E：Lab1实验手册
 
-| 接口/模块                                | 作用                                                         |
-| ---------------------------------------- | ------------------------------------------------------------ |
-| `POST /chat`                             | Tutor 实时问答，支持 JSON/SSE。                              |
-| `POST /assessment`                       | 生成规则+Agent 行为 Assessment，并更新 mastery/review gate。 |
-| `POST /learning/review/start`            | 重跑融合评分并生成 Assessment 复盘简报，由 Tutor Agent 具象化为面向学生的题面；事件记录 `assessment-brief-tutor-question-assessment-evaluation-v1` 工作流与双 Agent 运行时。 |
-| `POST /learning/review/answer`           | 保存学生回答，Assessment 独立逐题评价并强制证据要求，必要时生成一次追问简报并交 Tutor 具象化。 |
-| `POST /learning/review/resume`           | 补充可信证据后恢复 `awaiting_evidence` 复盘。                |
-| `POST /learning/review/summary`          | 兼容性完成或延后旧复盘。                                     |
-| `GET /learning/review`                   | 学生读取当前复盘。                                           |
-| `POST /reports`                          | 在复盘完成/deferred 后提交报告和附件，并记录 report_submitted。 |
-| `GET /teacher/report-assessment`         | 教师读取自动分、复盘、报告验收和历史。                       |
-| `POST /teacher/report-acceptance`        | 教师提交最终分、反馈和验收建议。                             |
-| `tutor/turn-policy.mjs`                  | 意图路由、提示等级、轮次策略与 Tutor 输出护栏。              |
-| `tutor/review-tutor.mjs`                 | 复盘简报具象化：Tutor 出题/追问改写、评分标准防泄漏、题面去重与确定性回退。 |
-| `learning/db.mjs`                        | 学习事件、runs、assessment、mastery、review 和 report 的持久化边界。 |
-| `learning/knowledge/knowledge-store.mjs` | 版本化知识源、chunk、权限、索引和审计。                      |
+## 实验 1：裸机启动与最小内核
+
+> 相关教材理论：
+>
+> [第 2 章 · 操作系统介绍（P16）](/downloads/ostep-zh.pdf#page=16)
+>
+> [第 6 章 · 机制：受限直接执行（P49）开头引言部分](/downloads/ostep-zh.pdf#page=49)
+
+## 一、问题场景
+
+OSTEP 从**虚拟化、并发和持久性**三条主线展开操作系统原理，但这些内容都隐含了一个基本前提：**内核已经被加载到内存，并且正在正常运行**。
+
+那么，在操作系统尚未运行时，内核本身是如何启动的？内核映像由谁放入内存？处理器从哪条指令开始执行？没有现成的标准库和系统调用，内核又如何输出字符并结束运行？
+
+在编写普通 Rust/C 应用程序时，我们通常只关注如下过程：
+
+```
+main → 输出信息 → 程序退出
+```
+
+但在这条看似简单的执行路径背后，操作系统、程序加载器和语言运行时已经完成了大量工作：
+
+```
+操作系统加载程序
+→ 语言运行时初始化执行环境
+→ 运行时调用 main
+→ 程序通过系统调用请求输出
+→ 操作系统回收进程资源
+```
+
+因此，`main`、标准输出和程序退出都不是程序天然具备的能力，而是建立在既有操作系统和运行时环境之上的抽象。内核启动时其实不存在一个更高层的操作系统来提供这些服务。
+
+本实验希望你借助 QEMU 和 OpenSBI，显式建立一条属于你自己的最小内核运行链路。
+
+普通应用程序与本实验内核的运行过程可以对照如下：
+
+
+| 执行环节   | 普通应用程序                                         | 本实验中的内核                                         |
+| ---------- | ---------------------------------------------------- | ------------------------------------------------------ |
+| 程序装载   | 操作系统加载器将程序装入进程地址空间                 | QEMU 按启动约定将内核映像放置到 `0x80200000`           |
+| 控制权移交 | 语言运行时完成初始化后调用 `main`                    | OpenSBI 完成固件初始化后跳转到内核入口 `_start`        |
+| 字符输出   | `println!` 最终通过系统调用请求操作系统输出          | 内核执行 `ecall`，通过 SBI 控制台服务请求 OpenSBI 输出 |
+| 程序结束   | 程序调用 `exit` 或从 `main` 返回，由操作系统回收资源 | 内核通过 SBI System Reset 服务请求 QEMU 关机           |
+
+
+也即本实验需要解决的**四个核心问题**：
+
+- 内核映像如何装入内存？
+- 处理器如何进入内核入口？
+- 内核如何输出字符？
+- 内核如何结束运行？
+
+**实验目标**：在 QEMU RISC-V 平台上启动一个最小内核，使其输出 `Hello, OS!`，随后通过 SBI 正常关闭虚拟机。实验将由此建立最基本的内核启动和固件调用路径，为后续 Lab2–8 中的异常与中断、虚拟内存、进程管理和文件系统等内容提供统一的运行基础。
+
+## 二、背景知识
+
+上节列出的本实验需要解决的四个核心问题共同构成了一个最小内核从固件获得控制权，到完成第一次输出并主动关机的完整启动链。后续实验中的异常处理、虚拟内存、进程管理和文件系统，都是在这条启动链已经建立的基础上继续扩展的。
+
+### 2.1 内核映像如何装入内存
+
+在 OSTEP 中，“程序由操作系统加载到内存”通常描述的是操作系统已经运行之后的场景。对于 Lab1我们想要实现的内核本身就是第一个需要被加载和启动的程序，因此不能假设已经存在一个更高层的操作系统来完成这项工作。
+
+本实验使用 QEMU 模拟 RISC-V `virt` 平台，并由 OpenSBI 提供机器模式下的固件环境。在当前启动配置中，QEMU 按约定将内核映像放置到物理地址 `0x80200000`，OpenSBI 完成必要的固件初始化后，将控制权移交给该地址处的内核入口。
+
+这里需要区分不同角色：
+
+
+| 组件         | 主要职责                                                     |
+| ------------ | ------------------------------------------------------------ |
+| QEMU         | 模拟处理器、内存和外设，并按照启动参数放置内核映像           |
+| OpenSBI      | 在 M-mode 中运行，初始化平台，提供 SBI 服务，并将控制权移交给内核 |
+| 操作系统内核 | 在 S-mode 中运行，建立自身的执行环境并实现后续操作系统功能   |
+
+
+因此，`0x80200000` 是固件、QEMU 和内核之间的启动约定，而不是 RISC-V 架构规定的唯一地址。内核必须通过链接脚本使用相同的地址：
+
+```
+BASE_ADDRESS = 0x80200000;
+```
+
+### 2.2 处理器如何进入内核入口
+
+RISC-V 使用特权级区分不同软件组件能够执行的操作。本实验涉及以下三个特权级：
+
+
+| 特权级 | 名称     | 本实验中的执行者     | 作用                             |
+| ------ | -------- | -------------------- | -------------------------------- |
+| U-mode | 用户模式 | 后续实验中的用户程序 | 执行受限制的用户代码             |
+| S-mode | 监督模式 | 操作系统内核         | 管理用户程序和系统资源           |
+| M-mode | 机器模式 | OpenSBI 固件         | 执行最底层的平台初始化和固件服务 |
+
+
+处理器复位后首先在 M-mode 中执行 OpenSBI，而不会直接从 Rust 的 `main` 函数开始运行。OpenSBI 完成初始化后，按照启动约定跳转到 `0x80200000`，此时内核在 S-mode 中开始执行。
+
+```mermaid
+graph TD
+    ROM["复位入口 M-mode"] --> OpenSBI["OpenSBI 固件"]
+    OpenSBI -->|"加载并跳转到 0x80200000"| Kernel["内核 S-mode"]
+    OpenSBI -.->|"SBI 调用 ecall"| Kernel
+```
+
+
+
+内核从 `_start` 运行：首先完成启动栈设置，然后调用Rust函数 `rust_main`，此时已在 S-mode。
+
+设置栈是进入高级语言代码之前的**必要步骤**，因为函数调用、局部变量和寄存器保存都依赖有效的栈空间。（kernel/src/entry.asm）
+
+```asm
+_start:
+    la sp, boot_stack_top
+    call rust_main
+```
+
+但是，拥有栈并不意味着 Rust 所依赖的全部初始条件都已经满足。普通 Rust 应用程序启动时，语言运行时和操作系统加载器通常已经完成了内存段初始化；裸机内核不能直接假设这些工作已经完成。
+
+内核通过以下 crate 级属性声明自己的运行环境（kernel/src/main.rs）：
+
+```rust
+#![no_std]
+#![no_main]
+```
+
+- `#![no_std]` 表示不链接依赖操作系统的 Rust 标准库，只使用 `core` 等不依赖 OS 的基础功能；
+- `#![no_main]` 表示不使用编译器默认的 `main` 入口，而是由链接脚本指定汇编入口 `_start` 建立执行环境后，显式调用 `rust_main`。
+
+除此之外，内核还必须初始化 `.bss` 段。
+
+`.bss` 段保存未显式初始化，或者初始值为零的全局变量和静态变量。例如：
+
+```
+static mut COUNTER: usize = 0;
+```
+
+这类变量的初始值通常不会作为大量零字节直接存储在内核映像中。链接脚本只记录相应内存区域的位置和大小，程序启动时再由加载器或启动代码将其清零。
+
+在普通应用程序中，这项工作通常由操作系统加载器完成；在本实验中，内核需要自行完成。Rust 假定静态变量初值合法。BSS 未清零就读，可能乱码、死循环或 panic。`println!` 的实现可能间接用到 BSS 中的静态状态，因此 `rust_main` 第一件事是 `clear_bss()`——把 `[sbss, ebss)` 逐字节写 0，等价于加载器在进程启动时做的初始化。
+
+```rust
+pub extern "C" fn rust_main() -> ! {
+    clear_bss();
+    console::init();
+}
+```
+
+`clear_bss()` 使用链接脚本导出的 `sbss` 和 `ebss` 符号，将下面的内存区间清零：
+
+```
+[sbss, ebss) → 0
+```
+
+需要注意，BSS 清零并不是为了专门支持 `println!`。它是在执行一般 Rust 内核代码之前建立正确的全局和静态变量初始状态。本实验的控制台实现即使没有直接使用 BSS，后续模块仍可能依赖其中的静态数据，因此内核应当在其他初始化和功能代码之前完成这一工作。
+
+于是，从汇编入口进入 Rust 环境的过程可以概括为：
+
+```
+_start
+→ 设置启动栈
+→ 调用 rust_main
+→ 清零 BSS
+→ 初始化内核模块
+→ 执行内核功能
+```
+
+### 2.3 内核如何输出字符
+
+普通 Rust 程序中的 `println!` 依赖标准库和操作系统提供的标准输出。内核使用 `#![no_std]` 后，不再拥有由 `std` 提供的文件 I/O、终端和内置标准输出，因此必须自行实现最小的输出路径。此外，本实验调用的 SBI 控制台服务 `console_putchar` 一次只能传递一个字符参数，而不能直接传递一个字符串。
+
+因此本实验的输出链实现如下：
+
+首先`kernel/src/console.rs` 使用 `core::fmt::Write` 完成格式化，将格式化后的字符串拆分为一个个字节，再调用 `os_sbi::console_putchar` 输出：
+
+```
+for byte in s.bytes() {
+    os_sbi::console_putchar(byte);
+}
+```
+
+由于`console_putchar` 并不是由硬件直接提供的普通 Rust 函数。OpenSBI 对外提供的是一套基于寄存器和 `ecall` 指令的调用约定。内核必须先把服务编号和参数放入指定寄存器，再执行 `ecall`，OpenSBI 才能识别并处理该请求。
+
+所以为了避免控制台代码直接处理内联汇编、寄存器分配和 SBI 功能号，本实验在 `os-sbi/src/lib.rs` 中将这套底层协议封装成普通 Rust 函数：
+
+```rust
+pub fn console_putchar(ch: u8) {
+    unsafe {
+        core::arch::asm!(
+            "ecall",
+            in("a7") SBI_LEGACY_CONSOLE_PUTCHAR,
+            in("a0") ch as usize,
+            in("a6") 0usize,
+            lateout("a0") _,
+        );
+    }
+}
+```
+
+这样，上层控制台模块只需要调用`os_sbi::console_putchar(byte)`而不需要关心 `a0`、`a6`、`a7` 分别保存什么，也不需要在多处重复编写 `unsafe` 汇编代码。
+
+请仔细理解这里“对 SBI 调用进行封装”的含义：**将底层的寄存器调用约定转换成上层可以直接使用的 Rust 函数接口**。
+
+本实验使用的是传统的 Legacy SBI 控制台输出服务。执行调用时：
+
+
+| 寄存器或指令 | 本实验中的作用                                    |
+| ------------ | ------------------------------------------------- |
+| `a7`         | 保存 Legacy SBI 功能号；控制台输出的功能号为 `1`  |
+| `a0`         | 保存待输出的字符字节                              |
+| `a6`         | Legacy 调用不使用该寄存器；本实验将其显式置为 `0` |
+| `ecall`      | 产生环境调用异常，使处理器进入固件的异常处理流程  |
+
+
+需要特别注意，`ecall` 本身并不表示“输出字符”，处理器也不理解 SBI 的功能号。对处理器而言，`ecall` 只是一次环境调用异常。真正解释寄存器内容的是 OpenSBI。
+
+在本实验的启动环境中，执行过程如下：
+
+```
+S-mode 内核准备寄存器
+→ 在 a7 中写入控制台功能号
+→ 在 a0 中写入待输出字节
+→ 执行 ecall
+→ 处理器产生来自 S-mode 的环境调用异常
+→ OpenSBI 在 M-mode 中接管该异常
+→ OpenSBI 读取 a7 和 a0
+→ OpenSBI 识别出控制台输出请求
+→ OpenSBI 调用平台控制台实现
+→ QEMU 将字符显示到宿主机终端
+→ OpenSBI 返回 S-mode
+→ 内核继续输出下一个字节
+```
+
+因此，内核不是通过 `ecall` 直接写入 UART 寄存器。`ecall` 只负责把控制权交给 OpenSBI；实际的平台控制台访问由 OpenSBI 完成。
+
+本实验实现的是“通过 SBI 请求固件输出”，尚未实现 UART 设备驱动。如果后续内核直接读写 UART 的 MMIO 寄存器，输出路径会变成：
+
+```
+内核
+→ 读写 UART MMIO 寄存器
+→ QEMU 模拟 UART
+→ 宿主机终端
+```
+
+此时 UART 输出不再需要通过 SBI 和 OpenSBI，进一步减少对固件服务的依赖。
+
+### 2.4 内核如何结束运行
+
+普通应用程序从 `main` 返回，或者调用 `exit` 后，由操作系统负责回收进程资源。裸机内核没有更高层的操作系统负责回收，因此必须显式请求虚拟机结束运行。
+
+本实验通过 SBI 的关机服务完成这一操作：
+
+```
+os_sbi::shutdown();
+```
+
+该函数执行 `ecall`，将关机功能号传递给 OpenSBI。OpenSBI 处理请求后，QEMU 退出，终端命令正常返回。
+
+由于关机调用不会返回，`rust_main` 被声明为：
+
+```
+pub extern "C" fn rust_main() -> !
+```
+
+其中 `!` 表示该函数永不返回。内核启动完成后只有两种预期结果：
+
+```
+正常运行 → 输出信息 → 请求关机
+异常发生 → panic 处理 → 请求关机
+```
+
+如果 `rust_main` 在没有明确后继执行路径的情况下返回，内核就无法像普通应用程序那样回到一个由操作系统提供的调用者。
+
+### 2.5 从上电到关机的完整执行链
+
+```mermaid
+sequenceDiagram
+    participant QEMU
+    participant SBI as OpenSBI
+    participant ASM as _start
+    participant Rust as rust_main
+    participant Console as console.rs
+    participant OSBI as os-sbi
+
+    QEMU->>SBI: 处理器复位，进入 M-mode
+    QEMU->>SBI: 按启动约定放置内核映像
+    SBI->>ASM: 跳转到 0x80200000，进入 S-mode
+    ASM->>ASM: 设置 sp = boot_stack_top
+    ASM->>Rust: call rust_main
+    Rust->>Rust: clear_bss()
+    Rust->>Console: println!("Hello, OS!")
+    Console->>OSBI: 逐字节调用 console_putchar
+    OSBI->>SBI: ecall 请求 SBI 控制台服务
+    SBI-->>QEMU: 输出字符到虚拟控制台
+    Rust->>OSBI: shutdown()
+    OSBI->>SBI: ecall 请求关机
+    SBI-->>QEMU: 结束虚拟机运行读代码时可对照三个问题：
+```
+
+
+
+本实验的意义不只是输出一行字符串，而是建立了后续操作系统实验所依赖的几项基本约定：
+
+```
+内核装载地址
+→ 入口符号
+→ 启动栈
+→ BSS 初始化
+→ 特权级之间的服务请求
+→ 内核主动结束运行
+```
+
+后续 Lab2 及之后的系统调用，仍然采用**低特权级通过** `ecall` **请求高特权级服务**的基本思想，只是请求者由本实验的 S-mode 内核变为用户程序，服务者由 M-mode 的 OpenSBI 变为 S-mode 的操作系统内核。
+
+## 三、实验任务
+
+本实验主要相关文件：
+
+
+| 文件                    | 角色                                     | 阅读时重点确认                    |
+| ----------------------- | ---------------------------------------- | --------------------------------- |
+| `kernel/src/entry.asm`  | 汇编入口：设栈、`call rust_main`         | 第一条指令为何不能直接进入 Rust   |
+| `kernel/src/main.rs`    | `#![no_std]` / `clear_bss` / `rust_main` | BSS 初始化为何早于任何格式化输出  |
+| `os-sbi/src/lib.rs`     | SBI `ecall` 封装（输出、关机）           | `a7` 与 `a0` 如何表达功能号和参数 |
+| `kernel/src/console.rs` | `println!` 包装                          | 如何把格式化文本拆成逐字符输出    |
+| `kernel/linker.ld`      | 链接地址 `0x80200000`                    | 链接地址如何与固件跳转地址一致    |
+
+
+### 任务一：跑通内核
+
+确认环境已激活，运行以下命令可输出版本号：
+
+```
+rustc --version
+qemu-system-riscv64 --version
+```
+
+运行实验：
+
+```powershell
+cargo run -p kernel --features lab1
+# 或用 Makefile 封装
+make run
+```
+
+**预期输出**：屏幕会先刷出**OpenSBI 启动日志**（平台信息、HART 信息等），最后两行是你的内核输出：
+
+```text
+OpenSBI v1.7
+   ____                    _____ ____ _____
+  ...（OpenSBI 平台/HART 日志，可忽略）...
+Boot HART MEDELEG           : 0x0000000000f4b509
+Hello, OS!                              ← 你的内核从这里开始输出
+EVOLVE kernel lab1 is running on QEMU virt.
+```
+
+**通过标准**：看到 `Hello, OS!` 且 QEMU 自动退出（终端命令返回，没有卡住或报错）。
+
+### 任务二：阅读理解
+
+1. `_start` 为什么要先 `la sp, boot_stack_top` 再 `call rust_main`？如果没有合法栈，函数调用会先破坏什么？
+2. 对照 `main.rs`，解释 `clear_bss()` 为何必须在 `println!` 之前。
+3. 对照 `os-sbi/src/lib.rs`：输出字符时 `a7`/`a0` 各放什么？关机是否复用同一条 `ecall` 指令？
+4. OpenSBI 在启动阶段与运行阶段分别做什么？哪些职责在未来会被内核驱动取代？
+5. `#![no_std]` 与 `#![no_main]` 各解决什么问题？去掉其中任意一个时，编译或启动链会在哪里断开？
+
+### 任务三：动手修改
+
+**修改 1：换一句欢迎语**
+
+找到main文件中默认输出欢迎文字的代码部分，将欢迎语改成输出你自己的学号或名字，例如：
+
+```rust
+println!("Hello, OS! 我是 xxx");
+```
+
+- 通过标准：`cargo run` 后屏幕显示出你改的文字，且内核仍正常退出。
+
+**修改 2：观察链接地址错误的后果**
+
+在 `linker.ld` 里把 `BASE_ADDRESS = 0x80200000;` 改成 `BASE_ADDRESS = 0x88000000;`，然后 `cargo clean && cargo run`。
+
+- 预期现象：QEMU 启动后立即报错退出，例如 `qemu-system-riscv64: No enough memory to place DTB after kernel/initrd`，进程 exit code 非 0。
+- 通过标准：观察到上述崩溃现象，用自己的话解释**为什么**
+- **做完务必改回并** `cargo clean && cargo run` **确认恢复正常**。
+
+> ⚠️ 不要改成 `0x80100000` 这种离 `0x80200000` 太近的值——因为 lab1 内核镜像很小（几十 KB），`0x80100000` 与 `0x80200000` 相差仅 1MB，OpenSBI 跳转后仍可能落在内核镜像范围内，加上 RISC-V 的 PC 相对寻址，内核**可能照常运行**，你就观察不到崩溃了。要用 `0x88000000` 这种远离的值才能稳定复现。
+
+**修改 3：调整启动栈大小**
+
+当前 `entry.asm` 里是 `.space 4096 * 64`（256KB）。把它改成 `.space 4096 * 4`（16KB），`cargo run` 观察是否仍正常。
+
+- 通过标准：lab1 这种简单内核 16KB 栈够用，应仍能正常输出和退出。解释「为什么改小也能跑」（lab1 没有深层函数调用、也没有很大的局部变量）。
+- **做完务必改回并** `cargo clean && cargo run` **确认恢复正常**。
+
+## 四、验证命令
+
+
+| 验证项           | 命令                                                   | 通过标准                                                    |
+| ---------------- | ------------------------------------------------------ | ----------------------------------------------------------- |
+| 主编译           | `cargo check -p kernel --features lab1`                | 无 error                                                    |
+| QEMU             | `cargo run -p kernel --features lab1 --release`        | `Hello, OS!`、`EVOLVE kernel lab1 is running on QEMU virt.` |
+| 组件单测（可选） | `cargo test -p os-sbi --target x86_64-pc-windows-msvc` | 2 项通过                                                    |
+

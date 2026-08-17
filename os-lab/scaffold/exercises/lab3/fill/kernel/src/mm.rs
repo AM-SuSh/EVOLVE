@@ -140,6 +140,8 @@ pub fn create_user_space(space_id: usize, elf: &'static [u8]) {
     USER_SPACES.with(|spaces| {
         spaces[space_id] = Some(user_space);
     });
+    #[cfg(feature = "trace-edu")]
+    crate::trace::address_space(space_id, "create");
 }
 
 
@@ -380,6 +382,8 @@ pub fn create_user_space_from_elf(space_id: usize, elf: alloc::vec::Vec<u8>) {
     USER_SPACES.with(|spaces| {
         spaces[space_id] = Some(user_space);
     });
+    #[cfg(feature = "trace-edu")]
+    crate::trace::address_space(space_id, "create");
 }
 
 /// Replace the current process user mappings with a fresh ELF image (exec).

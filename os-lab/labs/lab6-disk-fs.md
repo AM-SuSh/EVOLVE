@@ -8,23 +8,6 @@
 >
 >  [第 40 章 · 文件系统实现（P367）](/downloads/ostep-zh.pdf#page=367)
 
-## 零、开始之前
-
-在开始把「文件」落到真正的磁盘镜像之前，请确认已完成以下准备：
-
-1. **已完成 Lab5**：理解 fd 表、管道与自旋锁（见 [Lab5 文件系统与并发](/labs/lab5-fs-and-sync)）。本实验继续用同一套 `open` / `read` / `write`，但打开之后从盘上取字节。
-2. **快速自检**：以下两条命令都能输出版本号，说明环境就绪：
-  ```powershell
-   rustc --version                    # 预期：rustc 1.96.0 ...
-   qemu-system-riscv64 --version      # 预期：QEMU emulator version ...
-  ```
-3. **建议先读书**：OSTEP 第 36–37 章（I/O 与硬盘）、第 40 章（文件系统实现）。带着「CPU 怎么碰到硬盘」「文件名如何落到扇区」进来即可。Lab6 对应 feature 为 `lab6`（依赖 `lab5`）。
-
-> Lab6 需要 VirtIO 与磁盘镜像 `fs.img`。直接跑 `make test-lab6` 即可：编内核时 `build.rs` 会自动打包用户程序与 `fs.img`；也可用 `make check-fs-img` 单独校验镜像。  
-> **请勿**使用裸的 `cargo run -p kernel --features lab6`，这样往往挂不上块设备。
-
-
-
 ## 一、问题场景
 
 Lab5 结束后，用户程序看起来已经「会用文件」了：可以 `open` / `read` 一份叫 `testfile` 的数据，父子进程也能用管道传一句 `hi`。  

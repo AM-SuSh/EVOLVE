@@ -8,22 +8,7 @@
 >
 >  [第 39 章 · 文件和目录 / 管道直觉（P352）](/downloads/ostep-zh.pdf#page=352)
 >
-> 说明：OSTEP 无独立「信号」专章，也不单独讲解 `dup`；本实验会用第 33 章建立「异步事件何时介入执行流」的直觉，用第 39 章理解 fd 与管道。`dup` 与信号相关的 Unix API（`kill` / `sigaction` / `sigprocmask` / `sigreturn`）会在背景知识中逐个解释，信号核心概念（待交付位图 / 屏蔽字 / 处理函数 / 投递时机）以本手册与代码为准。
-
-## 零、开始之前
-
-在开始把统一 fd、`dup` 与教学版信号接进内核之前，请确认已完成以下准备：
-
-1. **已完成 Lab6**：能跑通 `make test-lab6`，理解 fd、VirtIO 与磁盘 FS（见 [Lab6 磁盘文件系统](/labs/lab6-disk-fs)）。本实验会继续用同一套 `open` / `read` / `write`，并补上 `dup` 与信号。
-2. **快速自检**：以下两条命令都能输出版本号，说明环境就绪：
-  ```powershell
-   rustc --version          # 预期：rustc 1.96.0 ...
-   qemu-system-riscv64 --version   # 预期：QEMU emulator version ...
-  ```
-3. **建议先读书**：OSTEP 第 5 章（进程 API）、第 39 章（文件与管道直觉）、第 33 章（事件何时介入执行流）。带着「管道和信号差在哪」「信号什么时候真正执行」进来即可。Lab7 对应 feature 为 `lab7`（依赖 `lab6`）。
-
-> Lab7 需要 VirtIO 与磁盘镜像 `fs.img`。直接跑 `make test-lab7` 即可：编内核时 `build.rs` 会自动打包用户程序与 `fs.img`（`initproc` 为 `lab7_usertest`）；也可用 `make check-fs-img` 校验镜像。  
-> **请勿**使用裸的 `cargo run -p kernel --features lab7`，否则往往挂不上块设备。
+> 说明：OSTEP 无独立「信号」专章，也不单独讲解 `dup`；本实验会用第 33 章建立「异步事件何时介入执行流」的直觉，用第 39 章理解 fd 与管道。
 
 ## 一、问题场景
 
