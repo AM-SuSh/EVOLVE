@@ -2,23 +2,21 @@
 
 EVOLVE 是一套面向操作系统课程的渐进式实验、可信验证与智能辅导环境。系统以 Rust + RISC-V 64 教学内核为基础，覆盖 Lab1-Lab8，并提供学生隔离工作区、受控运行、行为断言、编译诊断、Trace、AI 导师、知识库、学习评价和教师管理。
 
-## 系统架构
+## 整体成果
 
-![EVOLVE 总体架构](./assets/evolve-overall-architecture-final.png)
+本仓库的最终成果以 EVOLVE 自研系统为主，并在赛题参考环境上完成 30% 练习；整体成果如下：
 
-EVOLVE 总体架构：以 Rust + RISC-V 64 教学内核为基础，串联 Lab 平台、可信执行、AI Tutor 与学习评价体系。
-
-## 仓库总览
-
-本仓库汇总 EVOLVE 当前阶段的源码、实验内容、技术文档和答辩材料。
-
-| 阶段性材料 | 说明 |
+| 成果 | 说明 |
 | --- | --- |
-| [docs/8.12阶段性实验技术文档.md](docs/8.12阶段性实验技术文档.md) | **阶段性技术文档**：架构、内核、教学平台、AI/RAG、评价、测试、分工与比赛收获 |
-| [docs/8.12阶段性PPT.pptx](docs/8.12阶段性PPT.pptx) | **阶段性答辩演示文稿** |
-| [EVOLVE总体实验技术文档.md](EVOLVE总体实验技术文档.md) | 完整实验报告文档 |
-| [os-lab/](os-lab/) | EVOLVE 当前实现源码、实验手册、教学服务与测试 |
-| [progress.md](progress.md) | 开发过程和阶段记录 |
+| [EVOLVE总体实验技术文档.md](EVOLVE总体实验技术文档.md) | **完整实验报告**：整体架构、内核、教学工作台、AI/RAG、学习评价与交付验证 |
+| [os-lab/](os-lab/) | EVOLVE 整体源码：Cargo workspace、内核、教学服务、实验手册与测试 |
+| [progress.md](progress.md) | 整体研发过程、验证记录和阶段收口 |
+
+#### 学生工作台
+
+![学生工作台](./assets/学生工作台.png)
+
+学生隔离工作区提供受控运行、行为断言与实验反馈。
 
 ## 目录结构
 
@@ -42,6 +40,12 @@ EVOLVE 总体架构：以 Rust + RISC-V 64 教学内核为基础，串联 Lab �
 | 70% 自研 | 独立实现 EVOLVE；源码位于 `os-lab/`，不修改上游参考仓库 |
 
 当前实现与技术边界以 `docs/8.12阶段性实验技术文档.md` 为准；参考环境的复现过程见 [docs/reference-report.md](docs/reference-report.md)。
+
+## 系统架构
+
+![EVOLVE 总体架构](./assets/evolve-overall-architecture-final.png)
+
+EVOLVE 总体架构：以 Rust + RISC-V 64 教学内核为基础，串联 Lab 平台、可信执行、AI Tutor 与学习评价体系。
 
 ## 许可证与证书核查
 
@@ -67,30 +71,28 @@ EVOLVE 总体架构：以 Rust + RISC-V 64 教学内核为基础，串联 Lab �
 
 | 文档或目录 | 说明 |
 | --- | --- |
-| [docs/8.12阶段性实验技术文档.md](docs/8.12阶段性实验技术文档.md) | **当前阶段完整技术说明与实现边界** |
+| [EVOLVE总体实验技术文档.md](EVOLVE总体实验技术文档.md) | **整体技术说明与实现边界** |
 | [docs/os-lab.md](docs/os-lab.md) | 环境验证、复现和教学工作台入口 |
 | [os-lab/docs/agent-system-technical.md](os-lab/docs/agent-system-technical.md) | AI 导师、证据门控、RAG 与评价技术说明 |
 | [os-lab/handbook/docs/workbench-ui.md](os-lab/handbook/docs/workbench-ui.md) | 学生工作台和教师端交互契约 |
 | [os-lab/docs/socratic-review-implementation.md](os-lab/docs/socratic-review-implementation.md) | 苏格拉底式复核实现说明 |
 | [os-lab/lab-packages/](os-lab/lab-packages/) | Lab1-Lab8 机器可读规格和任务变体 |
 
-学生隔离工作区与实验界面：
+## 阶段性成果
 
-![学生工作台](./assets/学生工作台.png)
+| 材料 | 说明 |
+| --- | --- |
+| [docs/8.12阶段性实验技术文档.md](docs/8.12阶段性实验技术文档.md) | 阶段性技术文档：架构、内核、教学平台、AI/RAG、评价、测试、分工与比赛收获 |
+| [docs/8.12阶段性PPT.pptx](docs/8.12阶段性PPT.pptx) | 阶段性答辩演示文稿 |
 
 ## 验证与交付
 
 | 入口 | 说明 |
 | --- | --- |
-| [docs/8.12阶段性实验技术文档.md](docs/8.12阶段性实验技术文档.md) | 当前测试结果、实现说明和团队分工 |
-| [docs/8.12阶段性PPT.pptx](docs/8.12阶段性PPT.pptx) | 当前阶段答辩材料 |
+| [EVOLVE总体实验技术文档.md](EVOLVE总体实验技术文档.md) | 整体测试结果、实现说明和团队分工 |
 | [docs/environment_setup.md](docs/environment_setup.md) | Rust、QEMU、Git 安装与配置 |
 | [.github/workflows/os-lab-ci.yml](.github/workflows/os-lab-ci.yml) | Node、Python、Rust、QEMU 与 VitePress CI |
 | [progress.md](progress.md) | 研发过程、验证记录和阶段收口 |
-
-Prompt 评测与消融实验结果：
-
-![Prompt 评测结果](./assets/prompt-eval-v3-results.png)
 
 ## 附录：初赛归档
 
