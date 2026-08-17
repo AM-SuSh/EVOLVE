@@ -1,7 +1,7 @@
 # EVOLVE: Evolving Virtual OS Learning & Verification Environment
 
 EVOLVE 是一套面向操作系统课程的渐进式实验、可信验证与智能辅导环境。系统以 Rust + RISC-V 64 教学内核为基础，覆盖 Lab1-Lab8，并提供学生隔离工作区、受控运行、行为断言、编译诊断、Trace、AI 导师、知识库、学习评价和教师管理。
-
+ 
 ## 整体成果
 
 本仓库的最终成果以 EVOLVE 自研系统为主，并在赛题参考环境上完成 30% 练习；整体成果如下：
