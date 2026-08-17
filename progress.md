@@ -1,7 +1,7 @@
 # EVOLVE 项目进度总览
 
 > 文档定位：本文件为 EVOLVE 项目阶段性交付的进度文档，记录从环境搭建、参考练习、自研内核到教学工作台完整闭环的开发过程与验证结果。
-> 最近更新：2026-08-15
+> 最近更新：2026-08-17
 
 ## 目录
 
@@ -19,7 +19,7 @@
 | ---- | ---------------------------------------------------- |
 | 赛题名称 | AI 合作的操作系统课教学实验环境                                    |
 | 自研环境 | os-lab（Rust + RISC-V 64 + QEMU，单内核 feature gate 渐进式） |
-| 项目周期 | 2026-06-01 ～ 2026-08-14                              |
+| 项目周期 | 2026-06-01 ～ 2026-08-17                              |
 | 团队规模 | 3 人                                                  |
 | 协作模式 | 文件边界划分 + 串行/并行混合，全程与 AI 工具协作                         |
 
@@ -27,18 +27,18 @@
 ### 成员分工
 
 
-| 成员  | 职责分工                                                                                                                  | 负责目录与主要产物                                                                                                                                  |
-| --- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| 高嘉泽 | 内核主体实现：feature gate 骨架、trap / mm / process / fs / sync 各模块随 lab1–lab5 逐级演进；构建系统（Makefile / build.rs / linker）；教学内容与评价 | `os-lab/kernel/`；Lab spec、知识层次、Lab2/3 样板、量规与试用方案                                                                                           |
-| 郭一心 | 6 个组件 crate（os-sbi / os-context / os-syscall / os-alloc / os-vm / os-fs）实现与 host 单元测试；user 用户态测试程序；学生工作台与可视化          | `os-lab/os-*/`、`os-lab/user/`、`os-lab/tests/`；Monaco/xterm、文件状态、Problems、Trace Viewer 与端到端交互                                               |
-| 董田  | 教学文档体系与总结材料；AI 导师、运行证据、事件契约、SQLite 数据链和教学 trace；运行时、数据与 AI                                                            | `os-lab/labs/`、`os-lab/tutor/`、`os-lab/learning/`、`os-lab/handbook/tutor-server.mjs`；run/event/trace 契约、SQLite 证据层、导师 harness、评分与 Lab 发布后端 |
+| 成员 | 职责分工 | 负责目录与主要产物 |
+| --- | --- | --- |
+| AM-SuSh | 系统总体集成与服务端证据链建设：推进渐进式内核与学生工作区联调；完成可信验证、Cargo 诊断、用户隔离和学习数据持久化；建设版本化知识库、中文 FTS、向量混合检索和教师知识工作台；构建 Tutor Agent 与 Assessment Agent，完成引导式教学、证据驱动评价、复盘逻辑优化等平台闭环 | `os-lab/kernel/`、`os-lab/tutor/`、`os-lab/learning/`、`os-lab/handbook/tutor-server.mjs`；可信 recipe、Trace、Tutor/Assessment、RAG 与学习数据 |
+| SIZN | 负责教学 IDE 和教师端主要交互：实现学生端 Monaco/xterm 工作区与相关功能、教师端教学服务功能设计与构建；完善双端交互逻辑与流程性能优化；参与编写 Lab Tutor Prompt、标准示例、技术文档并进行 Prompt 评测 | `os-lab/handbook/`、`assets/`、`README.md`；学生工作台、教师端、演示视频/动图、README 与总体材料收口 |
+| RnTs1002 | 负责教学内容标准化和实验任务设计：建立 Lab Package 样板、概念规格、检查点、量规与 OPRE/知识路径材料；系统重写和校准 Lab1–Lab8 实验手册及基础教学设计；重点迁移实验代码到真实内核实现文件，同步 Scaffold、上下文和前端文件列表并进行人工测评 | `os-lab/labs/`、`os-lab/lab-packages/`、`os-lab/scaffold/`、`docs/`、`EVOLVE总体实验技术文档.md`；Lab1–Lab8 手册、机器可读规格、变体与对比文档 |
 
 
 ---
 
 ## 二、开发进度安排
 
-项目按「前置准备 → 初赛交付 → 教学平台深化 → 交付收口」持续推进，时间覆盖 2026-06 至 2026-08。6 月完成环境搭建、参考练习与自研内核初赛交付，集中开发期与 git 提交记录完全对应；7 月至 8 月在初赛成果上继续完成教学工作台、可信证据、AI 导师、知识库、学习评价与教师管理，最终形成 Lab1–Lab8 的完整教学闭环。整体进度与逐日验证结果见「四、每日开发进度记录」。
+项目按「前置准备 → 初赛交付 → 教学平台深化 → 交付收口」持续推进，时间覆盖 2026-06 至 2026-08。6 月完成环境搭建、参考练习与自研内核初赛交付，集中开发期与 git 提交记录完全对应；7 月至 8 月在初赛成果上继续完成教学工作台、可信证据、AI 导师、知识库、学习评价与教师管理，最终形成 Lab1–Lab8 的完整教学闭环。整体进度与逐日验证结果见「四、每日开发进度记录」；最终实现边界与测试口径以 `EVOLVE总体实验技术文档.md` 为准。
 
 
 | 开发大块   | 时间            | 主要内容                                                                 | 推进状态 |
@@ -46,7 +46,7 @@
 | 前置准备   | 06-01 ～ 06-20 | 赛题与参考资料研读、三人分工与计划、Rust/QEMU/riscv64 环境配置、参考仓库拉取与 base 测试             | ✅ 完成 |
 | 初赛交付   | 06-21 ～ 06-30 | 自研 os-lab 内核 Lab1–Lab5、参考环境 ch3/ch4/ch5/ch6/ch8 exercise、教学文档与初赛交付材料 | ✅ 完成 |
 | 教学平台深化 | 07-26 ～ 08-10 | 学生/教师工作台、账号与班级体系、可信运行与 Trace、评分与复核、AI 导师与 RAG 知识库、Lab 工厂发布链路         | ✅ 完成 |
-| 交付收口   | 08-11 ～ 08-14 | EVOLVE 品牌与入口收口、Trace 展示精简、多账号事件隔离、班级与账号管理、当前阶段回归验证                   | ✅ 完成 |
+| 交付收口   | 08-11 ～ 08-17 | EVOLVE 品牌与入口收口、Trace 展示精简、多账号事件隔离、班级与账号管理、内核/Tutor 清理修复、Lab3–8 Trace 可信验证、总体技术文档与 README 终稿 | ✅ 完成 |
 
 
 ### 里程碑验收
@@ -66,6 +66,8 @@
 | RAG 知识库接入 AI 导师                     | 08-06 | RAG 与 Tutor 记录              |
 | 意图路由与 Rubric v3 全链路                 | 08-10 | Prompt Eval 与评分记录           |
 | 教师端发布与班级管理收口                        | 08-14 | 08-14 记录、`npm test` 136 项全绿 |
+| Lab3–Lab8 Trace 可信验证                   | 08-16 | 8 个 Lab recipe、54/54 行为与 Trace 断言 |
+| 总体技术文档与仓库终稿                         | 08-17 | EVOLVE 总体技术文档 §5/§7/§8、README 终稿 |
 
 
 ---
@@ -73,22 +75,24 @@
 ## 三、当前进度与交付状态
 
 
-| 交付维度        | 当前状态                                                                                     | 验证依据                                        |
+| 交付维度        | 当前状态 | 验证依据 |
 | ----------- | ---------------------------------------------------------------------------------------- | ------------------------------------------- |
-| 参考环境练习（30%） | ch3/ch4/ch5/ch6/ch8 exercise 全部完成，补丁与复现见 `reference-patches/`、`docs/reference-report.md` | 06-19 base 测试、06-27 exercise 收尾记录           |
-| 自研教学内核（70%） | Lab1–Lab8 渐进式 RISC-V 内核与用户测试程序完成，QEMU/断言回归通过                                             | 06-21～06-27 回归记录，08-10～08-14 cargo check 记录 |
-| 教学工作台       | 学生隔离工作区、Monaco、终端、Problems、Trace、实验报告与学习评价可用                                             | 07-26～08-04 工作台记录                           |
-| AI 导师与知识库   | 意图路由、证据门控、答案护栏、RAG 混合检索与知识权限已接通                                                          | 08-05～08-10 导师/RAG/评测记录                     |
-| 教师端         | 班级与账号管理、实验开放与变体发布、评分复核、报告验收可用                                                            | 08-02～08-14 教师端记录                           |
-| 工程验证        | `npm test` 136 项全绿；VitePress build、smoke、`cargo check` 通过                                | 08-14 最新记录                                  |
+| 参考环境练习（30%） | ch3/ch4/ch5/ch6/ch8 exercise 全部完成，补丁与复现见 `reference-patches/`、`docs/reference-report.md` | 06-19 base 测试、06-27 exercise 收尾记录 |
+| 自研教学内核（70%） | Lab1–Lab8 渐进式 RISC-V 内核与用户测试程序完成，QEMU/断言回归通过 | 06-21～06-27 回归记录，08-16 内核修复与 Trace 记录，EVOLVE 总体技术文档 §5 |
+| 教学工作台       | 学生隔离工作区、Monaco、终端、Problems、实验报告与学习评价可用；运行前自动同步当前 Lab Scaffold | 07-26～08-16 工作台记录 |
+| AI 导师与知识库   | 意图路由、证据门控、答案护栏、RAG 混合检索与知识权限已接通；Tutor/Assessment 双 Agent 复盘分工，V3 Eval 19 条综合 96 | 08-05～08-16 导师/RAG/评测记录 |
+| 教师端         | 班级与账号管理、实验开放与变体发布、评分复核、报告验收、期末任务发布可用 | 08-02～08-17 教师端记录 |
+| 工程验证        | `npm test` 143/143（2026-08-17 复核）；Rust host 40/40、Python 32/32，自动/契约合计 215/215；QEMU 8 recipe 54/54；Smoke 与 VitePress build 通过 | EVOLVE 总体技术文档 §5.1 |
+| 总体文档与交付    | EVOLVE 总体技术文档与 README 终稿完成；仓库目录、关键入口、团队分工按 §7/§8 对齐 | 08-16～08-17 提交记录与 EVOLVE 总体技术文档 |
 
 
 ---
 
 ## 四、每日开发进度记录
 
-> AI 工具使用声明、成果归属与交互记录见 [初赛项目总报告.md §8](初赛项目总报告.md#8-开发时使用-ai-工具的成果) 与 `os-lab/docs/ai-collaboration.md`。
-> 本文件共收录 287 条开发记录，覆盖 2026-06-19 至 2026-08-14，按日期升序排列；每条记录统一包含「What was done / Testing / Notes」。
+> AI 工具使用声明、成果归属与交互记录见 [初赛项目总报告.md §8](docs/初赛项目总报告.md#8-开发时使用-ai-工具的成果) 与 [EVOLVE总体实验技术文档.md §7.2](EVOLVE总体实验技术文档.md#72-ai协作说明)。
+> 分工、测试与交付汇总以 [EVOLVE总体实验技术文档.md](EVOLVE总体实验技术文档.md) 为准。
+> 本文件共收录 309 条开发记录，覆盖 2026-06-19 至 2026-08-17，按日期升序排列；每条记录统一包含「What was done / Testing / Notes」。
 
 ## 2026-06-19 - Task: 拉取参考仓库 test 分支并运行基础测试
 
@@ -5991,3 +5995,289 @@ ariants/fill/manifest.yaml、published.json 与 scripts/scaffold.mjs LEGACY 表�
 - 回滚：还原上述文件。
 - 用户侧：关闭/重载 `kernel/src/process.rs`（勿保存旧缓冲），再跑一次 Lab8 验证。
 
+## 2026-08-16 - Task: 操作指南收尾并补充演示视频
+
+### What was done
+- `guide/start.md` 的 7 处录屏占位从 GIF 升级为 `<video>`（MP4 优先、GIF 作为 poster 封面），新增 `guide-entry` / `workbench-layout` / `journey-claim` / `run-and-test-results` / `report-socratic-review` / `ai-tutor-evidence` / `teacher-publish-review` 7 个 MP4。
+- `public/gifs/` 下同名 GIF 更新为演示封面，`gifs/README.md` 重写为逐条录屏需求清单，覆盖镜头、UI 露出、建议标注与注意事项。
+- `handbook.css` 新增 `.guide-video` 布局；`tutor-server.mjs` 的运行环境注入改为按 `D:\AppGallery\Rust` → `D:\Rust` → 用户 `.cargo` 顺序探测可用工具链，避免继承失效的 `CARGO_HOME` / `RUSTUP_HOME`。
+- 同步更新 `xv6-comparison.md`，删去 `start.md` 末尾的「录屏演示占位图」旧表格。
+
+### Testing
+- 全量回归（2026-08-17 复核）：`npm test` 143/143 通过。
+- VitePress 构建通过，VitePress 生产构建与同步口径见 EVOLVE 总体技术文档 §5.1。
+
+### Notes
+- 改动：`guide/start.md`、`public/gifs/`、`public/videos/`、`handbook.css`、`gifs/README.md`、`tutor-server.mjs`、`xv6-comparison.md`、`progress.md`
+- 回滚：还原上述文档与媒体文件，移除新增 MP4 与 `.guide-video` 样式。
+
+## 2026-08-16 - Task: 修复地址空间释放、fd 越界、SBI 定时器与阻塞 syscall 错误码
+
+### What was done
+- `os-vm` 的 `MapArea::unmap` 对相邻 ELF PT_LOAD 共享边界页只释放一次并清除 PTE；`MemorySet::drop` 改为遍历前 `area_count` 槽位，避免地址空间压缩后重复释放页帧。
+- fd 表与管道 / 文件 `close` / `read` / `write` 全部改用 `slots.get(fd)` 越界安全访问；`close_fd_pair` 补上清空槽位。
+- `riscv.rs` 的 SBI legacy timer 参数修正：`a0` / `a1` 改为 `inout`，让 SBI 返回值不污染寄存器，deadline 经 `a0` 传入。
+- Lab8 同步 syscall 返回码统一：`-1` 仅表示「阻塞后重试」，真实错误改为 `-2`；`condvar_wait` 解锁后不再抢锁，直接入队并返回阻塞重试，死锁状态改为 `mutex_wait`。
+- `os-sync` 的 `Condvar::wait_with_mutex` 接口简化，用户态 `mutex` / `semaphore` / `condvar` 包装按 `-1` 重试协议循环。
+
+### Testing
+- `os-sync/tests/sync_primitives.rs` 同步调整；`os-vm` 单测覆盖共享边界页与 ELF PT_LOAD 映射。
+- 全量 Rust host 40/40、QEMU Lab8 12/12 的当前口径见 EVOLVE 总体技术文档 §5.1。
+
+### Notes
+- 教学边界：`unlink` 只更新内存元数据、不回收 easy-fs 磁盘 inode；`dup` 复制 `OpenedFile` 值而非共享读偏移，均已在代码注释中说明是有意简化。
+- 改动：`os-lab/kernel/src/fs/{disk,embedded}.rs`、`os-lab/kernel/src/{riscv,sync,sync_syscall}.rs`、`os-lab/os-sync/src/condvar.rs`、`os-lab/os-sync/tests/sync_primitives.rs`、`os-lab/os-vm/src/lib.rs`、`os-lab/user/src/syscall.rs`、`progress.md`
+- 回滚：还原上述文件。
+
+## 2026-08-16 - Task: 清理内核与组件死代码并闭合遗留接口
+
+### What was done
+- 清理 `kernel` 的 `process` / `processor` / `task` / `trap` / `riscv` 未用路径，闭合 `os-fs` / `os-vm` / `os-signal` / `os-sync` 遗留接口。
+- `os-fs` 删除 `disk` / `fd_kind` 库模块，host mock 移至 `tests/host_mock.rs`，避免教学 mock 进入发布库面。
+- `os-vm` 删除 `elf_map_areas` 等重复 ELF 解析，统一由 `MemorySet::map_elf_pt_load` 承担；`os-alloc` 删除未用分配 API。
+- 删除旧 `TeacherReport.vue` 评分复核页，教师端统一走实验验收；`os-lab/labs/想法.md` 更名为 `Lab手册复核指南.md`。
+- 新增 `os-fs/tests/host_mock.rs` 7 项 host 测试。
+
+### Testing
+- 全量回归（2026-08-17 复核）：`npm test` 143/143 通过。
+- Rust host 40/40、VitePress 构建通过的当前口径见 EVOLVE 总体技术文档 §5.1。
+
+### Notes
+- 改动：`os-lab/kernel/`、`os-lab/os-*/`、`os-lab/handbook/.vitepress/theme/components/TeacherReport.vue`、`os-lab/handbook/.vitepress/theme/index.ts`、`os-lab/labs/Lab手册复核指南.md`、`progress.md`
+- 回滚：还原上述文件；如需要可恢复旧评分复核组件及 `os-fs` 库模块。
+
+## 2026-08-16 - Task: 移除 Tutor 废用 stage 兼容路由与 C3 状态机
+
+### What was done
+- 删除 `tutor/baseline.mjs`、`tutor/state-machine.mjs`、旧 harness、stage 提示词与 `harness-case-v1.schema.json` 等 stage 路由代码，`frameworkVersion` 固定为 `intent-routing-v1`。
+- `/chat` 只按意图识别路由；`stage` 保留为客户端导航遥测，不再参与回答策略。
+- `enforceTutorOutput` 从旧 harness 迁移到 `tutor/turn-policy.mjs`，新增 `output-guard.test.mjs` 承接证据引用与答案泄漏用例。
+- `package.json` 的 test / day7 脚本清理旧 harness 入口。
+
+### Testing
+- 全量回归（2026-08-17 复核）：`npm test` 143/143 通过，包含输出护栏、证据引用与意图不变性用例。
+- Smoke 与 VitePress 构建通过的当前口径见 EVOLVE 总体技术文档 §5.1。
+
+### Notes
+- 改动：`os-lab/handbook/package.json`、`os-lab/handbook/tutor-server.mjs`、`os-lab/tutor/` 下旧 harness 与 stage prompt、`os-lab/tutor/turn-policy.mjs`、`os-lab/tutor/output-guard.test.mjs`、`progress.md`
+- 回滚：还原被删文件并恢复 `OS_LAB_TUTOR_ROUTING_MODE=stage` 兼容路由。
+
+## 2026-08-16 - Task: 仓库卫生收尾与资产整理
+
+### What was done
+- `.gitignore` 增加 `output/`；`scripts/activate-os-env.ps1` 参数化工具路径并支持 `activate-os-env.local.ps1` 覆盖。
+- 赛题原文归档到 `docs/赛题.md`，`sync-content.mjs` 同步源路径更新。
+- 新增总体架构、技术架构、Agent 对话截图等资产；`os-lab/README.md`、`os-lab/tests/README.md` 同步 lab1–lab8 验证范围。
+
+### Testing
+- `scripts/activate-os-env.ps1` 的路径参数与覆盖文件逻辑完成脚本级检查。
+- 仓库路径与构建入口检查通过；仓库业务代码无行为变化。
+
+### Notes
+- 改动：`.gitignore`、`assets/`、`docs/赛题.md`、`os-lab/README.md`、`os-lab/docs/design-report.md`、`os-lab/handbook/scripts/sync-content.mjs`、`os-lab/tests/README.md`、`scripts/activate-os-env.ps1`、`progress.md`
+- 回滚：还原上述文件并移除新增资产；`output/` 忽略项可保留。
+
+## 2026-08-16 - Task: 清理手册冗余页面并修复断链
+
+### What was done
+- 删除已失效的 `os-lab/docs/ai-collaboration.md`、`ai-tutor-stage-guide.md`、`guide/beginner.md`、`handbook/docs/day1-workbench-audit.md` 等冗余页面，`start.md` 收口为 EVOLVE 操作指南。
+- `socratic-review-implementation.md` 提升至 `os-lab/docs/`，README 与设计报告链接同步。
+- `deployment-and-recovery.md`、`design-report.md`、`workbench-ui.md` 去除对已删页面与 stage 兼容路径的引用。
+
+### Testing
+- VitePress 生产构建通过，同步 Markdown 数量与构建口径见 EVOLVE 总体技术文档 §5.1。
+- 全量回归（2026-08-17 复核）：`npm test` 143/143 通过。
+
+### Notes
+- 改动：`os-lab/README.md`、`os-lab/docs/`、`os-lab/handbook/docs/`、`os-lab/handbook/guide/start.md`、`progress.md`
+- 回滚：还原被删文档及链接；本文件已同步改为指向 `docs/初赛项目总报告.md` 与 EVOLVE 总体技术文档。
+
+## 2026-08-16 - Task: Lab3–Lab8 可信验证补全 Trace 断言
+
+### What was done
+- kernel `trace.rs` 扩展 `TRACE_V2`：Lab3 起增加 `address_space`、Lab4 起增加 `syscall` 事件，`trace-edu` 不再只作用于 Lab2。
+- recipe 对 Lab3–Lab8 启用 `trace-edu`，新增 traceMatches：`address_space`、`clone` / `wait4`、`openat` / `pipe`、`linkat` / `mmap` / `spawn`、`dup` / `kill` / `sigreturn`、`thread_create` / `mutex_lock` / `condvar_wait` / `enable_deadlock_detect`。
+- `lab.yaml` schema_version 升到 2，增加 `command_with_trace` 与 `observable_trace`；`contracts.mjs` 支持 v1 / v2 双版本 Trace 解析与校验。
+- 新增 `lab-spec-v2.schema.json`、`trace-v2.schema.json`，并更新 `run-recipes.mjs`、`trace-output-filter.mjs`、`lab-factory.mjs` 的 Trace 契约。
+
+### Testing
+- `contracts.test.mjs`、`trace-store.test.mjs`、`lab2-contract.test.mjs`、`trace-output-filter.test.mjs` 同步更新。
+- 当前口径：QEMU 8 个 Lab recipe、54/54 行为与 Trace 断言通过（EVOLVE 总体技术文档 §5.1）。
+
+### Notes
+- 改动：`os-lab/kernel/src/trace.rs`、`os-lab/kernel/src/{mm,task,trap,main}.rs`、`os-lab/lab-packages/lab3~lab8/lab.yaml`、`os-lab/tutor/{contracts,run-recipes}.mjs`、`os-lab/tutor/schema/`、`os-lab/handbook/`、`progress.md`
+- 回滚：还原上述文件，可恢复为仅 Lab2 Trace 的旧口径。
+
+## 2026-08-16 - Task: 运行前同步当前 Lab Scaffold
+
+### What was done
+- `LabWorkspace.vue` 在登录、切换 Lab、打开工作台时先刷新学习权限并同步当前 Lab scaffold；未发放代码时不挂载编辑器 / 终端，防止在上一层工作区运行当前 Lab。
+- `/run` 对学生返回 `409 LAB_NOT_ISSUED` 并附当前 scaffold 状态，明确提示先完成自动同步。
+- smoke 增加「未发放 Lab3 即运行被拒」用例。
+
+### Testing
+- `npm run test:smoke` 通过，覆盖未发放运行被拒与发放后运行链路。
+- 全量回归（2026-08-17 复核）：`npm test` 143/143 通过。
+
+### Notes
+- 改动：`os-lab/handbook/.vitepress/theme/components/LabWorkspace.vue`、`os-lab/handbook/tutor-server.mjs`、`os-lab/handbook/tutor-server.smoke.mjs`、`progress.md`
+- 回滚：还原上述文件并移除 `LAB_NOT_ISSUED` 门禁。
+
+## 2026-08-16 - Task: 拆分复盘出题与评价 Agent
+
+### What was done
+- 新增 `os-lab/tutor/review-tutor.mjs`：Assessment 只生成内部问题简报，Tutor Agent 负责把简报转成面向学生的自然问题；`questionId` 与通过标准不改变，重复问题和内部标准泄漏回退确定性种子。
+- `/learning/review/start`、`/answer`、`/resume` 使用双运行时（assessment + tutor）并记录 `agents` 元数据；前端 `SocraticReviewPanel.vue` 标注 Tutor Agent 出题、Assessment Agent 独立评价。
+- 新增 `review-tutor.test.mjs` 4 项，覆盖出题改写、证据白名单、追问上下文和重复 / 泄漏拒绝。
+
+### Testing
+- 全量回归（2026-08-17 复核）：`npm test` 143/143 通过，其中 review-tutor 4 项全绿。
+- Smoke 覆盖复盘启动、回答评价与追问链路。
+
+### Notes
+- 改动：`os-lab/tutor/review-tutor.mjs`、`os-lab/tutor/review-tutor.test.mjs`、`os-lab/handbook/tutor-server.mjs`、`os-lab/handbook/.vitepress/theme/components/SocraticReviewPanel.vue`、`os-lab/handbook/.vitepress/theme/tutor-model.ts`、`os-lab/learning/assessment-agent.mjs`、`progress.md`
+- 回滚：还原上述文件，删除双 Agent 复盘编排即可回到单 Agent 旧链路。
+
+## 2026-08-16 - Task: 期末探索任务收口为两类方向
+
+### What was done
+- `FinalProjectKind` 从 5 类收敛为 `performance` / `app`，移除故障注入、开放课题与自定义探索入口。
+- `FinalProjectEditor.vue`、`FinalProjectPublishPanel.vue`、`tutor-model.ts`、`scaffold.mjs` 的前后端默认值统一；非法 kind 回退到 `performance`。
+- `workbench-ui.md` 同步期末任务字段、模板与发布说明；`scaffold.test.mjs` 更新默认 kind 用例。
+
+### Testing
+- 全量回归（2026-08-17 复核）：`npm test` 143/143 通过，包含 scaffold 期末任务归一化用例。
+
+### Notes
+- 改动：`os-lab/handbook/.vitepress/theme/components/FinalProjectEditor.vue`、`FinalProjectPublishPanel.vue`、`os-lab/handbook/.vitepress/theme/tutor-model.ts`、`os-lab/handbook/docs/workbench-ui.md`、`os-lab/scripts/scaffold.mjs`、`os-lab/scripts/scaffold.test.mjs`、`progress.md`
+- 回滚：还原上述文件，恢复旧方向枚举与入口。
+
+## 2026-08-16 - Task: 服务端权威记录代码保存事件
+
+### What was done
+- `/fs/save` 要求 student + `labId` + `sessionId`，保存前读取旧内容，计算 `baseHash` / `newHash` 与增删行数，服务端落 `code_save` 事件；内容未变化返回 `changed:false` 且不重复写盘。
+- 前端 `CodePanel.vue` 随保存请求提交 labId / sessionId；`/events` 明确拒绝客户端伪造 `code_save`。
+- smoke 覆盖 broken / restored / unchanged save、伪造 `code_save` 拒绝和评分细项 `I1` 得 2 分。
+
+### Testing
+- `npm run test:smoke` 通过，覆盖服务端权威保存事件与伪造事件拒绝。
+- 全量回归（2026-08-17 复核）：`npm test` 143/143 通过。
+
+### Notes
+- 改动：`os-lab/handbook/.vitepress/theme/components/CodePanel.vue`、`LabWorkspace.vue`、`os-lab/handbook/tutor-server.mjs`、`os-lab/handbook/tutor-server.smoke.mjs`、`progress.md`
+- 回滚：还原上述文件，保存事件将退回客户端事件口径。
+
+## 2026-08-16 - Task: 新增 EVOLVE 与 tg-rcore/xv6 教学对比文档
+
+### What was done
+- 新增 `comparison.md`（后整理进 EVOLVE 总体技术文档附录 B）：三方代码组织、知识分布、AI 时代教学难题、定位互补对比。
+- 包含 feature 链、组件 crate 职责、机制对照与 30% 参考练习的 checker 口径。
+
+### Testing
+- 文档结构通读与三方统计核对；最终对比内容并入 EVOLVE 总体技术文档附录 B。
+- 全量回归（2026-08-17 复核）：`npm test` 143/143 通过。
+
+### Notes
+- 改动：`comparison.md`、`progress.md`；后续在 `522a64d` 文字整理中并入 EVOLVE 总体技术文档。
+- 回滚：删除该文档或从总体文档附录 B 移除对应章节。
+
+## 2026-08-16 - Task: 文字整理并生成 EVOLVE 总体实验技术文档
+
+### What was done
+- 将阶段性技术文档、8.12 PPT、初赛材料移入 `docs/`；新增根目录 `EVOLVE总体实验技术文档.md` 作为完整实验报告。
+- 删除 `comparison.md`、`xv6-comparison.md`、`os-lab/docs/architecture.md` 等旧文档，内容整理进 `agent-system-technical.md` 与总体文档；新增 Assessment-Tutor 图。
+- `docs/reference-report.md` 精简 AI 协作与复现章节，结论保持五章 exercise 全绿。
+
+### Testing
+- EVOLVE 总体技术文档的测试、评测与交付口径已整理为 §5 / §7 / §8。
+- 全量回归（2026-08-17 复核）：`npm test` 143/143 通过。
+
+### Notes
+- 改动：`EVOLVE总体实验技术文档.md`、`docs/` 文件移动、`assets/Assessment-Tutor.png`、`os-lab/docs/agent-system-technical.md`、`docs/reference-report.md`、`progress.md`
+- 回滚：还原文件移动与旧文档，恢复原目录结构。
+
+## 2026-08-16 - Task: Lab8 变体测试复查与 condvar 阻塞路径
+
+### What was done
+- 将内核修复中的 `condvar_wait` 语义同步到 Lab8 fill / debug 变体：去掉 `wait_with_mutex` 抢锁分支，wait 后固定返回 `-1` 阻塞重试；删除 `note_blocked` 死代码。
+- `trace.rs` 的 `address_space` 增加 `allow(dead_code)` 供 Lab3 使用；运行输出上限提高到 1 MiB。
+
+### Testing
+- Lab8 fill / debug 变体复验通过，无 `make_current_blocked` 等废弃引用。
+- QEMU Lab8 12/12 与全量测试口径见 EVOLVE 总体技术文档 §5.1；`npm test` 143/143（2026-08-17 复核）。
+
+### Notes
+- 改动：`os-lab/scaffold/exercises/lab8/{fill,debug}/kernel/src/sync_syscall.rs`、`os-lab/kernel/src/trace.rs`、`os-lab/handbook/tutor-server.mjs`、`progress.md`
+- 回滚：还原上述文件。
+
+## 2026-08-17 - Task: 删除手册「零、开始之前」并补齐 Lab3 地址空间 Trace
+
+### What was done
+- 8 份 Lab 手册删除「零、开始之前」H2，阶段映射注释同步；`Lab手册复核指南.md` 的推荐骨架改为 6 段。
+- Lab3 fill / debug scaffold 的 `create_user_space*` 补 `trace::address_space` 调用，使 Lab3 地址空间 Trace 断言成立。
+
+### Testing
+- QEMU Lab3 4/4 行为与 Trace 断言通过，包含 `address_space create`。
+- 全量回归（2026-08-17 复核）：`npm test` 143/143 通过。
+
+### Notes
+- 改动：`os-lab/labs/lab1~lab8-*.md`、`os-lab/labs/Lab手册复核指南.md`、`os-lab/scaffold/exercises/lab3/{fill,debug}/kernel/src/mm.rs`、`os-lab/handbook/.vitepress/theme/tutor-model.ts`、`progress.md`
+- 回滚：还原手册骨架与 Lab3 scaffold。
+
+## 2026-08-17 - Task: 总体材料整理并清理 ppt-docs
+
+### What was done
+- EVOLVE 总体技术文档大改：图片引用改为本地 `assets/`，目录与关键入口更新，Lab 体系、测试、Prompt Eval、分工、仓库描述收口。
+- 新增 Assessment 截图、前端首页与工作台截图，Tutor 截图更名；删除整个 `ppt-docs/` 章节草稿目录（13 份章节稿、答辩大纲与 README）。
+- README、总体技术文档与最终交付入口统一为 EVOLVE 总体技术文档 + `os-lab/` + `progress.md`。
+
+### Testing
+- EVOLVE 总体技术文档 §5.1 的测试 / 构建口径与仓库现状一致。
+- 全量回归（2026-08-17 复核）：`npm test` 143/143 通过。
+
+### Notes
+- 改动：`EVOLVE总体实验技术文档.md`、`assets/`、`ppt-docs/`（删除）、`progress.md`
+- 回滚：还原总体文档与图片，恢复 `ppt-docs/` 章节草稿。
+
+## 2026-08-17 - Task: 补充 Prompt Eval 结果图
+
+### What was done
+- 新增 `assets/prompt-eval-v2-ablation.png`、`assets/prompt-eval-v3-offline.png`、`assets/prompt-eval-v3-results.png`，供总体技术文档 §5.2 与 README 引用。
+
+### Testing
+- 图片路径解析与文档引用核对通过；EVOLVE 总体技术文档 §5.2 数值与图对应。
+- 全量回归（2026-08-17 复核）：`npm test` 143/143 通过。
+
+### Notes
+- 改动：`assets/prompt-eval-*.png`、`progress.md`
+- 回滚：删除上述图片并恢复旧图片路径。
+
+## 2026-08-17 - Task: README 终稿整理
+
+### What was done
+- README 增加整体成果、目录结构、系统架构、学生工作台、按赛题权重与验证交付入口；初赛材料归档到 `docs/`。
+- 增加许可证与证书核查结论（2026-08-17）：仓库内未发现 TLS 证书、私钥或签名证书，许可证均为无固定有效期开源许可。
+- 加入 Prompt 评测结果图，明确 30% 参考练习与 70% EVOLVE 自研系统的交付索引。
+
+### Testing
+- Markdown 链接、图片路径与 `docs/` 文件移动核对通过。
+- 全量回归（2026-08-17 复核）：`npm test` 143/143 通过。
+
+### Notes
+- 改动：`README.md`、`progress.md`
+- 回滚：还原 README 旧版结构。
+
+## 2026-08-17 - Task: README 终稿层级再调整
+
+### What was done
+- README 再次调整层级：EVOLVE 总体技术文档升为「整体技术说明与实现边界」，8.12 阶段性文档与 PPT 降为「阶段性成果」。
+- 学生工作台截图与系统架构图分开放置，验证与交付入口改为 EVOLVE 总体技术文档、环境配置、CI 与 progress。
+- 删除 README 中 Prompt 评测图冗余展示，保留总体文档与 assets 引用。
+
+### Testing
+- README 链接与图片路径核对通过，最终交付索引与 EVOLVE 总体技术文档 §8 一致。
+- 全量回归（2026-08-17 复核）：`npm test` 143/143 通过。
+
+### Notes
+- 改动：`README.md`、`progress.md`
+- 回滚：还原 README 上一版结构。
