@@ -165,9 +165,7 @@ npm run build
 | [EVOLVE总体实验技术文档.md](EVOLVE总体实验技术文档.md) | 当前完整实验报告与技术依据 |
 | [docs/os-lab.md](docs/os-lab.md) | 自研系统验证、运行和教学工作台入口 |
 | [os-lab/docs/agent-system-technical.md](os-lab/docs/agent-system-technical.md) | Tutor、Assessment、RAG 与证据门控实现 |
-| [os-lab/docs/socratic-review-implementation.md](os-lab/docs/socratic-review-implementation.md) | 苏格拉底式复盘与教师复核流程 |
 | [docs/reference-report.md](docs/reference-report.md) | 参考环境基线、exercise 与 checker 结果 |
-| [docs/8.12阶段性实验技术文档.md](docs/8.12阶段性实验技术文档.md) | 阶段性技术文档归档 |
 | [progress.md](progress.md) | 项目迭代、验证过程与协作记录 |
 
 ## 参考基线
