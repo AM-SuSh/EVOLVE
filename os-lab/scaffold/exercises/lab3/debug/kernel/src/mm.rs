@@ -149,6 +149,8 @@ pub fn create_user_space(space_id: usize, elf: &'static [u8]) {
     USER_SPACES.with(|spaces| {
         spaces[space_id] = Some(user_space);
     });
+    #[cfg(feature = "trace-edu")]
+    crate::trace::address_space(space_id, "create");
 }
 
 /// 装入 ELF 与用户栈：用户代码/数据页原本应保留 U（可被 U-mode 访问），此处附近埋了权限问题。
@@ -363,6 +365,8 @@ pub fn create_user_space_from_elf(space_id: usize, elf: alloc::vec::Vec<u8>) {
     USER_SPACES.with(|spaces| {
         spaces[space_id] = Some(user_space);
     });
+    #[cfg(feature = "trace-edu")]
+    crate::trace::address_space(space_id, "create");
 }
 
 /// Replace the current process user mappings with a fresh ELF image (exec).
