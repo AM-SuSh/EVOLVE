@@ -6,20 +6,6 @@
 >
 >  [第 6 章 · 机制：受限直接执行（P49）开头引言部分](/downloads/ostep-zh.pdf#page=49)
 
-## 零、开始之前（还是最后check）
-
-在开始完成你的最小内核之前，请确认已完成以下准备：
-
-1. **本机环境已就绪**：按 [环境搭建指南](/setup/environment) 装好 Rust（含 `riscv64gc-unknown-none-elf` target）、QEMU、（Windows 还需 MSVC Build Tools）。
-2. **快速自检**：以下两条命令都能输出版本号，说明环境就绪：
-  ```powershell
-   rustc --version          # 预期：rustc 1.96.0 ...
-   qemu-system-riscv64 --version   # 预期：QEMU emulator version 11.0.50 ...
-  ```
-3. **建议先读书**：OSTEP 第一部分（导论）+ 第 6 章开头（受限的直接执行，为 Lab2 铺垫）。Lab1 的启动发生在教材「已有 OS」假设之前。
-
-
-
 ## 一、问题场景
 
 OSTEP 从**虚拟化、并发和持久性**三条主线展开操作系统原理，但这些内容都隐含了一个基本前提：**内核已经被加载到内存，并且正在正常运行**。

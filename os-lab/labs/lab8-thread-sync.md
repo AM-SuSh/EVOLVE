@@ -12,23 +12,6 @@
 >
 >  [第 31 章 · 信号量（P274）](/downloads/ostep-zh.pdf#page=274)
 
-## 零、开始之前
-
-在开始把「同进程多执行流」与阻塞式同步接进内核之前，请确认已完成以下准备：
-
-1. **已完成 Lab7**：理解统一 fd、信号与管道（见 [Lab7 IPC 与信号](/labs/lab7-ipc-signal)）。本实验会在同一进程地址空间里再挂线程，并加上阻塞 mutex / 信号量 / 条件变量。
-2. **快速自检**：以下两条命令都能输出版本号，说明环境就绪：
-  ```powershell
-   rustc --version                    # 预期：rustc 1.96.0 ...
-   qemu-system-riscv64 --version      # 预期：QEMU emulator version ...
-  ```
-3. **建议先读书**：OSTEP 第 26–28、30–31 章（线程、锁、条件变量、信号量）。Lab8 对应 feature 为 `lab8`（依赖 `lab7`），也是本系列的**最后一个实验**。
-
-> Lab8 需要 VirtIO 与磁盘镜像 `fs.img`。直接跑 `make test-lab8` 即可：编内核时 `build.rs` 会自动打包用户程序与 `fs.img`（`initproc` 为 `lab8_integration_test`）；也可用 `make check-fs-img` 校验镜像。  
-> **请勿**使用裸的 `cargo run -p kernel --features lab8`，否则往往挂不上块设备。
-
-
-
 ## 一、问题场景
 
 从 Lab1 走到 Lab7，你已经亲手把一个最小内核搭到了能跑进程、文件、磁盘与信号的样子。但是现在调度与协作的主角大多还是**进程**：各自有地址空间，靠系统调用、管道和信号往来。

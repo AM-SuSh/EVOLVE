@@ -6,18 +6,6 @@
 >
 > [第 7 章 · 调度导论（P60）](/downloads/ostep-zh.pdf#page=60)
 
-## 零、开始之前
-
-在开始完成中断处理与多任务之前，请确认已完成以下准备：
-
-1. **已完成 Lab1**：理解了裸机启动、SBI 调用、`#![no_std]`、内核入口与关机流程。Lab2 在 Lab1 的启动链上继续扩展。
-2. **快速自检**：以下两条命令都能输出版本号，说明环境就绪：
-   ```powershell
-   rustc --version                    # 预期：rustc 1.96.0 ...
-   qemu-system-riscv64 --version      # 预期：QEMU emulator version 11.0.50 ...
-   ```
-3. **建议先读书**：OSTEP 第 6 章（受限的直接执行）+ 第 7 章（调度导论）。Lab2 是 CPU 虚拟化的起点，对应 feature 为 `lab2`（依赖 `lab1`）。
-
 ## 一、问题场景
 
 Lab1 建立了一条完整的启动链路：QEMU 加载内核映像到 `0x80200000`，OpenSBI 完成固件初始化后跳转到内核入口 `_start`，内核随后通过 SBI 调用输出 `Hello, OS!` 并正常关机。
