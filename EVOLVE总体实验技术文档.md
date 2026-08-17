@@ -1,6 +1,8 @@
 # EVOLVE 实验报告文档
 
 ---
+[TOC]
+
 ## 1. 总体概述
 
 ### 1.1 项目背景
@@ -639,7 +641,7 @@ Trace 是可信运行产生的后端证据制品，不再是一项面向学生�
 
 ### 3.5 Tutor Agent：行为受约束的教学助手
 
-![Tutor 对话链路](assets/agent-system-tutor-chat-final.png){width=92%}
+![Tutor 对话链路](assets/Tutor.png){width=92%}
 
 `POST /chat` 的完整处理顺序如图：校验 Lab/会话/消息与证据引用 → 读取 Tutor 状态与证据摘要 → 意图识别与轮次规划 → **护栏先行** → 受限 RAG → 分层 Prompt → 模型调用（多重降级）→ 输出护栏 → 权威落库。几个关键设计：
 
@@ -1002,77 +1004,95 @@ Tutor 只负责教学表达，不接触或泄露内部评分标准。它根据�
 
 注：每阶段修改均以机器可读契约作为接口边界，以测试 fixture 和真实 HTTP/SQLite Smoke 作为验收依据。文档以源码、`lab.yaml`、数据库统计和实际测试结果为事实来源。新增功能同步更新对应测试、过程文档和总体文档，避免手册、Scaffold、Prompt、验证命令和前端显示各自漂移。
 
-## 5. 系统测试情况（最后测试改）
+## 5. 实验与测试
 
-### 5.1 **分层测试策略**
+### 5.1 系统测试情况
 
-| 层次 | 验证内容 |
-| --- | --- |
-| Rust host tests | 页帧、页表、文件抽象、信号、等待队列、mutex、semaphore、condvar 等纯逻辑 |
-| Node unit/contract tests | 运行 recipe、断言、诊断、Trace、Tutor 策略、RAG、评价、复核、数据库、Factory |
-| Python tests | 文档规范化、章节分块、质量过滤、Lab 知识投影 |
-| Tutor harness | 答案泄漏、证据门控、错误假设、冲突、长上下文和引用准确性 |
-| Smoke tests | Tutor Server 登录、接口、工作区和关键业务链 |
-| QEMU tests | RISC-V 内核、用户程序、VirtIO 磁盘和各 Lab 行为断言 |
-| VitePress build | 内容同步、Vue 编译、依赖解析和静态站点生成 |
+- **分层测试策略**
 
-### 5.2 **最新复核测试结果**
+| 层次                     | 验证内容                                                     |
+| ------------------------ | ------------------------------------------------------------ |
+| Rust host tests          | 页帧、页表、文件抽象、信号、等待队列、mutex、semaphore、condvar 等纯逻辑 |
+| Node unit/contract tests | recipe、断言、诊断、Trace、Tutor 策略、RAG、评价、复核、数据库、Factory |
+| Python tests             | 文档规范化、章节分块、质量过滤、Lab 知识投影                 |
+| Tutor V3 Eval            | 问题相关性、教学动作、答案泄漏、证据忠实度、阶段不变性       |
+| Assessment/RAG Harness   | 复盘计划、判定、反馈、知识权限、召回和 Prompt 契约           |
+| Smoke tests              | Tutor Server 登录、接口、工作区、运行、评价、报告和 Factory 链路 |
+| QEMU tests               | RISC-V 内核、用户程序、VirtIO 磁盘、Trace 和各 Lab 行为断言  |
+| VitePress build          | 内容同步、Vue 编译、依赖解析和静态站点生成                   |
 
-| 检查 | 结果 |
-| --- | --- |
-| Handbook/Tutor/Learning Node tests | 144/144 通过 |
-| 8 个组件 crate 的 host Rust tests | 42/42 通过 |
-| VitePress production build | 通过 |
-| Python knowledge tests | 32/32 通过 |
-| Tutor Harness | 34 个用例通过；答案泄漏率 0，问题相关性、引导动作、证据引用、阶段不变性均为 1.0 |
-| Assessment Harness | 5 个用例通过；计划有效性、题目新颖性、叙事中立性、判定准确性和可行动反馈率均为 1.0 |
-| Lab1 QEMU 可信验证 | 2/2 行为断言通过；裸机启动、内核入口与 QEMU 运行标识均通过 |
-| Lab2 QEMU 可信验证 | 6/6 行为断言通过；28 条 `trap_enter`、6 条 `task_switch` |
-| Lab3 QEMU 可信验证 | 3/3 行为断言通过；幂运算自检、5 轮 `Yield round` 与全部用户程序退出均通过 |
-| Lab4 QEMU 可信验证 | 4/4 行为断言通过；父子进程、`fork_test` 与全部进程退出均通过 |
-| Lab5 QEMU 可信验证 | 4/4 行为断言通过；内嵌文件、文件系统、管道与全部进程退出均通过 |
-| Lab6 QEMU 可信验证 | 8/8 行为断言通过；VirtIO 文件、硬链接、`mmap`、`spawn`、stride、文件系统、管道与全部进程退出均通过 |
-| Lab7 QEMU 可信验证 | 4/4 行为断言通过；`dup`、信号、信号屏蔽与管道均通过 |
-| Lab8 QEMU 可信验证 | 8/8 行为断言通过；线程、mutex、condvar、pipe、两类死锁检测均通过 |
+- **最新复核测试结果**
 
-本轮自动/契约测试合计 `218/218`（144 Node + 42 Rust + 32 Python）通过。QEMU 断言不计入该数，单独记录为 14 项端到端行为证据。知识库当前包含 8 个来源、35 个版本、1129 个文档、16099 个历史 Chunk，其中 1384 个活跃、1360 个已索引且具有 384 维本地确定性向量；这些数量会随重新摄取、发布和回滚变化。
+| 检查                               | 本轮实际结果                                                 |
+| ---------------------------------- | ------------------------------------------------------------ |
+| Handbook/Tutor/Learning Node tests | **143/143 通过**                                             |
+| 8 个组件 crate 的 host Rust tests  | **40/40 通过**：`os-alloc` 4、`os-context` 3、`os-fs` 11、`os-sbi` 2、`os-signal` 4、`os-sync` 7、`os-syscall` 4、`os-vm` 5 |
+| Python knowledge tests             | **32/32 通过**                                               |
+| Tutor V3 Eval                      | 19 条均完成评分；综合分 95；问题相关性 71%，教学正确性、必要解释、可行动性、无泄漏、证据忠实度和阶段不变性均为 100% |
+| Assessment Harness                 | **5/5 通过**；计划有效性、题目新颖性、叙事中立性、判定准确性和可行动反馈率均为 1.0 |
+| RAG Harness                        | **6 个案例通过契约门槛**；知识命中率 0.8333，其余范围、上限、元数据、Prompt、召回指标为 1.0，教师内容泄漏率为 0 |
+| Tutor Server Smoke                 | 通过；4 次运行、6 个运行事件、12 条断言，并覆盖诊断、Tutor、评价、复核、报告与 Factory 链路 |
+| VitePress production build         | 通过；同步 16 个 Markdown 文件，成功生成静态站点             |
+| Lab1 QEMU                          | **2/2**；裸机输出和 QEMU 运行标识通过                        |
+| Lab2 QEMU                          | **6/6**；5 轮 Yield、28 条 `trap_enter`、6 条 `task_switch`  |
+| Lab3 QEMU                          | **4/4**；幂运算、5 轮 Yield、全部用户程序退出、3 条地址空间创建 Trace |
+| Lab4 QEMU                          | **6/6**；父子进程、`fork_test`、进程退出、1 条 `clone`、2 条 `wait4` |
+| Lab5 QEMU                          | **6/6**；内嵌文件、文件系统、管道、进程退出、3 条 `openat`、1 条 pipe Trace |
+| Lab6 QEMU                          | **11/11**；VirtIO 文件、硬链接、`mmap`、`spawn`、stride、文件系统、管道及对应 Trace |
+| Lab7 QEMU                          | **7/7**；`dup`、信号、信号屏蔽、管道，以及 `dup`、`kill`、`sigreturn` Trace |
+| Lab8 QEMU                          | **12/12**；线程、mutex、condvar、pipe、两类死锁检测，以及线程创建和同步 Trace |
 
-### 5.3 Prompt Eval 实验结果与分析
+本轮按原统计口径，自动/契约测试合计为 **`215/215`**（143 Node + 40 Rust + 32 Python），Assessment、RAG、Smoke、Tutor V3 评估和 VitePress build 单独记录，不重复计入该总数。
 
-Prompt Eval 用于检验 AI 导师在“学生提问意图识别、引导动作、答案护栏、证据引用、跨阶段稳定性”上的表现，而不是只检查回复是否包含某个阶段关键词。实验覆盖 V2 阶段路由口径与 V3 意图路由口径，并分别对“有/无阶段 Prompt”和“完整意图策略/无意图基线”进行对比。
+QEMU 共完成 **8 个端到端 Lab recipe、54/54 条行为与 Trace 断言**。原表各 Lab 数量相加为 39，但末段又写成“14 项”，两者均不符合当前 recipe。
 
-**实验目标与对比口径**
+知识库统计经实时查询仍与原记录一致：8 个来源、35 个版本、1129 个文档、16099 个历史 Chunk，其中 1384 个活跃、1360 个已索引并具有 384 维本地确定性向量。
 
-- V2 阶段路由口径：使用 Lab/stage 构造的 48 条历史语料，对比“有阶段 Prompt”与“无阶段 Prompt”。
-- V3 意图路由口径：使用 19 条意图语料，对比“完整意图策略”与“移除意图策略层、保留 system/Lab/证据/RAG 的基线”。
-- V3 语料覆盖 Lab1-Lab8 和七类本轮意图：`concept`、`code-reading`、`debug`、`verification`、`reflection`、`transfer`、`direct-answer`；同时包含错误假设、直接索要补丁、换题、无证据、可信通过证据、学生说法与失败运行冲突等场景。
+### 5.2 Prompt Eval 实验结果与分析
 
-**实验配置**
+Prompt Eval 用于检验 AI 导师在“学生提问意图识别、引导动作、答案护栏、证据引用、跨阶段稳定性”上的表现，而不是只检查回复是否包含某个阶段关键词。本节按 V1 → V2 → V3 的优化历程说明版本演进，并给出关键分数、公式与来源。
 
-| 运行            | 语料               | 模式    | 模型                                    | 有效条数                         | 用途                              |
-| --------------- | ------------------ | ------- | --------------------------------------- | -------------------------------- | --------------------------------- |
-| V2 历史真实 A/B | legacy-stage 48 条 | remote  | gpt-5.6-luna                            | 45 条 remote，3 条 offline       | 阶段 Prompt 与无阶段 Prompt 对比  |
-| V3 离线链路     | cases-v3 19 条     | offline | qwen2.5:7b（回复为 offline-tutor 兜底） | 19 条                            | 验证意图路由、RAG、护栏与降级链路 |
-| V3 真实模型     | cases-v3 19 条     | remote  | gpt-5.6-luna                            | 18 条 remote，1 条由答案护栏拦截 | 完整意图策略与无意图基线对比      |
+**1. 优化历程**
 
-V3 单条综合分为六项等权平均：`questionRelevance`、`guidanceCorrectness`、`necessaryExplanation`、`actionability`、`noLeak`、`evidenceFidelity`。问号数量、回复长度和代码行数只作为诊断项，不参与主分。
+- **V1（前端 AI 学习台原型）。**
 
-**V3 真实模型结果**
+   前期的 AI 协作形式是每个 Lab 文档内置“五、AI 提问模板”与学生协作记录文档，没有服务端导师；随后在此基础上做成前端 AI 学习台，Prompt 以单 Lab/前端模板为主，尚无服务端统一分层 Prompt、状态机、RAG 与证据门控，也没有量化评测。
 
-数据源：`os-lab/tutor/prompt-eval/records/current-intent-remote-gpt56-retry-final-rescored/`，模型 `gpt-5.6-luna`，温度 0.3，19 条用例。
+- **V2（阶段路由）。** 
 
-| 指标     | 完整意图策略 | 无意图基线 |
-| -------- | ------------ | ---------- |
-| 综合     | 96           | 95         |
-| 引导正确 | 79           | 74         |
+  系统提示词发展为“系统教学边界 + Lab 上下文 + 阶段策略”三层框架，随后补齐 C3 状态机、证据门控与离线回归 Harness，再接入 RAG；用 Lab/stage 构造 48 条历史语料完成第一次真实模型评测和“有阶段/无阶段 Prompt”A/B。V2 分数卡综合 91（回复 90、RAG 76、链路与安全 100），流水线与安全达标，回复质量和 RAG 引用仍是短板。A/B 中 remote 45 条平均差 +5.56，95% CI 跨 0；优势几乎全部来自阶段关键词命中（`stageScore` 11:1），提问质量反而是无阶段更好。这说明阶段提示词不能稳定提升真实教学表现；旧语料无法验证“同一问题在不同阶段是否得到一致引导”，因此结论是回答策略不应由存储阶段决定。
 
-基线综合分按同一 V3 规则对冻结回复重算，其余指标两侧相同，不再逐一列出。`questionRelevance=100` 表示 19 条均识别为期望本轮意图；三组同题跨阶段用例的 `intent + actions + guardrail class` 全部一致，说明存储阶段没有重新参与回答策略。
+- **V3（意图路由）。** 
 
-![V3 真实模型评测主指标与逐用例消融差值](../../../Users/Jane%2520Aurora/Documents/xwechat_files/wxid_jrytn992mh3112_d069/msg/file/2026-08/assets/prompt-eval-v3-results.png){width=96%}
+  V3 把回答策略主轴改为“本轮问题意图”，`stage` 只作导航遥测；语料改为 19 条意图用例，覆盖七类意图与错误假设、直接索要补丁、换题、证据冲突等场景。代价是单 Lab 覆盖变薄（lab1/4/5/7/8 各仅 1 条）。评分改为六项规则化指标：`questionRelevance`、`guidanceCorrectness`、`necessaryExplanation`、`actionability`、`noLeak`、`evidenceFidelity`；问号数、长度、代码行只作诊断。
 
-图中 (a) 为完整意图策略与无意图基线存在差值的 V3 主指标，(b) 为非零逐用例综合分差值；其余 15 条持平，完整策略更好 3 条，基线更好 1 条。
+- **V3 两轮验证。**
 
-**消融结果**
+  离线链路轮 19 条全链路跑通、综合 94，同时暴露问题相关 79、引导正确 87，以及泄漏 95 的评分误报；据此修复了意图与回应模式双轴分离、离线兜底问题锚点、泄漏正则与 `sp` 子串误判。真实模型轮（`gpt-5.6-luna`，温度 0.3，18 条 remote + 1 条护栏拦截）首次机器分 94（可执行 89、无泄漏 95），人工核对后修正“拒绝话术不算泄漏”和“思考：...算可执行任务”两条规则，对冻结回复重评分得到 96（可执行 95、无泄漏 100）；无意图基线为 95（引导正确 74）。消融平均 +0.84，完整策略更好 3 条、持平 15 条、基线更好 1 条。
+
+**2. 关键结果**
+
+- **关键分数**
+
+| 运行                       | 综合  | 说明                                                         |
+| -------------------------- | ----- | ------------------------------------------------------------ |
+| V2 分数卡（48 条真实模型） | 91    | 回复 90 / RAG 76 / 链路与安全 100；A/B 平均差 +5.56，CI 跨 0，优势集中在阶段关键词 |
+| V3 离线链路（19 条）       | 94    | 问题相关 79 / 引导正确 87 / 无泄漏 95                        |
+| V3 真实模型（19 条）       | 96    | 首次机器分 94，修正规则后重评分 96；问题相关、必要解释、无泄漏、证据忠实 100，可执行 95，引导正确 79 |
+| V3 消融                    | +0.84 | 完整策略 3 正 / 15 平 / 1 负，无意图基线综合 95              |
+
+- **V3 真实模型结果**
+
+重评分是对冻结回复的本地重放，不再调用模型。
+
+| 轮次             | 综合 | 问题相关 | 引导正确 | 必要解释 | 可执行 | 无泄漏 | 证据忠实 |
+| ---------------- | ---- | -------- | -------- | -------- | ------ | ------ | -------- |
+| 首次机器分       | 94   | 100      | 79       | 100      | 89     | 95     | 100      |
+| 规则修正后重评分 | 96   | 100      | 79       | 100      | 95     | 100    | 100      |
+
+- **消融结果**
+
+差值为每条用例“完整策略单条综合 - 基线单条综合”。
 
 完整意图策略与无意图基线在 19 条用例上的综合分差值为：平均 +0.84，完整策略更好 3 条、持平 15 条、基线更好 1 条。
 
@@ -1092,25 +1112,17 @@ V3 单条综合分为六项等权平均：`questionRelevance`、`guidanceCorrect
 | debug    | 4      | 94           | 92             |
 | transfer | 1      | 100          | 92             |
 
-其余五类意图持平，不再列出。完整策略的优势集中在 `concept-sepc-debug`、`debug-panic-transfer` 和 `transfer-multicore`，主要体现在调试/迁移类问题上给出更明确的引导动作；唯一负向的 `concept-sepc-reflect` 为单条采样差异，不影响整体正向结论。
+其余五类意图持平，不再列出。
 
-**V3 离线链路结果**
+- **V2 历史阶段 Prompt 对照**
 
-数据源：`os-lab/tutor/prompt-eval/records/current-intent-offline-2026-08-10/`。
+数据由 48 条 legacy-stage 语料组成，真实模型 `gpt-5.6-luna`。差值为“有阶段减无阶段”的单条 replyQuality 分。
 
-| 综合 | 问题相关 | 引导正确 | 无泄漏（原始评分） |
-| ---- | -------- | -------- | ------------------ |
-| 94   | 79       | 87       | 95                 |
+V2 分数卡
 
-![V3 离线链路关键分项](../../../Users/Jane%2520Aurora/Documents/xwechat_files/wxid_jrytn992mh3112_d069/msg/file/2026-08/assets/prompt-eval-v3-offline.png){width=82%}
-
-图中仅展示综合、问题相关、引导正确和无泄漏原始评分四个关键分项；其余分项均为 100。
-
-其余达标项均为 100，不再重复列出。离线结果完整验证意图路由、RAG、护栏与降级链路；无泄漏 95 为原始评分口径下的保守标记，经人工核对并修正规则后为 100，不构成真实泄漏。
-
-**V2 历史阶段 Prompt 对照**
-
-数据源：`os-lab/tutor/prompt-eval/records/remote-stu/`，48 条 legacy-stage 语料，真实模型 `gpt-5.6-luna`。
+| 综合分 | 回复 | RAG  | 链路 | 安全 | 平均 grounding |
+| ------ | ---- | ---- | ---- | ---- | -------------- |
+| 91     | 90   | 76   | 100  | 100  | 32%            |
 
 | 统计项                     | 全部 48 条     | 仅 remote 45 条 |
 | -------------------------- | -------------- | --------------- |
@@ -1128,19 +1140,23 @@ V3 单条综合分为六项等权平均：`questionRelevance`、`guidanceCorrect
 | 长度 lengthScore       | 10         | 7          |
 | 阶段贴合 stageScore    | 11         | 1          |
 
-![V2 历史阶段 Prompt A/B 对照](../../../Users/Jane%2520Aurora/Documents/xwechat_files/wxid_jrytn992mh3112_d069/msg/file/2026-08/assets/prompt-eval-v2-ablation.png){width=96%}
+![V3 真实模型评测主指标与逐用例消融差值](./assets/prompt-eval-v3-results.png){width=96%}
 
-图中 (a) 为 48 条和仅 remote 45 条的正/平/负分布，(b) 为逐检查项有/无阶段更好的条数；无泄漏两侧均为 0，未绘制。
+![V3 离线链路关键分项](./assets/prompt-eval-v3-offline.png){width=82%}
 
-无泄漏两侧均为 0 条差异，不再列入。历史 V2 对照的 95% CI 跨 0，说明阶段关键词本身不能稳定提升真实教学表现；V3 改为直接检查是否回应当前问题、是否采取正确引导、是否泄漏答案、是否忠实使用证据、是否不受存储阶段干扰，评测口径更贴近真实教学质量。
+![V2 历史阶段 Prompt A/B 对照](./assets/prompt-eval-v2-ablation.png){width=96%}
 
-**实验结论与优势**
+**3. 评分公式**
 
-1. 意图路由在真实模型上表现稳定：19 条全部识别为期望本轮意图，三组跨阶段同题 100% 保持同一回复类别，说明存储阶段不会干扰回答策略。
-2. 安全与证据边界达标：完整策略无答案泄漏 100、证据忠实 100，直接索要补丁由护栏拦截，未向模型发送可拼装完整答案的内容。
-3. 核心质量指标整体优秀：综合 96，问题相关、必要解释、无泄漏、证据忠实均 100，可执行 95。
-4. 意图策略层带来正向收益：debug 综合 94（基线 92）、transfer 综合 100（基线 92），非零差值中 3 条正向、15 条持平，整体平均 +0.84。
-5. 离线链路稳定可用：19 条全链路跑通，综合 94，必要解释、可执行、证据忠实和跨阶段一致均为 100，可用于上游不可用时的降级兜底。
+- **评分公式。** V3 单条综合 = 六维等权平均（其中 `questionRelevance`、`guidanceCorrectness` 各为两项判定的平均，可取 0/50/100；其余四维为 0/100），全局综合 = 19 条单条综合的平均，按意图综合 = 组内平均；六维均为规则化判定，不是人工评分。`evidenceFidelity` 只校验引用是否在本轮白名单、是否无引用地断言“已通过”，不校验引用内容语义。V2 A/B 用的是 `replyQuality = mean(questionScore, lengthScore, stageScore)`，95% CI 由 45 条 remote 差值 bootstrap 2000 次得到。
+
+- **结论**
+
+1. 意图路由稳定：19 条意图识别全部正确，三组同题跨阶段 100% 保持一致，存储阶段不再参与回答策略。
+2. 安全与证据边界达标：重评分无泄漏与证据忠实 100，直接索要补丁由护栏拦截且未进入检索。
+3. 核心质量整体优秀：综合 96、可执行 95，引导正确 79 与 `concept-sepc-reflect` 75 可进一步优化。
+4. 意图策略层在本轮样本内正向：+0.84，3 正 15 平 1 负。
+5. 离线链路可用：综合 94，可作为上游不可用时的降级兜底。
 
 ## 6. 未来优化方向
 
@@ -1164,7 +1180,7 @@ V3 单条综合分为六项等权平均：`questionRelevance`、`guidanceCorrect
 
 ## 7. 分工与协作
 
-### **7.1 团队分工与协作**
+### 7.1 团队分工与协作
 
 
 | 成员 | 主要分工 |
@@ -1175,9 +1191,9 @@ V3 单条综合分为六项等权平均：`questionRelevance`、`guidanceCorrect
 
 **协作更新记录**
 
-团队成员的协作更新记录文档请见：[progress文档](./progress.md)
+团队成员的协作更新记录文档请见仓库：[progress文档](./progress.md)
 
-团队成员的仓库commit协作记录完整请见：[Commits · AM-SuSh/Or2-1-OS](https://github.com/AM-SuSh/Or2-1-OS/commits/main/)
+团队成员的仓库commit协作记录完整请见github仓库：[Commits · AM-SuSh/Or2-1-OS](https://github.com/AM-SuSh/Or2-1-OS/commits/main/)
 
 ### 7.2 AI协作说明
 
@@ -1244,63 +1260,57 @@ V3 单条综合分为六项等权平均：`questionRelevance`、`guidanceCorrect
 
 `reference/`、`target/`、QEMU 输出、临时日志、知识库构建缓存、学生工作区、账号数据库、报告附件和 API Key 不作为正式源码提交内容。AI 生成的代码、题目、评价和文档草稿只有经过人工审查、证据校验和自动化测试后才能进入仓库或教学流程。
 
-## 8. 提交仓库目录和文件描述（改）
+## 8. 提交仓库目录和文件描述
 
 ### 8.1 仓库目录总览
 
-| 目录 | 内容与职责 |
-| --- | --- |
-| `os-lab/kernel/` | 内核入口、Trap、调度、内存、进程、文件、信号、同步 |
-| `os-lab/user/` | 用户态运行库、syscall 封装和 Lab 验证程序 |
-| `os-lab/os-*` | SBI、上下文、系统调用 ABI、分配器、虚存、文件、信号、同步组件 |
-| `os-lab/labs/` | Lab1-Lab8 学生手册与教师答案材料 |
-| `os-lab/lab-packages/` | `lab.yaml`、概念规格、任务变体、可信验证和发布目录 |
-| `os-lab/scaffold/` | 学生初始工作区、fill/debug/remedial 变体和教师配置 |
-| `os-lab/handbook/` | VitePress 前端、Vue 组件、Tutor Server、前端测试和运行入口 |
-| `os-lab/tutor/` | 运行 recipe、Tutor 状态、轮次策略、证据契约和 Prompt 评测 |
-| `os-lab/learning/` | 账号、学习数据库、复盘、评价、掌握画像、教师验收和知识库 |
-| `os-lab/docs/` | 架构、AI、部署、验收和过程记录 |
+| 目录                   | 内容与职责                                                   |
+| ---------------------- | ------------------------------------------------------------ |
+| `os-lab/kernel/`       | 单体渐进式教学内核：启动、Trap、调度、内存、进程、文件、信号、线程与同步 |
+| `os-lab/user/`         | 用户态运行库、系统调用封装和 Lab 验证程序                    |
+| `os-lab/os-*`          | SBI、Trap 上下文、系统调用 ABI、分配器、虚存、文件、信号和同步组件 crate |
+| `os-lab/labs/`         | Lab1–Lab8 学生手册、验证说明和教师参考答案                   |
+| `os-lab/lab-packages/` | `lab.yaml`、概念规格、检查点、任务变体、发布版本和可信验证配置 |
+| `os-lab/scaffold/`     | 学生初始工作区及 Lab2–Lab8 的 `fill/debug` 练习变体；教师和班级配置为本地忽略文件 |
+| `os-lab/handbook/`     | VitePress/Vue 手册、学生工作台、Tutor Server、教师端、前端测试和运行入口 |
+| `os-lab/tutor/`        | 可信运行 recipe、Tutor 意图与轮次策略、复盘编排、证据契约、Trace 存储、RAG 和 Prompt 评估 |
+| `os-lab/learning/`     | 账号、学习数据库、复盘、Assessment、Rubric、掌握画像、教师验收、备份恢复和知识库 |
+| `os-lab/tests/`        | 集成测试说明和统一验证入口文档                               |
+| `os-lab/scripts/`      | `verify.mjs`、scaffold 测试、文件系统镜像检查等工程脚本      |
+| `os-lab/docs/`         | Tutor/Assessment 技术说明和 Socratic 复盘实现记录            |
+| `docs/`                | 总体技术文档、环境配置、仓库说明、参考报告和构建说明         |
+| `.github/workflows/`   | Node、Python、Rust、QEMU 和 VitePress 的 CI 配置             |
 
 ### 8.2 关键入口与提交说明
 
-提交时应保留源码、Lab Package、Scaffold、handbook、Tutor、Learning、测试、CI 和文档；`node_modules`、构建产物、真实学生数据、知识库缓存和临时渲染产物不作为普通源码资产分发。总体技术文档以 `EVOLVE总体实验技术文档.md` 为可编辑源，Word 版由 `scripts/build_evolve_documents.py` 生成。
-
-
-以下文件是本文主要事实来源，后续维护文档时应优先核对：
-
-| 主题 | 源码或规格入口 |
-| --- | --- |
-| Cargo Workspace 与 feature 链 | `os-lab/Cargo.toml`、`os-lab/kernel/Cargo.toml` |
-| 启动与初始化 | `kernel/src/entry.asm`、`kernel/src/main.rs` |
-| Trap 与 syscall 分派 | `kernel/src/trap.rs`、`os-context/src/lib.rs`、`os-context/src/trap.asm` |
-| 任务调度 | `kernel/src/task.rs` |
-| 内存与 Sv39 | `kernel/src/mm.rs`、`os-alloc/src/lib.rs`、`os-vm/src/lib.rs` |
-| 进程 | `kernel/src/process.rs` |
-| 文件与 VirtIO | `kernel/src/fs/embedded.rs`、`kernel/src/fs/disk.rs`、`kernel/src/virtio_block.rs` |
-| 信号 | `kernel/src/signal.rs`、`os-signal/src/lib.rs` |
-| 线程与同步 | `kernel/src/processor.rs`、`kernel/src/sync_syscall.rs`、`kernel/src/deadlock.rs`、`os-sync/src/` |
-| 用户态 ABI 和测试 | `user/src/syscall.rs`、`user/src/bin/` |
-| 学生主工作台 | `handbook/.vitepress/theme/components/LabWorkspace.vue` |
-| Tutor Server | `handbook/tutor-server.mjs` |
-| 可信 recipe | `tutor/run-recipes.mjs` |
-| Tutor 意图与提示策略 | `tutor/turn-policy.mjs` |
-| 证据与 Trace 契约 | `tutor/contracts.mjs`、`tutor/trace-store.mjs` |
-| 账号和学习数据 | `learning/db.mjs`、`learning/student-data-store.mjs` |
-| Rubric 与掌握画像 | `learning/rubric-v3.mjs`、`learning/mastery.mjs` |
-| 异常评价门控与统一教师验收 | `learning/review-gates.mjs`、`learning/db.mjs`、`handbook/.vitepress/theme/components/TeacherReview.vue` |
-| 知识库 | `learning/knowledge/knowledge-store.mjs`、`hybrid-retriever.mjs`、`knowledge-schema.sql` |
-| Lab 规格与发布 | `lab-packages/labN/lab.yaml`、`lab-packages/published.json` |
-| CI | `.github/workflows/os-lab-ci.yml` |
-
-配套技术说明可继续参考：
-
-- `os-lab/docs/architecture.md`
-- `os-lab/docs/agent-system-technical.md`
-- `os-lab/docs/ai-tutor-stage-guide.md`
-- `os-lab/docs/deployment-and-recovery.md`
-- `os-lab/handbook/docs/workbench-ui.md`
-- `os-lab/learning/knowledge/README.md`
-- `os-lab/lab-packages/README.md`
+| 主题                          | 当前源码或规格入口                                           |
+| ----------------------------- | ------------------------------------------------------------ |
+| Cargo Workspace 与 feature 链 | `os-lab/Cargo.toml`、`os-lab/kernel/Cargo.toml`              |
+| 启动与初始化                  | `os-lab/kernel/src/entry.asm`、`os-lab/kernel/src/main.rs`   |
+| Trap 与 syscall 分派          | `os-lab/kernel/src/trap.rs`、`os-lab/os-context/src/lib.rs`、`os-lab/os-context/src/trap.asm` |
+| 任务调度                      | `os-lab/kernel/src/task.rs`、`os-lab/kernel/src/processor.rs` |
+| 内存与 Sv39                   | `os-lab/kernel/src/mm.rs`、`os-lab/os-alloc/src/lib.rs`、`os-lab/os-vm/src/lib.rs` |
+| 进程                          | `os-lab/kernel/src/process.rs`                               |
+| 文件与 VirtIO                 | `os-lab/kernel/src/fs/embedded.rs`、`os-lab/kernel/src/fs/disk.rs`、`os-lab/kernel/src/virtio_block.rs` |
+| 信号                          | `os-lab/kernel/src/signal.rs`、`os-lab/os-signal/src/lib.rs` |
+| 线程与同步                    | `os-lab/kernel/src/sync_syscall.rs`、`os-lab/kernel/src/deadlock.rs`、`os-lab/os-sync/src/` |
+| 用户态 ABI 和测试             | `os-lab/user/src/syscall.rs`、`os-lab/user/src/bin/`         |
+| 学生主工作台                  | `os-lab/handbook/.vitepress/theme/components/LabWorkspace.vue` |
+| Tutor Server                  | `os-lab/handbook/tutor-server.mjs`                           |
+| 可信 recipe                   | `os-lab/tutor/run-recipes.mjs`                               |
+| Tutor 意图与轮次策略          | `os-lab/tutor/turn-policy.mjs`                               |
+| Tutor 复盘编排                | `os-lab/tutor/review-tutor.mjs`                              |
+| 证据与 Trace 契约             | `os-lab/tutor/contracts.mjs`、`os-lab/tutor/trace-store.mjs` |
+| Tutor V3 评估                 | `os-lab/tutor/prompt-eval/run-eval.mjs`、`cases-v3.json`、`scoring-v3.mjs` |
+| Assessment Harness            | `os-lab/learning/assessment-harness.mjs`、`assessment-harness-cli.mjs` |
+| RAG Harness                   | `os-lab/tutor/rag-harness.mjs`、`rag-harness-cli.mjs`        |
+| 账号和学习数据                | `os-lab/learning/db.mjs`、`os-lab/learning/student-data-store.mjs` |
+| Rubric 与掌握画像             | `os-lab/learning/rubric-v3.mjs`、`os-lab/learning/mastery.mjs` |
+| 复盘门控与教师验收            | `os-lab/learning/review-gates.mjs`、`os-lab/handbook/.vitepress/theme/components/TeacherReview.vue` |
+| 知识库                        | `os-lab/learning/knowledge/knowledge-store.mjs`、`hybrid-retriever.mjs`、`knowledge-schema.sql` |
+| Lab 规格与发布                | `os-lab/lab-packages/labN/lab.yaml`、`os-lab/lab-packages/published.json` |
+| 测试入口                      | `os-lab/handbook/package.json`、`os-lab/scripts/verify.mjs`、`os-lab/tests/README.md` |
+| CI                            | `.github/workflows/os-lab-ci.yml`                            |
 
 ## 9. 比赛收获
 
@@ -1696,7 +1706,7 @@ Tutor 的理解检查由 `shouldAskUnderstandingCheck()` 控制，不是每轮�
 
 触发后只问一个与刚才问题直接相关的问题；学生回答这次检查后，本轮不再追加新问题。每个主题最多一次理解检查，兜底实现“先解决疑惑，再确认是否真正理解”的目的。
 
-### **1.4 Prompt 的组成及来源**
+### 1.4 Prompt 的组成及来源
 
 学生向 Tutor 提问时，服务端会补充教学规则、当前 Lab、学生正在查看的内容、可信运行证据和相关知识片段，再将它们组合成完整提示词。具体由以下几部分组成。
 
