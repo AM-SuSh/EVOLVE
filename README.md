@@ -6,19 +6,19 @@ EVOLVE 是面向操作系统课程的渐进式实验、可信验证与智能辅�
 
 本项目关注的核心问题是：在生成式 AI 可以直接产出代码的背景下，如何让操作系统实验仍然能够促进机制理解、工程实践与可验证的学习过程。
 
-> 完整的问题分析、系统设计、实验数据与实现边界见 [EVOLVE 总体实验技术文档](EVOLVE总体实验技术文档.md)。
+> 完整的问题分析、系统设计、实验数据与实现边界见 [EVOLVE 总体实验技术文档](EVOLVE总体实验技术文档.pdf)。
 
 ## 项目入口
 
 | 入口 | 内容 |
 | --- | --- |
-| [总体实验技术文档](EVOLVE总体实验技术文档.md) | 项目背景、相关工作、系统设计、实验评估、团队协作与附录 |
+| [总体实验技术文档](EVOLVE总体实验技术文档.pdf) | 项目背景、相关工作、系统设计、实验评估、团队协作与附录 |
 | [自研系统源码](os-lab/) | Rust 教学内核、实验平台、Tutor、Assessment、知识库与测试 |
 | [Lab 实验总览](os-lab/labs/overview.md) | Lab1-Lab8 的知识地图、实验任务和验证路径 |
 | [环境与复现指南](docs/environment_setup.md) | Rust、QEMU、Node.js 与本地环境配置 |
 | [参考练习报告](docs/reference-report.md) | `tg-rcore-tutorial` 五章练习、补丁和 checker 结果 |
 | [研发与验证记录](progress.md) | 版本演进、实现过程、测试记录与阶段收口 |
-| [答辩演示文稿](EVOLVE答辩PPT.pptx) / [PDF](EVOLVE答辩PPT.pdf) | 项目答辩材料 |
+| [答辩演示文稿](EVOLVE答辩PPT.pdf) | 项目答辩材料 |
 
 ## 研究目标与设计原则
 
@@ -162,7 +162,7 @@ npm run build
 
 | 材料 | 说明 |
 | --- | --- |
-| [EVOLVE总体实验技术文档.md](EVOLVE总体实验技术文档.md) | 当前完整实验报告与技术依据 |
+| [EVOLVE总体实验技术文档.pdf](EVOLVE总体实验技术文档.pdf) | 当前完整实验报告与技术依据 |
 | [docs/os-lab.md](docs/os-lab.md) | 自研系统验证、运行和教学工作台入口 |
 | [os-lab/docs/agent-system-technical.md](os-lab/docs/agent-system-technical.md) | Tutor、Assessment、RAG 与证据门控实现 |
 | [docs/reference-report.md](docs/reference-report.md) | 参考环境基线、exercise 与 checker 结果 |
